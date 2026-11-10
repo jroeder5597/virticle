@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/xml"
 	"net/http"
+	"path"
 	"strings"
 	"sync"
 
@@ -387,8 +388,9 @@ func (s *Server) vmAutostart(w http.ResponseWriter, r *http.Request) {
 }
 
 // vmDelete removes a VM's definition. With ?disks=1 it also deletes the
-// writable disk volumes that live in a storage pool; CD-ROMs and read-only
-// or shared media are never touched.
+// writable disk volumes that live in a storage pool, plus the VM's own
+// cloud-init seed volume; other CD-ROMs and read-only or shared media are
+// never touched.
 func (s *Server) vmDelete(w http.ResponseWriter, r *http.Request) {
 	h, dom, err := s.domain(r)
 	if err != nil {
@@ -418,6 +420,11 @@ func (s *Server) vmDelete(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, k := range x.Devices.Disks {
 			if k.Device == "disk" && k.ReadOnly == nil && k.Source.File != "" {
+				paths = append(paths, k.Source.File)
+			}
+			// The cloud-init seed is a read-only CD-ROM, recognised by its
+			// name; the pool lookup below makes sure it is a pool volume.
+			if k.Device == "cdrom" && k.Source.File != "" && path.Base(k.Source.File) == seedVolumeName(dom.Name) {
 				paths = append(paths, k.Source.File)
 			}
 		}

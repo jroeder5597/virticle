@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { bytes, get, Network, NodeStatus, Pool, post, VM, Volume } from "../api";
 import { useLive } from "../live";
+import CloudInitFields, { CloudInitValues, cloudInitPayload, cloudInitUsed, emptyCloudInit } from "./CloudInit";
 import { ErrorBox, Field, Modal, NodePicker, StateBadge, useAction } from "../ui";
 
 export default function VMs() {
@@ -97,6 +98,7 @@ function CreateVM({ nodes, onClose }: { nodes: NodeStatus[]; onClose: () => void
   const [media, setMedia] = useState("");
   const [network, setNetwork] = useState("");
   const [start, setStart] = useState(true);
+  const [ci, setCi] = useState<CloudInitValues>(emptyCloudInit);
   const [pools, setPools] = useState<Pool[]>([]);
   const [networks, setNetworks] = useState<Network[]>([]);
   const [volumes, setVolumes] = useState<(Volume & { pool: string })[]>([]);
@@ -141,6 +143,7 @@ function CreateVM({ nodes, onClose }: { nodes: NodeStatus[]; onClose: () => void
         start,
         iso: source === "iso" ? media : "",
         baseVolume: source === "image" ? media : "",
+        cloudInit: source === "image" && cloudInitUsed(ci) ? cloudInitPayload(ci, name) : undefined,
       });
     });
     if (ok && created) {
@@ -243,6 +246,7 @@ function CreateVM({ nodes, onClose }: { nodes: NodeStatus[]; onClose: () => void
             </select>
           </Field>
         </div>
+        {source === "image" && <CloudInitFields vmName={name} value={ci} onChange={setCi} />}
         <label className="check">
           <input type="checkbox" checked={start} onChange={(e) => setStart(e.target.checked)} /> Start after creating
         </label>

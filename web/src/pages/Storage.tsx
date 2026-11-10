@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { bytes, del, get, NodeStatus, Pool, post, uploadVolume, Volume } from "../api";
 import { useLive } from "../live";
+import DownloadVolume from "./DownloadVolume";
 import { ErrorBox, Field, Modal, NodePicker, StateBadge, UsageBar, useAction } from "../ui";
 
 export default function Storage() {
@@ -103,6 +104,7 @@ function Volumes({ node, pool }: { node: number; pool: Pool }) {
   const vols = useLive(() => get<Volume[]>(base), base);
   const act = useAction();
   const [creating, setCreating] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [upload, setUpload] = useState<{ name: string; progress: number } | undefined>();
   const file = useRef<HTMLInputElement>(null);
 
@@ -134,6 +136,7 @@ function Volumes({ node, pool }: { node: number; pool: Pool }) {
           <button disabled={!!upload} onClick={() => file.current?.click()}>
             Upload image or ISO
           </button>
+          <button onClick={() => setDownloading(true)}>Download from URL</button>
           <button onClick={() => setCreating(true)}>New volume</button>
         </div>
       </div>
@@ -186,6 +189,7 @@ function Volumes({ node, pool }: { node: number; pool: Pool }) {
           </tbody>
         </table>
       )}
+      {downloading && <DownloadVolume node={node} pool={pool.name} onClose={() => setDownloading(false)} onDone={vols.reload} />}
       {creating && <CreateVolume base={base} pool={pool} onClose={() => setCreating(false)} />}
     </>
   );
