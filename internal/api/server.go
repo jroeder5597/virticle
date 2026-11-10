@@ -26,6 +26,8 @@ type Server struct {
 	PubKey string // controller's SSH public key, shown when adding a node
 	Static fs.FS  // built web UI
 	Alerts AlertSettings
+	// DataDir is the controller's data directory (the migration CA lives in it).
+	DataDir string
 
 	routes  []route // every pattern registered by Handler, for the access-level test
 	limiter *limiter
@@ -125,6 +127,9 @@ func (s *Server) Handler() http.Handler {
 	auth("POST /api/nodes/{node}/vms/{uuid}/migrate/check", s.migrateCheck)
 	auth("POST /api/nodes/{node}/vms/{uuid}/migrate", s.migrate)
 	auth("POST /api/nodes/{node}/vms/{uuid}/migrate/cancel", s.migrateCancel)
+	auth("GET /api/nodes/{node}/migration-tls", s.migTLSStatus)
+	auth("POST /api/nodes/{node}/migration-tls", s.migTLSSetup)
+	auth("DELETE /api/nodes/{node}/migration-tls", s.migTLSRemove)
 	auth("GET /api/nodes/{node}/vms/{uuid}/snapshots", s.listSnapshots)
 	auth("POST /api/nodes/{node}/vms/{uuid}/snapshots", s.createSnapshotHandler)
 	auth("POST /api/nodes/{node}/vms/{uuid}/snapshots/{name}/revert", s.revertSnapshot)

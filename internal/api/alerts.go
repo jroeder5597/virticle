@@ -106,6 +106,9 @@ func (s *Server) gatherAlertInput(now time.Time) alertInput {
 		in.Fresh[n.ID] = true
 		in.Pools = append(in.Pools, gatherPools(h, n.ID, name)...)
 		in.VMs = append(in.VMs, gatherBadVMs(h, n.ID, name)...)
+		if t, ok := s.migCertExpiry(h); ok {
+			in.MigCerts = append(in.MigCerts, alertMigCert{Node: n.ID, NodeName: name, NotAfter: t})
+		}
 		if m, ok := latestHostMem(n.ID); ok {
 			m.NodeName = name
 			in.Mem = append(in.Mem, m)

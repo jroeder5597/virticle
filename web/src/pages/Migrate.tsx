@@ -15,6 +15,7 @@ interface Preview {
   checks: Check[];
   copyBytes: number;
   mirrorBytes: number;
+  encrypt?: boolean;
 }
 
 const modeText = { live: "Live: the VM keeps running", suspended: "Non-live: the VM is paused during the copy", offline: "Offline: the VM is shut off" };
@@ -27,6 +28,7 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
   const [target, setTarget] = useState(0);
   const [live, setLive] = useState(true);
   const [keep, setKeep] = useState(false);
+  const [encrypt, setEncrypt] = useState(true); // true = encrypt when both nodes are set up for it
   const [preview, setPreview] = useState<Preview | undefined>();
   const [checking, setChecking] = useState(false);
   const [taskId, setTaskId] = useState(0);
@@ -51,14 +53,14 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
     let stale = false;
     setChecking(true);
     setPreview(undefined);
-    post<Preview>(`${base}/migrate/check`, { target, live }).then(
+    post<Preview>(`${base}/migrate/check`, { target, live, encrypt: encrypt ? undefined : false }).then(
       (p) => !stale && setPreview(p),
       (e) => !stale && setPreview({ ok: false, checks: [{ check: "Pre-flight", ok: false, severity: "error", message: String(e.message ?? e) }], copyBytes: 0, mirrorBytes: 0 }),
     ).finally(() => !stale && setChecking(false));
     return () => {
       stale = true;
     };
-  }, [target, live, base, taskId]);
+  }, [target, live, encrypt, base, taskId]);
 
   // Follow the task. The VM leaves this node when the move completes, so the
   // task list is polled instead of the VM.
@@ -86,7 +88,7 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
 
   const start = () =>
     act.run(async () => {
-      const r = await post<{ task: number }>(`${base}/migrate`, { target, live, keepSourceDisks: keep });
+      const r = await post<{ task: number }>(`${base}/migrate`, { target, live, keepSourceDisks: keep, encrypt: encrypt ? undefined : false });
       setTask(undefined);
       setTaskId(r.task);
     });
@@ -122,6 +124,12 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
             <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
             Keep the disks on the source node (by default they are deleted after a successful move)
           </label>
+          {preview?.mode !== "offline" && (
+            <label className="check">
+              <input type="checkbox" checked={encrypt} onChange={(e) => setEncrypt(e.target.checked)} />
+              Encrypt memory and disk streams with TLS when both nodes are set up for it (Nodes page)
+            </label>
+          )}
           <h3>Pre-flight checks</h3>
           {checking && <p className="muted">Checking {targetName}…</p>}
           {preview && (
@@ -129,6 +137,11 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
               {preview.mode && (
                 <p>
                   <strong>{modeText[preview.mode]}.</strong>{" "}
+                  {preview.mode !== "offline" && (
+                    <span className={`badge ${preview.encrypt ? "s-ok" : "s-paused"}`} title={preview.encrypt ? "Memory and disk data are TLS-encrypted on the wire" : "Memory and disk data cross the network unencrypted"}>
+                      {preview.encrypt ? "🔒 encrypted" : "unencrypted"}
+                    </span>
+                  )}{" "}
                   {preview.copyBytes > 0 && <>Files to copy: {bytes(preview.copyBytes)}. </>}
                   {preview.mirrorBytes > 0 && <>Disk data mirrored while running: up to {bytes(preview.mirrorBytes)}.</>}
                 </p>
