@@ -5,6 +5,7 @@ package main
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/pem"
 	"flag"
 	"log"
@@ -19,13 +20,20 @@ import (
 	"virt-proj/internal/api"
 	"virt-proj/internal/cluster"
 	"virt-proj/internal/store"
+	"virt-proj/internal/tlscert"
 	"virt-proj/web"
 )
 
 func main() {
 	listen := flag.String("listen", "127.0.0.1:8080", "address to serve the web UI and API on")
 	data := flag.String("data", "data", "directory for the database and the controller's SSH key")
+	tlsCert := flag.String("tls-cert", "", "PEM certificate to serve HTTPS with (needs -tls-key)")
+	tlsKey := flag.String("tls-key", "", "PEM private key for -tls-cert")
+	insecure := flag.Bool("insecure-http", false, "serve plain HTTP on a non-loopback address (passwords and sessions travel unencrypted)")
 	flag.Parse()
+	if (*tlsCert == "") != (*tlsKey == "") {
+		log.Fatal("-tls-cert and -tls-key must be given together")
+	}
 
 	if err := os.MkdirAll(*data, 0o700); err != nil {
 		log.Fatal(err)
@@ -51,9 +59,42 @@ func main() {
 	}
 
 	srv := &api.Server{Store: st, Nodes: mgr, PubKey: pub, Static: web.FS()}
-	log.Printf("listening on http://%s (%d nodes)", *listen, len(nodes))
-	hs := &http.Server{Addr: *listen, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
-	log.Fatal(hs.ListenAndServe())
+	hs := &http.Server{
+		Addr:    *listen,
+		Handler: srv.Handler(),
+		// No Read/WriteTimeout: they would cut off console WebSockets, volume
+		// uploads and long task requests. Slow header attacks are bounded here.
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
+	}
+
+	certFile, keyFile := *tlsCert, *tlsKey
+	switch {
+	case certFile != "":
+	case tlscert.IsLoopback(*listen) || *insecure:
+	default:
+		var generated bool
+		certFile, keyFile, generated, err = tlscert.Ensure(*data, tlscert.NamesFor(*listen), time.Now())
+		if err != nil {
+			log.Fatalf("TLS certificate: %v", err)
+		}
+		if generated {
+			log.Printf("generated a self-signed certificate in %s", certFile)
+		}
+	}
+	if certFile == "" {
+		if !tlscert.IsLoopback(*listen) {
+			log.Printf("WARNING: serving plain HTTP on %s (-insecure-http): passwords and sessions are not encrypted", *listen)
+		}
+		log.Printf("listening on http://%s (%d nodes)", *listen, len(nodes))
+		log.Fatal(hs.ListenAndServe())
+	}
+	if fp, err := tlscert.Fingerprint(certFile); err == nil {
+		log.Printf("TLS certificate %s SHA-256 fingerprint %s", certFile, fp)
+	}
+	log.Printf("listening on https://%s (%d nodes)", *listen, len(nodes))
+	log.Fatal(hs.ListenAndServeTLS(certFile, keyFile))
 }
 
 // ensureKey loads the controller's SSH key pair, creating it on first run,

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { bytes, del, get, post, put, VMDetail } from "../api";
 import { useLive } from "../live";
+import { useRole } from "../auth";
 import { ErrorBox, Modal, StateBadge, useAction } from "../ui";
 import { SerialConsole, VNCConsole } from "./Console";
 import Hardware from "./Hardware";
@@ -15,6 +16,7 @@ export default function VMDetailPage() {
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") ?? "overview";
   const nav = useNavigate();
+  const role = useRole();
   const vm = useLive(() => get<VMDetail>(`/nodes/${node}/vms/${uuid}`), `${node}/${uuid}`, (e) =>
     e.type === "node" ? true : e.type === "domain" ? e.uuid === uuid : e.task?.status !== "running",
   );
@@ -40,7 +42,7 @@ export default function VMDetailPage() {
     ["console", "Console"],
     ["snapshots", "Snapshots"],
     ["xml", "XML"],
-  ];
+  ].filter(([id]) => id !== "console" || role !== "viewer"); // a console is control
 
   return (
     <>
