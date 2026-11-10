@@ -71,6 +71,9 @@ func (s *Server) Handler() http.Handler {
 	auth("DELETE /api/nodes/{node}/vms/{uuid}/nics/{mac}", s.hwNICDelete)
 	auth("PUT /api/nodes/{node}/vms/{uuid}/nics/{mac}", s.hwNICUpdate)
 	auth("PUT /api/nodes/{node}/vms/{uuid}/boot", s.hwBoot)
+	auth("POST /api/nodes/{node}/vms/{uuid}/migrate/check", s.migrateCheck)
+	auth("POST /api/nodes/{node}/vms/{uuid}/migrate", s.migrate)
+	auth("POST /api/nodes/{node}/vms/{uuid}/migrate/cancel", s.migrateCancel)
 
 	auth("GET /api/nodes/{node}/pools", s.listPools)
 	auth("POST /api/nodes/{node}/pools", s.createPool)

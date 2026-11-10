@@ -462,8 +462,6 @@ type diskAddReq struct {
 	Cache     string        `json:"cache"`
 }
 
-var volNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,126}$`)
-
 func usedTargets(docs ...*domxml.Doc) []string {
 	var out []string
 	for _, d := range docs {

@@ -5,6 +5,7 @@ import { useLive } from "../live";
 import { ErrorBox, Modal, StateBadge, useAction } from "../ui";
 import { SerialConsole, VNCConsole } from "./Console";
 import Hardware from "./Hardware";
+import MigrateDialog from "./Migrate";
 
 export default function VMDetailPage() {
   const { node: nodeParam, uuid = "" } = useParams();
@@ -17,6 +18,7 @@ export default function VMDetailPage() {
   );
   const act = useAction();
   const [deleting, setDeleting] = useState(false);
+  const [migrating, setMigrating] = useState(false);
   const base = `/nodes/${node}/vms/${uuid}`;
   const d = vm.data;
 
@@ -78,6 +80,7 @@ export default function VMDetailPage() {
               </button>
             </>
           )}
+          <button onClick={() => setMigrating(true)}>Migrate</button>
           {off && (
             <button className="danger" onClick={() => setDeleting(true)}>
               Delete
@@ -97,6 +100,7 @@ export default function VMDetailPage() {
       {tab === "hardware" && <Hardware d={d} base={base} onChanged={vm.reload} />}
       {tab === "console" && <ConsoleTab d={d} />}
       {tab === "xml" && <XMLEditor d={d} base={base} onSaved={vm.reload} />}
+      {migrating && <MigrateDialog d={d} onClose={() => setMigrating(false)} />}
       {deleting && <DeleteVM d={d} base={base} onClose={() => setDeleting(false)} onDeleted={() => nav("/")} />}
     </>
   );

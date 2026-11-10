@@ -160,3 +160,10 @@ footer { display: flex; justify-content: flex-end; align-items: center; gap: 8px
 .cloudinit { margin: 10px 0; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
 .cloudinit summary { cursor: pointer; font-weight: 600; }
 .cloudinit .hint { margin: 6px 0 10px; opacity: 0.75; font-size: 13px; }
+/* migration pre-flight list */
+.checks { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 4px; max-height: 40vh; overflow: auto; }
+.checks li { display: flex; gap: 8px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line); font-size: 13px; }
+.checks li.ok .mark { color: var(--ok); }
+.checks li.error { border-color: var(--danger); color: var(--danger); }
+.checks li.warning { border-color: var(--warn); color: var(--warn); }
+.checks .mark { font-weight: 700; width: 1em; flex: none; }
