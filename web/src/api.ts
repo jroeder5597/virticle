@@ -92,6 +92,7 @@ export interface VM {
   autostart: boolean;
   template: boolean;
   sealed?: "linux" | "windows";
+  tags: string[];
 }
 export interface VMDetail extends VM {
   title?: string;
@@ -109,6 +110,7 @@ export interface VMDetail extends VM {
   agent: "connected" | "disconnected" | "absent";
   snapshots: string[];
   xml: string;
+  fw?: { firmware: "bios" | "uefi"; secureBoot: boolean; nvram?: string; tpmModel?: string; tpmVersion?: string };
   maxVcpus: number;
   currentMemoryKiB: number;
 }

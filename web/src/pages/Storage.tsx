@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { bytes, del, get, NodeStatus, Pool, post, uploadVolume, Volume } from "../api";
 import { useLive } from "../live";
 import DownloadVolume from "./DownloadVolume";
+import ImportDialog from "./Import";
 import { ErrorBox, Field, Modal, NodePicker, StateBadge, UsageBar, useAction } from "../ui";
 
 export default function Storage() {
@@ -105,6 +106,7 @@ function Volumes({ node, pool }: { node: number; pool: Pool }) {
   const act = useAction();
   const [creating, setCreating] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [importing, setImporting] = useState<string | undefined>();
   const [upload, setUpload] = useState<{ name: string; progress: number } | undefined>();
   const file = useRef<HTMLInputElement>(null);
 
@@ -137,6 +139,7 @@ function Volumes({ node, pool }: { node: number; pool: Pool }) {
             Upload image or ISO
           </button>
           <button onClick={() => setDownloading(true)}>Download from URL</button>
+          <button onClick={() => setImporting("")}>Import disk or OVA</button>
           <button onClick={() => setCreating(true)}>New volume</button>
         </div>
       </div>
@@ -170,6 +173,9 @@ function Volumes({ node, pool }: { node: number; pool: Pool }) {
                 <td className="num">{bytes(v.capacity)}</td>
                 <td className="num">{bytes(v.allocation)}</td>
                 <td className="actions">
+                  <button disabled={act.busy} onClick={() => setImporting(v.name)} title="Convert this image to a qcow2 volume">
+                    Import
+                  </button>
                   <button disabled={act.busy} onClick={() => clone(v)}>
                     Clone
                   </button>
@@ -191,6 +197,7 @@ function Volumes({ node, pool }: { node: number; pool: Pool }) {
       )}
       {downloading && <DownloadVolume node={node} pool={pool.name} onClose={() => setDownloading(false)} onDone={vols.reload} />}
       {creating && <CreateVolume base={base} pool={pool} onClose={() => setCreating(false)} />}
+      {importing !== undefined && <ImportDialog node={node} pool={pool.name} volumes={vols.data ?? []} initial={importing} onClose={() => setImporting(undefined)} onDone={vols.reload} />}
     </>
   );
 }

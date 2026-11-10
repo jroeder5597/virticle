@@ -4,14 +4,36 @@ import { bytes, get, Network, NodeStatus, Pool, post, VM, Volume } from "../api"
 import { useLive } from "../live";
 import CloudInitFields, { CloudInitValues, cloudInitPayload, cloudInitUsed, emptyCloudInit } from "./CloudInit";
 import { ErrorBox, Field, Modal, NodePicker, StateBadge, useAction } from "../ui";
+import { BulkBar } from "./Bulk";
+import { emptyFw, FirmwareFields, fwPayload, FwValues } from "./Firmware";
+import { TagChips } from "./Tags";
 
 export default function VMs() {
   const vms = useLive(() => get<VM[]>("/vms"), "vms");
   const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes");
   const [creating, setCreating] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
   const act = useAction();
   const online = nodes.data?.nodes.filter((n) => n.state === "online") ?? [];
-  const list = [...(vms.data ?? [])].sort((a, b) => a.name.localeCompare(b.name) || a.node - b.node);
+  const all = [...(vms.data ?? [])].sort((a, b) => a.name.localeCompare(b.name) || a.node - b.node);
+  const allTags = [...new Set(all.flatMap((v) => v.tags ?? []))].sort();
+  const needle = search.trim().toLowerCase();
+  const list = all.filter(
+    (v) =>
+      (!tagFilter || (v.tags ?? []).includes(tagFilter)) &&
+      (!needle || [v.name, v.nodeName, v.state, ...(v.tags ?? [])].some((s) => s.toLowerCase().includes(needle))),
+  );
+  const keyOf = (v: VM) => v.node + "/" + v.uuid;
+  const picked = all.filter((v) => selected.has(keyOf(v)));
+  const toggle = (v: VM) =>
+    setSelected((s) => {
+      const n = new Set(s);
+      n.has(keyOf(v)) ? n.delete(keyOf(v)) : n.add(keyOf(v));
+      return n;
+    });
+  const allShown = list.length > 0 && list.every((v) => selected.has(keyOf(v)));
   const action = (vm: VM, a: string) => act.run(() => post(`/nodes/${vm.node}/vms/${vm.uuid}/action`, { action: a }));
 
   return (
@@ -23,16 +45,41 @@ export default function VMs() {
         </button>
       </div>
       <ErrorBox error={vms.error ?? act.error} />
+      {all.length > 0 && (
+        <div className="filters">
+          <input type="search" placeholder="Search name, node, state or tag…" aria-label="Search VMs" value={search} onChange={(e) => setSearch(e.target.value)} />
+          {allTags.length > 0 && (
+            <select aria-label="Filter by tag" value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
+              <option value="">All tags</option>
+              {allTags.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          )}
+          {(search || tagFilter) && <span className="muted">{list.length} of {all.length} shown</span>}
+        </div>
+      )}
+      {picked.length > 0 && <BulkBar selected={picked} onClear={() => setSelected(new Set())} />}
       {nodes.data && nodes.data.nodes.length === 0 ? (
         <div className="empty">
           No nodes yet. <Link to="/nodes">Add a node</Link> to see its virtual machines.
         </div>
       ) : vms.data && list.length === 0 ? (
-        <div className="empty">No virtual machines on the connected nodes.</div>
+        <div className="empty">{all.length ? "No VM matches the search or tag filter." : "No virtual machines on the connected nodes."}</div>
       ) : (
         <table>
           <thead>
             <tr>
+              <th className="sel">
+                <input
+                  type="checkbox"
+                  aria-label="Select all shown VMs"
+                  checked={allShown}
+                  onChange={() => setSelected((s) => { const n = new Set(s); list.forEach((v) => (allShown ? n.delete(keyOf(v)) : n.add(keyOf(v)))); return n; })}
+                />
+              </th>
               <th>Name</th>
               <th>State</th>
               <th>Node</th>
@@ -43,10 +90,14 @@ export default function VMs() {
           </thead>
           <tbody>
             {list.map((vm) => (
-              <tr key={vm.node + vm.uuid}>
+              <tr key={vm.node + vm.uuid} className={selected.has(keyOf(vm)) ? "selected" : ""}>
+                <td className="sel">
+                  <input type="checkbox" aria-label={`Select ${vm.name}`} checked={selected.has(keyOf(vm))} onChange={() => toggle(vm)} />
+                </td>
                 <td>
                   <Link to={`/vm/${vm.node}/${vm.uuid}`}>{vm.name}</Link>
                   {vm.template && <span className="badge s-template">Template</span>}
+                  <TagChips tags={vm.tags} onPick={setTagFilter} />
                 </td>
                 <td>
                   <StateBadge state={vm.state} />
@@ -92,8 +143,8 @@ function CreateVM({ nodes, onClose }: { nodes: NodeStatus[]; onClose: () => void
   const [name, setName] = useState("");
   const [vcpus, setVcpus] = useState(2);
   const [memoryMiB, setMemory] = useState(2048);
-  const [firmware, setFirmware] = useState("bios");
-  const [source, setSource] = useState<"iso" | "image" | "empty">("iso");
+  const [fw, setFw] = useState<FwValues>(emptyFw);
+  const [source, setSource] = useState<"iso" | "image" | "empty" | "existing">("iso");
   const [pool, setPool] = useState("");
   const [diskGiB, setDisk] = useState(20);
   const [media, setMedia] = useState("");
@@ -137,13 +188,14 @@ function CreateVM({ nodes, onClose }: { nodes: NodeStatus[]; onClose: () => void
         name,
         vcpus,
         memoryMiB,
-        firmware,
+        ...fwPayload(fw),
         pool,
         diskGiB,
         network,
         start,
         iso: source === "iso" ? media : "",
         baseVolume: source === "image" ? media : "",
+        existingVolume: source === "existing" ? media : "",
         cloudInit: source === "image" && cloudInitUsed(ci) ? cloudInitPayload(ci, name) : undefined,
       });
     });
@@ -177,6 +229,7 @@ function CreateVM({ nodes, onClose }: { nodes: NodeStatus[]; onClose: () => void
                 ["iso", "Installer ISO"],
                 ["image", "Disk image"],
                 ["empty", "Empty disk"],
+                ["existing", "Existing volume"],
               ] as const
             ).map(([v, label]) => (
               <button
@@ -217,6 +270,18 @@ function CreateVM({ nodes, onClose }: { nodes: NodeStatus[]; onClose: () => void
             </select>
           </Field>
         )}
+        {source === "existing" && (
+          <Field label="Volume" hint="Used as the VM's disk as it is, not copied (an imported disk, say). Import other formats under Storage first.">
+            <select value={media} onChange={(e) => setMedia(e.target.value)} required>
+              <option value="">Choose a volume…</option>
+              {images.map((v) => (
+                <option key={v.path} value={v.name}>
+                  {v.name} ({bytes(v.capacity)})
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         <div className="grid2">
           <Field label="Storage pool">
             <select value={pool} onChange={(e) => setPool(e.target.value)} required>
@@ -227,9 +292,11 @@ function CreateVM({ nodes, onClose }: { nodes: NodeStatus[]; onClose: () => void
               ))}
             </select>
           </Field>
-          <Field label="Disk size (GiB)">
-            <input type="number" min={1} value={diskGiB} onChange={(e) => setDisk(Number(e.target.value))} />
-          </Field>
+          {source !== "existing" && (
+            <Field label="Disk size (GiB)">
+              <input type="number" min={1} value={diskGiB} onChange={(e) => setDisk(Number(e.target.value))} />
+            </Field>
+          )}
           <Field label="Network">
             <select value={network} onChange={(e) => setNetwork(e.target.value)}>
               <option value="">None</option>
@@ -240,13 +307,8 @@ function CreateVM({ nodes, onClose }: { nodes: NodeStatus[]; onClose: () => void
               ))}
             </select>
           </Field>
-          <Field label="Firmware">
-            <select value={firmware} onChange={(e) => setFirmware(e.target.value)}>
-              <option value="bios">BIOS</option>
-              <option value="uefi">UEFI</option>
-            </select>
-          </Field>
         </div>
+        <FirmwareFields node={node} value={fw} onChange={setFw} />
         {source === "image" && <CloudInitFields vmName={name} value={ci} onChange={setCi} />}
         <label className="check">
           <input type="checkbox" checked={start} onChange={(e) => setStart(e.target.checked)} /> Start after creating
