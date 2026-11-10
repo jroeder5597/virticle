@@ -88,7 +88,20 @@ func (c hwCtx) result(applied string) hwResult {
 	return r
 }
 
-func (r *hwResult) addNote(s string) { r.Note = strings.TrimSpace(r.Note + " " + s) }
+// addNote appends a sentence; notes are shown as running text, so each one is capitalised and ends with a full stop.
+func (r *hwResult) addNote(s string) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return
+	}
+	if c := s[0]; c >= 'a' && c <= 'z' {
+		s = strings.ToUpper(s[:1]) + s[1:]
+	}
+	if !strings.HasSuffix(s, ".") {
+		s += "."
+	}
+	r.Note = strings.TrimSpace(r.Note + " " + s)
+}
 
 // attach hot-plugs a new device and records it in the saved definition; if
 // libvirt refuses the hot-plug (the bus does not support it) it is saved for

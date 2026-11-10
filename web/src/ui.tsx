@@ -18,7 +18,7 @@ export function Modal(props: { title: string; onClose: () => void; children: Rea
   const onEnter = (e: React.KeyboardEvent) => {
     const t = e.target as HTMLElement;
     if (e.key !== "Enter" || t.tagName !== "INPUT" || (t as HTMLInputElement).type === "checkbox" || t.closest("form")) return;
-    const go = box.current?.querySelector<HTMLButtonElement>("footer button.primary");
+    const go = box.current?.querySelector<HTMLButtonElement>("footer button.primary, .actions button.primary");
     if (go && !go.disabled) {
       e.preventDefault();
       go.click();
@@ -29,7 +29,7 @@ export function Modal(props: { title: string; onClose: () => void; children: Rea
       <div ref={box} onKeyDown={onEnter} className={"modal" + (props.wide ? " wide" : "")} role="dialog" aria-label={props.title}>
         <header>
           <h2>{props.title}</h2>
-          <button className="ghost" onClick={props.onClose} aria-label="Close">
+          <button className="ghost" onClick={props.onClose} aria-label="Close dialog">
             ✕
           </button>
         </header>
