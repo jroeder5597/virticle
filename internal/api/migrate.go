@@ -454,13 +454,13 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 	}
 	if plan.Dom.TPM {
 		if plan.active() {
-			c.warn("TPM", "the VM has a TPM; libvirt transfers its state during live migration, which is untested here")
+			c.pass("TPM", "the VM has a TPM; libvirt transfers its state during the migration")
 		} else {
 			c.bad("TPM", "offline migration does not carry TPM state; migrate while the VM is running or remove the TPM")
 		}
 	}
 	if plan.active() && plan.Dom.NVRAM != "" {
-		c.warn("UEFI variables", "the VM uses UEFI; whether the NVRAM file moves with a live migration depends on libvirt and was not verified")
+		c.pass("UEFI variables", "the VM uses UEFI; libvirt transfers the NVRAM contents during the migration")
 	}
 
 	// CPU.
@@ -1269,6 +1269,13 @@ func (m *migRun) runOffline() error {
 func (m *migRun) cleanSource() error {
 	if m.req.KeepSourceDisks {
 		return nil
+	}
+	// A live migration recreates the UEFI variable store on the target, but
+	// undefining the source leaves its file behind.
+	if nv := path.Clean(m.plan.Dom.NVRAM); m.plan.active() && strings.HasPrefix(nv, "/var/lib/libvirt/qemu/nvram/") && safePathRE.MatchString(nv) {
+		if out, err := m.src.Run("rm -f -- " + shq(nv)); err != nil {
+			log.Printf("migrate %s: could not remove %s on %s: %v %s", m.plan.Name, nv, m.src.Name, err, out)
+		}
 	}
 	var others []string
 	if doms, _, err := m.src.ConnectListAllDomains(1, 0); err == nil {

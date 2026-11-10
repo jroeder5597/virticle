@@ -11,27 +11,27 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
 - [x] Spike: libvirt RPC over SSH, events, upload, live migration with disk copy, live snapshot, snapshot-preserving migration (`cmd/spike`)
 - [x] Server binary with embedded web UI, SQLite state, local login
 - [x] Node add/remove, persistent connections with reconnect (reconnect after a node outage not yet tested)
-- [~] Live inventory driven by libvirt events (VM changes made in `virsh` appear at once; pool and network events still open)
+- [x] Live inventory driven by libvirt events: VMs, networks and pools (network and pool events are read from `virsh net-event`/`pool-event` over SSH)
 - [x] Task log: every action with progress, result and libvirt error text
-- [~] Raw XML editor with schema validation (done for VMs and for creating pools; networks and volumes open)
+- [~] Raw XML editor with schema validation (VMs, networks, creating pools; volumes open)
 
 ## VM basics
 - [x] Lifecycle: start, shutdown, reboot, force off, reset, pause, resume, delete
-- [~] Autostart on host boot (done); graceful shutdown with timeout before force off (open)
+- [x] Autostart on host boot; graceful shutdown with timeout before force off
 - [x] VNC console in the browser (noVNC, tunnelled over the node's SSH connection)
 - [x] Serial/text console in the browser (xterm.js)
 - [x] Edit CPU, memory, disks, network interfaces through forms (Hardware tab; says whether a change applied live or needs a restart)
 - [~] Hot-plug disks and NICs, vCPU and memory changes, online disk resize (done; hot-unplug depends on the guest). USB devices open
-- [ ] Firmware options: UEFI, Secure Boot, virtual TPM
-- [ ] Live stats: CPU, memory, disk, network per VM and per host
-- [~] Guest info on the VM card: IPs from the agent with DHCP leases as fallback (done); OS and filesystems (open)
-- [~] Guest agent prompt on the VM card: adds the virtio channel in one click and lists install commands per OS; still open: detect the guest OS, attach the virtio-win ISO for Windows
+- [x] Firmware options at creation: UEFI, Secure Boot, virtual TPM, Windows defaults; add/remove TPM on a shut-off VM (BIOS↔UEFI switch on an existing VM not offered)
+- [x] Live stats: CPU, memory, disk, network per VM and per host (10 minutes kept in memory, no database)
+- [x] Guest info on the VM card: IPs, OS, hostname, filesystems (via the agent, with DHCP leases as fallback for IPs)
+- [~] Guest agent prompt: adds the channel, lists install commands, detects Windows and attaches or downloads the virtio-win ISO (Windows path untested on a real guest)
 
 ## Storage
 - [~] Pools: create, start, stop, remove (dir tested; NFS, LVM, iSCSI forms and raw XML written but untested)
 - [x] Volumes: create, resize, clone, upload, download from URL (the node fetches it with curl), delete
 - [x] CD-ROM media: insert, swap, eject (live); boot order (config, next start)
-- [ ] Import existing disks: qcow2, raw, VMDK, OVA
+- [~] Import existing disks: qcow2, raw, VMDK and single-VM OVA tested; VDI, VHDX untested
 
 ## Provisioning
 - [~] Create VM from ISO, disk image or empty disk (form works; ISO path not yet tested with a real installer)
@@ -47,10 +47,10 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
 - [ ] Backup and restore to another pool or host; export/import a VM as one file
 
 ## Networking
-- [ ] Virtual network editor: NAT, isolated, bridged, VLAN tags, DHCP reservations
+- [~] Virtual network editor: NAT, isolated, routed, open, bridged, DHCP reservations (done); VLAN tags only for Open vSwitch bridges, untested on real OVS
 
 ## Multi-node
-- [x] Live migration with pre-flight checks (CPU, networks, free space, passthrough, SSH trust, name clashes)
+- [x] Live migration with pre-flight checks (CPU, networks, free space, passthrough, SSH trust, name clashes); UEFI and TPM guests verified
 - [x] Migration with disk copy; snapshot-preserving migration (external snapshots); source disk cleanup; cancel
 - [~] Offline migration (done, carries internal snapshots too); UEFI/NVRAM and TPM paths untested
 - [ ] Encrypted migration streams (TLS)
@@ -61,9 +61,9 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
 - [ ] CPU pinning, hugepages, NUMA
 
 ## Operations
-- [ ] HTTPS for the web UI (currently plain HTTP, bound to localhost by default)
-- [ ] Bulk actions and tags (tags stored in libvirt `<metadata>`)
-- [ ] Users and roles, API tokens, audit log
+- [x] HTTPS for the web UI (self-signed certificate generated for non-loopback listeners, or your own with `-tls-cert`/`-tls-key`)
+- [x] Bulk actions and tags (tags stored in libvirt `<metadata>`; bulk actions fan out from the browser)
+- [x] Users and roles (admin, operator, viewer), API tokens, audit log, login rate limiting
 - [ ] Alerts: pool full, node down, failed scheduled job
 - [ ] Later: scheduled replication to a standby node; optional shared storage and HA
 
@@ -91,7 +91,12 @@ after testing external snapshots on an SELinux host (Rocky).
 
 **App metadata.** One root element `<vp:meta>` in namespace
 `https://virt-proj.invalid/ns/1` holds one child per feature
-(`template`, `snapshot-schedule`). Clones do not inherit it.
+(`template`, `snapshot-schedule`, `tags`). Clones do not inherit it.
+
+**Access levels.** Every API route needs an entry in `routeLevels`
+(`internal/api/access.go`); an unlisted route requires admin and fails a unit
+test. Behind a reverse proxy the same-origin check and per-IP rate limit need
+work (Host header, X-Forwarded-For are not trusted).
 
 **Open:** project name (working name `virt-proj`).
 
