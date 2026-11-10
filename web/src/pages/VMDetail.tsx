@@ -315,6 +315,7 @@ function XMLEditor({ d, base, onSaved }: { d: VMDetail; base: string; onSaved: (
   const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
   const act = useAction();
+  const viewer = useRole() === "viewer";
   // Follow outside changes until the user starts editing.
   useEffect(() => {
     if (!dirty) setText(d.xml);
@@ -335,6 +336,8 @@ function XMLEditor({ d, base, onSaved }: { d: VMDetail; base: string; onSaved: (
       <textarea
         spellCheck={false}
         value={text}
+        readOnly={viewer}
+        aria-label="Domain XML"
         onChange={(e) => {
           setText(e.target.value);
           setDirty(true);

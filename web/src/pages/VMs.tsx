@@ -251,7 +251,7 @@ function CreateVM({ nodes, onClose }: { nodes: NodeStatus[]; onClose: () => void
             <input type="number" min={64} step={64} value={memoryMiB} onChange={(e) => setMemory(Number(e.target.value))} />
           </Field>
         </div>
-        <Field label="Install from">
+        <Field label="Install from" group>
           <div className="segmented">
             {(
               [

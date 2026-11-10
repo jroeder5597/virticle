@@ -266,3 +266,6 @@ th.sel, td.sel { width: 28px; padding-right: 0; }
 .devlist { max-height: 55vh; overflow: auto; }
 nav .alertpanel a, nav .alertpanel a.active, nav .alertpanel a:hover { background: none; padding: 0; color: var(--accent); text-decoration: underline; }
 .marks { display: flex; margin: 4px 0 0; }
+.plain { border: 0; padding: 0; margin: 0; min-width: 0; }
+fieldset.plain:disabled input, fieldset.plain:disabled select, fieldset.plain:disabled textarea { opacity: 0.6; cursor: not-allowed; }
+textarea[readonly] { opacity: 0.8; }
