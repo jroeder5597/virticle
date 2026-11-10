@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { bytes, del, get, NodeStatus, Pool, post, uploadVolume, Volume } from "../api";
-import { useLive } from "../live";
+import { orEvents, useLive } from "../live";
 import DownloadVolume from "./DownloadVolume";
 import { ErrorBox, Field, Modal, NodePicker, StateBadge, UsageBar, useAction } from "../ui";
 
@@ -14,7 +14,7 @@ export default function Storage() {
   useEffect(() => {
     if (!all.some((n) => n.id === node && n.state === "online")) setNode(all.find((n) => n.state === "online")?.id ?? 0);
   }, [all, node]);
-  const pools = useLive(() => (node ? get<Pool[]>(`/nodes/${node}/pools`) : Promise.resolve([])), `pools/${node}`);
+  const pools = useLive(() => (node ? get<Pool[]>(`/nodes/${node}/pools`) : Promise.resolve([])), `pools/${node}`, orEvents("pool"));
   const act = useAction();
   const pool = pools.data?.find((p) => p.name === selected) ?? pools.data?.[0];
   const poolAction = (p: Pool, action: string) => act.run(() => post(`/nodes/${node}/pools/${encodeURIComponent(p.name)}/action`, { action }));

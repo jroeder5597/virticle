@@ -5,6 +5,8 @@
 package hostconn
 
 import (
+	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -98,6 +100,45 @@ func (h *Host) Run(cmd string) (string, error) {
 	// bytes.Buffer between Stdout and Stderr is a data race.
 	out, err := s.CombinedOutput(cmd)
 	return strings.TrimSpace(string(out)), err
+}
+
+// Stream runs a long-lived command on the host and calls line for every line
+// it prints, until the command ends or ctx is cancelled. A terminal is
+// requested so that closing the session hangs up the remote process instead
+// of leaving it behind.
+func (h *Host) Stream(ctx context.Context, cmd string, line func(string)) error {
+	s, err := h.ssh.NewSession()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	if err := s.RequestPty("dumb", 24, 4096, ssh.TerminalModes{ssh.ECHO: 0}); err != nil {
+		return err
+	}
+	out, err := s.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := s.Start(cmd); err != nil {
+		return err
+	}
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-ctx.Done():
+			s.Close()
+		case <-done:
+		}
+	}()
+	sc := bufio.NewScanner(out)
+	for sc.Scan() {
+		line(strings.TrimRight(sc.Text(), "\r"))
+	}
+	if ctx.Err() != nil {
+		return nil
+	}
+	return s.Wait()
 }
 
 type sockDialer struct{ c *ssh.Client }

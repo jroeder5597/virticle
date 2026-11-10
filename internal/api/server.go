@@ -98,6 +98,13 @@ func (s *Server) Handler() http.Handler {
 	auth("DELETE /api/nodes/{node}/pools/{pool}/volumes/{vol}", s.deleteVolume)
 
 	auth("GET /api/nodes/{node}/networks", s.listNetworks)
+	auth("POST /api/nodes/{node}/networks", s.createNetwork)
+	auth("GET /api/nodes/{node}/networks/{net}", s.getNetwork)
+	auth("PUT /api/nodes/{node}/networks/{net}/xml", s.putNetworkXML)
+	auth("POST /api/nodes/{node}/networks/{net}/action", s.networkAction)
+	auth("POST /api/nodes/{node}/networks/{net}/dhcp-hosts", s.dhcpHostAdd)
+	auth("PUT /api/nodes/{node}/networks/{net}/dhcp-hosts/{mac}", s.dhcpHostUpdate)
+	auth("DELETE /api/nodes/{node}/networks/{net}/dhcp-hosts/{mac}", s.dhcpHostDelete)
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { http.Error(w, "not found", http.StatusNotFound) })
 	mux.Handle("/", s.spa())
@@ -145,7 +152,7 @@ func fail(w http.ResponseWriter, err error) {
 	case errors.As(err, &lv):
 		// libvirt rejected the request; its message is what the user needs.
 		code = http.StatusUnprocessableEntity
-		if lv.Code == uint32(libvirt.ErrNoDomain) || lv.Code == uint32(libvirt.ErrNoStoragePool) || lv.Code == uint32(libvirt.ErrNoStorageVol) {
+		if lv.Code == uint32(libvirt.ErrNoDomain) || lv.Code == uint32(libvirt.ErrNoStoragePool) || lv.Code == uint32(libvirt.ErrNoStorageVol) || lv.Code == uint32(libvirt.ErrNoNetwork) {
 			code = http.StatusNotFound
 		}
 	}

@@ -1,23 +1,50 @@
-import { useEffect, useState } from "react";
-import { get, Network, NodeStatus } from "../api";
-import { useLive } from "../live";
-import { ErrorBox, NodePicker, StateBadge } from "../ui";
+import { FormEvent, useEffect, useState } from "react";
+import { del, DhcpHost, get, Network, NodeStatus, post, put } from "../api";
+import { orEvents, useLive } from "../live";
+import { ErrorBox, Field, Modal, NodePicker, StateBadge, useAction } from "../ui";
+
+const modeNames: Record<string, string> = { nat: "NAT", route: "Routed", open: "Open", isolated: "Isolated", bridge: "Bridge" };
+const modeLabel = (n: Network) => (modeNames[n.forward] ?? n.forward) + (n.vlan ? ` · VLAN ${n.vlan}` : "");
 
 export default function Networks() {
   const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes");
   const [node, setNode] = useState(0);
+  const [selected, setSelected] = useState("");
+  const [creating, setCreating] = useState(false);
   const all = nodes.data?.nodes ?? [];
   useEffect(() => {
     if (!all.some((n) => n.id === node && n.state === "online")) setNode(all.find((n) => n.state === "online")?.id ?? 0);
   }, [all, node]);
-  const nets = useLive(() => (node ? get<Network[]>(`/nodes/${node}/networks`) : Promise.resolve([])), `nets/${node}`);
+  const nets = useLive(() => (node ? get<Network[]>(`/nodes/${node}/networks`) : Promise.resolve([])), `nets/${node}`, orEvents("network"));
+  const act = useAction();
+  const base = `/nodes/${node}/networks`;
+  const net = nets.data?.find((n) => n.name === selected) ?? nets.data?.[0];
+  const action = (n: Network, body: object) => act.run(() => post(`${base}/${encodeURIComponent(n.name)}/action`, body));
+
+  const stop = (n: Network) => {
+    const running = n.interfaces.filter((i) => i.running);
+    if (running.length === 0) return action(n, { action: "stop" });
+    const names = [...new Set(running.map((i) => i.vm))].join(", ");
+    if (window.confirm(`Running VMs are attached to ${n.name} (${names}). Stopping the network cuts their connectivity. Stop it anyway?`)) return action(n, { action: "stop", force: true });
+  };
+  const remove = (n: Network) => {
+    const attached = n.interfaces.length > 0;
+    const msg = `Delete network ${n.name}?` + (attached ? ` VMs are still attached to it (${[...new Set(n.interfaces.map((i) => i.vm))].join(", ")}) and will not start until you give them another network.` : "");
+    if (window.confirm(msg)) return action(n, { action: "delete", force: n.active || attached });
+  };
+
   return (
     <>
       <div className="head">
         <h1>Networks</h1>
-        {all.length > 0 && <NodePicker nodes={all} value={node} onChange={setNode} />}
+        <div className="actions">
+          {all.length > 0 && <NodePicker nodes={all} value={node} onChange={setNode} />}
+          <button className="primary" disabled={!node} onClick={() => setCreating(true)}>
+            New network
+          </button>
+        </div>
       </div>
-      <ErrorBox error={nets.error} />
+      <ErrorBox error={nets.error ?? act.error} />
       {nets.data && nets.data.length === 0 ? (
         <div className="empty">{node ? "No virtual networks on this node." : "No node is online."}</div>
       ) : (
@@ -29,25 +56,403 @@ export default function Networks() {
               <th>Mode</th>
               <th>Bridge</th>
               <th>Address</th>
+              <th>DHCP</th>
+              <th className="num">VM interfaces</th>
               <th>Starts with host</th>
+              <th />
             </tr>
           </thead>
           <tbody>
             {(nets.data ?? []).map((n) => (
-              <tr key={n.name}>
+              <tr key={n.name} className={net?.name === n.name ? "selected" : ""} onClick={() => setSelected(n.name)}>
                 <td>{n.name}</td>
                 <td>
                   <StateBadge state={n.active ? "active" : "inactive"} />
                 </td>
-                <td>{n.forward}</td>
+                <td>{modeLabel(n)}</td>
                 <td className="mono">{n.bridge}</td>
                 <td className="mono">{n.address}</td>
+                <td>{n.dhcp ? `${n.hosts.length} reserved` : ""}</td>
+                <td className="num">{n.interfaces.length}</td>
                 <td>{n.autostart ? "Yes" : "No"}</td>
+                <td className="actions" onClick={(e) => e.stopPropagation()}>
+                  {n.active ? (
+                    <button disabled={act.busy} onClick={() => stop(n)}>
+                      Stop
+                    </button>
+                  ) : (
+                    <button disabled={act.busy} onClick={() => action(n, { action: "start" })}>
+                      Start
+                    </button>
+                  )}
+                  <button disabled={act.busy} onClick={() => action(n, { action: n.autostart ? "noautostart" : "autostart" })}>
+                    {n.autostart ? "No autostart" : "Autostart"}
+                  </button>
+                  <button className="danger" disabled={act.busy} onClick={() => remove(n)}>
+                    Delete
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+      {net && <Detail key={node + "/" + net.name} base={base} name={net.name} />}
+      {creating && <CreateNetwork base={base} onClose={() => setCreating(false)} onDone={(name) => setSelected(name)} />}
     </>
+  );
+}
+
+function Detail({ base, name }: { base: string; name: string }) {
+  const url = `${base}/${encodeURIComponent(name)}`;
+  const d = useLive(() => get<Network>(url), url, orEvents("network"));
+  // Leases come and go without any libvirt event, so look again now and then.
+  useEffect(() => {
+    const t = setInterval(d.reload, 10000);
+    return () => clearInterval(t);
+  }, [d.reload]);
+  const n = d.data;
+  return (
+    <>
+      <div className="head sub">
+        <h2>{name}</h2>
+        <button onClick={d.reload}>Refresh</button>
+      </div>
+      <ErrorBox error={d.error} />
+      {n && (
+        <div className="cards">
+          <div className="card">
+            <h3>Details</h3>
+            <dl>
+              <dt>UUID</dt>
+              <dd className="mono">{n.uuid}</dd>
+              <dt>Definition</dt>
+              <dd>{n.persistent ? "Persistent" : "Transient (gone after it stops)"}</dd>
+              <dt>Mode</dt>
+              <dd>{modeLabel(n)}</dd>
+              {n.ovs && (
+                <>
+                  <dt>Switch</dt>
+                  <dd>Open vSwitch</dd>
+                </>
+              )}
+              <dt>Bridge</dt>
+              <dd className="mono">{n.bridge || "-"}</dd>
+              <dt>Address</dt>
+              <dd className="mono">{n.address || "none (layer 2 only)"}</dd>
+              {n.dhcp && (
+                <>
+                  <dt>DHCP range</dt>
+                  <dd className="mono">
+                    {n.dhcpStart} - {n.dhcpEnd}
+                  </dd>
+                </>
+              )}
+              {n.domain && (
+                <>
+                  <dt>DNS domain</dt>
+                  <dd>{n.domain}</dd>
+                </>
+              )}
+              <dt>Attached</dt>
+              <dd>
+                {n.interfaces.length === 0
+                  ? "No VM interfaces"
+                  : n.interfaces.map((i) => (
+                      <div key={i.uuid + i.mac}>
+                        {i.vm} <span className="mono muted">{i.mac}</span> {i.running ? "" : <span className="muted">(VM stopped)</span>}
+                      </div>
+                    ))}
+              </dd>
+            </dl>
+          </div>
+          <div className="card">
+            <h3>DHCP leases</h3>
+            {!n.dhcp ? (
+              <div className="muted">This network has no DHCP server.</div>
+            ) : !n.active ? (
+              <div className="muted">Start the network to see leases.</div>
+            ) : n.leases.length === 0 ? (
+              <div className="muted">No active leases.</div>
+            ) : (
+              <table className="compact">
+                <thead>
+                  <tr>
+                    <th>IP</th>
+                    <th>MAC</th>
+                    <th>Host name</th>
+                    <th>Expires</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {n.leases.map((l) => (
+                    <tr key={l.mac + l.ip}>
+                      <td className="mono">{l.ip}</td>
+                      <td className="mono">{l.mac}</td>
+                      <td>{l.hostname}</td>
+                      <td>{new Date(l.expiry * 1000).toLocaleTimeString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          {n.dhcp && <Reservations url={url} n={n} onChange={d.reload} />}
+          <XmlEditor url={url} n={n} onSaved={d.reload} />
+        </div>
+      )}
+    </>
+  );
+}
+
+function Reservations({ url, n, onChange }: { url: string; n: Network; onChange: () => void }) {
+  const [f, setF] = useState({ mac: "", ip: "", name: "" });
+  const [editing, setEditing] = useState(false);
+  const act = useAction();
+  const reserved = new Set(n.hosts.map((h) => h.mac.toLowerCase()));
+  const free = n.interfaces.filter((i) => !reserved.has(i.mac.toLowerCase()));
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const ok = await act.run(() =>
+      editing ? put(`${url}/dhcp-hosts/${encodeURIComponent(f.mac)}`, { ip: f.ip, name: f.name }) : post(`${url}/dhcp-hosts`, f),
+    );
+    if (ok) {
+      setF({ mac: "", ip: "", name: "" });
+      setEditing(false);
+      onChange();
+    }
+  };
+  const edit = (h: DhcpHost) => {
+    setF({ mac: h.mac, ip: h.ip, name: h.name ?? "" });
+    setEditing(true);
+  };
+  const remove = async (h: DhcpHost) => {
+    if (window.confirm(`Remove the reservation of ${h.ip} for ${h.mac}?`) && (await act.run(() => del(`${url}/dhcp-hosts/${encodeURIComponent(h.mac)}`)))) onChange();
+  };
+  return (
+    <div className="card">
+      <h3>DHCP reservations</h3>
+      <small>Changes apply immediately, without restarting the network. A VM that already has a lease picks up the reserved address when it renews.</small>
+      {n.hosts.length > 0 && (
+        <table className="compact">
+          <thead>
+            <tr>
+              <th>MAC</th>
+              <th>IP</th>
+              <th>Name</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {n.hosts.map((h) => (
+              <tr key={h.mac}>
+                <td className="mono">{h.mac}</td>
+                <td className="mono">{h.ip}</td>
+                <td>{h.name}</td>
+                <td className="actions">
+                  <button disabled={act.busy} onClick={() => edit(h)}>
+                    Edit
+                  </button>
+                  <button className="danger" disabled={act.busy} onClick={() => remove(h)}>
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <form onSubmit={submit} style={{ marginTop: 12 }}>
+        <div className="grid2">
+          <Field label="MAC address" hint={free.length > 0 ? "Attached VM interfaces without a reservation are suggested." : undefined}>
+            <input list="net-macs" value={f.mac} onChange={(e) => setF({ ...f, mac: e.target.value })} required readOnly={editing} placeholder="52:54:00:12:34:56" />
+            <datalist id="net-macs">
+              {free.map((i) => (
+                <option key={i.mac} value={i.mac}>
+                  {i.vm}
+                </option>
+              ))}
+            </datalist>
+          </Field>
+          <Field label="IP address">
+            <input value={f.ip} onChange={(e) => setF({ ...f, ip: e.target.value })} required placeholder={n.address ? n.address.replace(/\.\d+\/\d+$/, ".50") : ""} />
+          </Field>
+        </div>
+        <Field label="Host name (optional)">
+          <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+        </Field>
+        <ErrorBox error={act.error} />
+        <div className="actions">
+          <button className="primary" disabled={act.busy}>
+            {editing ? "Save reservation" : "Add reservation"}
+          </button>
+          {editing && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(false);
+                setF({ mac: "", ip: "", name: "" });
+              }}
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function XmlEditor({ url, n, onSaved }: { url: string; n: Network; onSaved: () => void }) {
+  const orig = n.xml ?? "";
+  const [text, setText] = useState(orig);
+  const [note, setNote] = useState("");
+  const act = useAction();
+  const dirty = text !== orig;
+  const [wasDirty, setWasDirty] = useState(false);
+  useEffect(() => {
+    // Follow changes made elsewhere unless there are unsaved edits.
+    if (!wasDirty) setText(orig);
+  }, [orig, wasDirty]);
+  useEffect(() => setWasDirty(dirty), [dirty]);
+  const save = async () => {
+    setNote("");
+    let res: { note?: string } = {};
+    if (await act.run(async () => (res = await put(url + "/xml", { xml: text })))) {
+      setNote(res.note ?? "Saved.");
+      onSaved();
+    }
+  };
+  return (
+    <div className="card" style={{ gridColumn: "1 / -1" }}>
+      <h3>Definition (XML)</h3>
+      <small>
+        This is the saved definition. {n.active ? "The network is running, so edits take effect after it is stopped and started again." : "Edits apply when the network is started."} The name and UUID cannot be changed.
+      </small>
+      <textarea spellCheck={false} rows={16} value={text} onChange={(e) => setText(e.target.value)} style={{ marginTop: 8 }} />
+      <ErrorBox error={act.error} />
+      {note && <div className="note">{note}</div>}
+      <div className="actions" style={{ marginTop: 8 }}>
+        <button className="primary" disabled={act.busy || !dirty} onClick={save}>
+          Save XML
+        </button>
+        <button disabled={!dirty} onClick={() => setText(orig)}>
+          Revert
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const modes: Record<string, string> = {
+  nat: "NAT: VMs reach the outside through the node",
+  isolated: "Isolated: VMs can only talk to each other and the node",
+  routed: "Routed: VMs reach the LAN without address translation",
+  open: "Open: like routed, but libvirt adds no firewall rules",
+  bridge: "Bridge: attach to an existing bridge on the node",
+  xml: "Other (libvirt XML)",
+};
+
+function CreateNetwork({ base, onClose, onDone }: { base: string; onClose: () => void; onDone: (name: string) => void }) {
+  const [mode, setMode] = useState("nat");
+  const [f, setF] = useState({ name: "", bridgeName: "", address: "", dhcp: true, dhcpStart: "", dhcpEnd: "", domain: "", ovs: false, vlan: "", xml: "" });
+  const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
+  const act = useAction();
+  const routed = mode === "nat" || mode === "routed" || mode === "open" || mode === "isolated";
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const body =
+      mode === "xml"
+        ? { xml: f.xml }
+        : mode === "bridge"
+          ? { name: f.name, mode, bridgeName: f.bridgeName, ovs: f.ovs, vlan: f.ovs && f.vlan ? Number(f.vlan) : 0 }
+          : { name: f.name, mode, bridgeName: f.bridgeName, address: f.address, dhcp: f.dhcp && f.address !== "", dhcpStart: f.dhcpStart, dhcpEnd: f.dhcpEnd, domain: f.domain };
+    let res: { name: string } = { name: "" };
+    if (await act.run(async () => (res = await post(base, body)))) {
+      onDone(res.name);
+      onClose();
+    }
+  };
+  return (
+    <Modal title="New virtual network" onClose={onClose}>
+      <form onSubmit={submit}>
+        <Field label="Type">
+          <select value={mode} onChange={(e) => setMode(e.target.value)}>
+            {Object.entries(modes).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {mode === "xml" ? (
+          <Field label="Network definition" hint="Checked against libvirt's schema. A network with an existing name is refused.">
+            <textarea spellCheck={false} rows={12} value={f.xml} onChange={set("xml")} required placeholder="<network>…</network>" autoFocus />
+          </Field>
+        ) : (
+          <>
+            <Field label="Name">
+              <input value={f.name} onChange={set("name")} required autoFocus />
+            </Field>
+            {routed && (
+              <>
+                <div className="grid2">
+                  <Field label={mode === "isolated" ? "Address (optional)" : "Address of the node on this network"} hint="Gateway address with prefix length. The subnet must not overlap another network.">
+                    <input value={f.address} onChange={set("address")} required={mode !== "isolated"} placeholder="10.77.1.1/24" />
+                  </Field>
+                  <Field label="Bridge name (optional)" hint="Created by libvirt; automatic if empty.">
+                    <input value={f.bridgeName} onChange={set("bridgeName")} placeholder="virbr1" maxLength={15} />
+                  </Field>
+                </div>
+                <label className="check">
+                  <input type="checkbox" checked={f.dhcp} disabled={f.address === ""} onChange={(e) => setF({ ...f, dhcp: e.target.checked })} /> Hand out addresses with DHCP
+                </label>
+                {f.dhcp && f.address !== "" && (
+                  <div className="grid2">
+                    <Field label="DHCP range start" hint="Defaults to the first free address.">
+                      <input value={f.dhcpStart} onChange={set("dhcpStart")} placeholder="10.77.1.2" />
+                    </Field>
+                    <Field label="DHCP range end">
+                      <input value={f.dhcpEnd} onChange={set("dhcpEnd")} placeholder="10.77.1.254" />
+                    </Field>
+                  </div>
+                )}
+                <Field label="DNS domain (optional)">
+                  <input value={f.domain} onChange={set("domain")} placeholder="lab.example" />
+                </Field>
+              </>
+            )}
+            {mode === "bridge" && (
+              <>
+                <Field label="Bridge on the node" hint="An existing bridge made outside libvirt, for example br0. Addresses come from the network behind it.">
+                  <input value={f.bridgeName} onChange={set("bridgeName")} required placeholder="br0" maxLength={15} />
+                </Field>
+                <label className="check">
+                  <input type="checkbox" checked={f.ovs} onChange={(e) => setF({ ...f, ovs: e.target.checked })} /> The bridge is an Open vSwitch bridge
+                </label>
+                {f.ovs ? (
+                  <Field label="VLAN tag (optional)" hint="VMs on this network are put on this access VLAN (1-4094).">
+                    <input type="number" min={1} max={4094} value={f.vlan} onChange={set("vlan")} />
+                  </Field>
+                ) : (
+                  <div className="note" style={{ marginTop: 10 }}>
+                    VLAN tags are applied by libvirt only on Open vSwitch bridges. For a Linux bridge, create a VLAN sub-interface (for example eth0.20) on the node, put it in its own bridge and attach that bridge here. The host's network configuration is not managed by this tool.
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+        <ErrorBox error={act.error} />
+        <footer>
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="primary" disabled={act.busy}>
+            Create
+          </button>
+        </footer>
+      </form>
+    </Modal>
   );
 }

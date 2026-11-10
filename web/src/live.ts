@@ -49,6 +49,10 @@ export function useEvents(fn: Listener) {
   }, []);
 }
 
+// Network and pool events are only interesting to the pages that show them.
+const defaultWhen = (e: ServerEvent) => (e.type === "task" ? e.task?.status !== "running" : e.type !== "network" && e.type !== "pool");
+export const orEvents = (...types: ServerEvent["type"][]) => (e: ServerEvent) => types.includes(e.type) || defaultWhen(e);
+
 /**
  * Load data and keep it fresh: refetches when `key` changes and whenever a
  * server event passes `when` (default: every node or domain event, and every
@@ -80,7 +84,7 @@ export function useLive<T>(load: () => Promise<T>, key: string, when?: (e: Serve
   }, [key, reload]);
 
   useEvents((e) => {
-    const relevant = when ? when(e) : e.type !== "task" || e.task?.status !== "running";
+    const relevant = when ? when(e) : defaultWhen(e);
     if (relevant) reload();
   });
   return { data, error, reload };
