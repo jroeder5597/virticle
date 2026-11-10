@@ -105,6 +105,13 @@ var routeLevels = map[string]string{
 	"POST /api/nodes/{node}/pools/{pool}/volumes/{vol}/action": operator,
 	"DELETE /api/nodes/{node}/pools/{pool}/volumes/{vol}":      operator,
 	"GET /api/nodes/{node}/networks":                           viewer,
+	"POST /api/nodes/{node}/networks":                          operator,
+	"GET /api/nodes/{node}/networks/{net}":                     viewer,
+	"PUT /api/nodes/{node}/networks/{net}/xml":                 operator,
+	"POST /api/nodes/{node}/networks/{net}/action":             operator,
+	"POST /api/nodes/{node}/networks/{net}/dhcp-hosts":         operator,
+	"PUT /api/nodes/{node}/networks/{net}/dhcp-hosts/{mac}":    operator,
+	"DELETE /api/nodes/{node}/networks/{net}/dhcp-hosts/{mac}": operator,
 }
 
 // auditedGets are read-only routes that are still recorded: opening a console
