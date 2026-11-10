@@ -548,6 +548,15 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 		for i, sn := range plan.Snaps {
 			names[i] = sn.Name
 		}
+		var internal []string
+		for _, sn := range plan.Snaps {
+			if sn.Files.Internal {
+				internal = append(internal, sn.Name)
+			}
+		}
+		if len(internal) > 0 && plan.active() {
+			c.bad("Internal snapshots", fmt.Sprintf("snapshot(s) %s are stored inside the disk image, which a migration of a running VM does not copy. Shut the VM down and migrate it offline (the whole image is copied), or delete these snapshots first", strings.Join(internal, ", ")))
+		}
 		c.pass("Snapshots", fmt.Sprintf("%d snapshot(s) (%s): the snapshot-preserving path is used; snapshot files are copied and the snapshots recreated on the target", len(names), strings.Join(names, ", ")))
 	} else {
 		for _, d := range plan.Disks {

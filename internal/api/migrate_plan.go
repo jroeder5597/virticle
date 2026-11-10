@@ -163,6 +163,9 @@ type snapFiles struct {
 	Memory string   // external memory state, if any
 	Disks  []string // overlay files created by this snapshot
 	Domain []string // disk files of the domain as it was when the snapshot was taken
+	// Internal is set when disk or memory state lives inside the qcow2 image
+	// itself, where a live disk mirror does not carry it.
+	Internal bool
 }
 
 func parseSnapshotFiles(raw string) (snapFiles, error) {
@@ -198,7 +201,11 @@ func parseSnapshotFiles(raw string) (snapFiles, error) {
 	if x.Memory.Snapshot == "external" {
 		f.Memory = x.Memory.File
 	}
+	f.Internal = x.Memory.Snapshot == "internal"
 	for _, d := range x.Disks.Disk {
+		if d.Snapshot == "internal" {
+			f.Internal = true
+		}
 		if d.Snapshot == "external" && d.Source.File != "" {
 			f.Disks = append(f.Disks, d.Source.File)
 		}

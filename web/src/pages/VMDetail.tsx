@@ -6,6 +6,7 @@ import { ErrorBox, Modal, StateBadge, useAction } from "../ui";
 import { SerialConsole, VNCConsole } from "./Console";
 import Hardware from "./Hardware";
 import MigrateDialog from "./Migrate";
+import SnapshotsTab from "./Snapshots";
 
 export default function VMDetailPage() {
   const { node: nodeParam, uuid = "" } = useParams();
@@ -36,6 +37,7 @@ export default function VMDetailPage() {
     ["overview", "Overview"],
     ["hardware", "Hardware"],
     ["console", "Console"],
+    ["snapshots", "Snapshots"],
     ["xml", "XML"],
   ];
 
@@ -99,6 +101,7 @@ export default function VMDetailPage() {
       {tab === "overview" && <Overview d={d} base={base} />}
       {tab === "hardware" && <Hardware d={d} base={base} onChanged={vm.reload} />}
       {tab === "console" && <ConsoleTab d={d} />}
+      {tab === "snapshots" && <SnapshotsTab d={d} base={base} />}
       {tab === "xml" && <XMLEditor d={d} base={base} onSaved={vm.reload} />}
       {migrating && <MigrateDialog d={d} onClose={() => setMigrating(false)} />}
       {deleting && <DeleteVM d={d} base={base} onClose={() => setDeleting(false)} onDeleted={() => nav("/")} />}

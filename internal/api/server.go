@@ -33,6 +33,7 @@ type ctxKey struct{}
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	s.startSnapshotScheduler()
 	pub := func(pattern string, h http.HandlerFunc) { mux.HandleFunc(pattern, h) }
 	auth := func(pattern string, h http.HandlerFunc) { mux.HandleFunc(pattern, s.requireAuth(h)) }
 
@@ -74,6 +75,13 @@ func (s *Server) Handler() http.Handler {
 	auth("POST /api/nodes/{node}/vms/{uuid}/migrate/check", s.migrateCheck)
 	auth("POST /api/nodes/{node}/vms/{uuid}/migrate", s.migrate)
 	auth("POST /api/nodes/{node}/vms/{uuid}/migrate/cancel", s.migrateCancel)
+	auth("GET /api/nodes/{node}/vms/{uuid}/snapshots", s.listSnapshots)
+	auth("POST /api/nodes/{node}/vms/{uuid}/snapshots", s.createSnapshotHandler)
+	auth("POST /api/nodes/{node}/vms/{uuid}/snapshots/{name}/revert", s.revertSnapshot)
+	auth("DELETE /api/nodes/{node}/vms/{uuid}/snapshots/{name}", s.deleteSnapshot)
+	auth("GET /api/nodes/{node}/vms/{uuid}/snapshot-schedule", s.getSnapshotSchedule)
+	auth("PUT /api/nodes/{node}/vms/{uuid}/snapshot-schedule", s.putSnapshotSchedule)
+	auth("DELETE /api/nodes/{node}/vms/{uuid}/snapshot-schedule", s.deleteSnapshotSchedule)
 
 	auth("GET /api/nodes/{node}/pools", s.listPools)
 	auth("POST /api/nodes/{node}/pools", s.createPool)
