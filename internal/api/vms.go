@@ -115,6 +115,9 @@ type domainXML struct {
 				Bus string `xml:"bus,attr"`
 			} `xml:"target"`
 			ReadOnly *struct{} `xml:"readonly"`
+			Boot     struct {
+				Order int `xml:"order,attr"`
+			} `xml:"boot"`
 		} `xml:"disk"`
 		Interfaces []struct {
 			Type string `xml:"type,attr"`
@@ -129,6 +132,12 @@ type domainXML struct {
 			Model struct {
 				Type string `xml:"type,attr"`
 			} `xml:"model"`
+			Link struct {
+				State string `xml:"state,attr"`
+			} `xml:"link"`
+			Boot struct {
+				Order int `xml:"order,attr"`
+			} `xml:"boot"`
 		} `xml:"interface"`
 		Graphics []struct {
 			Type   string `xml:"type,attr"`
@@ -155,6 +164,10 @@ type vmDisk struct {
 	Format   string `json:"format,omitempty"`
 	Source   string `json:"source,omitempty"`
 	ReadOnly bool   `json:"readOnly"`
+	// Capacity is the virtual size in bytes; BootOrder is 0 when the disk
+	// has no per-device boot order.
+	Capacity  uint64 `json:"capacity,omitempty"`
+	BootOrder int    `json:"bootOrder,omitempty"`
 }
 
 type vmNIC struct {
@@ -163,6 +176,9 @@ type vmNIC struct {
 	Source string   `json:"source"`
 	Model  string   `json:"model,omitempty"`
 	IPs    []string `json:"ips"`
+	// LinkState is "up" or "down"; BootOrder is 0 when not set.
+	LinkState string `json:"linkState"`
+	BootOrder int    `json:"bootOrder,omitempty"`
 }
 
 type vmDetail struct {
@@ -185,6 +201,10 @@ type vmDetail struct {
 	Agent     string   `json:"agent"`
 	Snapshots []string `json:"snapshots"`
 	XML       string   `json:"xml"`
+	// MaxVCPUs and CurrentMemoryKiB complete the CPU and memory forms;
+	// MemoryKiB (from the summary) is the maximum.
+	MaxVCPUs         uint16 `json:"maxVcpus"`
+	CurrentMemoryKiB uint64 `json:"currentMemoryKiB"`
 }
 
 func (s *Server) vmDetail(w http.ResponseWriter, r *http.Request) {
@@ -235,7 +255,13 @@ func (s *Server) vmDetail(w http.ResponseWriter, r *http.Request) {
 		default:
 			src = k.Source.Name
 		}
-		d.Disks = append(d.Disks, vmDisk{Target: k.Target.Dev, Bus: k.Target.Bus, Device: k.Device, Format: k.Driver.Type, Source: src, ReadOnly: k.ReadOnly != nil})
+		vd := vmDisk{Target: k.Target.Dev, Bus: k.Target.Bus, Device: k.Device, Format: k.Driver.Type, Source: src, ReadOnly: k.ReadOnly != nil, BootOrder: k.Boot.Order}
+		if k.Device == "disk" && src != "" {
+			if _, capacity, _, err := h.DomainGetBlockInfo(dom, k.Target.Dev, 0); err == nil {
+				vd.Capacity = capacity
+			}
+		}
+		d.Disks = append(d.Disks, vd)
 	}
 	for _, g := range x.Devices.Graphics {
 		if g.Type == "vnc" {
@@ -282,7 +308,40 @@ func (s *Server) vmDetail(w http.ResponseWriter, r *http.Request) {
 		if addrs == nil {
 			addrs = []string{}
 		}
-		d.NICs = append(d.NICs, vmNIC{MAC: i.MAC.Address, Type: i.Type, Source: src, Model: i.Model.Type, IPs: addrs})
+		link := i.Link.State
+		if link == "" {
+			link = "up"
+		}
+		d.NICs = append(d.NICs, vmNIC{MAC: i.MAC.Address, Type: i.Type, Source: src, Model: i.Model.Type, IPs: addrs, LinkState: link, BootOrder: i.Boot.Order})
+	}
+	if sum.State != "shutoff" {
+		// Boot order is only ever edited in the saved definition, so show that
+		// one; the live one stays in force until the next start.
+		if raw, err := h.DomainGetXMLDesc(dom, libvirt.DomainXMLInactive); err == nil {
+			var c domainXML
+			if xml.Unmarshal([]byte(raw), &c) == nil {
+				order := map[string]int{}
+				for _, k := range c.Devices.Disks {
+					order[k.Target.Dev] = k.Boot.Order
+				}
+				for _, i := range c.Devices.Interfaces {
+					order[strings.ToLower(i.MAC.Address)] = i.Boot.Order
+				}
+				for i := range d.Disks {
+					d.Disks[i].BootOrder = order[d.Disks[i].Target]
+				}
+				for i := range d.NICs {
+					d.NICs[i].BootOrder = order[strings.ToLower(d.NICs[i].MAC)]
+				}
+			}
+		}
+	}
+	d.MaxVCPUs = d.VCPUs
+	if n, err := h.DomainGetVcpusFlags(dom, uint32(libvirt.DomainVCPUMaximum)); err == nil && n > 0 {
+		d.MaxVCPUs = uint16(n)
+	}
+	if _, _, cur, _, _, err := h.DomainGetInfo(dom); err == nil {
+		d.CurrentMemoryKiB = cur
 	}
 	d.Snapshots, _ = h.DomainSnapshotListNames(dom, 1024, 0)
 	if d.Snapshots == nil {
