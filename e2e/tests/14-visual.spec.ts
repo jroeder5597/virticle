@@ -1,0 +1,154 @@
+// One visual pass: dark colour scheme and a narrow phone-width viewport over every page and tab.
+// Screenshots go to test-results/visual/ for a human to look at; the automatic checks catch
+// unreadable text (contrast) and pages that scroll sideways.
+import { Page } from "@playwright/test";
+import { mkdirSync } from "fs";
+import { cleanVMs, createCirros, expect, test } from "../lib/fixtures";
+import { P } from "../lib/env";
+
+const NAME = `${P}vis1`;
+const OUT = "test-results/visual";
+
+/** Finds visible text whose colour is too close to the background it sits on. */
+async function lowContrast(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const parse = (c: string) => {
+      const m = c.match(/rgba?\(([^)]+)\)/);
+      if (!m) return null;
+      const p = m[1].split(/[ ,/]+/).filter(Boolean).map(Number);
+      return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
+    };
+    const lum = (c: { r: number; g: number; b: number }) => {
+      const f = (v: number) => {
+        v /= 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      };
+      return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+    };
+    const bgOf = (el: Element) => {
+      let layers: { r: number; g: number; b: number; a: number }[] = [];
+      for (let e: Element | null = el; e; e = e.parentElement) {
+        const c = parse(getComputedStyle(e).backgroundColor);
+        if (c && c.a > 0) {
+          layers.push(c);
+          if (c.a >= 1) break;
+        }
+      }
+      let base = { r: 255, g: 255, b: 255 };
+      const bodyBg = parse(getComputedStyle(document.body).backgroundColor);
+      if (bodyBg && bodyBg.a > 0) base = bodyBg;
+      for (const l of layers.reverse()) base = { r: l.r * l.a + base.r * (1 - l.a), g: l.g * l.a + base.g * (1 - l.a), b: l.b * l.a + base.b * (1 - l.a) };
+      return base;
+    };
+    const bad = new Map<string, number>();
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const t = (n.textContent ?? "").trim();
+      const el = n.parentElement;
+      if (!t || !el) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === "hidden" || cs.display === "none" || Number(cs.opacity) === 0) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (el.closest("canvas, .xterm, .console, svg, [disabled], :disabled")) continue;
+      const fg = parse(cs.color);
+      if (!fg) continue;
+      const bg = bgOf(el);
+      const eff = { r: fg.r * fg.a + bg.r * (1 - fg.a), g: fg.g * fg.a + bg.g * (1 - fg.a), b: fg.b * fg.a + bg.b * (1 - fg.a) };
+      const L1 = lum(eff), L2 = lum(bg);
+      const ratio = (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
+      if (ratio < 3) bad.set(`${t.slice(0, 40)} [${el.tagName.toLowerCase()}.${el.className}] ratio ${ratio.toFixed(2)}`, ratio);
+    }
+    return [...bad.keys()].slice(0, 20);
+  });
+}
+
+async function sideways(page: Page): Promise<number> {
+  return page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+}
+
+const modes = [
+  { name: "dark", scheme: "dark" as const, viewport: { width: 1360, height: 860 } },
+  { name: "narrow", scheme: "light" as const, viewport: { width: 420, height: 860 } },
+  { name: "narrow-dark", scheme: "dark" as const, viewport: { width: 420, height: 860 } },
+];
+
+test.describe.serial("visual pass", () => {
+  let vm: { node: number; uuid: string; name: string };
+  test.beforeAll(async ({ api, n1 }) => {
+    mkdirSync(OUT, { recursive: true });
+    vm = await createCirros(api, n1, NAME, { start: true });
+  });
+  test.afterAll(async ({ api }) => cleanVMs(api, NAME));
+
+  for (const m of modes) {
+    test(`every page and tab: ${m.name}`, async ({ browser }) => {
+      test.setTimeout(240_000);
+      const ctx = await browser.newContext({ storageState: ".auth/admin.json", colorScheme: m.scheme, viewport: m.viewport });
+      const page = await ctx.newPage();
+      const problems: string[] = [];
+      const shot = async (name: string, ready: () => Promise<unknown>, opts: { contrast?: boolean; wide?: boolean } = {}) => {
+        await ready();
+        await page.waitForTimeout(400);
+        await page.screenshot({ path: `${OUT}/${m.name}-${name}.png`, fullPage: true });
+        const issues = m.scheme === "dark" ? await lowContrast(page) : [];
+        for (const i of issues) problems.push(`${m.name}/${name}: low contrast: ${i}`);
+        const over = await sideways(page);
+        if (over > 1 && !opts.wide) problems.push(`${m.name}/${name}: page scrolls sideways by ${over}px`);
+      };
+      const vmUrl = `/vm/${vm.node}/${vm.uuid}`;
+      const heading = (n: string | RegExp) => page.getByRole("heading", { name: n }).first();
+
+      await page.goto("/");
+      await shot("list", () => expect(page.locator("tbody tr", { hasText: NAME })).toBeVisible());
+      await page.getByRole("button", { name: "New VM" }).click();
+      await shot("new-vm-dialog", () => expect(page.getByRole("dialog")).toBeVisible());
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: /^Alerts/ }).click();
+      await shot("alerts", () => expect(page.getByRole("dialog", { name: "Alerts" })).toBeVisible());
+      await page.keyboard.press("Escape");
+
+      await page.goto(vmUrl);
+      await shot("vm-overview", () => expect(page.locator(".charts")).toBeVisible({ timeout: 30_000 }));
+      for (const [tab, check] of [
+        ["hardware", "Boot order"],
+        ["console", "Connected"],
+        ["snapshots", "Scheduled snapshots"],
+        ["backups", "Backups"],
+        ["xml", "Revert"],
+      ] as const) {
+        await page.goto(`${vmUrl}?tab=${tab}`);
+        await shot("vm-" + tab, () => expect(page.getByText(check).first()).toBeVisible({ timeout: 30_000 }), { wide: tab === "xml" });
+      }
+      for (const [path, name, h] of [
+        ["/storage", "storage", "Storage"],
+        ["/backups", "backups", "Backups"],
+        ["/networks", "networks", "Networks"],
+        ["/nodes", "nodes", "Nodes"],
+        ["/tasks", "tasks", "Tasks"],
+        ["/users", "users", "Users"],
+        ["/audit", "audit", "Audit log"],
+        ["/account", "account", "My account"],
+      ] as const) {
+        await page.goto(path);
+        await shot(name, () => expect(heading(h)).toBeVisible());
+      }
+      // modals that carry the most layout
+      await page.goto("/storage");
+      await page.getByRole("button", { name: "New pool" }).click();
+      await shot("new-pool-dialog", () => expect(page.getByRole("dialog")).toBeVisible());
+      await page.keyboard.press("Escape");
+      await page.goto(vmUrl + "?tab=hardware");
+      await page.getByRole("button", { name: "Add disk" }).click();
+      await shot("add-disk-dialog", () => expect(page.getByRole("dialog")).toBeVisible());
+      await page.keyboard.press("Escape");
+      await page.goto(vmUrl);
+      await page.locator(".head").getByRole("button", { name: "Migrate" }).click();
+      await shot("migrate-dialog", () => expect(page.getByRole("dialog").locator("ul.checks li").first()).toBeVisible({ timeout: 60_000 }));
+      await page.keyboard.press("Escape");
+
+      await ctx.close();
+      expect(problems, problems.join("\n")).toEqual([]);
+    });
+  }
+});

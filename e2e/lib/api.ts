@@ -93,10 +93,23 @@ export async function sweep(api: Api, log = false): Promise<string[]> {
     found.push(s);
     if (log) console.log("  leftover: " + s);
   };
-  for (const vm of await api.vms()) {
-    if (!vm.name.startsWith(P)) continue;
-    note(`vm ${vm.name} on ${vm.nodeName}`);
-    await removeVM(api, vm);
+  // Several passes: a template cannot go while a linked clone still reads its disks.
+  const seen = new Set<string>();
+  for (let pass = 0; pass < 3; pass++) {
+    const mine = (await api.vms()).filter((v) => v.name.startsWith(P));
+    if (mine.length === 0) break;
+    for (const vm of mine) {
+      if (!seen.has(vm.uuid)) note(`vm ${vm.name} on ${vm.nodeName}`);
+      seen.add(vm.uuid);
+      await removeVM(api, vm);
+    }
+  }
+  // Backups of prefixed VMs (or restored copies), wherever they were put.
+  const backups: any[] = await api.get("/backups").catch(() => []);
+  for (const b of backups) {
+    if (!(b.manifest?.vm ?? b.dir).startsWith(P)) continue;
+    note(`backup ${b.dir} in ${b.nodeName}:${b.pool}`);
+    await api.del(`/nodes/${b.node}/backups/${encodeURIComponent(b.pool)}/${encodeURIComponent(b.dir)}`).catch((e) => console.log("  " + e));
   }
   for (const n of await api.nodes()) {
     if (n.state !== "online") continue;
