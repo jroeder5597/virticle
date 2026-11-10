@@ -33,8 +33,9 @@ type vmSummary struct {
 	Autostart bool   `json:"autostart"`
 	// Template marks a VM that is only a source for clones; Sealed says
 	// which guest family it was made identity-free for.
-	Template bool   `json:"template"`
-	Sealed   string `json:"sealed,omitempty"`
+	Template bool     `json:"template"`
+	Sealed   string   `json:"sealed,omitempty"`
+	Tags     []string `json:"tags"`
 }
 
 func summarize(node int64, h *hostconn.Host, d libvirt.Domain) (vmSummary, error) {
@@ -43,14 +44,14 @@ func summarize(node int64, h *hostconn.Host, d libvirt.Domain) (vmSummary, error
 		return vmSummary{}, err
 	}
 	auto, _ := h.DomainGetAutostart(d)
-	mark, err := getMark(h, d)
+	mark, tags, err := getAppMeta(h, d)
 	if err != nil {
 		return vmSummary{}, err
 	}
 	return vmSummary{
 		Node: node, NodeName: h.Name, UUID: cluster.FormatUUID(d.UUID), Name: d.Name,
 		State: stateName(state), VCPUs: vcpus, MemoryKiB: maxMem, Autostart: auto != 0,
-		Template: mark.Template, Sealed: mark.Sealed,
+		Template: mark.Template, Sealed: mark.Sealed, Tags: tags,
 	}, nil
 }
 
@@ -210,6 +211,8 @@ type vmDetail struct {
 	Agent     string   `json:"agent"`
 	Snapshots []string `json:"snapshots"`
 	XML       string   `json:"xml"`
+	// FW is the firmware state: UEFI, Secure Boot, NVRAM file, TPM model.
+	FW fwInfo `json:"fw"`
 	// MaxVCPUs and CurrentMemoryKiB complete the CPU and memory forms;
 	// MemoryKiB (from the summary) is the maximum.
 	MaxVCPUs         uint16 `json:"maxVcpus"`
@@ -250,6 +253,7 @@ func (s *Server) vmDetail(w http.ResponseWriter, r *http.Request) {
 	if x.OS.Firmware == "efi" || strings.Contains(strings.ToLower(x.OS.Loader), "ovmf") || strings.Contains(strings.ToLower(x.OS.Loader), "edk2") {
 		d.Firmware = "uefi"
 	}
+	d.FW = firmwareInfo(raw)
 	for _, b := range x.OS.Boot {
 		d.Boot = append(d.Boot, b.Dev)
 	}

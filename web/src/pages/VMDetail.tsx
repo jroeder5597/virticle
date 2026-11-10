@@ -9,6 +9,7 @@ import Hardware from "./Hardware";
 import MigrateDialog from "./Migrate";
 import SnapshotsTab from "./Snapshots";
 import { CloneButton, TemplateActions } from "./Clone";
+import { TagEditor } from "./Tags";
 
 export default function VMDetailPage() {
   const { node: nodeParam, uuid = "" } = useParams();
@@ -97,6 +98,7 @@ export default function VMDetailPage() {
         </div>
       </div>
       <ErrorBox error={act.error ?? vm.error} />
+      <TagEditor tags={d.tags ?? []} base={base} onChanged={vm.reload} />
       <div className="tabs">
         {tabs.map(([id, label]) => (
           <button key={id} className={tab === id ? "on" : ""} onClick={() => setParams(id === "overview" ? {} : { tab: id })}>
