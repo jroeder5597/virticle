@@ -30,7 +30,18 @@ func main() {
 	tlsCert := flag.String("tls-cert", "", "PEM certificate to serve HTTPS with (needs -tls-key)")
 	tlsKey := flag.String("tls-key", "", "PEM private key for -tls-cert")
 	insecure := flag.Bool("insecure-http", false, "serve plain HTTP on a non-loopback address (passwords and sessions travel unencrypted)")
+	var alerts api.AlertSettings
+	flag.Float64Var(&alerts.PoolWarn, "alert-pool-warn", 85, "storage pool usage in percent that raises a warning alert")
+	flag.Float64Var(&alerts.PoolCrit, "alert-pool-critical", 95, "storage pool usage in percent that raises a critical alert")
+	flag.Float64Var(&alerts.Mem, "alert-memory", 90, "host memory use in percent that raises an alert")
+	flag.IntVar(&alerts.CertDays, "alert-cert-days", 30, "alert when the web UI certificate expires within this many days")
+	flag.StringVar(&alerts.Webhook, "alert-webhook", "", "http(s) URL that receives a JSON POST whenever an alert is raised or cleared (empty: no notifications)")
 	flag.Parse()
+	if alerts.Webhook != "" {
+		if err := api.ValidateWebhookURL(alerts.Webhook); err != nil {
+			log.Fatal(err)
+		}
+	}
 	if (*tlsCert == "") != (*tlsKey == "") {
 		log.Fatal("-tls-cert and -tls-key must be given together")
 	}
@@ -58,17 +69,6 @@ func main() {
 		mgr.Add(n)
 	}
 
-	srv := &api.Server{Store: st, Nodes: mgr, PubKey: pub, Static: web.FS()}
-	hs := &http.Server{
-		Addr:    *listen,
-		Handler: srv.Handler(),
-		// No Read/WriteTimeout: they would cut off console WebSockets, volume
-		// uploads and long task requests. Slow header attacks are bounded here.
-		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       2 * time.Minute,
-		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
-	}
-
 	certFile, keyFile := *tlsCert, *tlsKey
 	switch {
 	case certFile != "":
@@ -83,6 +83,18 @@ func main() {
 			log.Printf("generated a self-signed certificate in %s", certFile)
 		}
 	}
+	alerts.CertFile = certFile
+	srv := &api.Server{Store: st, Nodes: mgr, PubKey: pub, Static: web.FS(), Alerts: alerts}
+	hs := &http.Server{
+		Addr:    *listen,
+		Handler: srv.Handler(),
+		// No Read/WriteTimeout: they would cut off console WebSockets, volume
+		// uploads and long task requests. Slow header attacks are bounded here.
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
+	}
+
 	if certFile == "" {
 		if !tlscert.IsLoopback(*listen) {
 			log.Printf("WARNING: serving plain HTTP on %s (-insecure-http): passwords and sessions are not encrypted", *listen)

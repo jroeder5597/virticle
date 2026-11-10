@@ -94,6 +94,19 @@ func (m *Manager) Remove(id int64) {
 	}
 }
 
+// SetMaintenance updates the in-memory copy of a node's maintenance flag
+// (the persistent copy is the store's).
+func (m *Manager) SetMaintenance(id int64, on bool) {
+	m.mu.Lock()
+	n := m.nodes[id]
+	m.mu.Unlock()
+	if n != nil {
+		n.mu.Lock()
+		n.cfg.Maintenance = on
+		n.mu.Unlock()
+	}
+}
+
 func (m *Manager) run(ctx context.Context, n *node) {
 	backoff := time.Second
 	for ctx.Err() == nil {

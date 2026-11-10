@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { bytes, del, get, NodeStatus, Pool, post, uploadVolume, Volume } from "../api";
 import { orEvents, useLive } from "../live";
 import DownloadVolume from "./DownloadVolume";
+import { AlertMarks, useAlerts } from "./Alerts";
 import ImportDialog from "./Import";
 import { ErrorBox, Field, Modal, NodePicker, StateBadge, UsageBar, useAction } from "../ui";
 
@@ -16,6 +17,7 @@ export default function Storage() {
     if (!all.some((n) => n.id === node && n.state === "online")) setNode(all.find((n) => n.state === "online")?.id ?? 0);
   }, [all, node]);
   const pools = useLive(() => (node ? get<Pool[]>(`/nodes/${node}/pools`) : Promise.resolve([])), `pools/${node}`, orEvents("pool"));
+  const alerts = useAlerts();
   const act = useAction();
   const pool = pools.data?.find((p) => p.name === selected) ?? pools.data?.[0];
   const poolAction = (p: Pool, action: string) => act.run(() => post(`/nodes/${node}/pools/${encodeURIComponent(p.name)}/action`, { action }));
@@ -56,7 +58,10 @@ export default function Storage() {
         <tbody>
           {(pools.data ?? []).map((p) => (
             <tr key={p.name} className={pool?.name === p.name ? "selected" : ""} onClick={() => setSelected(p.name)}>
-              <td>{p.name}</td>
+              <td>
+                {p.name}
+                <AlertMarks alerts={alerts} match={(a) => a.id === `pool:${node}:${p.name}`} />
+              </td>
               <td>{p.type}</td>
               <td>
                 <StateBadge state={p.state} />

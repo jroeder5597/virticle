@@ -39,11 +39,19 @@ const (
 var routeLevels = map[string]string{
 	"GET /api/events": viewer,
 	"GET /api/tasks":  viewer,
+	"GET /api/alerts": viewer,
 
 	"GET /api/nodes":           viewer,
 	"POST /api/nodes":          admin,
 	"DELETE /api/nodes/{node}": admin,
 	"GET /api/nodes/{node}":    viewer,
+
+	"POST /api/nodes/{node}/evacuate/check":  operator,
+	"POST /api/nodes/{node}/evacuate":        admin,
+	"GET /api/nodes/{node}/evacuate":         viewer,
+	"POST /api/nodes/{node}/evacuate/cancel": admin,
+	"PUT /api/nodes/{node}/maintenance":      admin,
+	"GET /api/nodes/{node}/updates":          viewer,
 
 	"GET /api/users":         admin,
 	"POST /api/users":        admin,

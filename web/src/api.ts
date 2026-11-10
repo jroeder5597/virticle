@@ -72,6 +72,7 @@ export interface NodeStatus {
   state: "connecting" | "online" | "offline";
   error?: string;
   hostname?: string;
+  maintenance?: boolean;
 }
 export interface NodeInfo {
   hostname: string;
@@ -170,7 +171,7 @@ export interface Task {
   finished?: number;
 }
 export interface ServerEvent {
-  type: "node" | "domain" | "network" | "pool" | "task";
+  type: "node" | "domain" | "network" | "pool" | "task" | "alert";
   node?: number;
   name?: string;
   uuid?: string;
@@ -235,4 +236,60 @@ export interface AgentHelp {
   downloadPools: string[];
   downloadUrl: string;
   downloadName: string;
+}
+
+// --- alerts, evacuation, host updates ---
+
+export interface Alert {
+  id: string;
+  kind: "node-down" | "pool-usage" | "host-memory" | "failed-job" | "vm-state" | "tls-expiry";
+  severity: "warning" | "critical";
+  title: string;
+  message: string;
+  node?: number;
+  link?: string;
+  since: number;
+}
+export interface EvacVM {
+  uuid: string;
+  name: string;
+  state: string;
+  memoryKiB: number;
+}
+export interface EvacPlan {
+  source: string;
+  targets: { id: number; name: string; freeKiB: number; online: boolean; maintenance: boolean }[];
+  assignments: { vm: EvacVM; target: number; targetName: string }[];
+  blocked: { vm: EvacVM; reasons: string[] }[];
+}
+export interface EvacResult {
+  uuid: string;
+  name: string;
+  state: string;
+  targetName?: string;
+  status: "pending" | "running" | "ok" | "failed" | "blocked" | "skipped";
+  error?: string;
+  reasons?: string[];
+  task?: number;
+}
+export interface EvacRun {
+  node: number;
+  nodeName: string;
+  task: number;
+  running: boolean;
+  cancelled: boolean;
+  results: EvacResult[];
+}
+export interface HostUpdates {
+  family: string;
+  distro?: string;
+  updates: { name: string; version: string; from?: string; source?: string }[];
+  rebootRequired: boolean;
+  rebootReason?: string;
+  runningKernel?: string;
+  newestKernel?: string;
+  metadataAt?: number;
+  checkedAt: number;
+  note?: string;
+  error?: string;
 }

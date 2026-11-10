@@ -222,3 +222,40 @@ th.sel, td.sel { width: 28px; padding-right: 0; }
 .menu > .menu-list button:hover:not(:disabled) { background: var(--hover); }
 .menu .split { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; padding: 6px 8px; }
 .menu .main { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+
+/* alerts, evacuation, host updates */
+.alertbell { position: relative; }
+.bell { width: 100%; display: flex; align-items: center; gap: 8px; background: none; border: none; color: var(--nav-text); padding: 8px 10px; border-radius: 6px; text-align: left; cursor: pointer; font: inherit; }
+.bell:hover { background: #1f2937; }
+.bell .count { margin-left: auto; min-width: 20px; text-align: center; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 1px 6px; color: #fff; }
+.bell .count.critical { background: #c0362c; }
+.bell .count.warning { background: #a15c00; }
+.alertpanel { position: absolute; left: 10px; bottom: 100%; width: 380px; max-height: 70vh; overflow: auto; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35); z-index: 30; }
+.alertpanel header { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.alertpanel ul { list-style: none; margin: 0; padding: 0; }
+.alertpanel li { padding: 10px 14px; border-bottom: 1px solid var(--line); border-left: 4px solid var(--warn); }
+.alertpanel li.critical { border-left-color: var(--danger); }
+.alertpanel .amsg { margin: 4px 0; word-break: break-word; }
+.alertpanel footer { padding: 8px 14px; font-size: 12px; }
+.alertpanel a { color: var(--accent); }
+.pad { padding: 14px; }
+.sev { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--warn); color: var(--warn); }
+.sev.critical { border-color: var(--danger); color: var(--danger); }
+.marks { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 8px; }
+.mark { font-size: 12px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--warn); color: var(--warn); white-space: nowrap; }
+.mark.critical { border-color: var(--danger); color: var(--danger); }
+.badge.maint { margin-left: 8px; background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); border-color: var(--warn); }
+.evacopts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 10px 0; }
+.check { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.evacplan { margin-top: 14px; }
+.reasons { margin: 0; padding-left: 16px; color: var(--danger); }
+.blockedrow td { background: color-mix(in srgb, var(--danger) 6%, transparent); }
+.es-ok { color: var(--ok); border-color: var(--ok); }
+.es-failed, .es-blocked { color: var(--danger); border-color: var(--danger); }
+.es-running { color: var(--accent); border-color: var(--accent); }
+.hostupdates { display: grid; gap: 4px; justify-items: start; }
+.updlist { max-height: 220px; overflow: auto; font-size: 12.5px; }
+.updlist ul { margin: 4px 0; padding-left: 16px; }
+.nodeactions { white-space: normal !important; min-width: 130px; }
+.nodeactions button { margin: 2px 0 2px 4px; }
+.hostupdates { max-width: 230px; }

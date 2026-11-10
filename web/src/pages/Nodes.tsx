@@ -1,15 +1,20 @@
 import { FormEvent, useEffect, useState } from "react";
-import { bytes, del, get, NodeInfo, NodeStatus, post } from "../api";
+import { Alert, bytes, del, get, NodeInfo, NodeStatus, post, put } from "../api";
 import { useLive } from "../live";
 import { useRole } from "../auth";
 import { ErrorBox, Field, Modal, StateBadge, useAction } from "../ui";
 import { HostLoad, useHostSeries } from "../charts";
+import { AlertMarks, useAlerts } from "./Alerts";
+import Evacuate from "./Evacuate";
+import HostUpdates from "./HostUpdates";
 
 export default function Nodes() {
   const nodes = useLive(() => get<{ nodes: NodeStatus[]; publicKey: string }>("/nodes"), "nodes");
   const [adding, setAdding] = useState(false);
   const act = useAction();
   const admin = useRole() === "admin";
+  const alerts = useAlerts();
+  const [evacuating, setEvacuating] = useState<NodeStatus | undefined>();
   return (
     <>
       <div className="head">
@@ -33,6 +38,7 @@ export default function Nodes() {
               <th>CPU</th>
               <th>Memory</th>
               <th>libvirt</th>
+              <th>Host updates</th>
               <th />
             </tr>
           </thead>
@@ -42,6 +48,9 @@ export default function Nodes() {
                 key={n.id}
                 n={n}
                 canRemove={admin}
+                alerts={alerts}
+                onEvacuate={() => setEvacuating(n)}
+                onMaintenance={() => act.run(() => put(`/nodes/${n.id}/maintenance`, { on: !n.maintenance }))}
                 onRemove={() =>
                   window.confirm(`Remove ${n.hostname || n.addr}? Its virtual machines keep running; they just stop being shown here.`) && act.run(() => del(`/nodes/${n.id}`))
                 }
@@ -50,12 +59,13 @@ export default function Nodes() {
           </tbody>
         </table>
       )}
+      {evacuating && nodes.data && <Evacuate node={evacuating} nodes={nodes.data.nodes} onClose={() => setEvacuating(undefined)} />}
       {adding && nodes.data && <AddNode publicKey={nodes.data.publicKey} onClose={() => setAdding(false)} />}
     </>
   );
 }
 
-function NodeRow({ n, onRemove, canRemove }: { n: NodeStatus; onRemove: () => void; canRemove: boolean }) {
+function NodeRow({ n, onRemove, canRemove, alerts, onEvacuate, onMaintenance }: { n: NodeStatus; onRemove: () => void; canRemove: boolean; alerts: Alert[]; onEvacuate: () => void; onMaintenance: () => void }) {
   const [info, setInfo] = useState<NodeInfo | undefined>();
   const series = useHostSeries(n.id, n.state === "online");
   useEffect(() => {
@@ -64,7 +74,15 @@ function NodeRow({ n, onRemove, canRemove }: { n: NodeStatus; onRemove: () => vo
   }, [n.id, n.state]);
   return (
     <tr>
-      <td>{n.hostname || n.addr}</td>
+      <td>
+        {n.hostname || n.addr}
+        {n.maintenance && (
+          <span className="badge maint" title="Never chosen as a migration or evacuation target">
+            maintenance
+          </span>
+        )}
+        <AlertMarks alerts={alerts} match={(a) => a.node === n.id && a.kind !== "pool-usage" && a.kind !== "vm-state"} />
+      </td>
       <td>
         <StateBadge state={n.state} />
         {n.error && <div className="rowerror">{n.error}</div>}
@@ -82,7 +100,20 @@ function NodeRow({ n, onRemove, canRemove }: { n: NodeStatus; onRemove: () => vo
         <HostLoad points={series} kind="mem" />
       </td>
       <td>{info?.libvirtVersion}</td>
-      <td className="actions">
+      <td>
+        <HostUpdates node={n.id} online={n.state === "online"} />
+      </td>
+      <td className="actions nodeactions">
+        {canRemove && n.state === "online" && (
+          <button onClick={onEvacuate} title="Move the virtual machines of this node to the others">
+            Evacuate…
+          </button>
+        )}
+        {canRemove && (
+          <button onClick={onMaintenance} title="A node in maintenance is never chosen as a migration or evacuation target">
+            {n.maintenance ? "End maintenance" : "Maintenance"}
+          </button>
+        )}
         {canRemove && (
           <button className="danger" onClick={onRemove}>
             Remove
