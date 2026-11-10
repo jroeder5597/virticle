@@ -264,15 +264,32 @@ func (s *Server) vmBackup(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	id, _, err := s.launchBackup(r, h, m)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	mode := "offline"
+	if m.live {
+		mode = "live"
+	}
+	writeJSON(w, map[string]any{"task": id, "mode": mode})
+}
+
+// backupTarget names a backup task: the VM and where it goes.
+func backupTarget(vm, node, pool string) string { return vm + " → " + node + ":" + pool }
+
+// launchBackup registers the planned run (one per VM) and starts it as a
+// background task; the channel receives its result.
+func (s *Server) launchBackup(r *http.Request, h *hostconn.Host, m *bkRun) (int64, <-chan error, error) {
 	bkRuns.Lock()
 	if _, busy := bkRuns.m[m.uuid]; busy {
 		bkRuns.Unlock()
-		fail(w, badRequest("a backup of this VM is already in progress"))
-		return
+		return 0, nil, badRequest("a backup of this VM is already in progress")
 	}
 	bkRuns.m[m.uuid] = m
 	bkRuns.Unlock()
-	id, err := s.startBackground(r, "backup", m.name+" → "+m.dst.Name+":"+m.dstPool, h.Name, func(progress func(float64)) error {
+	id, done, err := s.startBackgroundWait(r, "backup", backupTarget(m.name, m.dst.Name, m.dstPool), h.Name, func(progress func(float64)) error {
 		defer func() {
 			bkRuns.Lock()
 			delete(bkRuns.m, m.uuid)
@@ -285,14 +302,8 @@ func (s *Server) vmBackup(w http.ResponseWriter, r *http.Request) {
 		bkRuns.Lock()
 		delete(bkRuns.m, m.uuid)
 		bkRuns.Unlock()
-		fail(w, err)
-		return
 	}
-	mode := "offline"
-	if m.live {
-		mode = "live"
-	}
-	writeJSON(w, map[string]any{"task": id, "mode": mode})
+	return id, done, err
 }
 
 func (s *Server) vmBackupCancel(w http.ResponseWriter, r *http.Request) {

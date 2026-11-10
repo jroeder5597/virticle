@@ -114,6 +114,7 @@ func (s *Server) gatherAlertInput(now time.Time) alertInput {
 			in.Mem = append(in.Mem, m)
 		}
 	}
+	in.Conflicts = s.currentConflicts()
 	if jobs, err := s.Store.TasksBy("scheduler", now.Add(-24*time.Hour).Unix()); err == nil {
 		in.Jobs = jobs
 	} else {

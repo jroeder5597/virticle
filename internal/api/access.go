@@ -114,8 +114,11 @@ var routeLevels = map[string]string{
 	"PUT /api/nodes/{node}/vms/{uuid}/snapshot-schedule":        operator,
 	"DELETE /api/nodes/{node}/vms/{uuid}/snapshot-schedule":     operator,
 
-	"POST /api/nodes/{node}/vms/{uuid}/backup":        operator,
-	"POST /api/nodes/{node}/vms/{uuid}/backup/cancel": operator,
+	"GET /api/nodes/{node}/vms/{uuid}/backup-schedule":    viewer,
+	"PUT /api/nodes/{node}/vms/{uuid}/backup-schedule":    operator,
+	"DELETE /api/nodes/{node}/vms/{uuid}/backup-schedule": operator,
+	"POST /api/nodes/{node}/vms/{uuid}/backup":            operator,
+	"POST /api/nodes/{node}/vms/{uuid}/backup/cancel":     operator,
 	"GET /api/backups":                                         viewer,
 	"POST /api/nodes/{node}/backups/import":                    operator,
 	"POST /api/nodes/{node}/backups/{pool}/{name}/restore":     operator,
@@ -251,14 +254,23 @@ func securityHeaders(w http.ResponseWriter, r *http.Request) {
 	h.Set("X-Frame-Options", "DENY")
 	h.Set("Referrer-Policy", "same-origin")
 	connect := "'self'"
-	if hostRe.MatchString(r.Host) {
-		// Older browsers do not let 'self' cover WebSockets.
-		connect += " ws://" + r.Host + " wss://" + r.Host
+	v := viewOf(r)
+	if hostRe.MatchString(v.Host) {
+		// Older browsers do not let 'self' cover WebSockets. Behind a trusted
+		// proxy the scheme is known, so only the matching one is listed.
+		switch {
+		case !v.Forwarded:
+			connect += " ws://" + v.Host + " wss://" + v.Host
+		case v.HTTPS:
+			connect += " wss://" + v.Host
+		default:
+			connect += " ws://" + v.Host
+		}
 	}
 	h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "+
 		"img-src 'self' data: blob:; font-src 'self' data:; connect-src "+connect+"; worker-src 'self' blob:; "+
 		"object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
-	if r.TLS != nil {
+	if viewOf(r).HTTPS {
 		h.Set("Strict-Transport-Security", "max-age=31536000")
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/") {
@@ -278,7 +290,7 @@ func crossSite(r *http.Request) bool {
 	}
 	if o := r.Header.Get("Origin"); o != "" {
 		u, err := url.Parse(o)
-		if err != nil || u.Host == "" || !strings.EqualFold(u.Host, r.Host) {
+		if err != nil || u.Host == "" || !strings.EqualFold(u.Host, viewOf(r).Host) {
 			return true
 		}
 	}
@@ -333,6 +345,7 @@ func (s *Server) wrap(next http.Handler) http.Handler {
 		s.limiter = newLimiter()
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = withView(r, s.computeView(r))
 		securityHeaders(w, r)
 		if !isSafeMethod(r.Method) && r.Header.Get("Authorization") == "" && crossSite(r) {
 			deny(w, http.StatusForbidden, "cross-site request refused")
@@ -364,12 +377,8 @@ func (s *Server) audit(r *http.Request, info *reqInfo, status int, start time.Ti
 	if status == http.StatusTooManyRequests {
 		return
 	}
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		ip = r.RemoteAddr
-	}
-	err = s.Store.AddAudit(store.AuditEntry{
-		Time: start.Unix(), User: info.user, Token: info.token, IP: ip, Method: r.Method, Path: r.URL.Path, Status: status,
+	err := s.Store.AddAudit(store.AuditEntry{
+		Time: start.Unix(), User: info.user, Token: info.token, IP: viewOf(r).IP, Method: r.Method, Path: r.URL.Path, Status: status,
 	})
 	if err != nil {
 		logf("audit: %v", err)

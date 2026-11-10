@@ -8,8 +8,10 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/digitalocean/go-libvirt"
 
@@ -28,6 +30,19 @@ type Server struct {
 	Alerts AlertSettings
 	// DataDir is the controller's data directory (the migration CA lives in it).
 	DataDir string
+
+	// TrustedProxies are the peers whose X-Forwarded-* headers are believed
+	// (see proxy.go); empty means the headers are never read.
+	TrustedProxies []netip.Prefix
+	// NoScheduler turns off the background snapshot and backup schedulers.
+	NoScheduler bool
+	// InstanceID identifies this controller in the descriptions of the
+	// snapshots it schedules (see snapschedule.go).
+	InstanceID string
+
+	bk        bkSchedState
+	condMu    sync.Mutex
+	conflicts map[int64]schedConflict // nodes where another controller schedules snapshots
 
 	routes  []route // every pattern registered by Handler, for the access-level test
 	limiter *limiter
@@ -138,6 +153,9 @@ func (s *Server) Handler() http.Handler {
 	auth("PUT /api/nodes/{node}/vms/{uuid}/snapshot-schedule", s.putSnapshotSchedule)
 	auth("DELETE /api/nodes/{node}/vms/{uuid}/snapshot-schedule", s.deleteSnapshotSchedule)
 
+	auth("GET /api/nodes/{node}/vms/{uuid}/backup-schedule", s.getBackupSchedule)
+	auth("PUT /api/nodes/{node}/vms/{uuid}/backup-schedule", s.putBackupSchedule)
+	auth("DELETE /api/nodes/{node}/vms/{uuid}/backup-schedule", s.deleteBackupSchedule)
 	auth("POST /api/nodes/{node}/vms/{uuid}/backup", s.vmBackup)
 	auth("POST /api/nodes/{node}/vms/{uuid}/backup/cancel", s.vmBackupCancel)
 	auth("GET /api/backups", s.listBackupsHandler)

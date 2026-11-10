@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -61,11 +60,7 @@ func failAuth(w http.ResponseWriter, err error) {
 }
 
 func clientIP(r *http.Request) string {
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return ip
+	return viewOf(r).IP
 }
 
 type credentials struct {
@@ -147,7 +142,7 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, c credenti
 	s.limiter.reset(pair)
 	http.SetCookie(w, &http.Cookie{
 		Name: cookieName, Value: token, Path: "/", HttpOnly: true,
-		SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil, MaxAge: 7 * 24 * 3600,
+		SameSite: http.SameSiteStrictMode, Secure: viewOf(r).HTTPS, MaxAge: 7 * 24 * 3600,
 	})
 	writeJSON(w, map[string]string{"user": c.Username})
 }
@@ -160,7 +155,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 		}
 		s.Store.Logout(c.Value)
 	}
-	http.SetCookie(w, &http.Cookie{Name: cookieName, Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil})
+	http.SetCookie(w, &http.Cookie{Name: cookieName, Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: viewOf(r).HTTPS})
 	writeJSON(w, map[string]bool{"ok": true})
 }
 
