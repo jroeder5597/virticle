@@ -73,7 +73,7 @@ button.ghost { border: none; background: none; padding: 4px 8px; }
 button.link { border: none; background: none; padding: 0; color: var(--accent); }
 button.link:hover:not(:disabled) { background: none; text-decoration: underline; }
 input, select, textarea { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; width: 100%; }
-input[type="checkbox"] { width: auto; }
+input[type="checkbox"], input[type="radio"] { width: auto; }
 select { width: auto; max-width: 100%; }
 .field select { width: 100%; }
 input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -94,6 +94,7 @@ table.compact tr:hover { background: none; }
 
 .badge { display: inline-block; font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 999px; background: var(--hover); color: var(--muted); border: 1px solid var(--line); }
 .s-running, .s-online, .s-ok, .s-active, .s-agent-connected { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.s-template { color: #8b5cf6; border-color: color-mix(in srgb, #8b5cf6 40%, transparent); background: color-mix(in srgb, #8b5cf6 10%, transparent); margin-left: 8px; }
 .s-paused, .s-connecting, .s-suspended, .s-building, .s-agent-disconnected { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent); }
 .s-crashed, .s-offline, .s-failed, .s-inaccessible, .s-degraded { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 

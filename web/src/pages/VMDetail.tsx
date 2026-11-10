@@ -7,6 +7,7 @@ import { SerialConsole, VNCConsole } from "./Console";
 import Hardware from "./Hardware";
 import MigrateDialog from "./Migrate";
 import SnapshotsTab from "./Snapshots";
+import { CloneButton, TemplateActions } from "./Clone";
 
 export default function VMDetailPage() {
   const { node: nodeParam, uuid = "" } = useParams();
@@ -47,9 +48,12 @@ export default function VMDetailPage() {
       <div className="head">
         <h1>
           {d.name} <StateBadge state={d.state} />
+          {d.template && <span className="badge s-template">Template</span>}
         </h1>
         <div className="actions">
-          {off && (
+          <CloneButton d={d} base={base} />
+          <TemplateActions d={d} base={base} onChanged={vm.reload} />
+          {off && !d.template && (
             <button className="primary" disabled={act.busy} onClick={() => run("start")}>
               Start
             </button>

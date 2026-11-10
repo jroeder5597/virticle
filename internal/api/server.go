@@ -58,6 +58,10 @@ func (s *Server) Handler() http.Handler {
 	auth("PUT /api/nodes/{node}/vms/{uuid}/autostart", s.vmAutostart)
 	auth("POST /api/nodes/{node}/vms/{uuid}/agent-channel", s.vmAddAgentChannel)
 	auth("DELETE /api/nodes/{node}/vms/{uuid}", s.vmDelete)
+	auth("PUT /api/nodes/{node}/vms/{uuid}/template", s.vmTemplate)
+	auth("POST /api/nodes/{node}/vms/{uuid}/seal", s.vmSeal)
+	auth("GET /api/nodes/{node}/vms/{uuid}/clone-info", s.cloneInfo)
+	auth("POST /api/nodes/{node}/vms/{uuid}/clone", s.vmClone)
 	auth("GET /api/nodes/{node}/vms/{uuid}/vnc", s.vmVNC)
 	auth("GET /api/nodes/{node}/vms/{uuid}/serial", s.vmSerial)
 

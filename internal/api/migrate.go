@@ -543,6 +543,22 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 	// Node to node SSH.
 	s.checkSSHTrust(src, dst, dstNode, &c)
 
+	// Source cleanup would delete images that linked clones are built on.
+	if !req.KeepSourceDisks {
+		var owned, all []string
+		for _, f := range plan.Files.list {
+			all = append(all, f.Path)
+			if f.Owned {
+				owned = append(owned, f.Path)
+			}
+		}
+		if deps, err := dependentVolumes(src, owned, all); err != nil {
+			c.bad("Linked clones", err.Error())
+		} else if len(deps) > 0 {
+			c.bad("Linked clones", "linked clones on "+src.Name+" depend on this VM's disks ("+strings.Join(deps, ", ")+"). Migrate with \"keep source disks\", or delete the clones first")
+		}
+	}
+
 	if len(plan.Snaps) > 0 {
 		names := make([]string, len(plan.Snaps))
 		for i, sn := range plan.Snaps {

@@ -649,6 +649,8 @@ func (s *Server) hwDiskDelete(w http.ResponseWriter, r *http.Request) {
 				vol, err := c.h.StorageVolLookupByPath(src)
 				if err != nil {
 					res.addNote(src + " is not in a storage pool and was left in place.")
+				} else if deps, _ := linkedClones(c.h, []string{src}); len(deps) > 0 {
+					res.addNote("The volume was not deleted because other volumes are built on it: " + strings.Join(deps, ", ") + ".")
 				} else if err := c.h.StorageVolDelete(vol, 0); err != nil {
 					return fmt.Errorf("the disk was detached but its volume %s could not be deleted: %w", src, err)
 				}

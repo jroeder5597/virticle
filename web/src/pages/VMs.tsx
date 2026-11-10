@@ -46,6 +46,7 @@ export default function VMs() {
               <tr key={vm.node + vm.uuid}>
                 <td>
                   <Link to={`/vm/${vm.node}/${vm.uuid}`}>{vm.name}</Link>
+                  {vm.template && <span className="badge s-template">Template</span>}
                 </td>
                 <td>
                   <StateBadge state={vm.state} />
@@ -54,7 +55,7 @@ export default function VMs() {
                 <td className="num">{vm.vcpus}</td>
                 <td className="num">{bytes(vm.memoryKiB * 1024)}</td>
                 <td className="actions">
-                  {vm.state === "shutoff" ? (
+                  {vm.state === "shutoff" && vm.template ? null : vm.state === "shutoff" ? (
                     <button disabled={act.busy} onClick={() => action(vm, "start")}>
                       Start
                     </button>
