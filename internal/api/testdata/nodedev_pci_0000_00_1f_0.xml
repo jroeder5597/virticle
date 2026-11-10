@@ -1,0 +1,18 @@
+<device>
+  <name>pci_0000_00_1f_0</name>
+  <path>/sys/devices/pci0000:00/0000:00:1f.0</path>
+  <parent>computer</parent>
+  <driver>
+    <name>lpc_ich</name>
+  </driver>
+  <capability type='pci'>
+    <class>0x060100</class>
+    <domain>0</domain>
+    <bus>0</bus>
+    <slot>31</slot>
+    <function>0</function>
+    <product id='0x2918'>82801IB (ICH9) LPC Interface Controller</product>
+    <vendor id='0x8086'>Intel Corporation</vendor>
+  </capability>
+</device>
+

@@ -25,6 +25,7 @@ type Server struct {
 	Nodes  *cluster.Manager
 	PubKey string // controller's SSH public key, shown when adding a node
 	Static fs.FS  // built web UI
+	Alerts AlertSettings
 
 	routes  []route // every pattern registered by Handler, for the access-level test
 	limiter *limiter
@@ -35,6 +36,7 @@ type ctxKey struct{}
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.startSnapshotScheduler()
+	s.startAlerts()
 	s.routes = nil
 	pub := func(pattern string, h http.HandlerFunc) {
 		s.routes = append(s.routes, route{pattern: pattern, public: true})
@@ -52,6 +54,7 @@ func (s *Server) Handler() http.Handler {
 	pub("POST /api/logout", s.logout)
 
 	auth("GET /api/events", s.events)
+	auth("GET /api/alerts", s.listAlerts)
 	auth("GET /api/tasks", s.tasks)
 
 	auth("GET /api/users", s.listUsers)
@@ -68,6 +71,12 @@ func (s *Server) Handler() http.Handler {
 	auth("POST /api/nodes", s.addNode)
 	auth("DELETE /api/nodes/{node}", s.deleteNode)
 	auth("GET /api/nodes/{node}", s.nodeInfo)
+	auth("POST /api/nodes/{node}/evacuate/check", s.evacuateCheck)
+	auth("POST /api/nodes/{node}/evacuate", s.evacuate)
+	auth("GET /api/nodes/{node}/evacuate", s.evacuateStatus)
+	auth("POST /api/nodes/{node}/evacuate/cancel", s.evacuateCancel)
+	auth("PUT /api/nodes/{node}/maintenance", s.putMaintenance)
+	auth("GET /api/nodes/{node}/updates", s.nodeUpdates)
 	auth("GET /api/stats", s.allStats)
 	auth("GET /api/nodes/{node}/stats", s.nodeStats)
 	auth("GET /api/nodes/{node}/vms/{uuid}/stats", s.vmStats)
@@ -100,6 +109,14 @@ func (s *Server) Handler() http.Handler {
 	auth("DELETE /api/nodes/{node}/vms/{uuid}/nics/{mac}", s.hwNICDelete)
 	auth("PUT /api/nodes/{node}/vms/{uuid}/nics/{mac}", s.hwNICUpdate)
 	auth("PUT /api/nodes/{node}/vms/{uuid}/boot", s.hwBoot)
+	auth("GET /api/nodes/{node}/vms/{uuid}/tuning", s.vmTuning)
+	auth("PUT /api/nodes/{node}/vms/{uuid}/tuning/pinning", s.tuningPinning)
+	auth("PUT /api/nodes/{node}/vms/{uuid}/tuning/cpu", s.tuningCPU)
+	auth("PUT /api/nodes/{node}/vms/{uuid}/tuning/hugepages", s.tuningHugepages)
+	auth("PUT /api/nodes/{node}/vms/{uuid}/tuning/numa", s.tuningNUMA)
+	auth("GET /api/nodes/{node}/vms/{uuid}/hostdevs", s.vmHostdevs)
+	auth("POST /api/nodes/{node}/vms/{uuid}/hostdevs", s.vmHostdevAttach)
+	auth("DELETE /api/nodes/{node}/vms/{uuid}/hostdevs/{id}", s.vmHostdevDetach)
 	auth("PUT /api/nodes/{node}/vms/{uuid}/tpm", s.vmTPM)
 	auth("PUT /api/nodes/{node}/vms/{uuid}/tags", s.vmTags)
 	auth("GET /api/nodes/{node}/firmware-caps", s.firmwareCaps)

@@ -1,0 +1,15 @@
+<device>
+  <name>usb_3_2</name>
+  <path>/sys/devices/pci0000:00/0000:00:14.0/usb3/3-2</path>
+  <devnode type='dev'>/dev/bus/usb/003/002</devnode>
+  <parent>usb_usb3</parent>
+  <driver>
+    <name>usb</name>
+  </driver>
+  <capability type='usb_device'>
+    <bus>3</bus>
+    <device>2</device>
+    <product id='0xc077'>Optical Mouse</product>
+    <vendor id='0x046d'>Logitech, Inc.</vendor>
+  </capability>
+</device>

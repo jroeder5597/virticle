@@ -1,0 +1,16 @@
+<device>
+  <name>usb_usb1</name>
+  <path>/sys/devices/pci0000:00/0000:00:01.1/0000:02:00.0/usb1</path>
+  <devnode type='dev'>/dev/bus/usb/001/001</devnode>
+  <parent>pci_0000_02_00_0</parent>
+  <driver>
+    <name>usb</name>
+  </driver>
+  <capability type='usb_device'>
+    <bus>1</bus>
+    <device>1</device>
+    <product id='0x0002'>2.0 root hub</product>
+    <vendor id='0x1d6b'>Linux Foundation</vendor>
+  </capability>
+</device>
+

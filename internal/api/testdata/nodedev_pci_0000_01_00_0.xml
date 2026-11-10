@@ -1,0 +1,22 @@
+<device>
+  <name>pci_0000_01_00_0</name>
+  <path>/sys/devices/pci0000:00/0000:00:01.0/0000:01:00.0</path>
+  <parent>pci_0000_00_01_0</parent>
+  <driver>
+    <name>virtio-pci</name>
+  </driver>
+  <capability type='pci'>
+    <class>0x020000</class>
+    <domain>0</domain>
+    <bus>1</bus>
+    <slot>0</slot>
+    <function>0</function>
+    <product id='0x1041'>Virtio 1.0 network device</product>
+    <vendor id='0x1af4'>Red Hat, Inc.</vendor>
+    <pci-express>
+      <link validity='cap' port='0' speed='2.5' width='1'/>
+      <link validity='sta' speed='2.5' width='1'/>
+    </pci-express>
+  </capability>
+</device>
+

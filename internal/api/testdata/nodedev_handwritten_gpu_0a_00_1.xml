@@ -1,0 +1,21 @@
+<device>
+  <name>pci_0000_0a_00_1</name>
+  <path>/sys/devices/pci0000:00/0000:00:03.1/0000:0a:00.1</path>
+  <parent>pci_0000_00_03_1</parent>
+  <driver>
+    <name>snd_hda_intel</name>
+  </driver>
+  <capability type='pci'>
+    <class>0x040300</class>
+    <domain>0</domain>
+    <bus>10</bus>
+    <slot>0</slot>
+    <function>1</function>
+    <product id='0x0fb9'>GP107GL High Definition Audio Controller</product>
+    <vendor id='0x10de'>NVIDIA Corporation</vendor>
+    <iommuGroup number='14'>
+      <address domain='0x0000' bus='0x0a' slot='0x00' function='0x0'/>
+      <address domain='0x0000' bus='0x0a' slot='0x00' function='0x1'/>
+    </iommuGroup>
+  </capability>
+</device>

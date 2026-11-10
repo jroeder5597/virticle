@@ -13,6 +13,7 @@ import Tasks from "./pages/Tasks";
 import Users from "./pages/Users";
 import Audit from "./pages/Audit";
 import Account from "./pages/Account";
+import { AlertBell } from "./pages/Alerts";
 import { RoleContext } from "./auth";
 
 type Session = { needsSetup: boolean; user: string; role: Role };
@@ -48,6 +49,7 @@ export default function App() {
         {session.role === "admin" && <NavLink to="/users">Users</NavLink>}
         {session.role === "admin" && <NavLink to="/audit">Audit</NavLink>}
         <div className="spacer" />
+        <AlertBell />
         <div className="who">
           <NavLink to="/account" title={`Signed in as ${session.role}`}>
             {session.user}

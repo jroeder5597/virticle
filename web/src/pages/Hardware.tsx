@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { api, bytes, get, Network, Pool, Volume, VMDetail } from "../api";
 import { ErrorBox, Field, Modal, useAction } from "../ui";
 import FirmwareCard from "./Firmware";
+import AdvancedCard from "./Advanced";
+import PassthroughCard from "./Passthrough";
 
 interface HwResult {
   applied: "live+config" | "live" | "config";
@@ -51,6 +53,8 @@ export default function Hardware({ d, base, onChanged }: { d: VMDetail; base: st
         <CDROMs d={d} cdroms={cdroms} send={send} run={run} busy={act.busy} />
         <NICs d={d} send={send} run={run} busy={act.busy} />
         <FirmwareCard d={d} base={base} onChanged={onChanged} />
+        <AdvancedCard d={d} base={base} onChanged={onChanged} />
+        <PassthroughCard d={d} base={base} onChanged={onChanged} />
       </div>
     </>
   );

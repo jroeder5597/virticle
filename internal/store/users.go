@@ -101,6 +101,9 @@ func migrate(db *sql.DB) error {
 	if _, err := tx.Exec(authSchema); err != nil {
 		return err
 	}
+	if err := migrateNodes(tx); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 

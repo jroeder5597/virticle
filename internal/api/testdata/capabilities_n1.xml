@@ -1,0 +1,289 @@
+<capabilities>
+
+  <host>
+    <uuid>83a41a55-c0d0-4cd3-8b63-b8f8b8c973bf</uuid>
+    <cpu>
+      <arch>x86_64</arch>
+      <model>Skylake-Client-v3</model>
+      <vendor>Intel</vendor>
+      <microcode version='250'/>
+      <signature family='6' model='158' stepping='10'/>
+      <topology sockets='2' dies='1' clusters='1' cores='1' threads='1'/>
+      <maxphysaddr mode='emulate' bits='39'/>
+      <feature name='vmx'/>
+      <feature name='pdcm'/>
+      <feature name='osxsave'/>
+      <feature name='hypervisor'/>
+      <feature name='ss'/>
+      <feature name='tsc_adjust'/>
+      <feature name='sgx'/>
+      <feature name='zero-fcs-fds'/>
+      <feature name='mpx'/>
+      <feature name='clflushopt'/>
+      <feature name='umip'/>
+      <feature name='sgxlc'/>
+      <feature name='md-clear'/>
+      <feature name='stibp'/>
+      <feature name='flush-l1d'/>
+      <feature name='arch-capabilities'/>
+      <feature name='ssbd'/>
+      <feature name='xsaves'/>
+      <feature name='sgx1'/>
+      <feature name='sgx-edeccssa'/>
+      <feature name='sgx-debug'/>
+      <feature name='sgx-mode64'/>
+      <feature name='sgx-tokenkey'/>
+      <feature name='sgx-aex-notify'/>
+      <feature name='pdpe1gb'/>
+      <feature name='ibpb'/>
+      <feature name='ibrs'/>
+      <feature name='amd-stibp'/>
+      <feature name='amd-ssbd'/>
+      <feature name='rsba'/>
+      <feature name='skip-l1dfl-vmentry'/>
+      <feature name='pschange-mc-no'/>
+      <feature name='gds-no'/>
+      <feature name='rfds-no'/>
+      <feature name='vmx-ins-outs'/>
+      <feature name='vmx-true-ctls'/>
+      <feature name='vmx-store-lma'/>
+      <feature name='vmx-activity-hlt'/>
+      <feature name='vmx-activity-wait-sipi'/>
+      <feature name='vmx-vmwrite-vmexit-fields'/>
+      <feature name='vmx-ept-execonly'/>
+      <feature name='vmx-page-walk-4'/>
+      <feature name='vmx-ept-wb'/>
+      <feature name='vmx-ept-2mb'/>
+      <feature name='vmx-ept-1gb'/>
+      <feature name='vmx-invept'/>
+      <feature name='vmx-eptad'/>
+      <feature name='vmx-invept-single-context'/>
+      <feature name='vmx-invept-all-context'/>
+      <feature name='vmx-invvpid'/>
+      <feature name='vmx-invvpid-single-addr'/>
+      <feature name='vmx-invvpid-single-context'/>
+      <feature name='vmx-invvpid-all-context'/>
+      <feature name='vmx-invvpid-single-context-noglobals'/>
+      <feature name='vmx-eptp-switching'/>
+      <pages unit='KiB' size='4'/>
+      <pages unit='KiB' size='2048'/>
+      <pages unit='KiB' size='1048576'/>
+    </cpu>
+    <power_management>
+      <suspend_mem/>
+    </power_management>
+    <iommu support='no'/>
+    <migration_features>
+      <live/>
+      <uri_transports>
+        <uri_transport>tcp</uri_transport>
+        <uri_transport>rdma</uri_transport>
+      </uri_transports>
+    </migration_features>
+    <topology>
+      <cells num='1'>
+        <cell id='0'>
+          <memory unit='KiB'>2983748</memory>
+          <pages unit='KiB' size='4'>745937</pages>
+          <pages unit='KiB' size='2048'>0</pages>
+          <pages unit='KiB' size='1048576'>0</pages>
+          <distances>
+            <sibling id='0' value='10'/>
+          </distances>
+          <cpus num='2'>
+            <cpu id='0' socket_id='0' die_id='0' cluster_id='0' core_id='0' siblings='0'/>
+            <cpu id='1' socket_id='1' die_id='1' cluster_id='1' core_id='0' siblings='1'/>
+          </cpus>
+        </cell>
+      </cells>
+    </topology>
+    <cache>
+      <bank id='0' level='2' type='both' size='4' unit='MiB' cpus='0'/>
+      <bank id='1' level='2' type='both' size='4' unit='MiB' cpus='1'/>
+      <bank id='0' level='3' type='both' size='16' unit='MiB' cpus='0'/>
+      <bank id='1' level='3' type='both' size='16' unit='MiB' cpus='1'/>
+    </cache>
+    <secmodel>
+      <model>apparmor</model>
+      <doi>0</doi>
+    </secmodel>
+    <secmodel>
+      <model>dac</model>
+      <doi>0</doi>
+      <baselabel type='kvm'>+64055:+64055</baselabel>
+      <baselabel type='qemu'>+64055:+64055</baselabel>
+    </secmodel>
+  </host>
+
+  <guest>
+    <os_type>hvm</os_type>
+    <arch name='i686'>
+      <wordsize>32</wordsize>
+      <emulator>/usr/bin/qemu-system-i386</emulator>
+      <machine maxCpus='255'>pc-i440fx-10.0</machine>
+      <machine canonical='pc-i440fx-10.0' maxCpus='255'>pc</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-5.2</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.12</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-6.2</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-4.2</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.5</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-4.2</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-5.2</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-q35-2.7</machine>
+      <machine maxCpus='4096'>pc-q35-9.1</machine>
+      <machine maxCpus='288'>pc-q35-7.1</machine>
+      <machine maxCpus='1024'>pc-q35-8.1</machine>
+      <machine maxCpus='255'>pc-i440fx-8.1</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.7</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-6.1</machine>
+      <machine maxCpus='255'>pc-i440fx-9.1</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-q35-2.4</machine>
+      <machine maxCpus='4096'>pc-q35-10.0</machine>
+      <machine canonical='pc-q35-10.0' maxCpus='4096'>q35</machine>
+      <machine maxCpus='255'>pc-i440fx-7.1</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-2.10</machine>
+      <machine maxCpus='1'>x-remote</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-5.1</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-2.9</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.11</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-3.1</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-6.1</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-4.1</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.4</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-4.1</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-5.1</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.9</machine>
+      <machine maxCpus='1'>isapc</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-q35-2.6</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-3.1</machine>
+      <machine maxCpus='4096'>pc-q35-9.0</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-2.12</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-7.0</machine>
+      <machine maxCpus='288'>pc-q35-8.0</machine>
+      <machine maxCpus='255'>pc-i440fx-8.0</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-6.0</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.6</machine>
+      <machine maxCpus='255'>pc-i440fx-9.0</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-4.0.1</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-7.0</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-5.0</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-2.8</machine>
+      <machine maxCpus='4096'>pc-q35-9.2</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.10</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-3.0</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-6.0</machine>
+      <machine maxCpus='288'>pc-q35-7.2</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-4.0</machine>
+      <machine maxCpus='288'>microvm</machine>
+      <machine maxCpus='1024'>pc-q35-8.2</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-4.0</machine>
+      <machine maxCpus='255'>pc-i440fx-8.2</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-5.0</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.8</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-6.2</machine>
+      <machine maxCpus='255'>pc-i440fx-9.2</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-3.0</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-q35-2.5</machine>
+      <machine maxCpus='255'>pc-i440fx-7.2</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-2.11</machine>
+      <domain type='qemu'/>
+      <domain type='kvm'/>
+    </arch>
+    <features>
+      <pae/>
+      <nonpae/>
+      <acpi default='on' toggle='yes'/>
+      <apic default='on' toggle='no'/>
+      <cpuselection/>
+      <deviceboot/>
+      <disksnapshot default='on' toggle='no'/>
+      <externalSnapshot/>
+    </features>
+  </guest>
+
+  <guest>
+    <os_type>hvm</os_type>
+    <arch name='x86_64'>
+      <wordsize>64</wordsize>
+      <emulator>/usr/bin/qemu-system-x86_64</emulator>
+      <machine maxCpus='255'>pc-i440fx-10.0</machine>
+      <machine canonical='pc-i440fx-10.0' maxCpus='255'>pc</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-5.2</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.12</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-6.2</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-4.2</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.5</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-4.2</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-5.2</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-q35-2.7</machine>
+      <machine maxCpus='4096'>pc-q35-9.1</machine>
+      <machine maxCpus='288'>pc-q35-7.1</machine>
+      <machine maxCpus='1024'>pc-q35-8.1</machine>
+      <machine maxCpus='255'>pc-i440fx-8.1</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.7</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-6.1</machine>
+      <machine maxCpus='255'>pc-i440fx-9.1</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-q35-2.4</machine>
+      <machine maxCpus='4096'>pc-q35-10.0</machine>
+      <machine canonical='pc-q35-10.0' maxCpus='4096'>q35</machine>
+      <machine maxCpus='255'>pc-i440fx-7.1</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-2.10</machine>
+      <machine maxCpus='1'>x-remote</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-5.1</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-2.9</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.11</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-3.1</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-6.1</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-4.1</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.4</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-4.1</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-5.1</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.9</machine>
+      <machine maxCpus='1'>isapc</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-q35-2.6</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-3.1</machine>
+      <machine maxCpus='4096'>pc-q35-9.0</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-2.12</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-7.0</machine>
+      <machine maxCpus='288'>pc-q35-8.0</machine>
+      <machine maxCpus='255'>pc-i440fx-8.0</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-6.0</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.6</machine>
+      <machine maxCpus='255'>pc-i440fx-9.0</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-4.0.1</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-7.0</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-5.0</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-2.8</machine>
+      <machine maxCpus='4096'>pc-q35-9.2</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.10</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-3.0</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-6.0</machine>
+      <machine maxCpus='288'>pc-q35-7.2</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-4.0</machine>
+      <machine maxCpus='288'>microvm</machine>
+      <machine maxCpus='1024'>pc-q35-8.2</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-4.0</machine>
+      <machine maxCpus='255'>pc-i440fx-8.2</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-5.0</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-2.8</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-6.2</machine>
+      <machine maxCpus='255'>pc-i440fx-9.2</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-i440fx-3.0</machine>
+      <machine maxCpus='255' deprecated='yes'>pc-q35-2.5</machine>
+      <machine maxCpus='255'>pc-i440fx-7.2</machine>
+      <machine maxCpus='288' deprecated='yes'>pc-q35-2.11</machine>
+      <domain type='qemu'/>
+      <domain type='kvm'/>
+    </arch>
+    <features>
+      <acpi default='on' toggle='yes'/>
+      <apic default='on' toggle='no'/>
+      <cpuselection/>
+      <deviceboot/>
+      <disksnapshot default='on' toggle='no'/>
+      <externalSnapshot/>
+    </features>
+  </guest>
+
+</capabilities>
+

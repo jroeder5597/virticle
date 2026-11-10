@@ -19,6 +19,7 @@ package api
 import (
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -425,6 +426,9 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 		return nil, c
 	}
 	c.pass("Target node", dst.Name+" is connected")
+	if dstNode.Maintenance {
+		c.warn("Maintenance", dst.Name+" is marked as in maintenance; node evacuation never picks it, so this move is only sensible if you know why it is flagged")
+	}
 
 	plan := buildPlan(src, dom, mode, &c)
 	if plan == nil {
@@ -486,6 +490,8 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 			c.pass("CPU", "the target CPU is compatible with the VM's CPU definition")
 		}
 	}
+
+	s.checkTuning(dst, plan, &c)
 
 	// Memory.
 	if free, err := dst.NodeGetFreeMemory(); err == nil {
@@ -784,36 +790,57 @@ func (s *Server) migrate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	srcID, _, _ := s.host(r)
-	plan, pre := s.preview(srcID, h, dom, req)
-	if !pre.OK || plan == nil {
+	l, pre, err := s.launchMigration(r, srcID, h, dom, req)
+	if errors.Is(err, errPreflight) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		pre.OK = false
 		json.NewEncoder(w).Encode(map[string]any{"error": "pre-flight checks failed", "checks": pre.Checks})
 		return
 	}
-	dst, err := s.Nodes.Host(req.Target)
 	if err != nil {
 		fail(w, err)
 		return
 	}
+	writeJSON(w, map[string]any{"task": l.Task, "mode": l.Mode})
+}
+
+var errPreflight = errors.New("pre-flight checks failed")
+
+// migLaunch is a migration that has been started in the background.
+type migLaunch struct {
+	Task int64
+	Mode string
+	Done <-chan error // receives the task's result once
+}
+
+// launchMigration runs the pre-flight checks and starts the migration as a
+// background task. It is shared by the HTTP handler and node evacuation.
+// When the checks fail it returns errPreflight together with the preview.
+func (s *Server) launchMigration(r *http.Request, srcID int64, h *hostconn.Host, dom libvirt.Domain, req migReq) (*migLaunch, migPreview, error) {
+	plan, pre := s.preview(srcID, h, dom, req)
+	if !pre.OK || plan == nil {
+		return nil, pre, errPreflight
+	}
+	dst, err := s.Nodes.Host(req.Target)
+	if err != nil {
+		return nil, pre, err
+	}
 	dstNode, _ := s.nodeStatus(req.Target)
 	user, host, err := sshTarget(dst, dstNode)
 	if err != nil {
-		fail(w, badRequest(err.Error()))
-		return
+		return nil, pre, badRequest(err.Error())
 	}
 	m := &migRun{s: s, src: h, dst: dst, dom: dom, plan: plan, req: req, uri: "qemu+ssh://" + user + "@" + host + "/system", user: user, host: host}
 	migRuns.Lock()
 	if _, busy := migRuns.m[plan.UUID]; busy {
 		migRuns.Unlock()
-		fail(w, badRequest("a migration of this VM is already in progress"))
-		return
+		return nil, pre, badRequest("a migration of this VM is already in progress")
 	}
 	migRuns.m[plan.UUID] = m
 	migRuns.Unlock()
 
-	id, err := s.startBackground(r, "migrate", plan.Name+" → "+dst.Name, h.Name, func(progress func(float64)) error {
+	id, done, err := s.startBackgroundWait(r, "migrate", plan.Name+" → "+dst.Name, h.Name, func(progress func(float64)) error {
 		defer func() {
 			migRuns.Lock()
 			delete(migRuns.m, plan.UUID)
@@ -826,19 +853,26 @@ func (s *Server) migrate(w http.ResponseWriter, r *http.Request) {
 		migRuns.Lock()
 		delete(migRuns.m, plan.UUID)
 		migRuns.Unlock()
-		fail(w, err)
-		return
+		return nil, pre, err
 	}
-	writeJSON(w, map[string]any{"task": id, "mode": plan.Mode})
+	return &migLaunch{Task: id, Mode: plan.Mode, Done: done}, pre, nil
 }
 
 // startBackground is like s.task but returns as soon as the task is
 // recorded, so a request does not have to stay open for a long migration.
 func (s *Server) startBackground(r *http.Request, kind, target, node string, fn func(progress func(float64)) error) (int64, error) {
+	id, _, err := s.startBackgroundWait(r, kind, target, node, fn)
+	return id, err
+}
+
+// startBackgroundWait is startBackground plus a channel that receives the
+// task's result when it has finished.
+func (s *Server) startBackgroundWait(r *http.Request, kind, target, node string, fn func(progress func(float64)) error) (int64, <-chan error, error) {
 	t, err := s.Store.StartTask(kind, target, node, userOf(r))
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
+	done := make(chan error, 1)
 	s.Nodes.Publish(cluster.Event{Type: "task", Task: t})
 	go func() {
 		last := 0.0
@@ -861,8 +895,9 @@ func (s *Server) startBackground(r *http.Request, kind, target, node string, fn 
 		}()
 		s.Store.FinishTask(&t, err)
 		s.Nodes.Publish(cluster.Event{Type: "task", Task: t})
+		done <- err
 	}()
-	return t.ID, nil
+	return t.ID, done, nil
 }
 
 func (s *Server) migrateCancel(w http.ResponseWriter, r *http.Request) {

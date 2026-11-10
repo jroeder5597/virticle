@@ -32,6 +32,8 @@ type Node struct {
 	Addr string `json:"addr"`
 	User string `json:"user"`
 	Jump string `json:"jump,omitempty"`
+	// Maintenance keeps the node out of the targets the planners pick.
+	Maintenance bool `json:"maintenance"`
 }
 
 type Task struct {
@@ -71,7 +73,7 @@ func (s *Store) Close() error { return s.db.Close() }
 // --- nodes ---
 
 func (s *Store) Nodes() ([]Node, error) {
-	rows, err := s.db.Query(`SELECT id, addr, user, jump FROM nodes ORDER BY id`)
+	rows, err := s.db.Query(`SELECT id, addr, user, jump, maintenance FROM nodes ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +81,7 @@ func (s *Store) Nodes() ([]Node, error) {
 	var out []Node
 	for rows.Next() {
 		var n Node
-		if err := rows.Scan(&n.ID, &n.Addr, &n.User, &n.Jump); err != nil {
+		if err := rows.Scan(&n.ID, &n.Addr, &n.User, &n.Jump, &n.Maintenance); err != nil {
 			return nil, err
 		}
 		out = append(out, n)

@@ -1,0 +1,22 @@
+<device>
+  <name>pci_0000_02_00_0</name>
+  <path>/sys/devices/pci0000:00/0000:00:01.1/0000:02:00.0</path>
+  <parent>pci_0000_00_01_1</parent>
+  <driver>
+    <name>xhci_hcd</name>
+  </driver>
+  <capability type='pci'>
+    <class>0x0c0330</class>
+    <domain>0</domain>
+    <bus>2</bus>
+    <slot>0</slot>
+    <function>0</function>
+    <product id='0x000d'>QEMU XHCI Host Controller</product>
+    <vendor id='0x1b36'>Red Hat, Inc.</vendor>
+    <pci-express>
+      <link validity='cap' port='0' speed='2.5' width='1'/>
+      <link validity='sta' speed='2.5' width='1'/>
+    </pci-express>
+  </capability>
+</device>
+
