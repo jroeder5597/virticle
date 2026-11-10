@@ -53,7 +53,7 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
 - [x] Live migration with pre-flight checks (CPU, networks, free space, passthrough, SSH trust, name clashes); UEFI and TPM guests verified
 - [x] Migration with disk copy; snapshot-preserving migration (external snapshots); source disk cleanup; cancel
 - [~] Offline migration (done, carries internal snapshots too); UEFI/NVRAM and TPM paths untested
-- [ ] Encrypted migration streams (TLS)
+- [x] Encrypted migration streams (QEMU TLS for memory and disk mirror; controller-managed CA, per-node setup/removal, pre-flight warning when unencrypted). Certificate install verified on Debian and Rocky; an encrypted migration between two RHEL-family nodes is untested
 - [x] Evacuate a node (planner, per-VM tasks, cancel, maintenance flag); show pending host updates (read-only)
 
 ## Hardware
