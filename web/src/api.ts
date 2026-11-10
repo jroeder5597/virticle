@@ -90,6 +90,8 @@ export interface VM {
   vcpus: number;
   memoryKiB: number;
   autostart: boolean;
+  template: boolean;
+  sealed?: "linux" | "windows";
 }
 export interface VMDetail extends VM {
   title?: string;

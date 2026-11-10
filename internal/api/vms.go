@@ -31,6 +31,10 @@ type vmSummary struct {
 	VCPUs     uint16 `json:"vcpus"`
 	MemoryKiB uint64 `json:"memoryKiB"`
 	Autostart bool   `json:"autostart"`
+	// Template marks a VM that is only a source for clones; Sealed says
+	// which guest family it was made identity-free for.
+	Template bool   `json:"template"`
+	Sealed   string `json:"sealed,omitempty"`
 }
 
 func summarize(node int64, h *hostconn.Host, d libvirt.Domain) (vmSummary, error) {
@@ -39,9 +43,14 @@ func summarize(node int64, h *hostconn.Host, d libvirt.Domain) (vmSummary, error
 		return vmSummary{}, err
 	}
 	auto, _ := h.DomainGetAutostart(d)
+	mark, err := getMark(h, d)
+	if err != nil {
+		return vmSummary{}, err
+	}
 	return vmSummary{
 		Node: node, NodeName: h.Name, UUID: cluster.FormatUUID(d.UUID), Name: d.Name,
 		State: stateName(state), VCPUs: vcpus, MemoryKiB: maxMem, Autostart: auto != 0,
+		Template: mark.Template, Sealed: mark.Sealed,
 	}, nil
 }
 
@@ -304,6 +313,12 @@ func (s *Server) vmAction(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	if req.Action == "start" {
+		if mark, err := getMark(h, dom); err == nil && mark.Template {
+			fail(w, badRequest(dom.Name+" is a template and is never started. Clone it, or convert it back to a VM first"))
+			return
+		}
+	}
 	actions := map[string]func() error{
 		"start":    func() error { return h.DomainCreate(dom) },
 		"shutdown": func() error { return h.DomainShutdown(dom) },
@@ -427,6 +442,17 @@ func (s *Server) vmDelete(w http.ResponseWriter, r *http.Request) {
 			if k.Device == "cdrom" && k.Source.File != "" && path.Base(k.Source.File) == seedVolumeName(dom.Name) {
 				paths = append(paths, k.Source.File)
 			}
+		}
+	}
+	if len(paths) > 0 {
+		deps, err := linkedClones(h, paths)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		if len(deps) > 0 {
+			fail(w, dependentsError(deps))
+			return
 		}
 	}
 	left := []string{}

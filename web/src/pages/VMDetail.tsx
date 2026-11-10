@@ -4,6 +4,7 @@ import { bytes, del, get, post, put, VMDetail } from "../api";
 import { useLive } from "../live";
 import { ErrorBox, Modal, StateBadge, useAction } from "../ui";
 import { SerialConsole, VNCConsole } from "./Console";
+import { CloneButton, TemplateActions } from "./Clone";
 
 export default function VMDetailPage() {
   const { node: nodeParam, uuid = "" } = useParams();
@@ -41,9 +42,12 @@ export default function VMDetailPage() {
       <div className="head">
         <h1>
           {d.name} <StateBadge state={d.state} />
+          {d.template && <span className="badge s-template">Template</span>}
         </h1>
         <div className="actions">
-          {off && (
+          <CloneButton d={d} base={base} />
+          <TemplateActions d={d} base={base} onChanged={vm.reload} />
+          {off && !d.template && (
             <button className="primary" disabled={act.busy} onClick={() => run("start")}>
               Start
             </button>
