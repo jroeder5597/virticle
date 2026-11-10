@@ -158,10 +158,10 @@ function TakeSnapshot(props: { d: VMDetail; base: string; onClose: () => void; o
           {memory && (
             <Field
               label="Storage"
-              hint="Internal snapshots live inside the disk image and delete cleanly; the guest is paused while memory is written. External ones keep the guest running but add files next to the disk, and deleting them can fail on hosts that confine QEMU with AppArmor."
+              hint="External snapshots keep the guest running, add files next to the disk and survive live migration. Internal ones live inside the disk image; the guest is paused while memory is written and they block live migration. Automatic picks external, except on hosts that confine QEMU with AppArmor (where deleting external snapshots fails) or when the current snapshot is internal."
             >
               <select value={mode} onChange={(e) => setMode(e.target.value)}>
-                <option value="">Automatic (internal; external for UEFI guests)</option>
+                <option value="">Automatic</option>
                 <option value="internal">Internal</option>
                 <option value="external">External</option>
               </select>

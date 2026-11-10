@@ -50,3 +50,11 @@ func TestSnapInfoOf(t *testing.T) {
 		t.Errorf("internal: %+v", k)
 	}
 }
+
+func TestSecModelIsAppArmor(t *testing.T) {
+	deb := `<capabilities><host><secmodel><model>apparmor</model><doi>0</doi></secmodel><secmodel><model>dac</model></secmodel></host></capabilities>`
+	rhel := `<capabilities><host><secmodel><model>selinux</model></secmodel><secmodel><model>dac</model></secmodel></host></capabilities>`
+	if !secModelIsAppArmor(deb) || secModelIsAppArmor(rhel) || secModelIsAppArmor("") {
+		t.Fatal("wrong security model detection")
+	}
+}

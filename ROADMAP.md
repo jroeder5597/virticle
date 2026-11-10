@@ -42,7 +42,7 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
 - [~] Sysprep on clone, Windows: seal via `sysprep /generalize` through the agent and unattend ISO are written but UNTESTED (no Windows guest in the lab)
 
 ## Snapshots and backup
-- [~] Snapshots with memory, tree view, revert, delete (done). Open: default type (see note), quiesce untested with a real agent, UEFI guests untested
+- [~] Snapshots with memory, tree view, revert, delete (done). Default type chosen per node (see note). Open: quiesce untested with a real agent, UEFI guests untested
 - [x] Scheduled snapshots with retention (schedule stored in domain metadata; times in UTC)
 - [~] Backup and restore to another pool or node (live, no snapshot left behind); export/import a VM as one tar file. Open: scheduled backups; TPM state and snapshots are not part of a backup
 
@@ -81,13 +81,14 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
   clone gets an `unattend.xml` (account, password, hostname) on an attached
   ISO so first boot is unattended.
 
-**Snapshot type.** Internal snapshots (inside the qcow2) are the default:
-create, revert and delete work everywhere, but the guest pauses while memory
-is saved and they block live migration (offline migration carries them).
-External snapshots keep the guest running and survive live migration, but on
-the Debian/AppArmor lab nodes libvirt fails to delete them ("block-commit:
-Permission denied", an AppArmor profile problem outside this app). To decide
-after testing external snapshots on an SELinux host (Rocky).
+**Snapshot type.** For a live snapshot with memory, "automatic" picks
+external (guest keeps running, survives live migration), verified on Rocky 10
+with SELinux (libvirt 11.10): create, revert and delete of a chain all work.
+It falls back to internal (guest pauses, blocks live migration, offline
+migration carries it) on nodes whose QEMU is confined by AppArmor, where
+libvirt cannot delete external snapshots ("block-commit: Permission denied",
+Debian 13), and when the VM's current snapshot is already internal. Shut-off
+VMs get internal snapshots; live disk-only snapshots are always external.
 
 **App metadata.** One root element `<vp:meta>` in namespace
 `https://virt-proj.invalid/ns/1` holds one child per feature

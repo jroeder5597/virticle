@@ -467,6 +467,20 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 		c.pass("UEFI variables", "the VM uses UEFI; libvirt transfers the NVRAM contents during the migration")
 	}
 
+	// Machine type and QEMU binary: both are part of the definition and must
+	// exist on the target (they differ between distributions).
+	if plan.Dom.Machine != "" {
+		opt := func(v string) libvirt.OptString {
+			if v == "" {
+				return nil
+			}
+			return libvirt.OptString{v}
+		}
+		if _, err := dst.ConnectGetDomainCapabilities(opt(plan.Dom.Emulator), opt(plan.Dom.Arch), opt(plan.Dom.Machine), nil, 0); err != nil {
+			c.bad("Machine type", fmt.Sprintf("%s cannot run machine type %s with %s (%s). Nodes need the same distribution family and a QEMU at least as new as the source's", dst.Name, plan.Dom.Machine, plan.Dom.Emulator, firstLine(err.Error())))
+		}
+	}
+
 	// CPU.
 	switch {
 	case plan.Dom.CPUXML == "":
@@ -691,7 +705,7 @@ func (s *Server) checkSSHTrust(src, dst *hostconn.Host, n cluster.NodeStatus, c 
 		c.bad("SSH between nodes", err.Error())
 		return
 	}
-	out, err := src.Run("ssh -o BatchMode=yes -o ConnectTimeout=10 " + shq(user+"@"+host) + " hostname")
+	out, err := src.Run("ssh -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR " + shq(user+"@"+host) + " hostname")
 	if err != nil {
 		c.bad("SSH between nodes", fmt.Sprintf(
 			"%s cannot log in to %s@%s without a password (%s). Live migration and file copies run over this connection. "+
@@ -700,7 +714,9 @@ func (s *Server) checkSSHTrust(src, dst *hostconn.Host, n cluster.NodeStatus, c 
 			src.Name, user, host, firstLine(out), src.Name, user, host, user, host, host, src.Name))
 		return
 	}
-	if !strings.EqualFold(strings.TrimSpace(out), host) {
+	// Compare the short names: one side may report an FQDN.
+	short := func(n string) string { h, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(n)), "."); return h }
+	if short(out) != short(host) {
 		c.bad("SSH between nodes", fmt.Sprintf("%s reaches a machine named %q when connecting to %s, expected %s", src.Name, firstLine(out), host, host))
 		return
 	}

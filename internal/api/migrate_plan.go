@@ -51,6 +51,8 @@ type migDomain struct {
 	CPUMode  string
 	CPUXML   string // the <cpu> element verbatim
 	Arch     string
+	Machine  string // machine type, e.g. pc-q35-10.0
+	Emulator string // QEMU binary path
 }
 
 type migIf struct {
@@ -68,7 +70,8 @@ func parseMigDomain(raw string) (migDomain, error) {
 		UUID string `xml:"uuid"`
 		OS   struct {
 			Type struct {
-				Arch string `xml:"arch,attr"`
+				Arch    string `xml:"arch,attr"`
+				Machine string `xml:"machine,attr"`
 			} `xml:"type"`
 			NVRAM string `xml:"nvram"`
 		} `xml:"os"`
@@ -76,7 +79,8 @@ func parseMigDomain(raw string) (migDomain, error) {
 			Mode string `xml:"mode,attr"`
 		} `xml:"cpu"`
 		Devices struct {
-			Disks []struct {
+			Emulator string `xml:"emulator"`
+			Disks    []struct {
 				Type   string `xml:"type,attr"`
 				Device string `xml:"device,attr"`
 				Driver struct {
@@ -108,7 +112,7 @@ func parseMigDomain(raw string) (migDomain, error) {
 	}
 	d := migDomain{
 		Name: x.Name, UUID: x.UUID, Hostdevs: len(x.Devices.Hostdevs), TPM: x.Devices.TPM != nil,
-		NVRAM: strings.TrimSpace(x.OS.NVRAM), CPUMode: x.CPU.Mode, Arch: x.OS.Type.Arch,
+		NVRAM: strings.TrimSpace(x.OS.NVRAM), CPUMode: x.CPU.Mode, Arch: x.OS.Type.Arch, Machine: x.OS.Type.Machine, Emulator: strings.TrimSpace(x.Devices.Emulator),
 	}
 	if m := cpuFullRE.FindString(raw); m != "" {
 		d.CPUXML = m

@@ -7,6 +7,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/digitalocean/go-libvirt"
@@ -260,7 +261,7 @@ func (s *Server) createSnapshot(r *http.Request, h *hostconn.Host, dom libvirt.D
 		}
 		external = true
 	default:
-		external = q.Mode == "external" || (q.Mode == "" && uefi)
+		external = q.Mode == "external" || (q.Mode == "" && (uefi || autoExternal(h, dom)))
 	}
 
 	var (
@@ -441,4 +442,63 @@ func refreshPools(h *hostconn.Host) {
 	for _, p := range pools {
 		h.StoragePoolRefresh(p, 0)
 	}
+}
+
+// apparmorNodes caches, per node name, whether QEMU is confined by AppArmor.
+var apparmorNodes sync.Map
+
+// autoExternal decides the kind of a live snapshot with memory when the
+// request leaves it open. External snapshots keep the guest running and
+// survive live migration, so they are preferred. Exceptions: nodes that
+// confine QEMU with AppArmor, where libvirt cannot merge the overlays again
+// on delete ("block-commit: Permission denied"; seen on Debian 13, while
+// SELinux nodes are fine), and VMs whose current snapshot is internal,
+// because libvirt cannot delete an external snapshot with an internal parent.
+func autoExternal(h *hostconn.Host, dom libvirt.Domain) bool {
+	if cur, err := h.DomainSnapshotCurrent(dom, 0); err == nil {
+		if raw, err := h.DomainSnapshotGetXMLDesc(cur, 0); err == nil {
+			var x struct {
+				Memory struct {
+					Snapshot string `xml:"snapshot,attr"`
+				} `xml:"memory"`
+				Disks []struct {
+					Snapshot string `xml:"snapshot,attr"`
+				} `xml:"disks>disk"`
+			}
+			if xml.Unmarshal([]byte(raw), &x) == nil {
+				internal := x.Memory.Snapshot == "internal"
+				for _, d := range x.Disks {
+					internal = internal || d.Snapshot == "internal"
+				}
+				if internal {
+					return false
+				}
+			}
+		}
+	}
+	if v, ok := apparmorNodes.Load(h.Name); ok {
+		return !v.(bool)
+	}
+	caps, err := h.ConnectGetCapabilities()
+	if err != nil {
+		return false
+	}
+	aa := secModelIsAppArmor(caps)
+	apparmorNodes.Store(h.Name, aa)
+	return !aa
+}
+
+func secModelIsAppArmor(caps string) bool {
+	var x struct {
+		Models []string `xml:"host>secmodel>model"`
+	}
+	if xml.Unmarshal([]byte(caps), &x) != nil {
+		return false
+	}
+	for _, m := range x.Models {
+		if m == "apparmor" {
+			return true
+		}
+	}
+	return false
 }
