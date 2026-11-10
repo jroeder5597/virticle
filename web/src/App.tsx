@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
-import { get, post, setUnauthorizedHandler, Task } from "./api";
+import { get, post, Role, setUnauthorizedHandler, Task } from "./api";
 import { startEvents, stopEvents, useEvents } from "./live";
 import { ErrorBox, Field, useAction } from "./ui";
 import VMs from "./pages/VMs";
@@ -9,12 +9,16 @@ import Storage from "./pages/Storage";
 import Networks from "./pages/Networks";
 import Nodes from "./pages/Nodes";
 import Tasks from "./pages/Tasks";
+import Users from "./pages/Users";
+import Audit from "./pages/Audit";
+import Account from "./pages/Account";
+import { RoleContext } from "./auth";
 
-type Session = { needsSetup: boolean; user: string };
+type Session = { needsSetup: boolean; user: string; role: Role };
 
 export default function App() {
   const [session, setSession] = useState<Session | undefined>();
-  const refresh = () => get<Session>("/status").then(setSession, () => setSession({ needsSetup: false, user: "" }));
+  const refresh = () => get<Session>("/status").then(setSession, () => setSession({ needsSetup: false, user: "", role: "viewer" }));
   useEffect(() => {
     setUnauthorizedHandler(() => setSession((s) => (s ? { ...s, user: "" } : s)));
     refresh();
@@ -39,15 +43,20 @@ export default function App() {
         <NavLink to="/networks">Networks</NavLink>
         <NavLink to="/nodes">Nodes</NavLink>
         <NavLink to="/tasks">Tasks</NavLink>
+        {session.role === "admin" && <NavLink to="/users">Users</NavLink>}
+        {session.role === "admin" && <NavLink to="/audit">Audit</NavLink>}
         <div className="spacer" />
         <div className="who">
-          {session.user}
+          <NavLink to="/account" title={`Signed in as ${session.role}`}>
+            {session.user}
+          </NavLink>
           <button className="link" onClick={() => post("/logout").then(refresh)}>
             Sign out
           </button>
         </div>
       </nav>
-      <main>
+      <RoleContext.Provider value={session.role}>
+      <main className={session.role}>
         <Routes>
           <Route path="/" element={<VMs />} />
           <Route path="/vm/:node/:uuid" element={<VMDetailPage />} />
@@ -55,8 +64,12 @@ export default function App() {
           <Route path="/networks" element={<Networks />} />
           <Route path="/nodes" element={<Nodes />} />
           <Route path="/tasks" element={<Tasks />} />
+          <Route path="/account" element={<Account />} />
+          {session.role === "admin" && <Route path="/users" element={<Users />} />}
+          {session.role === "admin" && <Route path="/audit" element={<Audit />} />}
         </Routes>
       </main>
+      </RoleContext.Provider>
       <Toasts />
     </div>
   );
@@ -78,7 +91,7 @@ function SignIn({ setup, onDone }: { setup: boolean; onDone: () => void }) {
         <Field label="Username">
           <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus autoComplete="username" />
         </Field>
-        <Field label="Password" hint={setup ? "At least 8 characters." : undefined}>
+        <Field label="Password" hint={setup ? "At least 10 characters." : undefined}>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={setup ? "new-password" : "current-password"} />
         </Field>
         <ErrorBox error={act.error} />

@@ -1,19 +1,23 @@
 import { FormEvent, useEffect, useState } from "react";
 import { bytes, del, get, NodeInfo, NodeStatus, post } from "../api";
 import { useLive } from "../live";
+import { useRole } from "../auth";
 import { ErrorBox, Field, Modal, StateBadge, useAction } from "../ui";
 
 export default function Nodes() {
   const nodes = useLive(() => get<{ nodes: NodeStatus[]; publicKey: string }>("/nodes"), "nodes");
   const [adding, setAdding] = useState(false);
   const act = useAction();
+  const admin = useRole() === "admin";
   return (
     <>
       <div className="head">
         <h1>Nodes</h1>
-        <button className="primary" onClick={() => setAdding(true)}>
-          Add node
-        </button>
+        {admin && (
+          <button className="primary" onClick={() => setAdding(true)}>
+            Add node
+          </button>
+        )}
       </div>
       <ErrorBox error={nodes.error ?? act.error} />
       {nodes.data && nodes.data.nodes.length === 0 ? (
@@ -36,6 +40,7 @@ export default function Nodes() {
               <NodeRow
                 key={n.id}
                 n={n}
+                canRemove={admin}
                 onRemove={() =>
                   window.confirm(`Remove ${n.hostname || n.addr}? Its virtual machines keep running; they just stop being shown here.`) && act.run(() => del(`/nodes/${n.id}`))
                 }
@@ -49,7 +54,7 @@ export default function Nodes() {
   );
 }
 
-function NodeRow({ n, onRemove }: { n: NodeStatus; onRemove: () => void }) {
+function NodeRow({ n, onRemove, canRemove }: { n: NodeStatus; onRemove: () => void; canRemove: boolean }) {
   const [info, setInfo] = useState<NodeInfo | undefined>();
   useEffect(() => {
     setInfo(undefined);
@@ -70,9 +75,11 @@ function NodeRow({ n, onRemove }: { n: NodeStatus; onRemove: () => void }) {
       <td>{info ? `${bytes(info.freeKiB * 1024)} free of ${bytes(info.memoryKiB * 1024)}` : ""}</td>
       <td>{info?.libvirtVersion}</td>
       <td className="actions">
-        <button className="danger" onClick={onRemove}>
-          Remove
-        </button>
+        {canRemove && (
+          <button className="danger" onClick={onRemove}>
+            Remove
+          </button>
+        )}
       </td>
     </tr>
   );

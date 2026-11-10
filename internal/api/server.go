@@ -3,10 +3,8 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -27,6 +25,9 @@ type Server struct {
 	Nodes  *cluster.Manager
 	PubKey string // controller's SSH public key, shown when adding a node
 	Static fs.FS  // built web UI
+
+	routes  []route // every pattern registered by Handler, for the access-level test
+	limiter *limiter
 }
 
 type ctxKey struct{}
@@ -34,8 +35,15 @@ type ctxKey struct{}
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.startSnapshotScheduler()
-	pub := func(pattern string, h http.HandlerFunc) { mux.HandleFunc(pattern, h) }
-	auth := func(pattern string, h http.HandlerFunc) { mux.HandleFunc(pattern, s.requireAuth(h)) }
+	s.routes = nil
+	pub := func(pattern string, h http.HandlerFunc) {
+		s.routes = append(s.routes, route{pattern: pattern, public: true})
+		mux.HandleFunc(pattern, h)
+	}
+	auth := func(pattern string, h http.HandlerFunc) {
+		s.routes = append(s.routes, route{pattern: pattern})
+		mux.HandleFunc(pattern, s.requireAuth(pattern, h))
+	}
 
 	pub("GET /api/status", s.status)
 	pub("POST /api/setup", s.setup)
@@ -44,6 +52,16 @@ func (s *Server) Handler() http.Handler {
 
 	auth("GET /api/events", s.events)
 	auth("GET /api/tasks", s.tasks)
+
+	auth("GET /api/users", s.listUsers)
+	auth("POST /api/users", s.createUser)
+	auth("PUT /api/users/{id}", s.updateUser)
+	auth("DELETE /api/users/{id}", s.deleteUser)
+	auth("POST /api/account/password", s.changePassword)
+	auth("GET /api/account/tokens", s.listTokens)
+	auth("POST /api/account/tokens", s.createToken)
+	auth("DELETE /api/account/tokens/{id}", s.deleteToken)
+	auth("GET /api/audit", s.auditLog)
 
 	auth("GET /api/nodes", s.listNodes)
 	auth("POST /api/nodes", s.addNode)
@@ -101,7 +119,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { http.Error(w, "not found", http.StatusNotFound) })
 	mux.Handle("/", s.spa())
-	return mux
+	return s.wrap(mux)
 }
 
 // spa serves the built UI and falls back to index.html for client-side routes.
@@ -164,22 +182,6 @@ func readJSON(r *http.Request, v any) error {
 	return nil
 }
 
-func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		c, err := r.Cookie(cookieName)
-		if err != nil {
-			http.Error(w, `{"error":"not signed in"}`, http.StatusUnauthorized)
-			return
-		}
-		user, err := s.Store.SessionUser(c.Value)
-		if err != nil {
-			http.Error(w, `{"error":"not signed in"}`, http.StatusUnauthorized)
-			return
-		}
-		next(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, user)))
-	}
-}
-
 func userOf(r *http.Request) string {
 	u, _ := r.Context().Value(ctxKey{}).(string)
 	return u
@@ -237,75 +239,13 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	user := ""
+	user, role := "", ""
 	if c, err := r.Cookie(cookieName); err == nil {
-		user, _ = s.Store.SessionUser(c.Value)
+		if p, err := s.Store.SessionUser(c.Value); err == nil {
+			user, role = p.User.Username, p.Role
+		}
 	}
-	writeJSON(w, map[string]any{"needsSetup": n == 0, "user": user})
-}
-
-type credentials struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
-// setup creates the first administrator. It only works while no user exists.
-func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
-	var c credentials
-	if err := readJSON(r, &c); err != nil {
-		fail(w, err)
-		return
-	}
-	n, err := s.Store.UserCount()
-	if err != nil {
-		fail(w, err)
-		return
-	}
-	if n > 0 {
-		fail(w, badRequest("setup has already been completed"))
-		return
-	}
-	if c.Username == "" || len(c.Password) < 8 {
-		fail(w, badRequest("a username and a password of at least 8 characters are required"))
-		return
-	}
-	if err := s.Store.CreateUser(c.Username, c.Password); err != nil {
-		fail(w, err)
-		return
-	}
-	s.startSession(w, r, c)
-}
-
-func (s *Server) login(w http.ResponseWriter, r *http.Request) {
-	var c credentials
-	if err := readJSON(r, &c); err != nil {
-		fail(w, err)
-		return
-	}
-	s.startSession(w, r, c)
-}
-
-func (s *Server) startSession(w http.ResponseWriter, r *http.Request, c credentials) {
-	token, err := s.Store.Login(c.Username, c.Password)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, `{"error":"wrong username or password"}`)
-		return
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name: cookieName, Value: token, Path: "/", HttpOnly: true,
-		SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil, MaxAge: 7 * 24 * 3600,
-	})
-	writeJSON(w, map[string]string{"user": c.Username})
-}
-
-func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie(cookieName); err == nil {
-		s.Store.Logout(c.Value)
-	}
-	http.SetCookie(w, &http.Cookie{Name: cookieName, Path: "/", MaxAge: -1})
-	writeJSON(w, map[string]bool{"ok": true})
+	writeJSON(w, map[string]any{"needsSetup": n == 0, "user": user, "role": role})
 }
 
 func (s *Server) tasks(w http.ResponseWriter, r *http.Request) {

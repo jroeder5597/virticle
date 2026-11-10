@@ -3,13 +3,10 @@
 package store
 
 import (
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 )
 
@@ -26,11 +23,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   started INTEGER NOT NULL, finished INTEGER NOT NULL DEFAULT 0);
 `
 
-const sessionTTL = 7 * 24 * time.Hour
-
 var ErrNotFound = errors.New("not found")
-
-var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy"), bcrypt.DefaultCost)
 
 type Store struct{ db *sql.DB }
 
@@ -63,6 +56,9 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		return nil, err
 	}
+	if err := migrate(db); err != nil {
+		return nil, err
+	}
 	// Tasks still marked running belong to a previous process that is gone.
 	if _, err := db.Exec(`UPDATE tasks SET status='failed', error='controller restarted', finished=? WHERE status='running'`, time.Now().Unix()); err != nil {
 		return nil, err
@@ -71,58 +67,6 @@ func Open(path string) (*Store, error) {
 }
 
 func (s *Store) Close() error { return s.db.Close() }
-
-// --- users and sessions ---
-
-func (s *Store) UserCount() (n int, err error) {
-	err = s.db.QueryRow(`SELECT count(*) FROM users`).Scan(&n)
-	return
-}
-
-func (s *Store) CreateUser(username, password string) error {
-	h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.Exec(`INSERT INTO users(username, pwhash, created) VALUES(?,?,?)`, username, string(h), time.Now().Unix())
-	return err
-}
-
-// Login checks the credentials and returns a new session token.
-func (s *Store) Login(username, password string) (string, error) {
-	var id int64
-	var hash string
-	err := s.db.QueryRow(`SELECT id, pwhash FROM users WHERE username=?`, username).Scan(&id, &hash)
-	if err != nil {
-		// Burn comparable time so a missing user is not distinguishable.
-		bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
-		return "", ErrNotFound
-	}
-	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
-		return "", ErrNotFound
-	}
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	token := hex.EncodeToString(b)
-	_, err = s.db.Exec(`INSERT INTO sessions(token, user_id, expires) VALUES(?,?,?)`, token, id, time.Now().Add(sessionTTL).Unix())
-	return token, err
-}
-
-func (s *Store) SessionUser(token string) (string, error) {
-	var name string
-	err := s.db.QueryRow(`SELECT u.username FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires>?`,
-		token, time.Now().Unix()).Scan(&name)
-	if err != nil {
-		return "", ErrNotFound
-	}
-	return name, nil
-}
-
-func (s *Store) Logout(token string) {
-	s.db.Exec(`DELETE FROM sessions WHERE token=? OR expires<?`, token, time.Now().Unix())
-}
 
 // --- nodes ---
 

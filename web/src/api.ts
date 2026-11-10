@@ -168,3 +168,32 @@ export function bytes(n: number): string {
   }
   return `${n >= 100 || i === 0 ? n.toFixed(0) : n.toFixed(1)} ${units[i]}`;
 }
+
+// --- users, tokens, audit ---
+
+export type Role = "admin" | "operator" | "viewer";
+export interface User {
+  id: number;
+  username: string;
+  role: Role;
+  disabled: boolean;
+  created: number;
+}
+export interface ApiToken {
+  id: number;
+  name: string;
+  role: Role;
+  created: number;
+  expires?: number;
+  lastUsed?: number;
+}
+export interface AuditEntry {
+  id: number;
+  time: number;
+  user: string;
+  token?: string;
+  ip: string;
+  method: string;
+  path: string;
+  status: number;
+}
