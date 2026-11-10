@@ -60,6 +60,18 @@ func (s *Server) Handler() http.Handler {
 	auth("GET /api/nodes/{node}/vms/{uuid}/vnc", s.vmVNC)
 	auth("GET /api/nodes/{node}/vms/{uuid}/serial", s.vmSerial)
 
+	auth("PUT /api/nodes/{node}/vms/{uuid}/cpu", s.hwCPU)
+	auth("PUT /api/nodes/{node}/vms/{uuid}/memory", s.hwMemory)
+	auth("POST /api/nodes/{node}/vms/{uuid}/disks", s.hwDiskAdd)
+	auth("DELETE /api/nodes/{node}/vms/{uuid}/disks/{target}", s.hwDiskDelete)
+	auth("POST /api/nodes/{node}/vms/{uuid}/disks/{target}/resize", s.hwDiskResize)
+	auth("POST /api/nodes/{node}/vms/{uuid}/cdrom", s.hwCDROMAdd)
+	auth("PUT /api/nodes/{node}/vms/{uuid}/cdrom/{target}", s.hwCDROMMedia)
+	auth("POST /api/nodes/{node}/vms/{uuid}/nics", s.hwNICAdd)
+	auth("DELETE /api/nodes/{node}/vms/{uuid}/nics/{mac}", s.hwNICDelete)
+	auth("PUT /api/nodes/{node}/vms/{uuid}/nics/{mac}", s.hwNICUpdate)
+	auth("PUT /api/nodes/{node}/vms/{uuid}/boot", s.hwBoot)
+
 	auth("GET /api/nodes/{node}/pools", s.listPools)
 	auth("POST /api/nodes/{node}/pools", s.createPool)
 	auth("POST /api/nodes/{node}/pools/{pool}/action", s.poolAction)
