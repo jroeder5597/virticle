@@ -1,0 +1,253 @@
+// Package cluster keeps one live connection per node, reconnects when a node
+// drops, and fans libvirt events out to subscribers.
+package cluster
+
+import (
+	"context"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	"virt-proj/internal/hostconn"
+	"virt-proj/internal/store"
+)
+
+// Event is pushed to every subscriber (the web UI's WebSocket).
+type Event struct {
+	Type   string `json:"type"`             // node | domain | task
+	Node   int64  `json:"node,omitempty"`   // node id
+	Name   string `json:"name,omitempty"`   // domain name
+	UUID   string `json:"uuid,omitempty"`   // domain uuid
+	Detail string `json:"detail,omitempty"` // lifecycle event name, node state
+	Task   any    `json:"task,omitempty"`
+}
+
+var lifecycle = []string{"defined", "undefined", "started", "suspended", "resumed", "stopped", "shutdown", "pmsuspended", "crashed"}
+
+// NodeStatus is the externally visible state of one node.
+type NodeStatus struct {
+	store.Node
+	State    string `json:"state"` // connecting | online | offline
+	Error    string `json:"error,omitempty"`
+	Hostname string `json:"hostname,omitempty"`
+}
+
+type node struct {
+	cfg    store.Node
+	cancel context.CancelFunc
+
+	mu       sync.Mutex
+	host     *hostconn.Host
+	state    string
+	err      string
+	hostname string
+}
+
+type Manager struct {
+	keyFile, knownHosts string
+
+	mu    sync.Mutex
+	nodes map[int64]*node
+	subs  map[chan Event]struct{}
+}
+
+func NewManager(keyFile, knownHosts string) *Manager {
+	return &Manager{keyFile: keyFile, knownHosts: knownHosts, nodes: map[int64]*node{}, subs: map[chan Event]struct{}{}}
+}
+
+// Target builds the SSH target for a node record. A jump host authenticates
+// with the controller key, or with VIRT_JUMP_PASSWORD if that is set.
+func (m *Manager) Target(n store.Node) (hostconn.Target, error) {
+	t := hostconn.Target{Addr: n.Addr, User: n.User, KeyFile: m.keyFile}
+	if n.Jump != "" {
+		u, a, ok := strings.Cut(n.Jump, "@")
+		if !ok {
+			return t, fmt.Errorf("jump host must be user@address")
+		}
+		t.Jump = &hostconn.Target{Addr: a, User: u, KeyFile: m.keyFile, Password: os.Getenv("VIRT_JUMP_PASSWORD")}
+	}
+	return t, nil
+}
+
+// Add starts managing a node. It returns immediately; the connection is
+// established and kept alive in the background.
+func (m *Manager) Add(cfg store.Node) {
+	ctx, cancel := context.WithCancel(context.Background())
+	n := &node{cfg: cfg, cancel: cancel, state: "connecting"}
+	m.mu.Lock()
+	m.nodes[cfg.ID] = n
+	m.mu.Unlock()
+	go m.run(ctx, n)
+}
+
+func (m *Manager) Remove(id int64) {
+	m.mu.Lock()
+	n := m.nodes[id]
+	delete(m.nodes, id)
+	m.mu.Unlock()
+	if n != nil {
+		n.cancel()
+	}
+}
+
+func (m *Manager) run(ctx context.Context, n *node) {
+	backoff := time.Second
+	for ctx.Err() == nil {
+		err := m.session(ctx, n)
+		if ctx.Err() != nil {
+			return
+		}
+		msg := "connection lost"
+		if err != nil {
+			msg = err.Error()
+		} else {
+			backoff = time.Second
+		}
+		n.set(nil, "offline", msg)
+		m.Publish(Event{Type: "node", Node: n.cfg.ID, Detail: "offline"})
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		if backoff < 30*time.Second {
+			backoff *= 2
+		}
+	}
+}
+
+// session holds one connection until it drops. A nil return means it was
+// established and later lost; an error means it could not be established.
+func (m *Manager) session(ctx context.Context, n *node) error {
+	t, err := m.Target(n.cfg)
+	if err != nil {
+		return err
+	}
+	h, err := hostconn.Dial(t, m.knownHosts)
+	if err != nil {
+		return err
+	}
+	defer h.Close()
+	if name, err := h.ConnectGetHostname(); err == nil {
+		h.Name = name
+	}
+	evctx, stop := context.WithCancel(ctx)
+	defer stop()
+	events, err := h.LifecycleEvents(evctx)
+	if err != nil {
+		return fmt.Errorf("subscribe to events: %w", err)
+	}
+	n.mu.Lock()
+	n.hostname = h.Name
+	n.mu.Unlock()
+	n.set(h, "online", "")
+	m.Publish(Event{Type: "node", Node: n.cfg.ID, Detail: "online"})
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-h.Disconnected():
+			return nil
+		case ev, ok := <-events:
+			if !ok {
+				return nil
+			}
+			detail := fmt.Sprint(ev.Event)
+			if int(ev.Event) < len(lifecycle) {
+				detail = lifecycle[ev.Event]
+			}
+			m.Publish(Event{Type: "domain", Node: n.cfg.ID, Name: ev.Dom.Name, UUID: FormatUUID(ev.Dom.UUID), Detail: detail})
+		}
+	}
+}
+
+func (n *node) set(h *hostconn.Host, state, err string) {
+	n.mu.Lock()
+	n.host, n.state, n.err = h, state, err
+	n.mu.Unlock()
+}
+
+var ErrOffline = errors.New("node is offline")
+
+// Host returns the live connection to a node.
+func (m *Manager) Host(id int64) (*hostconn.Host, error) {
+	m.mu.Lock()
+	n := m.nodes[id]
+	m.mu.Unlock()
+	if n == nil {
+		return nil, store.ErrNotFound
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.host == nil {
+		if n.err != "" {
+			return nil, fmt.Errorf("%w: %s", ErrOffline, n.err)
+		}
+		return nil, ErrOffline
+	}
+	return n.host, nil
+}
+
+// Status lists every node with its connection state, ordered by id.
+func (m *Manager) Status() []NodeStatus {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]NodeStatus, 0, len(m.nodes))
+	for _, n := range m.nodes {
+		n.mu.Lock()
+		out = append(out, NodeStatus{Node: n.cfg, State: n.state, Error: n.err, Hostname: n.hostname})
+		n.mu.Unlock()
+	}
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j].ID < out[j-1].ID; j-- {
+			out[j], out[j-1] = out[j-1], out[j]
+		}
+	}
+	return out
+}
+
+// Subscribe returns a channel of events and a function to stop receiving.
+func (m *Manager) Subscribe() (<-chan Event, func()) {
+	ch := make(chan Event, 64)
+	m.mu.Lock()
+	m.subs[ch] = struct{}{}
+	m.mu.Unlock()
+	return ch, func() {
+		m.mu.Lock()
+		delete(m.subs, ch)
+		m.mu.Unlock()
+	}
+}
+
+// Publish delivers an event to all subscribers; a subscriber that is not
+// keeping up misses the event rather than blocking everyone else.
+func (m *Manager) Publish(e Event) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for ch := range m.subs {
+		select {
+		case ch <- e:
+		default:
+		}
+	}
+}
+
+// FormatUUID renders libvirt's 16 raw bytes in the canonical dashed form.
+func FormatUUID(u [16]byte) string {
+	return fmt.Sprintf("%x-%x-%x-%x-%x", u[0:4], u[4:6], u[6:8], u[8:10], u[10:16])
+}
+
+// ParseUUID is the inverse of FormatUUID.
+func ParseUUID(s string) (u [16]byte, err error) {
+	b, err := hex.DecodeString(strings.ReplaceAll(s, "-", ""))
+	if err != nil || len(b) != 16 {
+		return u, fmt.Errorf("invalid UUID %q", s)
+	}
+	copy(u[:], b)
+	return u, nil
+}

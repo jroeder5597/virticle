@@ -1,0 +1,13 @@
+# Lab access from the dev container:  SSHPASS=<jump password> ssh -F lab/ssh_config n1
+Host n1
+  HostName 192.168.150.11
+Host n2
+  HostName 192.168.150.12
+Host n1 n2
+  User root
+  IdentityFile lab/keys/controller
+  IdentitiesOnly yes
+  UserKnownHostsFile lab/keys/known_hosts
+  LogLevel ERROR
+  SetEnv LC_ALL=C
+  ProxyCommand sshpass -e ssh -W %h:%p ${VSPIKE_JUMP}
