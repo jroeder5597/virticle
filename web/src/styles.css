@@ -259,3 +259,10 @@ th.sel, td.sel { width: 28px; padding-right: 0; }
 .nodeactions { white-space: normal !important; min-width: 130px; }
 .nodeactions button { margin: 2px 0 2px 4px; }
 .hostupdates { max-width: 230px; }
+.tgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; margin-top: 12px; align-items: start; }
+.tgrid h4 { margin: 0 0 8px; font-size: 13px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 10px; }
+.advanced .note { margin: 8px 0; }
+.devlist { max-height: 55vh; overflow: auto; }
+nav .alertpanel a, nav .alertpanel a.active, nav .alertpanel a:hover { background: none; padding: 0; color: var(--accent); text-decoration: underline; }
+.marks { display: flex; margin: 4px 0 0; }

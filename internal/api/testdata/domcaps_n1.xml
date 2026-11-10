@@ -1,0 +1,345 @@
+<domainCapabilities>
+  <domain>kvm</domain>
+  <cpu>
+    <mode name='host-passthrough' supported='yes'>
+      <enum name='hostPassthroughMigratable'>
+        <value>on</value>
+        <value>off</value>
+      </enum>
+    </mode>
+    <mode name='maximum' supported='yes'>
+      <enum name='maximumMigratable'>
+        <value>on</value>
+        <value>off</value>
+      </enum>
+    </mode>
+    <mode name='host-model' supported='yes'>
+      <model fallback='forbid'>Skylake-Client-IBRS</model>
+      <vendor>Intel</vendor>
+      <maxphysaddr mode='passthrough' limit='39'/>
+    </mode>
+    <mode name='custom' supported='yes'>
+      <model usable='yes' vendor='unknown' canonical='486-v1'>486</model>
+      <model usable='yes' vendor='unknown'>486-v1</model>
+      <model usable='no' vendor='Intel' canonical='Broadwell-v1'>Broadwell</model>
+      <blockers model='Broadwell'>
+      </blockers>
+      <model usable='no' vendor='Intel' canonical='Broadwell-v3'>Broadwell-IBRS</model>
+      <blockers model='Broadwell-IBRS'>
+      </blockers>
+      <model usable='yes' vendor='Intel' canonical='Broadwell-v2'>Broadwell-noTSX</model>
+      <model usable='yes' vendor='Intel' canonical='Broadwell-v4'>Broadwell-noTSX-IBRS</model>
+      <model usable='no' vendor='Intel'>Broadwell-v1</model>
+      <blockers model='Broadwell-v1'>
+      </blockers>
+      <model usable='yes' vendor='Intel'>Broadwell-v2</model>
+      <model usable='no' vendor='Intel'>Broadwell-v3</model>
+      <blockers model='Broadwell-v3'>
+      </blockers>
+      <model usable='yes' vendor='Intel'>Broadwell-v4</model>
+      <model usable='no' vendor='Intel' canonical='Cascadelake-Server-v1'>Cascadelake-Server</model>
+      <blockers model='Cascadelake-Server'>
+      </blockers>
+      <model usable='no' vendor='Intel' canonical='Cascadelake-Server-v3'>Cascadelake-Server-noTSX</model>
+      <blockers model='Cascadelake-Server-noTSX'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Cascadelake-Server-v1</model>
+      <blockers model='Cascadelake-Server-v1'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Cascadelake-Server-v2</model>
+      <blockers model='Cascadelake-Server-v2'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Cascadelake-Server-v3</model>
+      <blockers model='Cascadelake-Server-v3'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Cascadelake-Server-v4</model>
+      <blockers model='Cascadelake-Server-v4'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Cascadelake-Server-v5</model>
+      <blockers model='Cascadelake-Server-v5'>
+      </blockers>
+      <model usable='yes' vendor='Intel' canonical='Conroe-v1'>Conroe</model>
+      <model usable='yes' vendor='Intel'>Conroe-v1</model>
+      <model usable='no' vendor='Intel' canonical='Cooperlake-v1'>Cooperlake</model>
+      <blockers model='Cooperlake'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Cooperlake-v1</model>
+      <blockers model='Cooperlake-v1'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Cooperlake-v2</model>
+      <blockers model='Cooperlake-v2'>
+      </blockers>
+      <model usable='no' vendor='Intel' canonical='Denverton-v1'>Denverton</model>
+      <blockers model='Denverton'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Denverton-v1</model>
+      <blockers model='Denverton-v1'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Denverton-v2</model>
+      <blockers model='Denverton-v2'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Denverton-v3</model>
+      <blockers model='Denverton-v3'>
+      </blockers>
+      <model usable='no' vendor='Hygon' canonical='Dhyana-v1'>Dhyana</model>
+      <blockers model='Dhyana'>
+      </blockers>
+      <model usable='no' vendor='Hygon'>Dhyana-v1</model>
+      <blockers model='Dhyana-v1'>
+      </blockers>
+      <model usable='no' vendor='Hygon'>Dhyana-v2</model>
+      <blockers model='Dhyana-v2'>
+      </blockers>
+      <model usable='no' vendor='AMD' canonical='EPYC-v1'>EPYC</model>
+      <blockers model='EPYC'>
+      </blockers>
+      <model usable='no' vendor='AMD' canonical='EPYC-Genoa-v1'>EPYC-Genoa</model>
+      <blockers model='EPYC-Genoa'>
+      </blockers>
+      <model usable='no' vendor='AMD'>EPYC-Genoa-v1</model>
+      <blockers model='EPYC-Genoa-v1'>
+      </blockers>
+      <model usable='no' vendor='AMD' canonical='EPYC-v2'>EPYC-IBPB</model>
+      <blockers model='EPYC-IBPB'>
+      </blockers>
+      <model usable='no' vendor='AMD' canonical='EPYC-Milan-v1'>EPYC-Milan</model>
+      <blockers model='EPYC-Milan'>
+      </blockers>
+      <model usable='no' vendor='AMD'>EPYC-Milan-v1</model>
+      <blockers model='EPYC-Milan-v1'>
+      </blockers>
+      <model usable='no' vendor='AMD'>EPYC-Milan-v2</model>
+      <blockers model='EPYC-Milan-v2'>
+      </blockers>
+      <model usable='no' vendor='AMD' canonical='EPYC-Rome-v1'>EPYC-Rome</model>
+      <blockers model='EPYC-Rome'>
+      </blockers>
+      <model usable='no' vendor='AMD'>EPYC-Rome-v1</model>
+      <blockers model='EPYC-Rome-v1'>
+      </blockers>
+      <model usable='no' vendor='AMD'>EPYC-Rome-v2</model>
+      <blockers model='EPYC-Rome-v2'>
+      </blockers>
+      <model usable='no' vendor='AMD'>EPYC-Rome-v3</model>
+      <blockers model='EPYC-Rome-v3'>
+      </blockers>
+      <model usable='no' vendor='AMD'>EPYC-Rome-v4</model>
+      <blockers model='EPYC-Rome-v4'>
+      </blockers>
+      <model usable='no' vendor='AMD'>EPYC-v1</model>
+      <blockers model='EPYC-v1'>
+      </blockers>
+      <model usable='no' vendor='AMD'>EPYC-v2</model>
+      <blockers model='EPYC-v2'>
+      </blockers>
+      <model usable='no' vendor='AMD'>EPYC-v3</model>
+      <blockers model='EPYC-v3'>
+      </blockers>
+      <model usable='no' vendor='AMD'>EPYC-v4</model>
+      <blockers model='EPYC-v4'>
+      </blockers>
+      <model usable='no' vendor='Intel' canonical='GraniteRapids-v1'>GraniteRapids</model>
+      <blockers model='GraniteRapids'>
+      </blockers>
+      <model usable='no' vendor='Intel'>GraniteRapids-v1</model>
+      <blockers model='GraniteRapids-v1'>
+      </blockers>
+      <model usable='no' vendor='Intel'>GraniteRapids-v2</model>
+      <blockers model='GraniteRapids-v2'>
+      </blockers>
+      <model usable='no' vendor='Intel' canonical='Haswell-v1'>Haswell</model>
+      <blockers model='Haswell'>
+      </blockers>
+      <model usable='no' vendor='Intel' canonical='Haswell-v3'>Haswell-IBRS</model>
+      <blockers model='Haswell-IBRS'>
+      </blockers>
+      <model usable='yes' vendor='Intel' canonical='Haswell-v2'>Haswell-noTSX</model>
+      <model usable='yes' vendor='Intel' canonical='Haswell-v4'>Haswell-noTSX-IBRS</model>
+      <model usable='no' vendor='Intel'>Haswell-v1</model>
+      <blockers model='Haswell-v1'>
+      </blockers>
+      <model usable='yes' vendor='Intel'>Haswell-v2</model>
+      <model usable='no' vendor='Intel'>Haswell-v3</model>
+      <blockers model='Haswell-v3'>
+      </blockers>
+      <model usable='yes' vendor='Intel'>Haswell-v4</model>
+      <model usable='no' vendor='Intel' canonical='Icelake-Server-v1'>Icelake-Server</model>
+      <blockers model='Icelake-Server'>
+      </blockers>
+      <model usable='no' vendor='Intel' canonical='Icelake-Server-v2'>Icelake-Server-noTSX</model>
+      <blockers model='Icelake-Server-noTSX'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Icelake-Server-v1</model>
+      <blockers model='Icelake-Server-v1'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Icelake-Server-v2</model>
+      <blockers model='Icelake-Server-v2'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Icelake-Server-v3</model>
+      <blockers model='Icelake-Server-v3'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Icelake-Server-v4</model>
+      <blockers model='Icelake-Server-v4'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Icelake-Server-v5</model>
+      <blockers model='Icelake-Server-v5'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Icelake-Server-v6</model>
+      <blockers model='Icelake-Server-v6'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Icelake-Server-v7</model>
+      <blockers model='Icelake-Server-v7'>
+      </blockers>
+      <model usable='yes' vendor='Intel' canonical='IvyBridge-v1'>IvyBridge</model>
+      <model usable='yes' vendor='Intel' canonical='IvyBridge-v2'>IvyBridge-IBRS</model>
+      <model usable='yes' vendor='Intel'>IvyBridge-v1</model>
+      <model usable='yes' vendor='Intel'>IvyBridge-v2</model>
+      <model usable='no' vendor='Intel' canonical='KnightsMill-v1'>KnightsMill</model>
+      <blockers model='KnightsMill'>
+      </blockers>
+      <model usable='no' vendor='Intel'>KnightsMill-v1</model>
+      <blockers model='KnightsMill-v1'>
+      </blockers>
+      <model usable='yes' vendor='Intel' canonical='Nehalem-v1'>Nehalem</model>
+      <model usable='yes' vendor='Intel' canonical='Nehalem-v2'>Nehalem-IBRS</model>
+      <model usable='yes' vendor='Intel'>Nehalem-v1</model>
+      <model usable='yes' vendor='Intel'>Nehalem-v2</model>
+      <model usable='yes' vendor='AMD' canonical='Opteron_G1-v1'>Opteron_G1</model>
+      <model usable='yes' vendor='AMD'>Opteron_G1-v1</model>
+      <model usable='yes' vendor='AMD' canonical='Opteron_G2-v1'>Opteron_G2</model>
+      <model usable='yes' vendor='AMD'>Opteron_G2-v1</model>
+      <model usable='no' vendor='AMD' canonical='Opteron_G3-v1'>Opteron_G3</model>
+      <blockers model='Opteron_G3'>
+      </blockers>
+      <model usable='no' vendor='AMD'>Opteron_G3-v1</model>
+      <blockers model='Opteron_G3-v1'>
+      </blockers>
+      <model usable='no' vendor='AMD' canonical='Opteron_G4-v1'>Opteron_G4</model>
+      <blockers model='Opteron_G4'>
+      </blockers>
+      <model usable='no' vendor='AMD'>Opteron_G4-v1</model>
+      <blockers model='Opteron_G4-v1'>
+      </blockers>
+      <model usable='no' vendor='AMD' canonical='Opteron_G5-v1'>Opteron_G5</model>
+      <blockers model='Opteron_G5'>
+      </blockers>
+      <model usable='no' vendor='AMD'>Opteron_G5-v1</model>
+      <blockers model='Opteron_G5-v1'>
+      </blockers>
+      <model usable='yes' vendor='Intel' canonical='Penryn-v1'>Penryn</model>
+      <model usable='yes' vendor='Intel'>Penryn-v1</model>
+      <model usable='yes' vendor='Intel' canonical='SandyBridge-v1'>SandyBridge</model>
+      <model usable='yes' vendor='Intel' canonical='SandyBridge-v2'>SandyBridge-IBRS</model>
+      <model usable='yes' vendor='Intel'>SandyBridge-v1</model>
+      <model usable='yes' vendor='Intel'>SandyBridge-v2</model>
+      <model usable='no' vendor='Intel' canonical='SapphireRapids-v1'>SapphireRapids</model>
+      <blockers model='SapphireRapids'>
+      </blockers>
+      <model usable='no' vendor='Intel'>SapphireRapids-v1</model>
+      <blockers model='SapphireRapids-v1'>
+      </blockers>
+      <model usable='no' vendor='Intel'>SapphireRapids-v2</model>
+      <blockers model='SapphireRapids-v2'>
+      </blockers>
+      <model usable='no' vendor='Intel'>SapphireRapids-v3</model>
+      <blockers model='SapphireRapids-v3'>
+      </blockers>
+      <model usable='no' vendor='Intel' canonical='SierraForest-v1'>SierraForest</model>
+      <blockers model='SierraForest'>
+      </blockers>
+      <model usable='no' vendor='Intel'>SierraForest-v1</model>
+      <blockers model='SierraForest-v1'>
+      </blockers>
+      <model usable='no' vendor='Intel' canonical='Skylake-Client-v1'>Skylake-Client</model>
+      <blockers model='Skylake-Client'>
+      </blockers>
+      <model usable='no' vendor='Intel' canonical='Skylake-Client-v2'>Skylake-Client-IBRS</model>
+      <blockers model='Skylake-Client-IBRS'>
+      </blockers>
+      <model usable='yes' vendor='Intel' canonical='Skylake-Client-v3'>Skylake-Client-noTSX-IBRS</model>
+      <model usable='no' vendor='Intel'>Skylake-Client-v1</model>
+      <blockers model='Skylake-Client-v1'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Skylake-Client-v2</model>
+      <blockers model='Skylake-Client-v2'>
+      </blockers>
+      <model usable='yes' vendor='Intel'>Skylake-Client-v3</model>
+      <model usable='yes' vendor='Intel'>Skylake-Client-v4</model>
+      <model usable='no' vendor='Intel' canonical='Skylake-Server-v1'>Skylake-Server</model>
+      <blockers model='Skylake-Server'>
+      </blockers>
+      <model usable='no' vendor='Intel' canonical='Skylake-Server-v2'>Skylake-Server-IBRS</model>
+      <blockers model='Skylake-Server-IBRS'>
+      </blockers>
+      <model usable='no' vendor='Intel' canonical='Skylake-Server-v3'>Skylake-Server-noTSX-IBRS</model>
+      <blockers model='Skylake-Server-noTSX-IBRS'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Skylake-Server-v1</model>
+      <blockers model='Skylake-Server-v1'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Skylake-Server-v2</model>
+      <blockers model='Skylake-Server-v2'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Skylake-Server-v3</model>
+      <blockers model='Skylake-Server-v3'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Skylake-Server-v4</model>
+      <blockers model='Skylake-Server-v4'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Skylake-Server-v5</model>
+      <blockers model='Skylake-Server-v5'>
+      </blockers>
+      <model usable='no' vendor='Intel' canonical='Snowridge-v1'>Snowridge</model>
+      <blockers model='Snowridge'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Snowridge-v1</model>
+      <blockers model='Snowridge-v1'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Snowridge-v2</model>
+      <blockers model='Snowridge-v2'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Snowridge-v3</model>
+      <blockers model='Snowridge-v3'>
+      </blockers>
+      <model usable='no' vendor='Intel'>Snowridge-v4</model>
+      <blockers model='Snowridge-v4'>
+      </blockers>
+      <model usable='yes' vendor='Intel' canonical='Westmere-v1'>Westmere</model>
+      <model usable='yes' vendor='Intel' canonical='Westmere-v2'>Westmere-IBRS</model>
+      <model usable='yes' vendor='Intel'>Westmere-v1</model>
+      <model usable='yes' vendor='Intel'>Westmere-v2</model>
+      <model usable='no' vendor='AMD' canonical='athlon-v1'>athlon</model>
+      <blockers model='athlon'>
+      </blockers>
+      <model usable='no' vendor='AMD'>athlon-v1</model>
+      <blockers model='athlon-v1'>
+      </blockers>
+      <model usable='yes' vendor='Intel' canonical='core2duo-v1'>core2duo</model>
+      <model usable='yes' vendor='Intel'>core2duo-v1</model>
+      <model usable='yes' vendor='Intel' canonical='coreduo-v1'>coreduo</model>
+      <model usable='yes' vendor='Intel'>coreduo-v1</model>
+      <model usable='yes' vendor='unknown' canonical='kvm32-v1'>kvm32</model>
+      <model usable='yes' vendor='unknown'>kvm32-v1</model>
+      <model usable='yes' vendor='unknown' canonical='kvm64-v1'>kvm64</model>
+      <model usable='yes' vendor='unknown'>kvm64-v1</model>
+      <model usable='yes' vendor='Intel' canonical='n270-v1'>n270</model>
+      <model usable='yes' vendor='Intel'>n270-v1</model>
+      <model usable='yes' vendor='unknown' canonical='pentium-v1'>pentium</model>
+      <model usable='yes' vendor='unknown'>pentium-v1</model>
+      <model usable='yes' vendor='unknown' canonical='pentium2-v1'>pentium2</model>
+      <model usable='yes' vendor='unknown'>pentium2-v1</model>
+      <model usable='yes' vendor='unknown' canonical='pentium3-v1'>pentium3</model>
+      <model usable='yes' vendor='unknown'>pentium3-v1</model>
+      <model usable='no' vendor='AMD' canonical='phenom-v1'>phenom</model>
+      <blockers model='phenom'>
+      </blockers>
+      <model usable='no' vendor='AMD'>phenom-v1</model>
+      <blockers model='phenom-v1'>
+      </blockers>
+      <model usable='yes' vendor='unknown' canonical='qemu32-v1'>qemu32</model>
+      <model usable='yes' vendor='unknown'>qemu32-v1</model>
+      <model usable='yes' vendor='unknown' canonical='qemu64-v1'>qemu64</model>
+      <model usable='yes' vendor='unknown'>qemu64-v1</model>
+    </mode>
+  </cpu>
+</domainCapabilities>

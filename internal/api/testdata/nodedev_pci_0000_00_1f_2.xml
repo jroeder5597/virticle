@@ -1,0 +1,18 @@
+<device>
+  <name>pci_0000_00_1f_2</name>
+  <path>/sys/devices/pci0000:00/0000:00:1f.2</path>
+  <parent>computer</parent>
+  <driver>
+    <name>ahci</name>
+  </driver>
+  <capability type='pci'>
+    <class>0x010601</class>
+    <domain>0</domain>
+    <bus>0</bus>
+    <slot>31</slot>
+    <function>2</function>
+    <product id='0x2922'>82801IR/IO/IH (ICH9R/DO/DH) 6 port SATA Controller [AHCI mode]</product>
+    <vendor id='0x8086'>Intel Corporation</vendor>
+  </capability>
+</device>
+

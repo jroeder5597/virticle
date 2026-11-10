@@ -491,6 +491,8 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 		}
 	}
 
+	s.checkTuning(dst, plan, &c)
+
 	// Memory.
 	if free, err := dst.NodeGetFreeMemory(); err == nil {
 		if free < plan.MemKiB*1024 {
