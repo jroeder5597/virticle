@@ -130,13 +130,30 @@ export interface Volume {
   capacity: number;
   allocation: number;
 }
+export interface DhcpHost {
+  mac: string;
+  ip: string;
+  name?: string;
+}
 export interface Network {
   name: string;
+  uuid: string;
   active: boolean;
   autostart: boolean;
+  persistent: boolean;
   bridge?: string;
   forward: string;
   address?: string;
+  dhcp: boolean;
+  dhcpStart?: string;
+  dhcpEnd?: string;
+  domain?: string;
+  ovs?: boolean;
+  vlan?: number;
+  hosts: DhcpHost[];
+  interfaces: { vm: string; uuid: string; mac: string; running: boolean }[];
+  leases: { mac: string; ip: string; hostname?: string; expiry: number }[];
+  xml?: string;
 }
 export interface Task {
   id: number;
@@ -151,7 +168,7 @@ export interface Task {
   finished?: number;
 }
 export interface ServerEvent {
-  type: "node" | "domain" | "task";
+  type: "node" | "domain" | "network" | "pool" | "task";
   node?: number;
   name?: string;
   uuid?: string;

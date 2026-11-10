@@ -18,9 +18,9 @@ import (
 
 // Event is pushed to every subscriber (the web UI's WebSocket).
 type Event struct {
-	Type   string `json:"type"`             // node | domain | task
+	Type   string `json:"type"`             // node | domain | network | pool | task
 	Node   int64  `json:"node,omitempty"`   // node id
-	Name   string `json:"name,omitempty"`   // domain name
+	Name   string `json:"name,omitempty"`   // domain, network or pool name
 	UUID   string `json:"uuid,omitempty"`   // domain uuid
 	Detail string `json:"detail,omitempty"` // lifecycle event name, node state
 	Task   any    `json:"task,omitempty"`
@@ -144,6 +144,7 @@ func (m *Manager) session(ctx context.Context, n *node) error {
 	n.mu.Lock()
 	n.hostname = h.Name
 	n.mu.Unlock()
+	go m.objectEvents(evctx, n.cfg.ID, h)
 	n.set(h, "online", "")
 	m.Publish(Event{Type: "node", Node: n.cfg.ID, Detail: "online"})
 
