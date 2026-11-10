@@ -14,12 +14,18 @@ import (
 
 // agentCmd sends one QEMU guest agent command and returns its "return" value.
 func agentCmd(h *hostconn.Host, dom libvirt.Domain, execute string, args any) (json.RawMessage, error) {
+	return agentCmdT(h, dom, execute, args, 15)
+}
+
+// agentCmdT is agentCmd with its own timeout in seconds, for calls made on
+// behalf of a page view that must not hang.
+func agentCmdT(h *hostconn.Host, dom libvirt.Domain, execute string, args any, timeoutSec int32) (json.RawMessage, error) {
 	req := map[string]any{"execute": execute}
 	if args != nil {
 		req["arguments"] = args
 	}
 	b, _ := json.Marshal(req)
-	res, err := h.QEMUDomainAgentCommand(dom, string(b), 15, 0)
+	res, err := h.QEMUDomainAgentCommand(dom, string(b), timeoutSec, 0)
 	if err != nil {
 		return nil, err
 	}

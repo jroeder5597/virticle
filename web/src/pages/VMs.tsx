@@ -4,9 +4,11 @@ import { bytes, get, Network, NodeStatus, Pool, post, VM, Volume } from "../api"
 import { useLive } from "../live";
 import CloudInitFields, { CloudInitValues, cloudInitPayload, cloudInitUsed, emptyCloudInit } from "./CloudInit";
 import { ErrorBox, Field, Modal, NodePicker, StateBadge, useAction } from "../ui";
+import { Meter, pct, useAllStats, VMPoint } from "../charts";
 
 export default function VMs() {
   const vms = useLive(() => get<VM[]>("/vms"), "vms");
+  const live = useAllStats();
   const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes");
   const [creating, setCreating] = useState(false);
   const act = useAction();
@@ -38,6 +40,8 @@ export default function VMs() {
               <th>Node</th>
               <th className="num">vCPUs</th>
               <th className="num">Memory</th>
+              <th>CPU</th>
+              <th>Memory used</th>
               <th />
             </tr>
           </thead>
@@ -54,6 +58,7 @@ export default function VMs() {
                 <td>{vm.nodeName}</td>
                 <td className="num">{vm.vcpus}</td>
                 <td className="num">{bytes(vm.memoryKiB * 1024)}</td>
+                <UsageCells p={vm.state === "running" ? live?.vms[`${vm.node}/${vm.uuid}`] : undefined} />
                 <td className="actions">
                   {vm.state === "shutoff" && vm.template ? null : vm.state === "shutoff" ? (
                     <button disabled={act.busy} onClick={() => action(vm, "start")}>
@@ -81,6 +86,30 @@ export default function VMs() {
         </table>
       )}
       {creating && <CreateVM nodes={online} onClose={() => setCreating(false)} />}
+    </>
+  );
+}
+
+/** Compact CPU and memory columns from the newest stats sample. */
+function UsageCells({ p }: { p?: VMPoint }) {
+  if (!p) {
+    return (
+      <>
+        <td className="muted">–</td>
+        <td className="muted">–</td>
+      </>
+    );
+  }
+  const used = p.memUsedKiB ?? 0;
+  const total = p.memTotalKiB ?? 0;
+  return (
+    <>
+      <td>
+        <Meter value={p.cpu} max={100} label={pct(p.cpu)} />
+      </td>
+      <td>
+        <Meter value={used} max={total} label={total ? `${bytes(used * 1024)}${p.memGuest ? "" : " alloc."}` : "–"} />
+      </td>
     </>
   );
 }
