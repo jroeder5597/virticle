@@ -44,7 +44,7 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
 ## Snapshots and backup
 - [~] Snapshots with memory, tree view, revert, delete (done). Open: default type (see note), quiesce untested with a real agent, UEFI guests untested
 - [x] Scheduled snapshots with retention (schedule stored in domain metadata; times in UTC)
-- [ ] Backup and restore to another pool or host; export/import a VM as one file
+- [~] Backup and restore to another pool or node (live, no snapshot left behind); export/import a VM as one tar file. Open: scheduled backups; TPM state and snapshots are not part of a backup
 
 ## Networking
 - [~] Virtual network editor: NAT, isolated, routed, open, bridged, DHCP reservations (done); VLAN tags only for Open vSwitch bridges, untested on real OVS
@@ -54,17 +54,17 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
 - [x] Migration with disk copy; snapshot-preserving migration (external snapshots); source disk cleanup; cancel
 - [~] Offline migration (done, carries internal snapshots too); UEFI/NVRAM and TPM paths untested
 - [ ] Encrypted migration streams (TLS)
-- [ ] Evacuate a node; show pending host updates
+- [x] Evacuate a node (planner, per-VM tasks, cancel, maintenance flag); show pending host updates (read-only)
 
 ## Hardware
-- [ ] Passthrough picker: PCI, GPU, USB with IOMMU groups; warns that it blocks live migration
-- [ ] CPU pinning, hugepages, NUMA
+- [~] Passthrough picker: PCI and USB with IOMMU groups, in-use and safety checks, migration warning. UNTESTED on real hardware (lab nodes have no IOMMU)
+- [x] CPU pinning, CPU model and topology, hugepages, NUMA policy (multi-cell NUMA untested)
 
 ## Operations
 - [x] HTTPS for the web UI (self-signed certificate generated for non-loopback listeners, or your own with `-tls-cert`/`-tls-key`)
 - [x] Bulk actions and tags (tags stored in libvirt `<metadata>`; bulk actions fan out from the browser)
 - [x] Users and roles (admin, operator, viewer), API tokens, audit log, login rate limiting
-- [ ] Alerts: pool full, node down, failed scheduled job
+- [x] Alerts: pool full, node down, host memory, failed scheduled job, VM crashed or paused on I/O error, certificate expiry; optional webhook (`-alert-webhook`)
 - [ ] Later: scheduled replication to a standby node; optional shared storage and HA
 
 ## Design notes
@@ -97,6 +97,10 @@ after testing external snapshots on an SELinux host (Rocky).
 (`internal/api/access.go`); an unlisted route requires admin and fails a unit
 test. Behind a reverse proxy the same-origin check and per-IP rate limit need
 work (Host header, X-Forwarded-For are not trusted).
+
+**One controller per set of nodes.** Scheduled snapshots are driven by the
+controller from VM metadata, so two controllers pointed at the same nodes
+would both run every schedule.
 
 **Open:** project name (working name `virt-proj`).
 
