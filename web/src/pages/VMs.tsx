@@ -63,7 +63,7 @@ export default function VMs() {
           {(search || tagFilter) && <span className="muted">{list.length} of {all.length} shown</span>}
         </div>
       )}
-      {picked.length > 0 && <BulkBar selected={picked} onClear={() => setSelected(new Set())} />}
+      {selected.size > 0 && <BulkBar selected={picked} onClear={() => setSelected(new Set())} />}
       {nodes.data && nodes.data.nodes.length === 0 ? (
         <div className="empty">
           No nodes yet. <Link to="/nodes">Add a node</Link> to see its virtual machines.

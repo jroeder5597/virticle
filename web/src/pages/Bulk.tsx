@@ -92,7 +92,7 @@ export function BulkBar({ selected, onClear }: { selected: VM[]; onClear: () => 
       <button className="ghost" onClick={onClear}>
         Clear selection
       </button>
-      {results && <BulkResults title={title} results={results} running={running} onClose={() => setResults(undefined)} />}
+      {results && <BulkResults title={title} results={results} running={running} onClose={() => { setResults(undefined); if (selected.length === 0) onClear(); }} />}
       {tagging && (
         <TagDialog
           onClose={() => setTagging(false)}

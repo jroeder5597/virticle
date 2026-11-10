@@ -25,6 +25,13 @@ export default function VMDetailPage() {
     e.type === "node" ? true : e.type === "domain" ? e.uuid === uuid : e.task?.status !== "running",
   );
   const act = useAction();
+  // libvirt sends no event when the guest agent comes up, so look again while it is not connected.
+  const waitingForAgent = vm.data?.state === "running" && vm.data.agent !== "connected";
+  useEffect(() => {
+    if (!waitingForAgent) return;
+    const h = setInterval(vm.reload, 5000);
+    return () => clearInterval(h);
+  }, [waitingForAgent, vm.reload]);
   const [deleting, setDeleting] = useState(false);
   const [migrating, setMigrating] = useState(false);
   const base = `/nodes/${node}/vms/${uuid}`;

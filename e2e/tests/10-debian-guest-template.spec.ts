@@ -7,7 +7,7 @@ const NAME = `${P}deb1`;
 const CLONE = `${P}deb1-clone`;
 const USER = "e2e";
 const PASS = "e2e-guest-pass-1";
-const AGENT_WAIT = 7 * 60_000; // first boot installs the agent with apt on a nested 512 MB guest: about 4 minutes
+const AGENT_WAIT = 6 * 60_000; // first boot installs the agent with apt on a nested 512 MB guest: about 4 minutes
 
 test.describe.serial("debian cloud image, guest agent, template and linked clone", () => {
   let vm: { node: number; uuid: string; name: string };
@@ -70,7 +70,7 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     const mem = charts.filter({ hasText: "Memory" }).locator(".chart-val");
     await expect(mem).toContainText(/\d/, { timeout: 30_000 });
     const text = await mem.innerText();
-    expect(text).toMatch(/of 5\d\d MiB|of 0\.5\d GiB|of 512 MiB/);
+    expect(text).toMatch(/\d+ MiB of (4[5-9]\d|5[01]\d) MiB/); // guest-reported total is a bit under 512
     expect(text).not.toMatch(/^0 /);
     await expect.poll(async () => charts.first().locator("svg path[d]").count(), { timeout: 30_000 }).toBeGreaterThan(0);
     const stats = await api.get(`/nodes/${vm.node}/vms/${vm.uuid}/stats`);
@@ -130,7 +130,7 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     await expect(page.locator("section.card").filter({ has: page.getByRole("heading", { name: "Guest", exact: true }) })).toContainText(/Debian/i, { timeout: 60_000 });
   });
 
-  test("the template cannot be deleted while a linked clone exists, then everything goes", async ({ page, api }) => {
+  test("delete the clone and its disks, then the template", async ({ page, api }) => {
     // stop the clone, delete it with its disks, then the template
     await api.post(`/nodes/${clone.node}/vms/${clone.uuid}/action`, { action: "poweroff" });
     await api.waitFor("clone off", async () => (await api.vmDetail(clone.node, clone.uuid)).state === "shutoff");
