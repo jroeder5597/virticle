@@ -116,6 +116,14 @@ func (s *Server) Handler() http.Handler {
 	auth("PUT /api/nodes/{node}/vms/{uuid}/snapshot-schedule", s.putSnapshotSchedule)
 	auth("DELETE /api/nodes/{node}/vms/{uuid}/snapshot-schedule", s.deleteSnapshotSchedule)
 
+	auth("POST /api/nodes/{node}/vms/{uuid}/backup", s.vmBackup)
+	auth("POST /api/nodes/{node}/vms/{uuid}/backup/cancel", s.vmBackupCancel)
+	auth("GET /api/backups", s.listBackupsHandler)
+	auth("POST /api/nodes/{node}/backups/import", s.importBackup)
+	auth("POST /api/nodes/{node}/backups/{pool}/{name}/restore", s.restoreBackup)
+	auth("GET /api/nodes/{node}/backups/{pool}/{name}/export", s.exportBackup)
+	auth("DELETE /api/nodes/{node}/backups/{pool}/{name}", s.deleteBackup)
+
 	auth("GET /api/nodes/{node}/pools", s.listPools)
 	auth("POST /api/nodes/{node}/pools", s.createPool)
 	auth("POST /api/nodes/{node}/pools/{pool}/action", s.poolAction)

@@ -492,6 +492,9 @@ func parseProgress(log string) (float64, bool) {
 type workDir struct {
 	h    *hostconn.Host
 	path string
+	// stop, when set, is polled by convert; once it returns true convert gives
+	// up (the caller has killed qemu-img and removed the directory).
+	stop func() bool
 }
 
 func newWorkDir(h *hostconn.Host, poolDir string) (*workDir, error) {
@@ -499,7 +502,7 @@ func newWorkDir(h *hostconn.Host, poolDir string) (*workDir, error) {
 	if err != nil || !strings.HasPrefix(out, poolDir+"/.virt-proj-import.") || hasControl(out) {
 		return nil, fmt.Errorf("cannot create a work directory in %s: %s", poolDir, impFirstLine(out))
 	}
-	return &workDir{h, out}, nil
+	return &workDir{h: h, path: out}, nil
 }
 
 func (w *workDir) file(n string) string { return w.path + "/" + n }
@@ -529,6 +532,9 @@ func (w *workDir) convert(src, srcFmt, dest string, progress func(float64)) erro
 	misses := 0
 	for {
 		time.Sleep(2 * time.Second)
+		if w.stop != nil && w.stop() {
+			return errors.New("conversion cancelled")
+		}
 		out, err := w.h.Run("cat -- " + shQuote(w.file("rc")) + " 2>/dev/null; echo ---; tail -c 400 -- " + shQuote(w.file("prog.log")) + " 2>/dev/null | tr '\\r' '\\n'")
 		if err != nil {
 			if misses++; misses >= 15 {
