@@ -8,6 +8,7 @@ import { SerialConsole, VNCConsole } from "./Console";
 import Hardware from "./Hardware";
 import MigrateDialog from "./Migrate";
 import SnapshotsTab from "./Snapshots";
+import BackupsTab from "./Backups";
 import { CloneButton, TemplateActions } from "./Clone";
 import { TagEditor } from "./Tags";
 import { VMCharts } from "../charts";
@@ -45,6 +46,7 @@ export default function VMDetailPage() {
     ["hardware", "Hardware"],
     ["console", "Console"],
     ["snapshots", "Snapshots"],
+    ["backups", "Backups"],
     ["xml", "XML"],
   ].filter(([id]) => id !== "console" || role !== "viewer"); // a console is control
 
@@ -111,6 +113,7 @@ export default function VMDetailPage() {
       {tab === "hardware" && <Hardware d={d} base={base} onChanged={vm.reload} />}
       {tab === "console" && <ConsoleTab d={d} />}
       {tab === "snapshots" && <SnapshotsTab d={d} base={base} />}
+      {tab === "backups" && <BackupsTab d={d} base={base} />}
       {tab === "xml" && <XMLEditor d={d} base={base} onSaved={vm.reload} />}
       {migrating && <MigrateDialog d={d} onClose={() => setMigrating(false)} />}
       {deleting && <DeleteVM d={d} base={base} onClose={() => setDeleting(false)} onDeleted={() => nav("/")} />}

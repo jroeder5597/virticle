@@ -6,6 +6,7 @@ import { ErrorBox, Field, useAction } from "./ui";
 import VMs from "./pages/VMs";
 import VMDetailPage from "./pages/VMDetail";
 import Storage from "./pages/Storage";
+import { BackupsSection } from "./pages/Backups";
 import Networks from "./pages/Networks";
 import Nodes from "./pages/Nodes";
 import Tasks from "./pages/Tasks";
@@ -40,6 +41,7 @@ export default function App() {
           Virtual machines
         </NavLink>
         <NavLink to="/storage">Storage</NavLink>
+        <NavLink to="/backups">Backups</NavLink>
         <NavLink to="/networks">Networks</NavLink>
         <NavLink to="/nodes">Nodes</NavLink>
         <NavLink to="/tasks">Tasks</NavLink>
@@ -61,6 +63,7 @@ export default function App() {
           <Route path="/" element={<VMs />} />
           <Route path="/vm/:node/:uuid" element={<VMDetailPage />} />
           <Route path="/storage" element={<Storage />} />
+          <Route path="/backups" element={<BackupsSection />} />
           <Route path="/networks" element={<Networks />} />
           <Route path="/nodes" element={<Nodes />} />
           <Route path="/tasks" element={<Tasks />} />

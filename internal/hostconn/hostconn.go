@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
@@ -139,6 +140,65 @@ func (h *Host) Stream(ctx context.Context, cmd string, line func(string)) error 
 		return nil
 	}
 	return s.Wait()
+}
+
+// tailBuf keeps the last few KiB written to it (a command's stderr).
+type tailBuf struct {
+	mu sync.Mutex
+	b  []byte
+}
+
+func (t *tailBuf) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.b = append(t.b, p...)
+	if len(t.b) > 4096 {
+		t.b = t.b[len(t.b)-4096:]
+	}
+	return len(p), nil
+}
+
+func (t *tailBuf) String() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return strings.TrimSpace(string(t.b))
+}
+
+// Pipe runs cmd on the host with stdin fed from stdin and stdout copied to
+// stdout (either may be nil), without buffering the data in memory. No
+// terminal is requested, so binary data passes unchanged. Cancelling ctx
+// closes the session, which ends the remote command. The command's stderr is
+// returned as part of the error.
+func (h *Host) Pipe(ctx context.Context, cmd string, stdin io.Reader, stdout io.Writer) error {
+	s, err := h.ssh.NewSession()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	var errs tailBuf
+	s.Stdin, s.Stdout, s.Stderr = stdin, stdout, &errs
+	if err := s.Start(cmd); err != nil {
+		return err
+	}
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-ctx.Done():
+			s.Close()
+		case <-done:
+		}
+	}()
+	if err := s.Wait(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if msg := errs.String(); msg != "" {
+			return fmt.Errorf("%w: %s", err, msg)
+		}
+		return err
+	}
+	return nil
 }
 
 type sockDialer struct{ c *ssh.Client }

@@ -95,6 +95,13 @@ var routeLevels = map[string]string{
 	"PUT /api/nodes/{node}/vms/{uuid}/snapshot-schedule":        operator,
 	"DELETE /api/nodes/{node}/vms/{uuid}/snapshot-schedule":     operator,
 
+	"POST /api/nodes/{node}/vms/{uuid}/backup":        operator,
+	"POST /api/nodes/{node}/vms/{uuid}/backup/cancel": operator,
+	"GET /api/backups":                                         viewer,
+	"POST /api/nodes/{node}/backups/import":                    operator,
+	"POST /api/nodes/{node}/backups/{pool}/{name}/restore":     operator,
+	"GET /api/nodes/{node}/backups/{pool}/{name}/export":       operator, // the export holds the disk contents
+	"DELETE /api/nodes/{node}/backups/{pool}/{name}":           operator,
 	"GET /api/nodes/{node}/pools":                              viewer,
 	"POST /api/nodes/{node}/pools":                             operator,
 	"POST /api/nodes/{node}/pools/{pool}/action":               operator,
@@ -129,6 +136,8 @@ var routeLevels = map[string]string{
 var auditedGets = map[string]bool{
 	"GET /api/nodes/{node}/vms/{uuid}/vnc":    true,
 	"GET /api/nodes/{node}/vms/{uuid}/serial": true,
+	// An export hands out disk contents.
+	"GET /api/nodes/{node}/backups/{pool}/{name}/export": true,
 }
 
 // levelFor returns the role a pattern needs; unlisted patterns need admin.
