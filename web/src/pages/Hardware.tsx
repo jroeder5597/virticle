@@ -3,6 +3,7 @@
 // the saved definition where libvirt allows and says which one happened.
 import { useEffect, useState } from "react";
 import { api, bytes, get, Network, Pool, Volume, VMDetail } from "../api";
+import { useRole } from "../auth";
 import { ErrorBox, Field, Modal, useAction } from "../ui";
 import FirmwareCard from "./Firmware";
 import AdvancedCard from "./Advanced";
@@ -30,6 +31,7 @@ function summary(r: HwResult, running: boolean): string {
 
 export default function Hardware({ d, base, onChanged }: { d: VMDetail; base: string; onChanged: () => void }) {
   const act = useAction();
+  const viewer = useRole() === "viewer";
   const [outcome, setOutcome] = useState<{ text: string; restart: boolean }>();
   const running = d.state !== "shutoff";
   const send: Send = async (method, path, body) => {
@@ -43,7 +45,8 @@ export default function Hardware({ d, base, onChanged }: { d: VMDetail; base: st
   const cdroms = d.disks.filter((k) => k.device === "cdrom");
 
   return (
-    <>
+    // A viewer sees the hardware but every control is disabled, not just its buttons hidden.
+    <fieldset className="plain" disabled={viewer}>
       {outcome && <div className={outcome.restart ? "note" : "muted"}>{outcome.text}</div>}
       <ErrorBox error={act.error} />
       <div className="cards" style={{ marginTop: 12, alignItems: "start" }}>
@@ -56,7 +59,7 @@ export default function Hardware({ d, base, onChanged }: { d: VMDetail; base: st
         <AdvancedCard d={d} base={base} onChanged={onChanged} />
         <PassthroughCard d={d} base={base} onChanged={onChanged} />
       </div>
-    </>
+    </fieldset>
   );
 }
 

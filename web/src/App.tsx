@@ -72,6 +72,7 @@ export default function App() {
           <Route path="/account" element={<Account />} />
           {session.role === "admin" && <Route path="/users" element={<Users />} />}
           {session.role === "admin" && <Route path="/audit" element={<Audit />} />}
+          <Route path="*" element={<div className="empty">There is nothing at this address, or your role does not allow it.</div>} />
         </Routes>
       </main>
       </RoleContext.Provider>

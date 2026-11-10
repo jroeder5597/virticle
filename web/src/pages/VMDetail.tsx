@@ -25,6 +25,13 @@ export default function VMDetailPage() {
     e.type === "node" ? true : e.type === "domain" ? e.uuid === uuid : e.task?.status !== "running",
   );
   const act = useAction();
+  // libvirt sends no event when the guest agent comes up, so look again while it is not connected.
+  const waitingForAgent = vm.data?.state === "running" && vm.data.agent !== "connected";
+  useEffect(() => {
+    if (!waitingForAgent) return;
+    const h = setInterval(vm.reload, 5000);
+    return () => clearInterval(h);
+  }, [waitingForAgent, vm.reload]);
   const [deleting, setDeleting] = useState(false);
   const [migrating, setMigrating] = useState(false);
   const base = `/nodes/${node}/vms/${uuid}`;
@@ -123,6 +130,7 @@ export default function VMDetailPage() {
 
 function Overview({ d, base }: { d: VMDetail; base: string }) {
   const act = useAction();
+  const viewer = useRole() === "viewer";
   return (
     <div className="cards">
       {d.state === "running" && (
@@ -156,7 +164,7 @@ function Overview({ d, base }: { d: VMDetail; base: string }) {
           <dt>Start on host boot</dt>
           <dd>
             <label className="check">
-              <input type="checkbox" checked={d.autostart} disabled={act.busy} onChange={(e) => act.run(() => put(`${base}/autostart`, { autostart: e.target.checked }))} />
+              <input type="checkbox" checked={d.autostart} disabled={act.busy || viewer} onChange={(e) => act.run(() => put(`${base}/autostart`, { autostart: e.target.checked }))} />
               {d.autostart ? "Yes" : "No"}
             </label>
           </dd>
@@ -315,6 +323,7 @@ function XMLEditor({ d, base, onSaved }: { d: VMDetail; base: string; onSaved: (
   const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
   const act = useAction();
+  const viewer = useRole() === "viewer";
   // Follow outside changes until the user starts editing.
   useEffect(() => {
     if (!dirty) setText(d.xml);
@@ -335,6 +344,8 @@ function XMLEditor({ d, base, onSaved }: { d: VMDetail; base: string; onSaved: (
       <textarea
         spellCheck={false}
         value={text}
+        readOnly={viewer}
+        aria-label="Domain XML"
         onChange={(e) => {
           setText(e.target.value);
           setDirty(true);

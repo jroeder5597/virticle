@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ApiError, bytes, del, get, NodeStatus, Pool, post, put, Task, VMDetail } from "../api";
 import { useRole } from "../auth";
 import { useLive } from "../live";
-import { ErrorBox, Field, Modal, NodePicker, UsageBar, useAction } from "../ui";
+import { ErrorBox, Field, Modal, NodePicker, Progress, UsageBar, useAction } from "../ui";
 
 interface Manifest {
   vm: string;
@@ -57,7 +57,7 @@ function TaskFollow(props: { id: number; onDone: (ok: boolean) => void; onCancel
       <p>
         {t ? t.kind : "…"} {t?.target}: <strong>{t?.status ?? "starting"}</strong>
       </p>
-      <UsageBar used={t?.status === "ok" ? 1 : (t?.progress ?? 0)} total={1} />
+      <Progress value={t?.status === "ok" ? 1 : (t?.progress ?? 0)} failed={t?.status === "failed"} />
       {t?.status === "failed" && <ErrorBox error={t.error} />}
       {t?.status === "running" && props.onCancel && (
         <button className="danger" onClick={props.onCancel}>
@@ -482,7 +482,7 @@ function ImportFile(props: { onClose: () => void; onDone: () => void }) {
       <Field label="File">
         <input type="file" accept=".tar" onChange={(e) => setFile(e.target.files?.[0])} />
       </Field>
-      {act.busy && <UsageBar used={progress} total={1} />}
+      {act.busy && <Progress value={progress} />}
       <ErrorBox error={act.error} />
       <div className="actions">
         <button className="primary" disabled={act.busy || !file || !pool} onClick={go}>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { put } from "../api";
+import { useRole } from "../auth";
 import { ErrorBox, useAction } from "../ui";
 
 export const TAG_RE = /^[A-Za-z0-9][A-Za-z0-9 ._:-]{0,30}$/;
@@ -22,6 +23,7 @@ export function TagChips({ tags, onPick }: { tags: string[]; onPick?: (t: string
 export function TagEditor({ tags, base, onChanged }: { tags: string[]; base: string; onChanged: () => void }) {
   const [draft, setDraft] = useState("");
   const act = useAction();
+  const viewer = useRole() === "viewer";
   const save = (next: string[]) =>
     act.run(async () => {
       await put(`${base}/tags`, { tags: next });
@@ -35,6 +37,7 @@ export function TagEditor({ tags, base, onChanged }: { tags: string[]; base: str
     if (tags.length >= MAX_TAGS) return act.run(() => Promise.reject(new Error("At most 16 tags per VM")));
     if (await save([...tags, t])) setDraft("");
   };
+  if (viewer) return tags.length ? <div className="tagedit"><TagChips tags={tags} /></div> : null;
   return (
     <div className="tagedit">
       <span className="tags">
