@@ -109,7 +109,7 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 		err = badRequest("disk size is required")
 	}
 	var seed []byte
-	if ci := q.CloudInit; ci != nil {
+	if ci := q.CloudInit; ci != nil && err == nil {
 		cfg := cloudinit.Config{Hostname: ci.Hostname, User: ci.User, Password: ci.Password, SSHKeys: ci.SSHKeys, Packages: ci.Packages, RawUserData: ci.RawUserData}
 		if cfg.Hostname == "" && cfg.RawUserData == "" {
 			cfg.Hostname = q.Name
