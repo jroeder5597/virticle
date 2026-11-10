@@ -84,7 +84,7 @@ func main() {
 		}
 	}
 	alerts.CertFile = certFile
-	srv := &api.Server{Store: st, Nodes: mgr, PubKey: pub, Static: web.FS(), Alerts: alerts}
+	srv := &api.Server{Store: st, Nodes: mgr, PubKey: pub, Static: web.FS(), Alerts: alerts, DataDir: *data}
 	hs := &http.Server{
 		Addr:    *listen,
 		Handler: srv.Handler(),

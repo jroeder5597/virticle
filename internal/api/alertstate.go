@@ -81,7 +81,15 @@ type alertVM struct {
 // alertInput is what one pass gathered. Fresh lists the nodes whose pools, memory
 // and VMs could be read; alerts about the others are kept as they were rather
 // than cleared, because an unreachable node says nothing about its pools.
+// alertMigCert is the expiry of a node's migration TLS certificate.
+type alertMigCert struct {
+	Node     int64
+	NodeName string
+	NotAfter time.Time
+}
+
 type alertInput struct {
+	MigCerts   []alertMigCert
 	Nodes      []alertNode
 	Fresh      map[int64]bool
 	Pools      []alertPool
@@ -173,6 +181,18 @@ func (t *alertTracker) step(in alertInput, now time.Time) (raised, cleared, all 
 		add(Alert{ID: fmt.Sprintf("job:%s:%s:%s", j.Kind, j.Node, jobVM(j.Target)), Kind: "failed-job", Severity: "warning",
 			Title: fmt.Sprintf("Scheduled %s of %s failed", j.Kind, jobVM(j.Target)), Link: "/tasks",
 			Message: fmt.Sprintf("%s on %s failed at %s: %s", j.Kind, j.Node, time.Unix(j.Finished, 0).Format("2006-01-02 15:04:05"), j.Error)})
+	}
+	for _, c := range in.MigCerts {
+		left := c.NotAfter.Sub(now)
+		if left >= time.Duration(t.cfg.CertDays)*24*time.Hour {
+			continue
+		}
+		sev, title := "warning", fmt.Sprintf("The migration certificate of %s expires in %d days", c.NodeName, int(left.Hours()/24))
+		if left <= 0 {
+			sev, title = "critical", fmt.Sprintf("The migration certificate of %s has expired", c.NodeName)
+		}
+		add(Alert{ID: "migtls-expiry:" + strconv.FormatInt(c.Node, 10), Kind: "tls-expiry", Severity: sev, Title: title, Node: c.Node, Link: "/nodes",
+			Message: "Valid until " + c.NotAfter.Format("2006-01-02") + ". Until it is issued again, live migrations of this node are no longer encrypted. Use the re-issue action on the Nodes page."})
 	}
 	if !in.CertExpiry.IsZero() {
 		left := in.CertExpiry.Sub(now)

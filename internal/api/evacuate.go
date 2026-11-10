@@ -29,6 +29,9 @@ type evacReq struct {
 	VMs            []string `json:"vms"`
 	IncludeShutOff bool     `json:"includeShutOff"`
 	Concurrency    int      `json:"concurrency"`
+	// Encrypt is passed to every move (see migReq.Encrypt); nil picks
+	// encryption where both nodes are set up for it.
+	Encrypt *bool `json:"encrypt"`
 }
 
 type evacPreview struct {
@@ -105,7 +108,7 @@ func (s *Server) buildEvacPlan(srcID int64, src *hostconn.Host, req evacReq) (ev
 	}
 
 	check := func(vm evacVM, t evacTarget) []string {
-		_, c := s.preflight(srcID, src, domByUUID[vm.UUID], migReq{Target: t.ID})
+		_, c := s.preflight(srcID, src, domByUUID[vm.UUID], migReq{Target: t.ID, Encrypt: req.Encrypt})
 		return blockingReasons(c)
 	}
 	plan, blocked := planEvacuation(vms, out.Targets, check)
@@ -160,6 +163,7 @@ type evacRun struct {
 	Cancelled bool          `json:"cancelled"`
 	Results   []*evacResult `json:"results"`
 	cancel    atomic.Bool
+	encrypt   *bool
 }
 
 func (e *evacRun) snapshot() *evacRun {
@@ -210,7 +214,7 @@ func (s *Server) evacuate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Reserve the slot before the (slow) planning so that two requests cannot both start.
-	run := &evacRun{Node: id, NodeName: h.Name, Started: time.Now().Unix(), Running: true}
+	run := &evacRun{Node: id, NodeName: h.Name, Started: time.Now().Unix(), Running: true, encrypt: req.Encrypt}
 	evacRuns.m[id] = run
 	evacRuns.Unlock()
 	release := func() {
@@ -343,7 +347,7 @@ func (s *Server) runEvacuation(user string, srcID int64, src *hostconn.Host, dom
 }
 
 func (s *Server) moveOne(user string, srcID int64, src *hostconn.Host, dom libvirt.Domain, res *evacResult, run *evacRun) error {
-	l, pre, err := s.launchMigration(userRequest(user), srcID, src, dom, migReq{Target: res.Target})
+	l, pre, err := s.launchMigration(userRequest(user), srcID, src, dom, migReq{Target: res.Target, Encrypt: run.encrypt})
 	if errors.Is(err, errPreflight) {
 		reasons := blockingReasons(pre.Checks)
 		return errors.New("pre-flight failed: " + strings.Join(reasons, "; "))

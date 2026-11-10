@@ -7,6 +7,7 @@ import { HostLoad, useHostSeries } from "../charts";
 import { AlertMarks, useAlerts } from "./Alerts";
 import Evacuate from "./Evacuate";
 import HostUpdates from "./HostUpdates";
+import MigrationTLS from "./MigrationTLS";
 
 export default function Nodes() {
   const nodes = useLive(() => get<{ nodes: NodeStatus[]; publicKey: string }>("/nodes"), "nodes");
@@ -39,6 +40,7 @@ export default function Nodes() {
               <th>Memory</th>
               <th>libvirt</th>
               <th>Host updates</th>
+              <th>Encrypted migration</th>
               <th />
             </tr>
           </thead>
@@ -102,6 +104,9 @@ function NodeRow({ n, onRemove, canRemove, alerts, onEvacuate, onMaintenance }: 
       <td>{info?.libvirtVersion}</td>
       <td>
         <HostUpdates node={n.id} online={n.state === "online"} />
+      </td>
+      <td>
+        <MigrationTLS node={n.id} online={n.state === "online"} admin={canRemove} />
       </td>
       <td className="actions nodeactions">
         {canRemove && n.state === "online" && (

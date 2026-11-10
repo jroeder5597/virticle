@@ -41,6 +41,9 @@ type migReq struct {
 	KeepSourceDisks bool   `json:"keepSourceDisks"`
 	MaxDowntimeMs   uint64 `json:"maxDowntimeMs"`
 	BandwidthMiB    uint64 `json:"bandwidthMiB"`
+	// Encrypt asks for TLS on the memory and disk streams. nil means "yes
+	// when both nodes are set up for it" (see migtls.go).
+	Encrypt *bool `json:"encrypt"`
 }
 
 type migCheck struct {
@@ -108,6 +111,8 @@ type migPlan struct {
 	NVRAM      *migFile // copied in offline mode only
 	Snaps      []migSnap
 	MemKiB     uint64
+	TLS        bool   // memory and NBD disk streams are encrypted (migtls.go)
+	TLSName    string // host name QEMU verifies the target's certificate against
 }
 
 func (p *migPlan) active() bool { return p.Mode != "offline" }
@@ -549,6 +554,9 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 	// Node to node SSH.
 	s.checkSSHTrust(src, dst, dstNode, &c)
 
+	// Encryption of the migration streams.
+	s.checkEncryption(srcID, src, req.Target, dst, plan, req, &c)
+
 	// Source cleanup would delete images that linked clones are built on.
 	if !req.KeepSourceDisks {
 		var owned, all []string
@@ -720,6 +728,7 @@ type migPreview struct {
 	Checks     checkList  `json:"checks"`
 	CopyBytes  uint64     `json:"copyBytes"`
 	MirrorSize uint64     `json:"mirrorBytes"`
+	Encrypt    bool       `json:"encrypt"` // the streams will be TLS-encrypted
 	Files      []fileInfo `json:"files,omitempty"`
 }
 
@@ -734,6 +743,7 @@ func (s *Server) preview(srcID int64, src *hostconn.Host, dom libvirt.Domain, re
 	out := migPreview{OK: !checks.blocked(), Checks: checks}
 	if plan != nil {
 		out.Mode = plan.Mode
+		out.Encrypt = plan.TLS
 		files := append([]*migFile{}, plan.Files.list...)
 		if plan.NVRAM != nil {
 			files = append(files, plan.NVRAM)
@@ -1139,6 +1149,9 @@ func (m *migRun) runOnline() error {
 	if p.Mode == "live" {
 		flags |= libvirt.MigrateLive | libvirt.MigrateAutoConverge
 	}
+	if p.TLS {
+		flags |= libvirt.MigrateTLS
+	}
 	err := m.perform(flags, 0.25, 0.95)
 	if err != nil {
 		// A lost connection can hide a migration that actually completed.
@@ -1191,6 +1204,9 @@ func (m *migRun) perform(flags libvirt.DomainMigrateFlags, lo, hi float64) error
 	var params []libvirt.TypedParam
 	if m.req.BandwidthMiB > 0 {
 		params = append(params, libvirt.TypedParam{Field: libvirt.MigrateParamBandwidth, Value: *libvirt.NewTypedParamValueUllong(m.req.BandwidthMiB)})
+	}
+	if m.plan.TLS {
+		params = append(params, libvirt.TypedParam{Field: libvirt.MigrateParamTLSDestination, Value: *libvirt.NewTypedParamValueString(m.plan.TLSName)})
 	}
 	m.inJob.Store(true)
 	defer m.inJob.Store(false)
