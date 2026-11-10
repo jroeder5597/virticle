@@ -30,7 +30,7 @@ export default function Nodes() {
       {nodes.data && nodes.data.nodes.length === 0 ? (
         <div className="empty">A node is any machine running libvirt that this server can reach over SSH. Nothing needs to be installed on it.</div>
       ) : (
-        <table>
+        <div className="table-scroll"><table>
           <thead>
             <tr>
               <th>Node</th>
@@ -59,7 +59,7 @@ export default function Nodes() {
               />
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
       {evacuating && nodes.data && <Evacuate node={evacuating} nodes={nodes.data.nodes} onClose={() => setEvacuating(undefined)} />}
       {adding && nodes.data && <AddNode publicKey={nodes.data.publicKey} onClose={() => setAdding(false)} />}

@@ -291,3 +291,4 @@ textarea[readonly] { opacity: 0.8; }
   .segmented { display: flex; flex-wrap: wrap; }
   .segmented button { flex: 1 1 auto; border-bottom: 1px solid var(--line); }
 }
+.table-scroll { overflow-x: auto; }
