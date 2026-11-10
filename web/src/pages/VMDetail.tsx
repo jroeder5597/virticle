@@ -4,6 +4,7 @@ import { bytes, del, get, post, put, VMDetail } from "../api";
 import { useLive } from "../live";
 import { ErrorBox, Modal, StateBadge, useAction } from "../ui";
 import { SerialConsole, VNCConsole } from "./Console";
+import SnapshotsTab from "./Snapshots";
 
 export default function VMDetailPage() {
   const { node: nodeParam, uuid = "" } = useParams();
@@ -32,6 +33,7 @@ export default function VMDetailPage() {
   const tabs = [
     ["overview", "Overview"],
     ["console", "Console"],
+    ["snapshots", "Snapshots"],
     ["xml", "XML"],
   ];
 
@@ -93,6 +95,7 @@ export default function VMDetailPage() {
       </div>
       {tab === "overview" && <Overview d={d} base={base} />}
       {tab === "console" && <ConsoleTab d={d} />}
+      {tab === "snapshots" && <SnapshotsTab d={d} base={base} />}
       {tab === "xml" && <XMLEditor d={d} base={base} onSaved={vm.reload} />}
       {deleting && <DeleteVM d={d} base={base} onClose={() => setDeleting(false)} onDeleted={() => nav("/")} />}
     </>
