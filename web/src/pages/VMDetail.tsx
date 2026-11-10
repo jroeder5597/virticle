@@ -123,6 +123,7 @@ export default function VMDetailPage() {
 
 function Overview({ d, base }: { d: VMDetail; base: string }) {
   const act = useAction();
+  const viewer = useRole() === "viewer";
   return (
     <div className="cards">
       {d.state === "running" && (
@@ -156,7 +157,7 @@ function Overview({ d, base }: { d: VMDetail; base: string }) {
           <dt>Start on host boot</dt>
           <dd>
             <label className="check">
-              <input type="checkbox" checked={d.autostart} disabled={act.busy} onChange={(e) => act.run(() => put(`${base}/autostart`, { autostart: e.target.checked }))} />
+              <input type="checkbox" checked={d.autostart} disabled={act.busy || viewer} onChange={(e) => act.run(() => put(`${base}/autostart`, { autostart: e.target.checked }))} />
               {d.autostart ? "Yes" : "No"}
             </label>
           </dd>

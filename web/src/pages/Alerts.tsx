@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { Alert, get } from "../api";
 import { useLive } from "../live";
@@ -22,6 +22,12 @@ export function AlertBell() {
   const alerts = useAlerts();
   const [open, setOpen] = useState(false);
   const critical = alerts.filter((a) => a.severity === "critical").length;
+  useEffect(() => {
+    if (!open) return;
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [open]);
   return (
     <div className="alertbell">
       <button className="bell" onClick={() => setOpen(!open)} aria-label={`Alerts: ${alerts.length}`} aria-expanded={open} title="Alerts">
@@ -33,7 +39,7 @@ export function AlertBell() {
         <div className="alertpanel" role="dialog" aria-label="Alerts">
           <header>
             <strong>Alerts</strong>
-            <button className="ghost" onClick={() => setOpen(false)} aria-label="Close">
+            <button className="ghost" onClick={() => setOpen(false)} aria-label="Close alerts">
               ✕
             </button>
           </header>

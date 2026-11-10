@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { del, DhcpHost, get, Network, NodeStatus, post, put } from "../api";
 import { orEvents, useLive } from "../live";
+import { useRole } from "../auth";
 import { ErrorBox, Field, Modal, NodePicker, StateBadge, useAction } from "../ui";
 
 const modeNames: Record<string, string> = { nat: "NAT", route: "Routed", open: "Open", isolated: "Isolated", bridge: "Bridge" };
@@ -112,6 +113,7 @@ function Detail({ base, name }: { base: string; name: string }) {
     return () => clearInterval(t);
   }, [d.reload]);
   const n = d.data;
+  const viewer = useRole() === "viewer";
   return (
     <>
       <div className="head sub">
@@ -120,6 +122,7 @@ function Detail({ base, name }: { base: string; name: string }) {
       </div>
       <ErrorBox error={d.error} />
       {n && (
+        <fieldset className="plain" disabled={viewer}>
         <div className="cards">
           <div className="card">
             <h3>Details</h3>
@@ -200,6 +203,7 @@ function Detail({ base, name }: { base: string; name: string }) {
           {n.dhcp && <Reservations url={url} n={n} onChange={d.reload} />}
           <XmlEditor url={url} n={n} onSaved={d.reload} />
         </div>
+        </fieldset>
       )}
     </>
   );
