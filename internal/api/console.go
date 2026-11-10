@@ -16,7 +16,7 @@ import (
 
 // events streams node, domain and task events to the UI.
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
-	c, err := websocket.Accept(w, r, nil)
+	c, err := websocket.Accept(w, r, wsOptions(r))
 	if err != nil {
 		return
 	}
@@ -88,7 +88,7 @@ func (s *Server) vmVNC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer backend.Close()
-	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{"binary"}})
+	c, err := websocket.Accept(w, r, wsOptions(r, "binary"))
 	if err != nil {
 		return
 	}
@@ -140,7 +140,7 @@ func (s *Server) vmSerial(w http.ResponseWriter, r *http.Request) {
 		fail(w, badRequest("the VM is not running"))
 		return
 	}
-	c, err := websocket.Accept(w, r, nil)
+	c, err := websocket.Accept(w, r, wsOptions(r))
 	if err != nil {
 		return
 	}

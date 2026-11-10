@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ApiError, bytes, del, get, NodeStatus, Pool, post, Task, VMDetail } from "../api";
+import { ApiError, bytes, del, get, NodeStatus, Pool, post, put, Task, VMDetail } from "../api";
 import { useRole } from "../auth";
 import { useLive } from "../live";
 import { ErrorBox, Field, Modal, NodePicker, UsageBar, useAction } from "../ui";
@@ -306,6 +306,110 @@ function BackupTable(props: { list: BackupEntry[]; global?: boolean; reload: () 
   );
 }
 
+interface BackupSched {
+  enabled: boolean;
+  mode: "interval" | "daily";
+  everyMinutes?: number;
+  at?: string;
+  targetNode: number;
+  pool: string;
+  keepLast: number;
+}
+
+/** The schedule form and summary; the schedule lives in the VM's metadata. */
+function SchedulePanel({ d }: { d: VMDetail }) {
+  const path = `/nodes/${d.node}/vms/${d.uuid}/backup-schedule`;
+  const role = useRole();
+  const cur = useLive(() => get<{ schedule: BackupSched | null; last?: number; lastError?: string }>(path), path, (e) => e.type === "node" || (e.type === "task" && e.task?.status !== "running"));
+  const nodes = useNodes();
+  const act = useAction();
+  const [form, setForm] = useState<BackupSched | undefined>();
+  const sch = cur.data?.schedule;
+  const nodeName = (id: number) => {
+    const n = nodes.find((x) => x.id === (id || d.node));
+    return n?.hostname || n?.addr || `node ${id || d.node}`;
+  };
+  const edit = () => setForm(sch ?? { enabled: true, mode: "daily", everyMinutes: 60, at: "03:00", targetNode: d.node, pool: "", keepLast: 7 });
+  const save = async () => {
+    if (!form) return;
+    const body = { ...form, targetNode: form.targetNode === d.node ? 0 : form.targetNode, everyMinutes: form.mode === "interval" ? form.everyMinutes : undefined, at: form.mode === "daily" ? form.at : undefined };
+    if (await act.run(() => put(path, body))) {
+      setForm(undefined);
+      cur.reload();
+    }
+  };
+  const remove = async () => {
+    if (window.confirm("Remove the backup schedule? Backups already made are kept.") && (await act.run(() => del(path)))) cur.reload();
+  };
+  const canEdit = role !== "viewer";
+  return (
+    <section className="card" style={{ marginTop: 20 }} id="backup-schedule">
+      <h3>Scheduled backups</h3>
+      <ErrorBox error={cur.error} />
+      {!form && (
+        <>
+          {sch ? (
+            <p>
+              <span className={"badge " + (sch.enabled ? "s-running" : "")}>{sch.enabled ? "enabled" : "paused"}</span>{" "}
+              {sch.mode === "interval" ? `Every ${sch.everyMinutes} minutes` : `Daily at ${sch.at} UTC`} to {sch.pool} on {nodeName(sch.targetNode)}, keeping the newest {sch.keepLast}.
+              {cur.data?.last ? ` Last backup ${when(new Date(cur.data.last * 1000).toISOString())}.` : " No backup there yet."}
+              {cur.data?.lastError && <span className="rowerror"> Cannot read the target: {cur.data.lastError}</span>}
+            </p>
+          ) : (
+            <p className="muted">No schedule. Runs for running and shut-off VMs; a failed run shows up in the task log and as an alert.</p>
+          )}
+          {canEdit && (
+            <div className="actions">
+              <button onClick={edit}>{sch ? "Edit schedule" : "Set up schedule"}</button>
+              {sch && (
+                <button className="danger" disabled={act.busy} onClick={remove}>
+                  Remove
+                </button>
+              )}
+            </div>
+          )}
+        </>
+      )}
+      {form && (
+        <>
+          <div className="grid2">
+            <Field label="When">
+              <select value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value as BackupSched["mode"] })}>
+                <option value="daily">Daily at a fixed time (UTC)</option>
+                <option value="interval">At a fixed interval</option>
+              </select>
+            </Field>
+            {form.mode === "daily" ? (
+              <Field label="Time (UTC)">
+                <input type="time" value={form.at ?? "03:00"} onChange={(e) => setForm({ ...form, at: e.target.value })} />
+              </Field>
+            ) : (
+              <Field label="Every (minutes)">
+                <input type="number" min={1} value={form.everyMinutes ?? 60} onChange={(e) => setForm({ ...form, everyMinutes: Number(e.target.value) })} />
+              </Field>
+            )}
+            <Field label="Keep the newest" hint="After each backup, this VM's older backups in the target pool beyond the newest N are deleted.">
+              <input type="number" min={1} max={1000} value={form.keepLast} onChange={(e) => setForm({ ...form, keepLast: Number(e.target.value) })} />
+            </Field>
+          </div>
+          <Target node={form.targetNode} pool={form.pool} setNode={(n) => setForm((f) => f && { ...f, targetNode: n })} setPool={(p) => setForm((f) => f && { ...f, pool: p })} />
+          <label className="check" style={{ marginBottom: 8 }}>
+            <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
+            Enabled
+          </label>
+          <ErrorBox error={act.error} />
+          <div className="actions">
+            <button className="primary" disabled={act.busy || !form.pool} onClick={save}>
+              Save schedule
+            </button>
+            <button onClick={() => setForm(undefined)}>Cancel</button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 const taskDone = (e: { type: string; task?: Task }) => e.type === "task" && e.task?.status !== "running";
 
 /** The Backups tab of a VM. */
@@ -327,6 +431,7 @@ export default function BackupsTab({ d }: { d: VMDetail; base: string }) {
       {!list.data && !list.error && <div className="empty">Looking for backups on all nodes…</div>}
       {list.data && list.data.length === 0 && <div className="empty">No backups of this VM yet.</div>}
       {list.data && list.data.length > 0 && <BackupTable list={list.data} reload={list.reload} />}
+      <SchedulePanel d={d} />
       {making && <BackupNow d={d} onClose={() => setMaking(false)} onDone={list.reload} />}
     </>
   );

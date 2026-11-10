@@ -18,7 +18,7 @@ import (
 
 type Alert struct {
 	ID       string `json:"id"`
-	Kind     string `json:"kind"`     // node-down | pool-usage | host-memory | failed-job | vm-state | tls-expiry
+	Kind     string `json:"kind"`     // node-down | pool-usage | host-memory | failed-job | vm-state | tls-expiry | scheduler-conflict
 	Severity string `json:"severity"` // warning | critical
 	Title    string `json:"title"`
 	Message  string `json:"message"`
@@ -87,8 +87,9 @@ type alertInput struct {
 	Pools      []alertPool
 	Mem        []alertMem
 	VMs        []alertVM
-	Jobs       []store.Task // tasks of the scheduler in the window
-	CertExpiry time.Time    // zero when the UI does not use a certificate of its own
+	Jobs       []store.Task    // tasks of the scheduler in the window
+	Conflicts  []schedConflict // nodes where another controller takes scheduled snapshots
+	CertExpiry time.Time       // zero when the UI does not use a certificate of its own
 }
 
 type alertTracker struct {
@@ -157,6 +158,12 @@ func (t *alertTracker) step(in alertInput, now time.Time) (raised, cleared, all 
 		add(Alert{ID: fmt.Sprintf("vm:%d:%s", v.Node, v.UUID), Kind: "vm-state", Severity: "critical", Node: v.Node,
 			Title: v.Name + " " + v.Why, Link: fmt.Sprintf("/vm/%d/%s", v.Node, v.UUID),
 			Message: fmt.Sprintf("VM %s on %s is %s.", v.Name, v.NodeName, v.Why)})
+	}
+	for _, c := range in.Conflicts {
+		add(Alert{ID: "sched-conflict:" + strconv.FormatInt(c.Node, 10), Kind: "scheduler-conflict", Severity: "warning", Node: c.Node,
+			Title: "Another controller is running schedules on node " + c.NodeName, Link: "/nodes",
+			Message: fmt.Sprintf("Scheduled snapshots of %s on %s were recently taken by controller %s, not by this one. Both controllers run every schedule on these nodes; start one of them with -no-scheduler.",
+				strings.Join(c.VMs, ", "), c.NodeName, c.Other)})
 	}
 	// A job is in trouble when its newest run failed; a later success clears it.
 	latest := map[string]store.Task{}

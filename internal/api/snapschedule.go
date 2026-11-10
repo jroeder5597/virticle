@@ -27,6 +27,9 @@ const (
 var schedOnce sync.Once
 
 func (s *Server) startSnapshotScheduler() {
+	if s.NoScheduler {
+		return
+	}
 	schedOnce.Do(func() { go s.runSnapshotScheduler(context.Background()) })
 }
 
@@ -52,6 +55,8 @@ func schedRequest() *http.Request {
 }
 
 func (s *Server) scheduleTick(failed map[string]time.Time) {
+	conflicts := map[int64]*schedConflict{}
+	scanned := map[int64]bool{}
 	for _, n := range s.Nodes.Status() {
 		h, err := s.Nodes.Host(n.ID)
 		if err != nil {
@@ -61,37 +66,99 @@ func (s *Server) scheduleTick(failed map[string]time.Time) {
 		if err != nil {
 			continue
 		}
+		scanned[n.ID] = true
 		for _, dom := range doms {
 			meta, err := domainMeta(h, dom)
 			if err != nil || meta == "" {
 				continue
 			}
-			sch, err := snapsched.Parse(meta)
-			if err != nil || sch == nil || !sch.Enabled {
-				continue // an unparsable schedule is reported by the GET endpoint
-			}
 			key := h.Name + "/" + dom.Name
-			s.runSchedule(h, dom, *sch, key, failed)
+			// An unparsable schedule is reported by the GET endpoint.
+			if sch, err := snapsched.Parse(meta); err == nil && sch != nil && sch.Enabled {
+				if other := s.runSchedule(h, dom, *sch, key, failed); other != "" {
+					c := conflicts[n.ID]
+					if c == nil {
+						name := n.Hostname
+						if name == "" {
+							name = h.Name
+						}
+						c = &schedConflict{Node: n.ID, NodeName: name, Other: other}
+						conflicts[n.ID] = c
+					}
+					c.VMs = append(c.VMs, dom.Name)
+				}
+			}
+			if bs, err := parseBackupSchedule(meta); err == nil && bs != nil && bs.Enabled {
+				s.runBackupSchedule(n.ID, h, dom, *bs, "bk:"+key)
+			}
 		}
+	}
+	s.setConflicts(conflicts, scanned)
+}
+
+// schedConflict records that another controller schedules snapshots on a node.
+type schedConflict struct {
+	Node     int64
+	NodeName string
+	Other    string // the other controller's instance id
+	VMs      []string
+}
+
+// setConflicts replaces the recorded conflicts of the nodes this pass could
+// read; those of unreachable nodes are kept.
+func (s *Server) setConflicts(found map[int64]*schedConflict, scanned map[int64]bool) {
+	s.condMu.Lock()
+	defer s.condMu.Unlock()
+	if s.conflicts == nil {
+		s.conflicts = map[int64]schedConflict{}
+	}
+	for id := range scanned {
+		delete(s.conflicts, id)
+	}
+	for id, c := range found {
+		s.conflicts[id] = *c
 	}
 }
 
-func (s *Server) runSchedule(h *hostconn.Host, dom libvirt.Domain, sch snapsched.Schedule, key string, failed map[string]time.Time) {
+func (s *Server) currentConflicts() []schedConflict {
+	s.condMu.Lock()
+	defer s.condMu.Unlock()
+	out := make([]schedConflict, 0, len(s.conflicts))
+	for _, c := range s.conflicts {
+		out = append(out, c)
+	}
+	return out
+}
+
+// runSchedule takes and prunes the scheduled snapshots of one VM. It returns
+// the instance id of another controller when that one took a scheduled
+// snapshot of this VM recently.
+func (s *Server) runSchedule(h *hostconn.Host, dom libvirt.Domain, sch snapsched.Schedule, key string, failed map[string]time.Time) (other string) {
 	st, _, _, _, _, err := h.DomainGetInfo(dom)
 	if err != nil || stateName(st) == "shutoff" {
-		return // nothing changes on a stopped VM, so nothing is taken
+		return "" // nothing changes on a stopped VM, so nothing is taken
 	}
 	list, err := snapshotList(h, dom)
 	if err != nil {
-		return
+		return ""
 	}
 	snaps := toSnaps(list)
 	now := time.Now()
+	other = snapsched.Foreign(snaps, sch.Prefix, s.InstanceID, now.Add(-sch.ForeignWindow()))
 	r := schedRequest()
 	if sch.Due(now, snapsched.Newest(snaps, sch.Prefix)) && now.Sub(failed[key]) >= schedRetry {
+		// Read the list again right before creating: another controller may
+		// have taken the snapshot since the first look.
+		if list, err = snapshotList(h, dom); err != nil {
+			return other
+		}
+		snaps = toSnaps(list)
+		if !sch.Due(time.Now(), snapsched.Newest(snaps, sch.Prefix)) {
+			return other
+		}
 		name := snapsched.Name(sch.Prefix, now)
 		_, err := s.createSnapshot(r, h, dom, snapshotRequest{
-			Name: name, Description: snapsched.Marker, Memory: sch.Memory, Quiesce: sch.Quiesce,
+			Name: name, Description: snapsched.Stamp(s.InstanceID), Memory: sch.Memory, Quiesce: sch.Quiesce,
 		})
 		if err != nil {
 			// createSnapshot only records a task once validation passed;
@@ -102,11 +169,11 @@ func (s *Server) runSchedule(h *hostconn.Host, dom libvirt.Domain, sch snapsched
 			}
 			failed[key] = now
 			log.Printf("scheduled snapshot of %s on %s failed: %v", dom.Name, h.Name, err)
-			return
+			return other
 		}
 		delete(failed, key)
 		if list, err = snapshotList(h, dom); err != nil {
-			return
+			return other
 		}
 		snaps = toSnaps(list)
 	}
@@ -121,9 +188,10 @@ func (s *Server) runSchedule(h *hostconn.Host, dom libvirt.Domain, sch snapsched
 		})
 		if err != nil {
 			log.Printf("pruning snapshot %s of %s on %s failed: %v", name, dom.Name, h.Name, err)
-			return // retry on the next tick instead of hammering a failing delete
+			return other // retry on the next tick instead of hammering a failing delete
 		}
 	}
+	return other
 }
 
 func (s *Server) recordFailure(r *http.Request, kind, target, node string, cause error) {

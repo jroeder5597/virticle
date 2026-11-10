@@ -94,10 +94,68 @@ type Snap struct {
 	Created     time.Time
 }
 
-// Ours reports whether sn was made by the scheduler for this prefix.
+// stampPrefix starts the suffix that names the controller that took a
+// scheduled snapshot: "Scheduled snapshot (virt-proj) [controller 1a2b3c4d]".
+// Snapshots from before the suffix existed carry the bare Marker.
+const stampPrefix = Marker + " [controller "
+
+// Stamp is the description for a scheduled snapshot taken by the controller
+// with the given instance id (empty: the bare Marker).
+func Stamp(id string) string {
+	if id == "" {
+		return Marker
+	}
+	return stampPrefix + id + "]"
+}
+
+// Controller returns the instance id in a scheduled snapshot's description,
+// or "" for a bare Marker or anything that is not a scheduler description.
+func Controller(desc string) string {
+	if rest, ok := strings.CutPrefix(desc, stampPrefix); ok {
+		if id, ok := strings.CutSuffix(rest, "]"); ok && id != "" && !strings.ContainsAny(id, "[] ") {
+			return id
+		}
+	}
+	return ""
+}
+
+func isMarker(desc string) bool { return desc == Marker || Controller(desc) != "" }
+
+// Foreign returns the instance id of a controller other than self that took
+// a scheduled snapshot of this prefix at or after since; "" if there is none.
+// Snapshots without a stamp are not attributed to anyone.
+func Foreign(snaps []Snap, prefix, self string, since time.Time) string {
+	var id string
+	var newest time.Time
+	for _, sn := range snaps {
+		if !Ours(sn, prefix) || sn.Created.Before(since) {
+			continue
+		}
+		if c := Controller(sn.Description); c != "" && c != self && sn.Created.After(newest) {
+			id, newest = c, sn.Created
+		}
+	}
+	return id
+}
+
+// ForeignWindow is how long a snapshot by another controller counts as
+// recent for a schedule: three intervals, at least ten minutes.
+func (s Schedule) ForeignWindow() time.Duration {
+	if s.Mode == "daily" {
+		return 26 * time.Hour
+	}
+	d := 3 * time.Duration(s.EveryMinutes) * time.Minute
+	if d < 10*time.Minute {
+		d = 10 * time.Minute
+	}
+	return d
+}
+
+// Ours reports whether sn was made by the scheduler for this prefix, by any
+// controller (old bare-marker descriptions included).
 func Ours(sn Snap, prefix string) bool {
 	re := regexp.MustCompile("^" + regexp.QuoteMeta(prefix) + "-" + stampRE + "$")
-	return sn.Description == Marker && re.MatchString(sn.Name)
+	return isMarker(sn.Description) && re.MatchString(sn.Name)
 }
 
 // Newest returns the creation time of the newest scheduled snapshot, or zero.
