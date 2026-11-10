@@ -3,6 +3,7 @@ import { bytes, del, get, NodeInfo, NodeStatus, post } from "../api";
 import { useLive } from "../live";
 import { useRole } from "../auth";
 import { ErrorBox, Field, Modal, StateBadge, useAction } from "../ui";
+import { HostLoad, useHostSeries } from "../charts";
 
 export default function Nodes() {
   const nodes = useLive(() => get<{ nodes: NodeStatus[]; publicKey: string }>("/nodes"), "nodes");
@@ -56,6 +57,7 @@ export default function Nodes() {
 
 function NodeRow({ n, onRemove, canRemove }: { n: NodeStatus; onRemove: () => void; canRemove: boolean }) {
   const [info, setInfo] = useState<NodeInfo | undefined>();
+  const series = useHostSeries(n.id, n.state === "online");
   useEffect(() => {
     setInfo(undefined);
     if (n.state === "online") get<NodeInfo>(`/nodes/${n.id}`).then(setInfo, () => {});
@@ -71,8 +73,14 @@ function NodeRow({ n, onRemove, canRemove }: { n: NodeStatus; onRemove: () => vo
         {n.user}@{n.addr}
         {n.jump ? ` via ${n.jump}` : ""}
       </td>
-      <td>{info ? `${info.cpus} × ${info.cpuModel}` : ""}</td>
-      <td>{info ? `${bytes(info.freeKiB * 1024)} free of ${bytes(info.memoryKiB * 1024)}` : ""}</td>
+      <td>
+        {info ? `${info.cpus} × ${info.cpuModel}` : ""}
+        <HostLoad points={series} kind="cpu" />
+      </td>
+      <td>
+        {info ? `${bytes(info.memoryKiB * 1024)} total` : ""}
+        <HostLoad points={series} kind="mem" />
+      </td>
       <td>{info?.libvirtVersion}</td>
       <td className="actions">
         {canRemove && (

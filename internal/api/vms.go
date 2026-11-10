@@ -6,6 +6,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/digitalocean/go-libvirt"
 
@@ -292,18 +293,22 @@ func (s *Server) vmDetail(w http.ResponseWriter, r *http.Request) {
 
 	ips := map[string][]string{}
 	if sum.State == "running" {
-		src := libvirt.DomainInterfaceAddressesSrcLease
+		fromAgent := false
 		if d.Agent == "connected" {
-			src = libvirt.DomainInterfaceAddressesSrcAgent
+			if m, err := agentIPs(h, dom); err == nil {
+				ips, fromAgent = m, true
+			}
 		}
-		if ifs, err := h.DomainInterfaceAddresses(dom, uint32(src), 0); err == nil {
-			for _, i := range ifs {
-				if len(i.Hwaddr) == 0 {
-					continue
-				}
-				for _, a := range i.Addrs {
-					if !strings.HasPrefix(a.Addr, "fe80:") && a.Addr != "127.0.0.1" && a.Addr != "::1" {
-						ips[strings.ToLower(i.Hwaddr[0])] = append(ips[strings.ToLower(i.Hwaddr[0])], a.Addr)
+		if !fromAgent { // no agent, or it did not answer in time
+			if ifs, err := h.DomainInterfaceAddresses(dom, uint32(libvirt.DomainInterfaceAddressesSrcLease), 0); err == nil {
+				for _, i := range ifs {
+					if len(i.Hwaddr) == 0 {
+						continue
+					}
+					for _, a := range i.Addrs {
+						if !strings.HasPrefix(a.Addr, "fe80:") && a.Addr != "127.0.0.1" && a.Addr != "::1" {
+							ips[strings.ToLower(i.Hwaddr[0])] = append(ips[strings.ToLower(i.Hwaddr[0])], a.Addr)
+						}
 					}
 				}
 			}
@@ -371,9 +376,30 @@ func (s *Server) vmAction(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Action string `json:"action"`
+		// TimeoutSec and Force turn "shutdown" into shut down, wait up to
+		// TimeoutSec, then (with Force) power off.
+		TimeoutSec int  `json:"timeoutSec"`
+		Force      bool `json:"force"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		fail(w, err)
+		return
+	}
+	if req.TimeoutSec < 0 || req.TimeoutSec > maxShutdownTimeoutSec {
+		fail(w, badRequest("timeoutSec must be between 1 and 3600"))
+		return
+	}
+	if req.TimeoutSec > 0 && req.Action == "shutdown" {
+		var res shutdownOutcome
+		err := s.task(r, "shutdown", dom.Name, h.Name, func(progress func(float64)) (err error) {
+			res, err = shutdownWithTimeout(h, dom, time.Duration(req.TimeoutSec)*time.Second, req.Force, progress)
+			return err
+		})
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "method": res.Method, "forced": res.Forced})
 		return
 	}
 	if req.Action == "start" {

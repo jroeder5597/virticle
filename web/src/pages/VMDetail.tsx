@@ -10,6 +10,8 @@ import MigrateDialog from "./Migrate";
 import SnapshotsTab from "./Snapshots";
 import { CloneButton, TemplateActions } from "./Clone";
 import { TagEditor } from "./Tags";
+import { VMCharts } from "../charts";
+import { GuestCard, ShutdownMenu, useAgentHelp, VirtioWin } from "./Guest";
 
 export default function VMDetailPage() {
   const { node: nodeParam, uuid = "" } = useParams();
@@ -36,6 +38,7 @@ export default function VMDetailPage() {
     );
   }
   const run = (action: string) => act.run(() => post(`${base}/action`, { action }));
+  const runBody = (body: object) => act.run(() => post(`${base}/action`, body));
   const off = d.state === "shutoff";
   const tabs = [
     ["overview", "Overview"],
@@ -68,9 +71,7 @@ export default function VMDetailPage() {
           )}
           {d.state === "running" && (
             <>
-              <button disabled={act.busy} onClick={() => run("shutdown")}>
-                Shut down
-              </button>
+              <ShutdownMenu d={d} busy={act.busy} run={runBody} />
               <button disabled={act.busy} onClick={() => run("reboot")}>
                 Reboot
               </button>
@@ -121,6 +122,12 @@ function Overview({ d, base }: { d: VMDetail; base: string }) {
   const act = useAction();
   return (
     <div className="cards">
+      {d.state === "running" && (
+        <section className="card" style={{ gridColumn: "1 / -1" }}>
+          <h3>Live usage</h3>
+          <VMCharts base={base} />
+        </section>
+      )}
       <section className="card">
         <h3>Summary</h3>
         <dl>
@@ -159,6 +166,7 @@ function Overview({ d, base }: { d: VMDetail; base: string }) {
         <ErrorBox error={act.error} />
       </section>
 
+      <GuestCard d={d} base={base} />
       <AgentCard d={d} base={base} />
 
       <section className="card">
@@ -224,6 +232,7 @@ function AgentCard({ d, base }: { d: VMDetail; base: string }) {
   const act = useAction();
   const [restart, setRestart] = useState(false);
   const [copied, setCopied] = useState("");
+  const help = useAgentHelp(base, d.agent !== "connected");
   const copy = (cmd: string) => navigator.clipboard?.writeText(cmd).then(() => setCopied(cmd));
   const addChannel = () =>
     act.run(async () => {
@@ -248,6 +257,7 @@ function AgentCard({ d, base }: { d: VMDetail; base: string }) {
           </button>
         </>
       )}
+      {d.agent !== "connected" && help?.os === "windows" && <VirtioWin d={d} base={base} help={help} />}
       {restart && <p className="note">The channel was saved but could not be hot-plugged. It will appear after the VM is shut down and started again.</p>}
       {d.agent === "disconnected" && (
         <>
@@ -255,7 +265,7 @@ function AgentCard({ d, base }: { d: VMDetail; base: string }) {
             The channel is in place but nothing answers inside the guest{d.state !== "running" ? " (the VM is not running)" : ""}. Install and start the agent in the guest:
           </p>
           <div className="install">
-            {agentInstall.map(([os, cmd]) => (
+            {agentInstall.filter(([os]) => !help?.os || (help.os === "windows") === (os === "Windows")).map(([os, cmd]) => (
               <div key={os}>
                 <strong>{os}</strong>
                 <code>{cmd}</code>

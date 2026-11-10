@@ -44,6 +44,7 @@ func (s *Server) Handler() http.Handler {
 		s.routes = append(s.routes, route{pattern: pattern})
 		mux.HandleFunc(pattern, s.requireAuth(pattern, h))
 	}
+	s.startStatsSampler()
 
 	pub("GET /api/status", s.status)
 	pub("POST /api/setup", s.setup)
@@ -67,6 +68,11 @@ func (s *Server) Handler() http.Handler {
 	auth("POST /api/nodes", s.addNode)
 	auth("DELETE /api/nodes/{node}", s.deleteNode)
 	auth("GET /api/nodes/{node}", s.nodeInfo)
+	auth("GET /api/stats", s.allStats)
+	auth("GET /api/nodes/{node}/stats", s.nodeStats)
+	auth("GET /api/nodes/{node}/vms/{uuid}/stats", s.vmStats)
+	auth("GET /api/nodes/{node}/vms/{uuid}/guest", s.vmGuest)
+	auth("GET /api/nodes/{node}/vms/{uuid}/agent-help", s.vmAgentHelp)
 
 	auth("GET /api/vms", s.listVMs)
 	auth("POST /api/nodes/{node}/vms", s.createVM)

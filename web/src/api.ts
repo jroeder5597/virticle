@@ -216,3 +216,23 @@ export interface AuditEntry {
   path: string;
   status: number;
 }
+export interface GuestInfo {
+  available: boolean;
+  error?: string;
+  os?: { id?: string; name?: string; prettyName?: string; version?: string; kernel?: string; machine?: string };
+  hostname?: string;
+  timezone?: string;
+  filesystems: { mountpoint: string; type?: string; device?: string; usedBytes: number; totalBytes: number }[];
+}
+export interface AgentHelp {
+  os?: "windows" | "linux";
+  osId?: string;
+  source?: "libosinfo" | "guess";
+  virtioWin?: { pool: string; volume: string };
+  attached?: string;
+  cdrom?: string;
+  cdromInUse?: string;
+  downloadPools: string[];
+  downloadUrl: string;
+  downloadName: string;
+}
