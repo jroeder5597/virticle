@@ -156,3 +156,7 @@ footer { display: flex; justify-content: flex-end; align-items: center; gap: 8px
   .cards { grid-template-columns: 1fr; }
   table { display: block; overflow-x: auto; }
 }
+
+.cloudinit { margin: 10px 0; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+.cloudinit summary { cursor: pointer; font-weight: 600; }
+.cloudinit .hint { margin: 6px 0 10px; opacity: 0.75; font-size: 13px; }

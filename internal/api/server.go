@@ -65,6 +65,7 @@ func (s *Server) Handler() http.Handler {
 	auth("POST /api/nodes/{node}/pools/{pool}/action", s.poolAction)
 	auth("GET /api/nodes/{node}/pools/{pool}/volumes", s.listVolumes)
 	auth("POST /api/nodes/{node}/pools/{pool}/volumes", s.createVolume)
+	auth("POST /api/nodes/{node}/pools/{pool}/volumes/download", s.downloadVolume)
 	auth("PUT /api/nodes/{node}/pools/{pool}/volumes/{vol}", s.uploadVolume)
 	auth("POST /api/nodes/{node}/pools/{pool}/volumes/{vol}/action", s.volumeAction)
 	auth("DELETE /api/nodes/{node}/pools/{pool}/volumes/{vol}", s.deleteVolume)

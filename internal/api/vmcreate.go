@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
+	"virt-proj/internal/cloudinit"
 	"virt-proj/internal/cluster"
 )
 
@@ -25,7 +27,24 @@ type createVMRequest struct {
 	ISO     string `json:"iso"`
 	Network string `json:"network"`
 	Start   bool   `json:"start"`
+	// CloudInit, when set, attaches a NoCloud seed as a read-only SATA CD-ROM
+	// (volume "<name>-seed.iso" in Pool).
+	CloudInit *cloudInitRequest `json:"cloudInit"`
+
+	seedPath string // set while creating, once the seed volume exists
 }
+
+type cloudInitRequest struct {
+	Hostname    string   `json:"hostname"`
+	User        string   `json:"user"`
+	Password    string   `json:"password"`
+	SSHKeys     []string `json:"sshKeys"`
+	Packages    []string `json:"packages"`
+	RawUserData string   `json:"rawUserData"`
+}
+
+// seedVolumeName is also how vmDelete recognises the seed of a VM.
+func seedVolumeName(vm string) string { return vm + "-seed.iso" }
 
 var vmNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$`)
 
@@ -44,6 +63,9 @@ func (q createVMRequest) domainXML(diskPath string) string {
 	fmt.Fprintf(&b, "    <disk type='file' device='disk'>\n      <driver name='qemu' type='qcow2' discard='unmap'/>\n      <source file='%s'/>\n      <target dev='vda' bus='virtio'/>\n    </disk>\n", esc(diskPath))
 	if q.ISO != "" {
 		fmt.Fprintf(&b, "    <disk type='file' device='cdrom'>\n      <driver name='qemu' type='raw'/>\n      <source file='%s'/>\n      <target dev='sda' bus='sata'/>\n      <readonly/>\n    </disk>\n", esc(q.ISO))
+	}
+	if q.seedPath != "" {
+		fmt.Fprintf(&b, "    <disk type='file' device='cdrom'>\n      <driver name='qemu' type='raw'/>\n      <source file='%s'/>\n      <target dev='sdb' bus='sata'/>\n      <readonly/>\n    </disk>\n", esc(q.seedPath))
 	}
 	if q.Network != "" {
 		fmt.Fprintf(&b, "    <interface type='network'>\n      <source network='%s'/>\n      <model type='virtio'/>\n    </interface>\n", esc(q.Network))
@@ -86,6 +108,16 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 	case q.BaseVolume == "" && q.DiskGiB < 1:
 		err = badRequest("disk size is required")
 	}
+	var seed []byte
+	if ci := q.CloudInit; ci != nil {
+		cfg := cloudinit.Config{Hostname: ci.Hostname, User: ci.User, Password: ci.Password, SSHKeys: ci.SSHKeys, Packages: ci.Packages, RawUserData: ci.RawUserData}
+		if cfg.Hostname == "" && cfg.RawUserData == "" {
+			cfg.Hostname = q.Name
+		}
+		if seed, err = cfg.Seed(); err != nil {
+			err = badRequest("cloud-init: " + err.Error())
+		}
+	}
 	if err != nil {
 		fail(w, err)
 		return
@@ -126,14 +158,37 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 		} else if vol, err = h.StorageVolCreateXML(pool, volumeXML(volName, "qcow2", size), 0); err != nil {
 			return err
 		}
+		var seedVol *libvirt.StorageVol
+		rollback := func() {
+			h.StorageVolDelete(vol, 0)
+			if seedVol != nil {
+				h.StorageVolDelete(*seedVol, 0)
+			}
+		}
 		path, err := h.StorageVolGetPath(vol)
 		if err != nil {
-			h.StorageVolDelete(vol, 0)
+			rollback()
 			return err
+		}
+		if seed != nil {
+			sv, err := h.StorageVolCreateXML(pool, volumeXML(seedVolumeName(q.Name), "raw", uint64(len(seed))), 0)
+			if err != nil {
+				rollback()
+				return fmt.Errorf("cloud-init seed: %w", err)
+			}
+			seedVol = &sv
+			if err := h.StorageVolUpload(sv, bytes.NewReader(seed), 0, 0, 0); err != nil {
+				rollback()
+				return fmt.Errorf("cloud-init seed upload: %w", err)
+			}
+			if q.seedPath, err = h.StorageVolGetPath(sv); err != nil {
+				rollback()
+				return err
+			}
 		}
 		dom, err := h.DomainDefineXMLFlags(q.domainXML(path), libvirt.DomainDefineValidate)
 		if err != nil {
-			h.StorageVolDelete(vol, 0)
+			rollback()
 			return err
 		}
 		uuid = cluster.FormatUUID(dom.UUID)
