@@ -5,7 +5,6 @@
 package hostconn
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"net"
@@ -95,10 +94,10 @@ func (h *Host) Run(cmd string) (string, error) {
 		return "", err
 	}
 	defer s.Close()
-	var out bytes.Buffer
-	s.Stdout, s.Stderr = &out, &out
-	err = s.Run(cmd)
-	return strings.TrimSpace(out.String()), err
+	// CombinedOutput serialises the two copy goroutines; sharing a plain
+	// bytes.Buffer between Stdout and Stderr is a data race.
+	out, err := s.CombinedOutput(cmd)
+	return strings.TrimSpace(string(out)), err
 }
 
 type sockDialer struct{ c *ssh.Client }

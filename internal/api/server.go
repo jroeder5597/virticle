@@ -60,6 +60,10 @@ func (s *Server) Handler() http.Handler {
 	auth("GET /api/nodes/{node}/vms/{uuid}/vnc", s.vmVNC)
 	auth("GET /api/nodes/{node}/vms/{uuid}/serial", s.vmSerial)
 
+	auth("POST /api/nodes/{node}/vms/{uuid}/migrate/check", s.migrateCheck)
+	auth("POST /api/nodes/{node}/vms/{uuid}/migrate", s.migrate)
+	auth("POST /api/nodes/{node}/vms/{uuid}/migrate/cancel", s.migrateCancel)
+
 	auth("GET /api/nodes/{node}/pools", s.listPools)
 	auth("POST /api/nodes/{node}/pools", s.createPool)
 	auth("POST /api/nodes/{node}/pools/{pool}/action", s.poolAction)
