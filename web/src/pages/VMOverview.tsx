@@ -43,6 +43,24 @@ function useLeaseName(d: VMDetail) {
   return name;
 }
 
+/** The host devices passed through to the VM, by name. Asked for only when the VM has any. */
+function usePassthrough(d: VMDetail) {
+  const [list, setList] = useState<{ key: string; label: string }[]>();
+  useEffect(() => {
+    setList(undefined);
+    if (!d.passthroughDevices) return;
+    let live = true;
+    get<{ attached: { key: string; label: string }[] }>(`/nodes/${d.node}/vms/${d.uuid}/hostdevs`).then(
+      (l) => live && l.attached.length > 0 && setList(l.attached),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [d.node, d.uuid, d.passthroughDevices]);
+  return list;
+}
+
 type Stats = { points: VMPoint[] } | undefined;
 
 /** Power state, guest OS, agent, DNS name and IP addresses. Rows keep their place whether or not values have arrived. */
@@ -56,6 +74,8 @@ function SummaryCard({ d, g }: { d: VMDetail; g?: GuestInfo }) {
   const os = agent && g?.available ? g.os?.prettyName || g.os?.name || g.os?.id : undefined;
   const agentText = d.agent === "connected" ? "connected" : d.agent === "absent" ? "not set up" : "not responding";
   const ips = d.nics.flatMap((n) => n.ips);
+  const uefi = d.firmware === "uefi";
+  const passed = usePassthrough(d);
   return (
     <section className="card" id="summary" aria-label="Summary">
       <h3>Summary</h3>
@@ -77,6 +97,18 @@ function SummaryCard({ d, g }: { d: VMDetail; g?: GuestInfo }) {
         <dt>IP Addresses</dt>
         <dd className="mono" title={!running ? "The VM is not running" : d.ipSource === "agent" ? "From the guest agent" : d.ipSource === "lease" ? "From the network's DHCP leases" : undefined}>
           {ips.length ? ips.join("  ") : running ? "No address" : dash}
+        </dd>
+        <dt>Secure Boot</dt>
+        <dd title={uefi ? undefined : "Needs UEFI firmware"}>{d.fw?.secureBoot ? <span className="badge s-ok">Enabled</span> : uefi ? "Disabled" : dash}</dd>
+        <dt>vTPM</dt>
+        <dd>{d.tpm ? <span className="badge s-ok">{d.fw?.tpmVersion ? `TPM ${d.fw.tpmVersion}` : "Enabled"}</span> : "None"}</dd>
+        <dt>Passthrough</dt>
+        <dd className="ov-pass">
+          {d.passthroughDevices === 0
+            ? "None"
+            : passed
+              ? passed.map((p) => <div key={p.key}>{p.label}</div>)
+              : `${d.passthroughDevices} device${d.passthroughDevices > 1 ? "s" : ""}`}
         </dd>
       </dl>
     </section>
@@ -198,10 +230,7 @@ export default function Overview({ d, base, onChanged }: { d: VMDetail; base: st
             <dt>Memory</dt>
             <dd>{bytes(d.memoryKiB * 1024)}</dd>
             <dt>Firmware</dt>
-            <dd>
-              {d.firmware.toUpperCase()}
-              {d.tpm ? " + TPM" : ""}
-            </dd>
+            <dd>{d.firmware.toUpperCase()}</dd>
             <dt>Machine</dt>
             <dd>
               {d.machine} ({d.arch})
@@ -217,7 +246,7 @@ export default function Overview({ d, base, onChanged }: { d: VMDetail; base: st
           </dl>
           {d.passthroughDevices > 0 && (
             <p className="note">
-              {d.passthroughDevices} host device{d.passthroughDevices > 1 ? "s" : ""} passed through: no live migration.
+              Passthrough devices: no live migration.
             </p>
           )}
           <ErrorBox error={act.error} />
