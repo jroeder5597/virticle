@@ -330,3 +330,6 @@ textarea[readonly] { opacity: 0.8; }
 /* Motion: nothing animates beyond the 120 ms colour transitions above. */
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
+
+/* Row actions as icons (labelled for screen readers and on hover), so wide tables keep fitting. */
+.iconbtn { padding: 5px 8px; display: inline-flex; align-items: center; vertical-align: middle; }

@@ -4,7 +4,20 @@ import { env, P } from "./env";
 
 type Worker = { api: Api; n1: number; n2: number };
 
-export const test = base.extend<{ unused: void }, Worker>({
+export const test = base.extend<{ unused: void; noBrowserDialogs: void }, Worker>({
+  // The app must never open a browser pop-up (alert, confirm, prompt): every question is an in-app dialog.
+  noBrowserDialogs: [
+    async ({ page }, use) => {
+      const seen: string[] = [];
+      page.on("dialog", (d) => {
+        seen.push(`${d.type()}: ${d.message().slice(0, 80)}`);
+        d.dismiss().catch(() => {});
+      });
+      await use();
+      expect(seen, "browser pop-ups opened by the app").toEqual([]);
+    },
+    { auto: true },
+  ],
   api: [
     async ({}, use) => {
       const api = await Api.login();

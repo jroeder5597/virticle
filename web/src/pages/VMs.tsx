@@ -1,3 +1,4 @@
+import { Play, Power, SquareTerminal } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { bytes, get, Network, NodeStatus, Pool, post, VM, Volume } from "../api";
@@ -130,21 +131,21 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
                 <UsageCells p={vm.state === "running" ? live?.vms[`${vm.node}/${vm.uuid}`] : undefined} />
                 <td className="actions">
                   {vm.state === "shutoff" && vm.template ? null : vm.state === "shutoff" ? (
-                    <button disabled={act.busy} onClick={() => action(vm, "start")}>
-                      {powerLabel.start}
+                    <button className="iconbtn" disabled={act.busy} onClick={() => action(vm, "start")} aria-label={powerLabel.start} title={powerLabel.start}>
+                      <Play size={15} aria-hidden="true" />
                     </button>
                   ) : (
                     <>
                       {vm.state === "paused" && (
-                        <button disabled={act.busy} onClick={() => action(vm, "resume")}>
-                          Resume
+                        <button className="iconbtn" disabled={act.busy} onClick={() => action(vm, "resume")} aria-label="Resume" title="Resume">
+                          <Play size={15} aria-hidden="true" />
                         </button>
                       )}
-                      <button disabled={act.busy} onClick={() => action(vm, "shutdown")}>
-                        {powerLabel.shutdown}
+                      <button className="iconbtn" disabled={act.busy} onClick={() => action(vm, "shutdown")} aria-label={powerLabel.shutdown} title={powerLabel.shutdown}>
+                        <Power size={15} aria-hidden="true" />
                       </button>
-                      <Link className="button" to={`/vm/${vm.node}/${vm.uuid}?tab=console`}>
-                        Console
+                      <Link className="button iconbtn" to={`/vm/${vm.node}/${vm.uuid}?tab=console`} aria-label="Console" title="Console">
+                        <SquareTerminal size={15} aria-hidden="true" />
                       </Link>
                     </>
                   )}

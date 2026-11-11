@@ -129,7 +129,18 @@ function DeleteVM(props: { d: VMDetail; base: string; onClose: () => void; onDel
   const { d } = props;
   const [disks, setDisks] = useState(false);
   const act = useAction();
+  const [leftDisks, setLeftDisks] = useState<string[]>();
   const owned = d.disks.filter((k) => k.device === "disk" && !k.readOnly && k.source);
+  if (leftDisks)
+    return (
+      <Modal title={`${d.name} was deleted`} onClose={props.onDeleted}>
+        <p>These disks are not in any storage pool and were left in place:</p>
+        <p className="mono wrap">{leftDisks.join(", ")}</p>
+        <footer>
+          <button autoFocus onClick={props.onDeleted}>Close</button>
+        </footer>
+      </Modal>
+    );
   return (
     <Modal title={`Delete ${d.name}?`} onClose={props.onClose}>
       <p>The VM's definition{d.snapshots.length ? `, its ${d.snapshots.length} snapshot record(s)` : ""} and firmware settings are removed. This cannot be undone.</p>
@@ -148,8 +159,8 @@ function DeleteVM(props: { d: VMDetail; base: string; onClose: () => void; onDel
               left = (await del<{ leftDisks: string[] }>(`${props.base}${disks ? "?disks=1" : ""}`)).leftDisks;
             });
             if (!ok) return;
-            if (left.length) window.alert(`The VM was deleted, but these disks are not in any storage pool and were left in place:\n\n${left.join("\n")}`);
-            props.onDeleted();
+            if (left.length) setLeftDisks(left);
+            else props.onDeleted();
           }}>
           Delete VM
         </button>
