@@ -113,6 +113,7 @@ func TestForwardedHeadersIgnoredFromUntrustedPeer(t *testing.T) {
 
 func TestForwardedHeadersFromTrustedPeer(t *testing.T) {
 	e := newEnv(t)
+	e.srv.webv.Store(&webView{hsts: true})
 	e.srv.TrustedProxies = mustProxies(t, "192.0.2.0/24")
 	e.user("alice", "admin")
 	fwd := []opt{header("X-Forwarded-For", "9.9.9.9, 203.0.113.5"), header("X-Forwarded-Proto", "https"), header("X-Forwarded-Host", "vm.example.org")}

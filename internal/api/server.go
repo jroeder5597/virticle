@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/digitalocean/go-libvirt"
@@ -21,6 +22,7 @@ import (
 	"virticle/internal/cluster"
 	"virticle/internal/hostconn"
 	"virticle/internal/store"
+	"virticle/internal/webaccess"
 )
 
 const cookieName = "virt_session"
@@ -37,6 +39,9 @@ type Server struct {
 	// TrustedProxies are the peers whose X-Forwarded-* headers are believed
 	// (see proxy.go); empty means the headers are never read.
 	TrustedProxies []netip.Prefix
+	// Web runs the listeners and the TLS mode (see webaccess.go); nil in tests.
+	Web  *webaccess.Manager
+	webv atomic.Pointer[webView]
 	// NoScheduler turns off the background snapshot and backup schedulers.
 	NoScheduler bool
 	// InstanceID identifies this controller in the descriptions of the
@@ -94,6 +99,7 @@ func (s *Server) Handler() http.Handler {
 	auth("GET /api/me/prefs", s.getPrefs)
 	auth("PUT /api/me/prefs", s.putPrefs)
 	auth("GET /api/audit", s.auditLog)
+	s.webRoutes(auth)
 
 	auth("GET /api/nodes", s.listNodes)
 	auth("GET /api/cluster/cpu-baseline", s.cpuBaseline)

@@ -1,0 +1,14 @@
+.wa { display: grid; gap: 14px; min-width: 0; max-width: 960px; }
+.wa > * { min-width: 0; }
+.wa .card h2 { margin-top: 0; }
+.wa-fp { display: grid; gap: 2px; margin: 6px 0; font-size: 13px; }
+.wa-fp code { overflow-wrap: anywhere; }
+.wa-check { display: block; margin: 0 0 12px; }
+.wa-check small { display: block; margin-top: 2px; }
+.wa-pending { border-color: var(--accent); }
+.wa-snippet .head { margin-bottom: 4px; }
+.wa-snippet .head h2 { margin: 0; }
+.wa-snippet p { overflow-wrap: anywhere; }
+.wa-pre { margin: 0; padding: 10px 12px; max-height: 340px; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); font-family: var(--mono); font-size: 12.5px; line-height: 1.45; white-space: pre; tab-size: 4; }
+.wa-copied { min-height: 1.4em; margin: 6px 0 0; font-size: 13px; }
+@media (max-width: 640px) { .wa .grid2 { grid-template-columns: 1fr; } }

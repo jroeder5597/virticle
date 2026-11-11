@@ -1,0 +1,23 @@
+# Controller: trusted proxy address 127.0.0.1, public URL https://vm.example.org
+defaults
+    mode http
+    timeout connect 5s
+    timeout client  1h
+    timeout server  1h
+    # WebSockets (/api/events, VNC and serial consoles) after the upgrade
+    timeout tunnel  1h
+
+frontend virticle_http
+    bind :80
+    http-request redirect scheme https code 308 unless { ssl_fc }
+
+frontend virticle_https
+    bind :443 ssl crt /etc/haproxy/certs/vm.example.org.pem alpn h2,http/1.1 ssl-min-ver TLSv1.2
+    http-request set-header X-Forwarded-Proto https
+    http-request set-header X-Forwarded-Host  %[req.hdr(Host)]
+    http-request set-header X-Forwarded-For   %[src]
+    default_backend virticle
+
+backend virticle
+    # Request bodies are streamed, not buffered, so large uploads pass.
+    server virticle 127.0.0.1:8080 check

@@ -1,0 +1,31 @@
+# Controller: trusted proxy address 127.0.0.1, public URL https://vm.example.org
+<VirtualHost *:80>
+    ServerName vm.example.org
+    Redirect permanent / https://vm.example.org/
+</VirtualHost>
+
+<VirtualHost *:443>
+    ServerName vm.example.org
+
+    SSLEngine on
+    SSLCertificateFile    /etc/ssl/vm.example.org/fullchain.pem
+    SSLCertificateKeyFile /etc/ssl/vm.example.org/privkey.pem
+    SSLProtocol           -all +TLSv1.2 +TLSv1.3
+
+    ProxyPreserveHost On
+    # X-Forwarded-For is added by mod_proxy itself.
+    RequestHeader set X-Forwarded-Proto "https"
+    RequestHeader set X-Forwarded-Host  "vm.example.org"
+
+    # Uploads are large (no limit is the default); consoles stay open.
+    LimitRequestBody 0
+    ProxyTimeout 3600
+
+    # WebSockets: /api/events, VNC and serial consoles under /api/nodes/
+    RewriteEngine On
+    RewriteCond %{HTTP:Upgrade} =websocket [NC]
+    RewriteRule ^/(.*)$ ws://127.0.0.1:8080/$1 [P,L]
+
+    ProxyPass        / http://127.0.0.1:8080/ flushpackets=on
+    ProxyPassReverse / http://127.0.0.1:8080/
+</VirtualHost>

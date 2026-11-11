@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	validity  = 2 * 365 * 24 * time.Hour
+	validity  = 825 * 24 * time.Hour
 	renewLeft = 30 * 24 * time.Hour
 )
 
@@ -45,6 +45,13 @@ func Ensure(dir string, n Names, now time.Time) (certFile, keyFile string, gener
 		return "", "", false, err
 	}
 	return certFile, keyFile, true, nil
+}
+
+// Generate creates a new certificate and key in dir whether or not one exists
+// (the "renew" button), and returns their paths.
+func Generate(dir string, n Names, now time.Time) (certFile, keyFile string, err error) {
+	certFile, keyFile = filepath.Join(dir, "tls-cert.pem"), filepath.Join(dir, "tls-key.pem")
+	return certFile, keyFile, generate(certFile, keyFile, n, now)
 }
 
 func covers(c tls.Certificate, n Names, now time.Time) bool {
