@@ -125,6 +125,7 @@ func (s *Server) Handler() http.Handler {
 	auth("GET /api/nodes/{node}/vms/{uuid}/vnc", s.vmVNC)
 	auth("GET /api/nodes/{node}/vms/{uuid}/serial", s.vmSerial)
 	auth("GET /api/nodes/{node}/vms/{uuid}/screenshot", s.vmScreenshot)
+	auth("POST /api/nodes/{node}/vms/{uuid}/sendkey", s.sendKeys)
 
 	auth("PUT /api/nodes/{node}/vms/{uuid}/cpu", s.hwCPU)
 	auth("PUT /api/nodes/{node}/vms/{uuid}/memory", s.hwMemory)
