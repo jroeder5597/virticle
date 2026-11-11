@@ -35,6 +35,7 @@ type Target struct {
 	KeyFile  string // private key path; optional if Password is set
 	Password string // optional
 	Jump     *Target
+	Timeout  time.Duration // per SSH connection attempt; default 15s
 }
 
 // Host is a live connection to one libvirt host.
@@ -43,6 +44,7 @@ type Host struct {
 	*libvirt.Libvirt
 	ssh  *ssh.Client
 	jump *ssh.Client
+	priv Privilege // see privilege.go
 }
 
 // Dial opens the SSH connection and the libvirt session on top of it.
@@ -226,6 +228,13 @@ func (d sockDialer) Dial() (net.Conn, error) {
 	return nil, errors.Join(errs...)
 }
 
+func dialTimeout(t Target) time.Duration {
+	if t.Timeout > 0 {
+		return t.Timeout
+	}
+	return 15 * time.Second
+}
+
 func withPort(addr string) string {
 	if _, _, err := net.SplitHostPort(addr); err != nil {
 		return net.JoinHostPort(addr, "22")
@@ -253,7 +262,7 @@ func dialSSH(t Target, knownHosts string, via *ssh.Client) (*ssh.Client, error) 
 		User:            t.User,
 		Auth:            auth,
 		HostKeyCallback: tofu(knownHosts),
-		Timeout:         15 * time.Second,
+		Timeout:         dialTimeout(t),
 	}
 	addr := withPort(t.Addr)
 	// Ask the server for the key type we already have on record; otherwise it

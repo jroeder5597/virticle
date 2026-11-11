@@ -68,7 +68,7 @@ func (s *Server) exportBackup(w http.ResponseWriter, r *http.Request) {
 	out := &streamOut{w: w, filename: m.VM + ".vmexport.tar", total: total}
 	err = s.task(r, "backup export", b.name, b.h.Name, func(progress func(float64)) error {
 		out.progress = progress
-		return b.h.Pipe(r.Context(), cmd, nil, out)
+		return b.h.PipeRoot(r.Context(), cmd, nil, out)
 	})
 	if err != nil {
 		if !out.started {
@@ -130,7 +130,7 @@ func (s *Server) importBackup(w http.ResponseWriter, r *http.Request) {
 			pw.CloseWithError(err)
 			vetCh <- vetResult{names, err}
 		}()
-		perr := h.Pipe(r.Context(), "umask 077; cd "+shq(wd.path)+" && tar --no-same-owner --no-same-permissions -xf -", pr, nil)
+		perr := h.PipeRoot(r.Context(), "umask 077; cd "+shq(wd.path)+" && tar --no-same-owner --no-same-permissions -xf -", pr, nil)
 		pr.CloseWithError(errors.New("extraction ended"))
 		v := <-vetCh
 		var br badRequest
@@ -189,7 +189,7 @@ func finishImport(h *hostconn.Host, pd poolDir, wd *workDir, got []string, res *
 	}
 	name := backupDirName(m.VM, m.createdTime())
 	final := pd.Dir + "/" + name
-	if out, err := h.Run("test ! -e " + shq(final) + " && chmod 700 -- " + shq(wd.path) + " && mv -T -- " + shq(wd.path) + " " + shq(final)); err != nil {
+	if out, err := h.RunRoot("test ! -e " + shq(final) + " && chmod 700 -- " + shq(wd.path) + " && mv -T -- " + shq(wd.path) + " " + shq(final)); err != nil {
 		return badRequest("a backup named " + name + " already exists in this pool, or it cannot be moved into place: " + impFirstLine(out))
 	}
 	*res = map[string]any{"pool": pd.Name, "dir": name, "vm": m.VM, "uuid": m.UUID}

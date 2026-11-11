@@ -764,10 +764,15 @@ func (s *Server) hwCDROMAdd(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
+		// A Windows install needs three at once: installer, virtio-win drivers, answer file.
+		cds := 0
 		for _, k := range cfg.Devices("disk") {
 			if k.Attrs["device"] == "cdrom" {
-				return badRequest("the VM already has a CD-ROM drive: " + k.Child("target").Attrs["dev"])
+				cds++
 			}
+		}
+		if cds >= 4 {
+			return badRequest("the VM already has 4 CD-ROM drives")
 		}
 		target := domxml.NextTarget("sd", usedTargets(live, cfg))
 		applied, err := c.attach(fmt.Sprintf("<disk type='file' device='cdrom'><driver name='qemu' type='raw'/><target dev='%s' bus='sata'/><readonly/></disk>", target))

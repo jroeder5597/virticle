@@ -159,6 +159,7 @@ func TestEvaluate(t *testing.T) {
 		{"file missing", func(s *Snapshot) { s.Files[FileClientKey] = FileState{} }, now, StateMismatch, "missing"},
 		{"CA replaced on node", func(s *Snapshot) { s.CACert = newTestCA(t).CertPEM }, now, StateMismatch, "not this controller's CA"},
 		{"name changed", func(s *Snapshot) { s.Hostname = "renamed" }, now, StateMismatch, "renamed"},
+		{"address added to the node", func(s *Snapshot) { s.Want = []string{"vspike-n1", "10.8.8.8"} }, now, StateMismatch, "does not cover 10.8.8.8"},
 		{"expiring", func(*Snapshot) {}, t0.Add(NodeValidity - 10*24*time.Hour), StateExpiring, "expires in"},
 		{"expired", func(*Snapshot) {}, t0.Add(NodeValidity + 24*time.Hour), StateExpired, "expired"},
 	}

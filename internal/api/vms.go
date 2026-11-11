@@ -418,6 +418,10 @@ func (s *Server) vmAction(w http.ResponseWriter, r *http.Request) {
 			fail(w, badRequest(dom.Name+" is a template and is never started. Clone it, or convert it back to a VM first"))
 			return
 		}
+		if err := startGuard(h, dom); err != nil {
+			fail(w, err)
+			return
+		}
 	}
 	actions := map[string]func() error{
 		"start":    func() error { return h.DomainCreate(dom) },

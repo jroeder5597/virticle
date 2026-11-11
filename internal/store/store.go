@@ -34,6 +34,15 @@ type Node struct {
 	Jump string `json:"jump,omitempty"`
 	// Maintenance keeps the node out of the targets the planners pick.
 	Maintenance bool `json:"maintenance"`
+	// Privilege is how the login user obtains root: root | sudo | none. Empty
+	// means not detected yet; the cluster detects it on the first connection.
+	Privilege string `json:"privilege"`
+	// MigrationAddr is what other nodes use to reach this one (IP or name).
+	// Empty means the address the controller uses.
+	MigrationAddr string `json:"migrationAddress"`
+	// HostUUID is the libvirt host UUID last seen on this node, used to tell
+	// whether an edited address still leads to the same machine.
+	HostUUID string `json:"hostUuid,omitempty"`
 }
 
 type Task struct {
@@ -82,7 +91,7 @@ func (s *Store) Close() error { return s.db.Close() }
 // --- nodes ---
 
 func (s *Store) Nodes() ([]Node, error) {
-	rows, err := s.db.Query(`SELECT id, addr, user, jump, maintenance FROM nodes ORDER BY id`)
+	rows, err := s.db.Query(`SELECT id, addr, user, jump, maintenance, privilege, migration_addr, host_uuid FROM nodes ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +99,7 @@ func (s *Store) Nodes() ([]Node, error) {
 	var out []Node
 	for rows.Next() {
 		var n Node
-		if err := rows.Scan(&n.ID, &n.Addr, &n.User, &n.Jump, &n.Maintenance); err != nil {
+		if err := rows.Scan(&n.ID, &n.Addr, &n.User, &n.Jump, &n.Maintenance, &n.Privilege, &n.MigrationAddr, &n.HostUUID); err != nil {
 			return nil, err
 		}
 		out = append(out, n)
@@ -99,7 +108,8 @@ func (s *Store) Nodes() ([]Node, error) {
 }
 
 func (s *Store) AddNode(n Node) (Node, error) {
-	res, err := s.db.Exec(`INSERT INTO nodes(addr, user, jump, created) VALUES(?,?,?,?)`, n.Addr, n.User, n.Jump, time.Now().Unix())
+	res, err := s.db.Exec(`INSERT INTO nodes(addr, user, jump, privilege, migration_addr, host_uuid, created) VALUES(?,?,?,?,?,?,?)`,
+		n.Addr, n.User, n.Jump, n.Privilege, n.MigrationAddr, n.HostUUID, time.Now().Unix())
 	if err != nil {
 		return n, err
 	}
