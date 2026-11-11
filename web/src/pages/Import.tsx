@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { bytes, get, Network, post, Task, Volume } from "../api";
+import Select from "../Select";
 import { ErrorBox, Field, Modal, useAction } from "../ui";
 
 interface Inspect {
@@ -92,21 +93,16 @@ export default function ImportDialog({ node, pool, volumes, initial, onClose, on
         </div>
         {mode === "volume" ? (
           <Field label="Source volume">
-            <select
+            <Select
+              label="Source volume"
               value={volume}
-              onChange={(e) => {
-                setVolume(e.target.value);
+              onChange={(v) => {
+                setVolume(v);
                 setInfo(undefined);
               }}
-              required
-            >
-              <option value="">Choose a volume</option>
-              {volumes.map((v) => (
-                <option key={v.name} value={v.name}>
-                  {v.name} ({bytes(v.capacity)})
-                </option>
-              ))}
-            </select>
+              placeholder="Choose a volume"
+              options={volumes.map((v) => ({ value: v.name, label: `${v.name} (${bytes(v.capacity)})` }))}
+            />
           </Field>
         ) : (
           <Field label="File path" hint="Must be inside the directory of a running pool of this node.">
@@ -214,14 +210,7 @@ function Finished({ node, done, onClose }: { node: number; done: Imported; onClo
           <input value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Field label="Network">
-          <select value={network} onChange={(e) => setNetwork(e.target.value)}>
-            <option value="">None</option>
-            {networks.map((n) => (
-              <option key={n.name} value={n.name}>
-                {n.name}
-              </option>
-            ))}
-          </select>
+          <Select label="Network" value={network} onChange={setNetwork} options={[{ value: "", label: "None" }, ...networks.map((n) => ({ value: n.name, label: n.name }))]} />
         </Field>
         <Field label="vCPUs">
           <input type="number" min={1} value={vcpus} onChange={(e) => setVcpus(Number(e.target.value))} />

@@ -1,3 +1,4 @@
+import Select from "../Select";
 import { Network, NodeStatus, Pool, ServerEvent } from "../api";
 
 /** Pool and network as returned by GET /api/pools and /api/networks: tagged with the node they live on. */
@@ -39,15 +40,13 @@ export function NodeFilter(props: {
 }) {
   return (
     <div className="filters">
-      <select aria-label="Filter by node" value={props.value} onChange={(e) => props.onChange(Number(e.target.value))}>
-        <option value={0}>All nodes</option>
-        {props.nodes.map((n) => (
-          <option key={n.id} value={n.id}>
-            {nodeLabel(n)}
-            {n.state !== "online" ? ` (${n.state})` : ""}
-          </option>
-        ))}
-      </select>
+      <Select
+        auto
+        label="Filter by node"
+        value={String(props.value)}
+        onChange={(v) => props.onChange(Number(v))}
+        options={[{ value: "0", label: "All nodes" }, ...props.nodes.map((n) => ({ value: String(n.id), label: nodeLabel(n) + (n.state !== "online" ? ` (${n.state})` : ""), dot: "n-" + n.state }))]}
+      />
       <input type="search" placeholder={props.placeholder} aria-label={props.placeholder} value={props.text} onChange={(e) => props.onText(e.target.value)} />
       {(props.text || props.value !== 0) && (
         <span className="muted">

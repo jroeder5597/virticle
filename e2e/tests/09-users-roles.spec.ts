@@ -3,7 +3,7 @@ import { Browser, expect as pwExpect, request } from "@playwright/test";
 import { cleanVMs, createCirros, expect, openVM, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
 import { Api } from "../lib/api";
-import { autoDialogs, dialog, field, row, confirm } from "../lib/ui";
+import { autoDialogs, dialog, field, row, confirm, pick } from "../lib/ui";
 
 const OP = `${P}op`;
 const VIEWER = `${P}viewer`;
@@ -47,11 +47,11 @@ test.describe.serial("users and roles", () => {
       await expect(field(dlg, "Username")).toBeFocused();
       await field(dlg, "Username").fill(name);
       await field(dlg, "Password").fill(PASS);
-      await field(dlg, "Role").selectOption(role);
+      await pick(dlg, "Role", role);
       await dlg.getByRole("button", { name: "Add" }).click();
       await expect(dlg).toBeHidden();
       await expect(row(page, name)).toBeVisible();
-      await expect(page.getByLabel(`Role of ${name}`)).toHaveValue(role);
+      await expect(page.getByLabel(`Role of ${name}`)).toContainText(role);
     }
     const users = await api.get("/users");
     expect(users.find((u: any) => u.username === OP).role).toBe("operator");
@@ -95,7 +95,7 @@ test.describe.serial("users and roles", () => {
     await page.locator(".tabs").getByRole("button", { name: "Hardware" }).click();
     await expect(page.getByRole("heading", { name: "Boot order" })).toBeVisible();
     const hw = page.locator("fieldset.plain");
-    const inputs = hw.locator("input, select, textarea");
+    const inputs = hw.locator("input, textarea, button.cb-btn");
     const n = await inputs.count();
     for (let i = 0; i < n; i++) await expect(inputs.nth(i)).toBeDisabled();
     for (const b of ["Edit", "Add disk", "Add interface", "Save boot order"]) await expect(hw.getByRole("button", { name: b }).first()).toBeHidden();
@@ -168,7 +168,7 @@ test.describe.serial("users and roles", () => {
     const tokName = `${P}tok`;
     const card = page.locator(".card", { hasText: "API tokens" });
     await field(card, "Name").fill(tokName);
-    await field(card, "Role").selectOption("viewer");
+    await pick(card, "Role", "viewer");
     await card.getByRole("button", { name: "Create token" }).click();
     const secret = (await card.locator(".secretbox code").innerText()).trim();
     expect(secret.length).toBeGreaterThan(20);
@@ -202,7 +202,7 @@ test.describe.serial("users and roles", () => {
     await expect(page.locator("tbody tr").filter({ hasText: "POST /api/account/password" }).first()).toBeVisible();
     await page.getByLabel("Filter by user").fill(VIEWER);
     await page.getByLabel("Filter by path").fill("");
-    await page.getByLabel("Filter by method").selectOption("POST");
+    await pick(page, "Filter by method", "POST");
     await page.getByRole("button", { name: "Search" }).click();
     // the viewer's refused request is recorded with its 403
     await expect(page.locator("tbody tr").filter({ hasText: "/action" }).filter({ hasText: "403" }).first()).toBeVisible();

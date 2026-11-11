@@ -1,7 +1,7 @@
 // Creating a VM through the form, its consoles, and every lifecycle button.
 import { cleanVMs, expect, openVM, stateOf, tab, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
-import { autoDialogs, dialog, expectBadge, field, row, vmAction, confirm, cancelConfirm } from "../lib/ui";
+import { autoDialogs, dialog, expectBadge, field, row, vmAction, confirm, cancelConfirm, pick } from "../lib/ui";
 
 const NAME = `${P}life1`;
 
@@ -18,17 +18,13 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
     // initial focus is in the name field
     await expect(field(dlg, "Name")).toBeFocused();
     await field(dlg, "Name").fill(NAME);
-    await field(dlg, "Node").selectOption({ label: env.node1 });
+    await pick(dlg, field(dlg, "Node"), env.node1);
     await field(dlg, "vCPUs").fill("1");
     await field(dlg, "Memory (MiB)").fill("128");
     await dlg.getByRole("button", { name: "Disk image" }).click();
-    await field(dlg, "Base image").selectOption({ label: new RegExp(env.cirros.replace(".", "\\.")) as any }).catch(async () => {
-      // selectOption does not take a regex: pick the option by its text
-      const opt = dlg.locator("option", { hasText: env.cirros });
-      await field(dlg, "Base image").selectOption(await opt.first().getAttribute("value"));
-    });
+    await pick(dlg, "Base image", new RegExp("^" + env.cirros.replace(/\./g, "\\.")));
     await field(dlg, "Disk size (GiB)").fill("1");
-    await expect(field(dlg, "Firmware")).toHaveValue("bios");
+    await expect(field(dlg, "Firmware")).toContainText("BIOS");
     await dlg.getByRole("button", { name: "Create" }).click();
     await expect(dlg).toBeHidden();
     await expect(page).toHaveURL(/\/vm\/\d+\/[0-9a-f-]+\?tab=console/);

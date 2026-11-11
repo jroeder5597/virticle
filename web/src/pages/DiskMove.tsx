@@ -3,6 +3,7 @@ import { Check, TriangleAlert, X } from "lucide-react";
 import { bytes, get, Pool, post, Task, VMDetail } from "../api";
 import { useEvents } from "../live";
 import { ErrorBox, Field, Modal, useAction, useConfirm } from "../ui";
+import Select from "../Select";
 import PoolSelect from "../PoolSelect";
 
 interface CheckT {
@@ -120,18 +121,18 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
               <input value={name} onChange={(e) => setName(e.target.value.trim())} aria-label="Volume name" />
             </Field>
             <Field label="Format">
-              <select
+              <Select
+                label="Format"
                 value={format}
-                onChange={(e) => {
-                  const f = e.target.value;
+                onChange={(f) => {
                   setName((n) => (n === oldName || n.endsWith(".qcow2") || n.endsWith(".raw") ? n.replace(/\.(qcow2|raw)$/, "") + "." + f : n));
                   setFormat(f);
                 }}
-                aria-label="Format"
-              >
-                <option value="qcow2">qcow2</option>
-                <option value="raw">raw</option>
-              </select>
+                options={[
+                  { value: "qcow2", label: "qcow2" },
+                  { value: "raw", label: "raw" },
+                ]}
+              />
             </Field>
           </div>
           {plan?.backing && (

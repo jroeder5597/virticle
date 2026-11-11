@@ -1,4 +1,4 @@
-// A themed pool picker: a native <select> cannot draw a capacity bar. Shows, for the selected pool and for
+// A themed pool picker: a native select cannot draw a capacity bar. Shows, for the selected pool and for
 // every option, the name, percent used, "X used of Y" and a thin bar coloured by level (ok, warning, critical).
 // Colour is never the only signal: the percentage is always written out.
 import { useEffect, useState } from "react";

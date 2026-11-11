@@ -12,10 +12,6 @@
 .console.vc.page { border: none; border-radius: 0; height: 100dvh; display: flex; flex-direction: column; }
 .console.vc.page .screen, .console.vc:fullscreen .screen { flex: 1 1 0; height: auto; min-height: 0; border-radius: 0; }
 .console.vc:fullscreen { display: flex; flex-direction: column; height: 100dvh; border: none; border-radius: 0; background: var(--panel); }
-.menu > .menu-list.right { right: 0; left: auto; }
-.console.vc .menu > .menu-list { left: 0; right: auto; max-width: calc(100vw - 16px); }
-.console.vc .menu > .menu-list.right { left: auto; right: 0; }
-.menu > .menu-list button[aria-checked="true"] { font-weight: 600; }
 .paste-text { width: 100%; height: 160px; font-family: var(--mono, monospace); resize: vertical; }
 @media (max-width: 700px) {
   .console.vc .toolbar .lbl { display: none; }
@@ -32,5 +28,4 @@
 .cc-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; min-height: 30px; }
 .cc-foot .spacer { flex: 1; }
 .cc-inline { max-width: 100%; }
-.menu > .menu-list.cc-menu { min-width: 200px; }
 .pref-opt { display: flex; align-items: center; gap: 8px; padding: 3px 0; }

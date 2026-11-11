@@ -19,7 +19,7 @@ test.describe.serial("backups", () => {
     await expect(page.getByText("No backups of this VM yet.")).toBeVisible();
     await page.getByRole("button", { name: "Back up now" }).first().click();
     const dlg = dialog(page, `Back up ${NAME}`);
-    await expect(dlg.getByLabel("Target pool")).toHaveValue("default");
+    await expect(dlg.getByLabel("Target pool")).toContainText("default");
     await dlg.getByRole("button", { name: "Back up now" }).click();
     await expect(dlg.getByRole("progressbar")).toBeVisible();
     await expect(dlg).toContainText("ok", { timeout: 200_000 });

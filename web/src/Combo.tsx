@@ -13,6 +13,8 @@ export interface ComboItem {
   group?: string;
   /** Text the search box matches besides the key. */
   search?: string;
+  /** What search and type-ahead match first (default: the key). */
+  text?: string;
 }
 
 export interface ComboProps<T extends ComboItem> {
@@ -51,7 +53,8 @@ export default function Combo<T extends ComboItem>(p: ComboProps<T>) {
   const typed = useRef({ s: "", t: 0 });
 
   const ql = q.trim().toLowerCase();
-  const shown = items.filter((i) => !ql || i.key.toLowerCase().includes(ql) || (i.search ?? "").toLowerCase().includes(ql));
+  const txt = (i: T) => (i.text ?? i.key).toLowerCase();
+  const shown = items.filter((i) => !ql || txt(i).includes(ql) || (i.search ?? "").toLowerCase().includes(ql));
   // Group order: first appearance; ungrouped items first.
   const groups: string[] = [];
   for (const i of shown) if (i.group && !groups.includes(i.group)) groups.push(i.group);
@@ -174,7 +177,7 @@ export default function Combo<T extends ComboItem>(p: ComboProps<T>) {
           const t = typed.current;
           t.s = now - t.t > 700 ? e.key.toLowerCase() : t.s + e.key.toLowerCase();
           t.t = now;
-          const it = selectable.find((x) => x.key.toLowerCase().startsWith(t.s));
+          const it = selectable.find((x) => txt(x).startsWith(t.s));
           if (it) setActive(it.key);
         }
     }

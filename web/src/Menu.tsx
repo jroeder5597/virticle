@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { LucideIcon } from "lucide-react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { Check, ChevronDown, ChevronRight } from "lucide-react";
 import "./menu.css";
 
 export type MenuEntry =
@@ -18,6 +18,8 @@ export type MenuEntry =
       items?: MenuEntry[];
       danger?: boolean;
       disabled?: boolean;
+      /** A choice among several: shows a check when true (role menuitemradio). */
+      checked?: boolean;
       /** Tooltip; on a disabled entry it says why. */
       title?: string;
     };
@@ -132,7 +134,8 @@ function Panel(props: { items: MenuEntry[]; onClose: () => void; onBack?: () => 
           >
             <button
               type="button"
-              role="menuitem"
+              role={it.checked === undefined ? "menuitem" : "menuitemradio"}
+              aria-checked={it.checked}
               data-i={i}
               tabIndex={-1}
               disabled={it.disabled}
@@ -149,6 +152,7 @@ function Panel(props: { items: MenuEntry[]; onClose: () => void; onBack?: () => 
                 it.run?.();
               }}
             >
+              {it.checked !== undefined && <span className="chk">{it.checked && <Check size={14} aria-hidden />}</span>}
               {Icon && <Icon size={14} aria-hidden />}
               <span className="lbl">{it.label}</span>
               {it.items && (inline && open ? <ChevronDown size={14} className="arr" aria-hidden /> : <ChevronRight size={14} className="arr" aria-hidden />)}
@@ -225,7 +229,7 @@ export function MenuPopup(props: { x: number; y: number; up?: number; alignRight
 }
 
 /** A button that opens a menu below it. */
-export function DropdownMenu(props: { label: ReactNode; items: MenuEntry[]; className?: string; disabled?: boolean }) {
+export function DropdownMenu(props: { label: ReactNode; items: MenuEntry[]; className?: string; disabled?: boolean; ariaLabel?: string; title?: string; chevron?: boolean }) {
   const [open, setOpen] = useState(false);
   const [at, setAt] = useState<{ x: number; y: number; up: number }>({ x: 0, y: 0, up: 0 });
   const btn = useRef<HTMLButtonElement>(null);
@@ -242,6 +246,8 @@ export function DropdownMenu(props: { label: ReactNode; items: MenuEntry[]; clas
         disabled={props.disabled}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label={props.ariaLabel}
+        title={props.title}
         onClick={() => {
           if (open) return close();
           const b = btn.current!.getBoundingClientRect();
@@ -256,7 +262,7 @@ export function DropdownMenu(props: { label: ReactNode; items: MenuEntry[]; clas
         }}
       >
         {props.label}
-        <ChevronDown size={14} aria-hidden />
+        {props.chevron !== false && <ChevronDown size={14} aria-hidden />}
       </button>
       {open && <MenuPopup {...at} alignRight items={props.items} onClose={close} ignore={btn.current} />}
     </>

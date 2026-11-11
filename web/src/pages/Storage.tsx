@@ -11,6 +11,7 @@ import ImageCatalogue from "./ImageCatalogue";
 import { AlertMarks, useAlerts } from "./Alerts";
 import ImportDialog from "./Import";
 import { NodeErr, NodeErrors, NodeFilter, nodeEvents, nodeLabel, NodePool, poolEvents } from "./dcShared";
+import Select from "../Select";
 import { ErrorBox, Field, Modal, NodePicker, PageTitle, StateBadge, UsageBar, useAction, useConfirm, usePrompt } from "../ui";
 
 /**
@@ -81,7 +82,7 @@ export default function Storage({ fixedNode, allNodes }: { fixedNode?: number; a
       <div className="head">
         {fixedNode === undefined ? <PageTitle>Storage</PageTitle> : <h2>Storage pools</h2>}
         <div className="actions">
-          {fixedNode === undefined && !allNodes && <NodePicker nodes={all} value={node} onChange={setNode} />}
+          {fixedNode === undefined && !allNodes && <NodePicker auto nodes={all} value={node} onChange={setNode} />}
           <button className="primary" disabled={!createNode} onClick={() => setCreating(true)}>
             New pool
           </button>
@@ -317,10 +318,15 @@ function CreateVolume({ base, pool, onClose }: { base: string; pool: Pool; onClo
           </Field>
           {fileBased && (
             <Field label="Format" hint="qcow2 supports snapshots and grows on demand.">
-              <select value={format} onChange={(e) => setFormat(e.target.value)}>
-                <option value="qcow2">qcow2</option>
-                <option value="raw">raw</option>
-              </select>
+              <Select
+                label="Format"
+                value={format}
+                onChange={setFormat}
+                options={[
+                  { value: "qcow2", label: "qcow2" },
+                  { value: "raw", label: "raw" },
+                ]}
+              />
             </Field>
           )}
         </div>
@@ -363,13 +369,7 @@ function CreatePool({ node: initialNode, nodes, onClose, onDone }: { node: numbe
           </Field>
         )}
         <Field label="Type">
-          <select value={type} onChange={(e) => setType(e.target.value)}>
-            {Object.entries(poolTypes).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
-          </select>
+          <Select label="Type" value={type} onChange={setType} options={Object.entries(poolTypes).map(([k, v]) => ({ value: k, label: v }))} />
         </Field>
         {type !== "xml" && (
           <Field label="Name">

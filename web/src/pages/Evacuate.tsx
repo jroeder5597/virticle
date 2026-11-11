@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { bytes, EvacPlan, EvacRun, get, NodeStatus, post } from "../api";
+import Select from "../Select";
 import { ErrorBox, Modal, useAction, useConfirm } from "../ui";
 
 /** Plan and run the evacuation of one node. */
@@ -80,11 +81,7 @@ export default function Evacuate({ node, nodes, onClose }: { node: NodeStatus; n
               </label>
               <label className="check">
                 Moves at the same time
-                <select value={concurrency} onChange={(e) => setConcurrency(Number(e.target.value))}>
-                  {[1, 2, 3].map((n) => (
-                    <option key={n}>{n}</option>
-                  ))}
-                </select>
+                <Select auto label="Moves at the same time" value={String(concurrency)} onChange={(v) => setConcurrency(Number(v))} options={[1, 2, 3].map((n) => ({ value: String(n), label: String(n) }))} />
               </label>
             </div>
           </div>

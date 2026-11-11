@@ -12,3 +12,19 @@
 .cb-gt { font-weight: 400; }
 .cb-empty { padding: 8px; color: var(--muted); max-width: 60ch; }
 .cb-foot { padding: 6px 8px 2px; border-top: 1px solid var(--line); margin-top: 4px; font-size: 13px; }
+/* Select (the themed dropdown): same box as a text input, so forms stay aligned */
+.cb.sel-field .cb-btn { background: var(--panel); padding: 7px 9px; min-height: 34px; white-space: normal; }
+.cb.sel-field .cb-btn:focus-visible { border-color: var(--accent); }
+.cb.sel-field .cb-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.cb.sel-field .cb-btn > svg { margin-left: auto; }
+.cb.sel-auto { display: inline-block; width: auto; max-width: 100%; }
+.cb.sel-auto .cb-btn { width: auto; min-width: 8em; }
+.sel-lab { display: flex; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.sel-lab .dot { flex: none; }
+.sel-lab.mono { font-family: var(--mono); }
+.sel-ph { color: var(--muted); }
+.cb-hint { display: block; color: var(--muted); font-size: 12px; }
+.cb-opt .sel-lab { flex-wrap: wrap; }
+.cb-pop.cb-narrow { padding: 4px; }
+.ci { position: relative; }
+.ci input { width: 100%; }

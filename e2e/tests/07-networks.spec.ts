@@ -1,7 +1,7 @@
 // Networks page: NAT network, DHCP reservations (add, edit, remove), stop/start, delete.
 import { expect, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
-import { autoDialogs, dialog, expectBadge, field, row, confirm } from "../lib/ui";
+import { autoDialogs, dialog, expectBadge, field, row, confirm, pick } from "../lib/ui";
 
 const NET = `${P}net`;
 const OCT = 100 + Math.floor(Math.random() * 100);
@@ -16,7 +16,7 @@ test.describe.serial("networks", () => {
 
   test("create a NAT network", async ({ page, api, n1 }) => {
     await page.goto("/networks");
-    await page.getByRole("combobox").first().selectOption({ label: env.node1 });
+    await pick(page, page.getByRole("combobox").first(), env.node1);
     await page.getByRole("button", { name: "New network" }).click();
     const dlg = dialog(page, "New virtual network");
     await expect(field(dlg, "Name")).toBeFocused();
@@ -37,7 +37,7 @@ test.describe.serial("networks", () => {
 
   test("an overlapping or invalid network is refused with a message", async ({ page }) => {
     await page.goto("/networks");
-    await page.getByRole("combobox").first().selectOption({ label: env.node1 });
+    await pick(page, page.getByRole("combobox").first(), env.node1);
     await page.getByRole("button", { name: "New network" }).click();
     const dlg = dialog(page, "New virtual network");
     await field(dlg, "Name").fill(`${NET}-dup`);
@@ -51,7 +51,7 @@ test.describe.serial("networks", () => {
   test("DHCP reservation: add, edit, remove", async ({ page, api, n1 }) => {
     autoDialogs(page);
     await page.goto("/networks");
-    await page.getByRole("combobox").first().selectOption({ label: env.node1 });
+    await pick(page, page.getByRole("combobox").first(), env.node1);
     await row(page, NET).click();
     const card = page.locator(".card", { hasText: "DHCP reservations" });
     const mac = "52:54:00:79:00:01";
@@ -89,7 +89,7 @@ test.describe.serial("networks", () => {
   test("stop, start, autostart", async ({ page, api, n1 }) => {
     autoDialogs(page);
     await page.goto("/networks");
-    await page.getByRole("combobox").first().selectOption({ label: env.node1 });
+    await pick(page, page.getByRole("combobox").first(), env.node1);
     const r = row(page, NET);
     await r.getByRole("button", { name: "Stop" }).click();
     await confirm(page, `Stop network ${NET}`);
@@ -108,7 +108,7 @@ test.describe.serial("networks", () => {
 
   test("delete the network", async ({ page, api, n1 }) => {
     await page.goto("/networks");
-    await page.getByRole("combobox").first().selectOption({ label: env.node1 });
+    await pick(page, page.getByRole("combobox").first(), env.node1);
     await row(page, NET).getByRole("button", { name: "Delete" }).click();
     await confirm(page, `Delete network ${NET}`);
     await expect(row(page, NET)).toHaveCount(0);

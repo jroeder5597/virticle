@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Minimize2, RefreshCw, Settings2 } from "lucide-react";
 import type { VMDetail } from "../api";
+import { DropdownMenu } from "../Menu";
 import { useRole } from "../auth";
 import { CLICK_LABELS, ClickMode, useClickMode } from "../consolePrefs";
 import { SerialConsole, VNCConsole } from "./Console";
@@ -115,44 +116,15 @@ function usePreview(node: number, uuid: string, active: boolean, repeat: boolean
 
 function ModeMenu() {
   const [mode, setMode] = useClickMode();
-  const [open, setOpen] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
-    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", key);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", key);
-    };
-  }, [open]);
   return (
-    <div className="menu" ref={box}>
-      <button className="ghost" aria-haspopup="menu" aria-expanded={open} aria-label="Console preview click behaviour" title="What a click on the preview does" onClick={() => setOpen(!open)}>
-        <Settings2 size={16} aria-hidden />
-      </button>
-      {open && (
-        <div className="menu-list cc-menu" role="menu">
-          <div className="muted" style={{ padding: "4px 10px" }}>Preview opens</div>
-          {(Object.keys(CLICK_LABELS) as ClickMode[]).map((m) => (
-            <button
-              key={m}
-              role="menuitemradio"
-              aria-checked={mode === m}
-              onClick={() => {
-                setMode(m);
-                setOpen(false);
-              }}
-            >
-              {mode === m ? "● " : "○ "}
-              {CLICK_LABELS[m]}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <DropdownMenu
+      chevron={false}
+      className="ghost"
+      ariaLabel="Console preview click behaviour"
+      title="What a click on the preview does"
+      label={<Settings2 size={16} aria-hidden />}
+      items={(Object.keys(CLICK_LABELS) as ClickMode[]).map((m) => ({ label: CLICK_LABELS[m], checked: mode === m, run: () => setMode(m) }))}
+    />
   );
 }
 

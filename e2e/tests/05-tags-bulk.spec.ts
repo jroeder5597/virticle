@@ -1,7 +1,7 @@
 // Tags on the detail page, list filter and search, then bulk select -> tag -> force off -> delete.
 import { cleanVMs, createCirros, expect, openVM, test } from "../lib/fixtures";
 import { P } from "../lib/env";
-import { autoDialogs, dialog, expectBadge, field, row, confirm, confirmDialog } from "../lib/ui";
+import { autoDialogs, dialog, expectBadge, field, row, confirm, confirmDialog, pick } from "../lib/ui";
 
 const A = `${P}bulk-a`;
 const B = `${P}bulk-b`;
@@ -32,11 +32,11 @@ test.describe.serial("tags and bulk actions", () => {
 
     await page.goto("/datacenter/vms");
     await expect(row(page, A).locator(".tag", { hasText: "blue team" })).toBeVisible();
-    await page.getByLabel("Filter by tag").selectOption("blue team");
+    await pick(page, "Filter by tag", "blue team");
     await expect(row(page, A)).toBeVisible();
     await expect(row(page, B)).toHaveCount(0);
     await expect(page.getByText(/1 of \d+ shown/)).toBeVisible();
-    await page.getByLabel("Filter by tag").selectOption("");
+    await pick(page, "Filter by tag", "All tags");
     await page.getByLabel("Search VMs").fill(`${P}bulk-b`);
     await expect(row(page, B)).toBeVisible();
     await expect(row(page, A)).toHaveCount(0);
@@ -46,8 +46,8 @@ test.describe.serial("tags and bulk actions", () => {
 
     // clicking a chip in the list filters by it
     await row(page, A).locator(".tag.pick").click();
-    await expect(page.getByLabel("Filter by tag")).toHaveValue("blue team");
-    await page.getByLabel("Filter by tag").selectOption("");
+    await expect(page.getByLabel("Filter by tag")).toContainText("blue team");
+    await pick(page, "Filter by tag", "All tags");
 
     await openVM(page, a);
     await page.locator(".tagedit .tag", { hasText: "blue team" }).hover();

@@ -4,7 +4,7 @@
 // <data>/images.json override (see the notes in internal/catalog/catalog.go); without it that test skips.
 import { expect, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
-import { dialog, field, row } from "../lib/ui";
+import { dialog, field, row, pick, pickPool } from "../lib/ui";
 
 const POOL = `${P}icpool`;
 const EMPTY = `${P}icempty`;
@@ -43,7 +43,7 @@ test.describe.serial("image catalogue", () => {
 
   test("download CirrOS from the dialog, then it is marked as present", async ({ page, api, n1 }) => {
     await page.goto("/storage");
-    await page.getByRole("combobox").first().selectOption({ label: env.node1 });
+    await pick(page, page.getByRole("combobox").first(), env.node1);
     await row(page, POOL).click();
     await page.getByRole("button", { name: "Image catalogue" }).click();
     const dlg = dialog(page, "Image catalogue");
@@ -66,8 +66,8 @@ test.describe.serial("image catalogue", () => {
     await item.getByRole("link", { name: "Create VM from this image" }).click();
     const nvm = dialog(page, "New virtual machine");
     await expect(nvm).toBeVisible();
-    await expect(field(nvm, "Base image")).toHaveValue(CIRROS_VOL);
-    await expect(field(nvm, "Storage pool")).toHaveValue(POOL);
+    await expect(field(nvm, "Base image")).toContainText(CIRROS_VOL);
+    await expect(field(nvm, "Storage pool")).toContainText(POOL);
     await page.keyboard.press("Escape");
   });
 
@@ -107,14 +107,14 @@ test.describe.serial("image catalogue", () => {
     await page.goto("/datacenter/vms");
     await page.getByRole("button", { name: "New VM" }).click();
     const dlg = dialog(page, "New virtual machine");
-    await field(dlg, "Node").selectOption({ label: env.node1 });
+    await pick(dlg, field(dlg, "Node"), env.node1);
     await dlg.getByRole("button", { name: "Disk image" }).click();
-    await field(dlg, "Storage pool").selectOption(EMPTY);
+    await pickPool(dlg, "Storage pool", EMPTY);
     const link = dlg.getByRole("link", { name: "Get a cloud image from the catalogue" });
     await expect(link).toBeVisible();
-    await field(dlg, "Storage pool").selectOption(POOL);
+    await pickPool(dlg, "Storage pool", POOL);
     await expect(link).toBeHidden();
-    await field(dlg, "Storage pool").selectOption(EMPTY);
+    await pickPool(dlg, "Storage pool", EMPTY);
     await link.click();
     await expect(page).toHaveURL(new RegExp(`/node/${n1}/storage`));
     await expect(dialog(page, "Image catalogue")).toBeVisible();

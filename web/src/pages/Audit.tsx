@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { AuditEntry, get } from "../api";
+import Select from "../Select";
 import { ErrorBox } from "../ui";
 
 const when = (unix: number) => new Date(unix * 1000).toLocaleString();
@@ -46,12 +47,7 @@ export default function Audit() {
       <p className="muted">Who asked for what: every change, console opening and sign-in. Request contents are never recorded. The Tasks page shows what happened on the nodes.</p>
       <form className="row" onSubmit={search}>
         <input placeholder="User" value={user} onChange={(e) => setUser(e.target.value)} aria-label="Filter by user" />
-        <select value={method} onChange={(e) => setMethod(e.target.value)} aria-label="Filter by method">
-          <option value="">Any method</option>
-          {["POST", "PUT", "DELETE", "GET"].map((m) => (
-            <option key={m}>{m}</option>
-          ))}
-        </select>
+        <Select auto label="Filter by method" value={method} onChange={setMethod} options={[{ value: "", label: "Any method" }, ...["POST", "PUT", "DELETE", "GET"].map((m) => ({ value: m, label: m }))]} />
         <input placeholder="Path contains" value={path} onChange={(e) => setPath(e.target.value)} aria-label="Filter by path" />
         <button className="primary">Search</button>
       </form>

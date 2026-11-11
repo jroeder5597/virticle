@@ -6,6 +6,7 @@ import { Page } from "@playwright/test";
 import { mkdirSync } from "fs";
 import { cleanVMs, createCirros, expect, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
+import { field, pick, row } from "../lib/ui";
 
 const NAME = `${P}vis1`;
 const OUT = "test-results/visual";
@@ -185,6 +186,9 @@ test.describe.serial("visual pass", () => {
         const issues = await lowContrast(page);
         for (const i of issues) problems.push(`${m.name}/${name}: low contrast: ${i}`);
         for (const e of await ellipses(page)) problems.push(`${m.name}/${name}: ellipsis in "${e}"`);
+        // every dropdown is a themed one: no browser-native select or datalist anywhere
+        const native = await page.locator("select, datalist").count();
+        if (native) problems.push(`${m.name}/${name}: ${native} native select/datalist element(s)`);
         const over = await sideways(page);
         if (over > 1 && !opts.wide) problems.push(`${m.name}/${name}: page scrolls sideways by ${over}px`);
         if (m.viewport.width >= 1000 && !opts.wide) for (const c of await clipped(page)) problems.push(`${m.name}/${name}: ${c}`);
@@ -204,6 +208,12 @@ test.describe.serial("visual pass", () => {
       await shot("new-vm-dialog", () => expect(page.getByRole("dialog")).toBeVisible());
       await page.getByRole("dialog").getByRole("button", { name: "Disk image" }).click();
       await shot("new-vm-cloudinit-profile", () => expect(page.getByRole("dialog").getByText("Profile", { exact: true })).toBeVisible());
+      // a themed Select open inside the dialog; Escape closes the list and leaves the dialog
+      await page.getByRole("dialog").getByRole("combobox", { name: "Network", exact: true }).click();
+      await shot("new-vm-network-select", () => expect(page.getByRole("listbox").getByRole("option").first()).toBeVisible(), { viewportOnly: true });
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("listbox")).toHaveCount(0);
+      await expect(page.getByRole("dialog")).toBeVisible();
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: /^Alerts/ }).click();
       await shot("alerts", () => expect(page.getByRole("dialog", { name: "Alerts" })).toBeVisible());
@@ -291,6 +301,13 @@ test.describe.serial("visual pass", () => {
       await page.goto("/datacenter/network");
       await page.getByRole("button", { name: new RegExp("^" + env.node1) }).click();
       await shot("datacenter-network-interfaces", () => expect(page.locator(".nicbox tbody tr").first()).toBeVisible({ timeout: 30_000 }));
+      // the DHCP reservation form: the MAC field is the themed editable combo with the VMs' MACs
+      await page.goto("/networks");
+      await pick(page, page.getByRole("combobox").first(), env.node1);
+      await row(page, "default").first().click();
+      await field(page.locator(".card", { hasText: "DHCP reservations" }), "MAC address").click();
+      await shot("network-dhcp-mac-suggestions", () => expect(page.getByRole("listbox").getByRole("option").first()).toBeVisible({ timeout: 30_000 }), { viewportOnly: true });
+      await page.keyboard.press("Escape");
       // the Edit connection dialog of the node page's Settings tab, and its Test connection result
       await page.goto(`/node/${vm.node}/settings`);
       await page.getByRole("button", { name: "Edit connection" }).click();

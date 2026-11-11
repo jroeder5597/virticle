@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { del, get, post, put, VMDetail } from "../api";
 import { useLive } from "../live";
+import Select from "../Select";
 import { ErrorBox, Field, HelpTip, Modal, useAction, useConfirm } from "../ui";
 import { buildSnapRows } from "../snapTree";
 import SnapTree from "./SnapTree";
@@ -116,11 +117,16 @@ export function TakeSnapshot(props: { d: VMDetail; base: string; onClose: () => 
           {memory && (
             <div className="field-help">
               <Field label="Snapshot type">
-                <select value={mode} onChange={(e) => setMode(e.target.value)}>
-                  <option value="">Automatic</option>
-                  <option value="internal">Internal</option>
-                  <option value="external">External</option>
-                </select>
+                <Select
+                  label="Snapshot type"
+                  value={mode}
+                  onChange={setMode}
+                  options={[
+                    { value: "", label: "Automatic" },
+                    { value: "internal", label: "Internal" },
+                    { value: "external", label: "External" },
+                  ]}
+                />
               </Field>
               <HelpTip label="About snapshot types">
                 <h4>Automatic</h4>
@@ -176,11 +182,16 @@ function Revert(props: { snap: Snap; base: string; onClose: () => void; onDone: 
         {snap.hasMemory ? " and the guest resumes from that moment" : ""}. Other snapshots are kept.
       </p>
       <Field label="Afterwards">
-        <select value={start} onChange={(e) => setStart(e.target.value)}>
-          <option value="">As it was when the snapshot was taken ({snap.state})</option>
-          <option value="running">Running</option>
-          <option value="paused">Paused</option>
-        </select>
+        <Select
+          label="Afterwards"
+          value={start}
+          onChange={setStart}
+          options={[
+            { value: "", label: `As it was when the snapshot was taken (${snap.state})` },
+            { value: "running", label: "Running" },
+            { value: "paused", label: "Paused" },
+          ]}
+        />
       </Field>
       <label className="check">
         <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
@@ -369,10 +380,15 @@ function SchedulePanel({ d, base }: { d: VMDetail; base: string }) {
         <>
           <div className="grid2">
             <Field label="When">
-              <select value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value as Schedule["mode"] })}>
-                <option value="daily">Daily at a fixed time (UTC)</option>
-                <option value="interval">At a fixed interval</option>
-              </select>
+              <Select
+                label="When"
+                value={form.mode}
+                onChange={(v) => setForm({ ...form, mode: v as Schedule["mode"] })}
+                options={[
+                  { value: "daily", label: "Daily at a fixed time (UTC)" },
+                  { value: "interval", label: "At a fixed interval" },
+                ]}
+              />
             </Field>
             {form.mode === "daily" ? (
               <Field label="Time (UTC)">

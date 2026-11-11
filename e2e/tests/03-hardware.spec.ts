@@ -1,7 +1,7 @@
 // Hardware tab: CPU/memory, disks, CD-ROM (with an ISO uploaded through the Storage page), NICs, boot order.
 import { cleanVMs, createCirros, expect, openVM, tab, test } from "../lib/fixtures";
 import { P } from "../lib/env";
-import { autoDialogs, dialog, expectBadge, field, row, vmAction } from "../lib/ui";
+import { autoDialogs, dialog, expectBadge, field, row, vmAction, pick } from "../lib/ui";
 
 const NAME = `${P}hw1`;
 const ISO = `${P}tiny.iso`;
@@ -58,7 +58,7 @@ test.describe.serial("hardware editing", () => {
     await expect(c.getByText("(no media)")).toBeVisible();
     await c.getByRole("button", { name: "Insert media" }).click();
     const dlg = dialog(page, /^Media for/);
-    await field(dlg, "ISO image").selectOption({ label: `default / ${ISO} (64.0 KiB)` });
+    await pick(dlg, "ISO image", `default / ${ISO} (64.0 KiB)`);
     await dlg.getByRole("button", { name: "Insert" }).click();
     await expect(dlg).toBeHidden();
     await expect(c).toContainText(ISO);
