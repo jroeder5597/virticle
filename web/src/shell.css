@@ -1,0 +1,84 @@
+/* App shell: sticky top bar, resource-tree sidebar, drawer below 900px.
+   No animation beyond a short colour transition; the drawer and menus open instantly. */
+:root { --topbar-h: 48px; --sidebar-w: 280px; }
+body { overflow-x: hidden; }
+
+.app { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); grid-template-rows: var(--topbar-h) minmax(0, 1fr); min-height: 100dvh; }
+.topbar { grid-column: 1 / -1; position: sticky; top: 0; z-index: 100; height: var(--topbar-h); display: flex; align-items: center; gap: 4px; padding: 0 12px; background: var(--panel-2, var(--panel)); border-bottom: 1px solid var(--line); min-width: 0; }
+.topbar .brand { font-weight: 700; font-size: 16px; padding: 0 12px 0 4px; color: var(--text); white-space: nowrap; }
+.topbar .spacer { flex: 1; }
+.toplinks { display: flex; gap: 2px; min-width: 0; overflow: hidden; }
+.toplinks a, .drawer-links a { color: var(--muted); padding: 6px 10px; border-radius: var(--radius, 8px); white-space: nowrap; font-weight: 500; border-bottom: 2px solid transparent; transition: color 100ms, background-color 100ms; }
+.toplinks a:hover, .drawer-links a:hover { background: var(--hover); color: var(--text); text-decoration: none; }
+.toplinks a.active, .drawer-links a.active { color: var(--text); border-bottom-color: var(--accent); }
+.topbar .acct, .topbar .signout, .topbar .bell, .topbar .menu-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 0; border-radius: var(--radius, 8px); background: none; color: var(--muted); font: inherit; font-weight: 500; cursor: pointer; width: auto; white-space: nowrap; transition: color 100ms, background-color 100ms; }
+.topbar .acct:hover, .topbar .signout:hover, .topbar .bell:hover, .topbar .menu-btn:hover { background: var(--hover); color: var(--text); text-decoration: none; }
+.topbar .menu-btn { display: none; padding: 6px; }
+.topbar .bell .count { margin-left: 2px; }
+.topbar .alertbell { position: relative; }
+.topbar .alertpanel { left: auto; right: 0; top: 100%; bottom: auto; margin-top: 6px; z-index: 200; }
+
+.sidebar { grid-row: 2; grid-column: 1; position: sticky; top: var(--topbar-h); height: calc(100dvh - var(--topbar-h)); background: var(--panel-2, var(--panel)); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; z-index: 90; }
+.app > main { grid-row: 2; grid-column: 2; }
+.drawer-links { display: none; }
+.scrim { display: none; }
+
+.tree-wrap { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.tree-filter { display: flex; align-items: center; gap: 6px; margin: 8px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--radius, 8px); background: var(--bg); color: var(--muted); }
+.tree-filter input { flex: 1; min-width: 0; border: 0; background: none; color: var(--text); padding: 6px 0; font: inherit; outline: none; }
+.tree-filter:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tree-err { margin: 0 8px 6px; padding: 6px 8px; border: 1px solid var(--danger); border-radius: var(--radius, 8px); color: var(--danger); font-size: 12.5px; cursor: pointer; word-break: break-word; }
+.tree-note { padding: 8px 14px; color: var(--muted); font-size: 12.5px; }
+.tree-skel { margin: 8px; height: 120px; border-radius: var(--radius, 8px); background: var(--hover); }
+.tree { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0 4px 12px; }
+
+.trow { position: relative; display: flex; align-items: center; gap: 4px; height: 26px; padding-right: 4px; border-radius: 6px; color: var(--text); cursor: default; outline: none; font-variant-numeric: tabular-nums; }
+.trow:hover { background: var(--hover); }
+.trow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.trow.sel { background: var(--hover); box-shadow: inset 3px 0 0 var(--accent), 0 0 0 1px var(--glow, transparent); font-weight: 500; }
+.trow.dim { color: var(--muted); }
+.trow.tpl .lbl { font-style: italic; }
+.trow .chev { width: 16px; flex: none; display: inline-flex; }
+.trow .chev button, .trow .acts button { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); cursor: pointer; }
+.trow .chev button:hover, .trow .acts button:hover:not(:disabled) { background: var(--line); color: var(--text); }
+.trow .acts button:disabled { opacity: 0.5; cursor: default; }
+.trow .ico { width: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+.trow .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; }
+.trow .lbl:hover { text-decoration: none; }
+.trow .x { flex: none; color: var(--muted); font-size: 11.5px; }
+.trow .maint { flex: none; color: var(--warn); }
+.trow .acts { flex: none; display: inline-flex; gap: 1px; visibility: hidden; }
+.trow:hover .acts, .trow:focus-within .acts, .trow.sel .acts { visibility: visible; }
+.trow .pbar { flex: none; display: inline-flex; align-items: center; gap: 5px; }
+.trow .pbar .track { width: 28px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.trow .pbar .track span { display: block; height: 100%; background: var(--accent); }
+.trow .pbar .track span.full { background: var(--danger); }
+
+.dot { display: block; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--muted); background: transparent; }
+.dot.n-online, .dot.v-running { background: var(--ok); border-color: var(--ok); }
+.dot.n-offline, .dot.v-crashed { background: var(--danger); border-color: var(--danger); }
+.dot.n-connecting, .dot.v-paused, .dot.v-pmsuspended { background: var(--warn); border-color: var(--warn); }
+.dot.v-shutoff { background: transparent; border-color: var(--muted); }
+.trow:focus-visible .dot { box-shadow: 0 0 0 3px var(--glow, transparent); }
+
+.ctxmenu { position: fixed; z-index: 200; min-width: 190px; padding: 4px; display: grid; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius, 8px); box-shadow: var(--shadow, 0 2px 6px rgba(0, 0, 0, 0.3)); color: var(--text); }
+.ctxmenu button { display: flex; align-items: center; gap: 8px; border: 0; background: none; text-align: left; padding: 6px 10px; border-radius: 5px; color: inherit; font: inherit; cursor: pointer; }
+.ctxmenu button:hover, .ctxmenu button:focus-visible { background: var(--hover); outline: none; }
+.ctxmenu button.danger { color: var(--danger); }
+.ctxmenu .sep { height: 1px; margin: 4px 2px; background: var(--line); }
+
+@media (max-width: 899px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .app > main { grid-column: 1; }
+  .topbar .menu-btn { display: inline-flex; }
+  .toplinks, .topbar .name { display: none; }
+  .topbar .bell .count { display: inline-block; }
+  .topbar .brand { padding-right: 0; }
+  .sidebar { position: fixed; top: var(--topbar-h); left: 0; bottom: auto; width: min(320px, 86vw); z-index: 150; border-right: 1px solid var(--line); transform: translateX(-100%); visibility: hidden; }
+  .drawer-open .sidebar { transform: none; visibility: visible; }
+  .drawer-links { display: flex; flex-wrap: wrap; gap: 2px; padding: 8px; border-bottom: 1px solid var(--line); }
+  .scrim { display: block; position: fixed; inset: var(--topbar-h) 0 0 0; z-index: 140; background: var(--bg); opacity: 0.6; }
+  .trow .acts { visibility: visible; }
+  .trow .acts button { width: 28px; height: 24px; }
+}
+@media (hover: none) { .trow .acts { visibility: visible; } }

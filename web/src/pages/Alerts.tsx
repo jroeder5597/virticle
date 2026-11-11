@@ -1,3 +1,4 @@
+import { Bell } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { Alert, get } from "../api";
@@ -31,8 +32,8 @@ export function AlertBell() {
   return (
     <div className="alertbell">
       <button className="bell" onClick={() => setOpen(!open)} aria-label={`Alerts: ${alerts.length}`} aria-expanded={open} title="Alerts">
-        <span aria-hidden>🔔</span>
-        <span>Alerts</span>
+        <Bell size={16} aria-hidden />
+        <span className="name">Alerts</span>
         {alerts.length > 0 && <span className={"count " + (critical ? "critical" : "warning")}>{alerts.length}</span>}
       </button>
       {open && (

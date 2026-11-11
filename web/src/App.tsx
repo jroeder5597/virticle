@@ -1,5 +1,8 @@
+import { Menu, User, LogOut } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import Tree from "./Tree";
+import "./shell.css";
 import { get, post, Role, setUnauthorizedHandler, Task } from "./api";
 import { startEvents, stopEvents, useEvents } from "./live";
 import { ErrorBox, Field, useAction } from "./ui";
@@ -20,6 +23,15 @@ type Session = { needsSetup: boolean; user: string; role: Role };
 
 export default function App() {
   const [session, setSession] = useState<Session | undefined>();
+  const [drawer, setDrawer] = useState(false);
+  const loc = useLocation();
+  useEffect(() => setDrawer(false), [loc.pathname, loc.search]);
+  useEffect(() => {
+    if (!drawer) return;
+    const k = (e: KeyboardEvent) => e.key === "Escape" && setDrawer(false);
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [drawer]);
   const refresh = () => get<Session>("/status").then(setSession, () => setSession({ needsSetup: false, user: "", role: "viewer" }));
   useEffect(() => {
     setUnauthorizedHandler(() => setSession((s) => (s ? { ...s, user: "" } : s)));
@@ -35,31 +47,53 @@ export default function App() {
   if (!session) return null;
   if (!session.user) return <SignIn setup={session.needsSetup} onDone={refresh} />;
   return (
-    <div className="shell">
-      <nav>
+    <RoleContext.Provider value={session.role}>
+    <div className={"app" + (drawer ? " drawer-open" : "")}>
+      <header className="topbar">
+        <button className="menu-btn" aria-label="Open navigation" aria-expanded={drawer} onClick={() => setDrawer(!drawer)}>
+          <Menu size={18} />
+        </button>
         <div className="brand">virt-proj</div>
+        <div className="toplinks" role="navigation" aria-label="Main">
         <NavLink to="/" end>
           Virtual machines
         </NavLink>
         <NavLink to="/storage">Storage</NavLink>
-        <NavLink to="/backups">Backups</NavLink>
         <NavLink to="/networks">Networks</NavLink>
+        <NavLink to="/backups">Backups</NavLink>
         <NavLink to="/nodes">Nodes</NavLink>
         <NavLink to="/tasks">Tasks</NavLink>
         {session.role === "admin" && <NavLink to="/users">Users</NavLink>}
         {session.role === "admin" && <NavLink to="/audit">Audit</NavLink>}
+        </div>
         <div className="spacer" />
         <AlertBell />
-        <div className="who">
-          <NavLink to="/account" title={`Signed in as ${session.role}`}>
-            {session.user}
-          </NavLink>
-          <button className="link" onClick={() => post("/logout").then(refresh)}>
-            Sign out
-          </button>
+        {/* Theme toggle slot: the reviewer mounts <ThemeToggle /> here. */}
+        <NavLink className="acct" to="/account" aria-label={session.user} title={`Signed in as ${session.role}`}>
+          <User size={16} aria-hidden />
+          <span className="name">{session.user}</span>
+        </NavLink>
+        <button className="link signout" aria-label="Sign out" onClick={() => post("/logout").then(refresh)}>
+          <LogOut size={16} aria-hidden />
+          <span className="name">Sign out</span>
+        </button>
+      </header>
+      <aside className="sidebar" aria-label="Resources">
+        <div className="drawer-links" role="navigation" aria-label="Main menu">
+        <NavLink to="/" end>
+          Virtual machines
+        </NavLink>
+        <NavLink to="/storage">Storage</NavLink>
+        <NavLink to="/networks">Networks</NavLink>
+        <NavLink to="/backups">Backups</NavLink>
+        <NavLink to="/nodes">Nodes</NavLink>
+        <NavLink to="/tasks">Tasks</NavLink>
+        {session.role === "admin" && <NavLink to="/users">Users</NavLink>}
+        {session.role === "admin" && <NavLink to="/audit">Audit</NavLink>}
         </div>
-      </nav>
-      <RoleContext.Provider value={session.role}>
+        <Tree />
+      </aside>
+      {drawer && <div className="scrim" onClick={() => setDrawer(false)} />}
       <main className={session.role}>
         <Routes>
           <Route path="/" element={<VMs />} />
@@ -75,9 +109,9 @@ export default function App() {
           <Route path="*" element={<div className="empty">There is nothing at this address, or your role does not allow it.</div>} />
         </Routes>
       </main>
-      </RoleContext.Provider>
       <Toasts />
     </div>
+    </RoleContext.Provider>
   );
 }
 

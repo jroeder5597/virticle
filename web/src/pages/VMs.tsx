@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { bytes, get, Network, NodeStatus, Pool, post, VM, Volume } from "../api";
 import { useLive } from "../live";
 import CloudInitFields, { CloudInitValues, cloudInitPayload, cloudInitUsed, emptyCloudInit } from "./CloudInit";
@@ -14,11 +14,19 @@ export default function VMs() {
   const live = useAllStats();
   const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes");
   const [creating, setCreating] = useState(false);
+  const [params, setParams] = useSearchParams();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState("");
   const act = useAction();
-  const online = nodes.data?.nodes.filter((n) => n.state === "online") ?? [];
+  const preferred = Number(params.get("new")) || 0; // set by the sidebar tree's "Add VM"
+  const online = (nodes.data?.nodes.filter((n) => n.state === "online") ?? []).sort((a, b) => Number(b.id === preferred) - Number(a.id === preferred));
+  useEffect(() => {
+    if (preferred && nodes.data) {
+      setCreating(online.length > 0);
+      setParams({}, { replace: true });
+    }
+  }, [preferred, nodes.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const all = [...(vms.data ?? [])].sort((a, b) => a.name.localeCompare(b.name) || a.node - b.node);
   const allTags = [...new Set(all.flatMap((v) => v.tags ?? []))].sort();
   const needle = search.trim().toLowerCase();
