@@ -86,6 +86,7 @@ var routeLevels = map[string]string{
 	"POST /api/nodes/{node}/vms/{uuid}/clone":         operator,
 	"GET /api/nodes/{node}/vms/{uuid}/vnc":            operator,
 	"GET /api/nodes/{node}/vms/{uuid}/serial":         operator,
+	"GET /api/nodes/{node}/vms/{uuid}/screenshot":     operator,
 
 	"PUT /api/nodes/{node}/vms/{uuid}/cpu":                         operator,
 	"PUT /api/nodes/{node}/vms/{uuid}/memory":                      operator,

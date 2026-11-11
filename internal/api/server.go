@@ -49,6 +49,7 @@ type Server struct {
 
 	routes  []route // every pattern registered by Handler, for the access-level test
 	limiter *limiter
+	shots   shotCache
 }
 
 type ctxKey struct{}
@@ -123,6 +124,7 @@ func (s *Server) Handler() http.Handler {
 	auth("POST /api/nodes/{node}/vms/{uuid}/clone", s.vmClone)
 	auth("GET /api/nodes/{node}/vms/{uuid}/vnc", s.vmVNC)
 	auth("GET /api/nodes/{node}/vms/{uuid}/serial", s.vmSerial)
+	auth("GET /api/nodes/{node}/vms/{uuid}/screenshot", s.vmScreenshot)
 
 	auth("PUT /api/nodes/{node}/vms/{uuid}/cpu", s.hwCPU)
 	auth("PUT /api/nodes/{node}/vms/{uuid}/memory", s.hwMemory)

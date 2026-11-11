@@ -6,6 +6,7 @@ import { useLive } from "../live";
 import { useRole } from "../auth";
 import { ErrorBox, Modal, StateBadge, useAction } from "../ui";
 import { SerialConsole, VNCConsole } from "./Console";
+import { ConsoleCard } from "./ConsolePreview";
 import Hardware from "./Hardware";
 import MigrateDialog from "./Migrate";
 import SnapshotsTab from "./Snapshots";
@@ -140,6 +141,7 @@ function Overview({ d, base }: { d: VMDetail; base: string }) {
           <VMCharts base={base} />
         </section>
       )}
+      <ConsoleCard d={d} />
       <section className="card">
         <h3>Summary</h3>
         <dl>
@@ -314,7 +316,7 @@ function ConsoleTab({ d }: { d: VMDetail }) {
           </button>
         </div>
       )}
-      {kind === "vnc" ? <VNCConsole node={d.node} uuid={d.uuid} /> : <SerialConsole node={d.node} uuid={d.uuid} />}
+      {kind === "vnc" ? <VNCConsole node={d.node} uuid={d.uuid} name={d.name} /> : <SerialConsole node={d.node} uuid={d.uuid} />}
     </>
   );
 }

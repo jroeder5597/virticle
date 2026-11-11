@@ -163,6 +163,24 @@ test.describe.serial("visual pass", () => {
         await page.goto(`${vmUrl}?tab=${tab}`);
         await shot("vm-" + tab, () => expect(page.locator("main").getByText(check).first()).toBeVisible({ timeout: 30_000 }), { wide: tab === "xml" });
       }
+      // console preview card, inline console, standalone console page, paste dialog
+      await page.goto(vmUrl);
+      await shot("vm-console-card", async () => {
+        await page.locator(".cc-box").scrollIntoViewIfNeeded(); // the preview only loads while the card is on screen
+        await expect(page.locator(".cc-open img")).toBeVisible({ timeout: 30_000 });
+      });
+      await page.evaluate(() => localStorage.setItem("vp-console-click", "inline"));
+      await page.goto(vmUrl);
+      await page.locator(".cc-open").click();
+      await shot("vm-console-inline", () => expect(page.locator(".cc .console.inline").getByText("Connected")).toBeVisible({ timeout: 30_000 }));
+      await page.evaluate(() => localStorage.removeItem("vp-console-click"));
+      await page.goto(`/console/${vm.node}/${vm.uuid}`);
+      await shot("console-page", () => expect(page.getByText("Connected")).toBeVisible({ timeout: 30_000 }));
+      await page.goto(`${vmUrl}?tab=console`);
+      await expect(page.getByText("Connected")).toBeVisible({ timeout: 30_000 });
+      await page.getByRole("button", { name: "Paste text" }).click();
+      await shot("console-paste-dialog", () => expect(page.getByRole("dialog", { name: "Paste text into the guest" })).toBeVisible());
+      await page.keyboard.press("Escape");
       for (const [path, name, h] of [
         ["/storage", "storage", "Storage"],
         ["/backups", "backups", "Backups"],

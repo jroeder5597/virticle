@@ -1,34 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import RFB from "@novnc/novnc/lib/rfb";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { wsURL } from "../api";
 import { cssVar, useTheme } from "../theme";
+import { SerialBar, Status, VncBar } from "./ConsoleToolbar";
 
 const termTheme = () => ({ background: cssVar("--term-bg", "#1B252B"), foreground: cssVar("--term-fg", "#F4F6F7"), cursor: cssVar("--term-fg", "#F4F6F7"), selectionBackground: cssVar("--term-sel", "#51626E") });
 
-type Status = "connecting" | "connected" | "closed";
+/** variant: "tab" is the console tab, "inline" the fixed box in the overview card, "page" the standalone window. */
+export type Variant = "tab" | "inline" | "page";
 
-function StatusLine({ status, detail, onReconnect }: { status: Status; detail?: string; onReconnect: () => void }) {
-  return (
-    <span className="muted">
-      {status === "connecting" && "Connecting…"}
-      {status === "connected" && "Connected"}
-      {status === "closed" && (
-        <>
-          Disconnected{detail ? `: ${detail}` : ""}{" "}
-          <button className="link" onClick={onReconnect}>
-            Reconnect
-          </button>
-        </>
-      )}
-    </span>
-  );
-}
-
-export function VNCConsole({ node, uuid }: { node: number; uuid: string }) {
+export function VNCConsole({ node, uuid, name, variant = "tab", extra }: { node: number; uuid: string; name?: string; variant?: Variant; extra?: ReactNode }) {
   const holder = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState(true);
+  const fitRef = useRef(fit);
+  fitRef.current = fit;
+  useEffect(() => {
+    if (rfb.current) rfb.current.scaleViewport = fit;
+  }, [fit]);
   const rfb = useRef<RFB | null>(null);
   const [status, setStatus] = useState<Status>("connecting");
   const [attempt, setAttempt] = useState(0);
@@ -37,7 +29,7 @@ export function VNCConsole({ node, uuid }: { node: number; uuid: string }) {
     const el = holder.current!;
     setStatus("connecting");
     const r = new RFB(el, wsURL(`/nodes/${node}/vms/${uuid}/vnc`), { wsProtocols: ["binary"] });
-    r.scaleViewport = true;
+    r.scaleViewport = fitRef.current;
     r.background = cssVar("--screen", "#1B252B");
     r.addEventListener("connect", () => setStatus("connected"));
     r.addEventListener("disconnect", () => setStatus("closed"));
@@ -59,22 +51,18 @@ export function VNCConsole({ node, uuid }: { node: number; uuid: string }) {
   }, [node, uuid, attempt]);
 
   return (
-    <div className="console">
-      <div className="toolbar">
-        <StatusLine status={status} onReconnect={() => setAttempt((a) => a + 1)} />
-        <div className="spacer" />
-        <button disabled={status !== "connected"} onClick={() => rfb.current?.sendCtrlAltDel()}>
-          Send Ctrl+Alt+Del
-        </button>
-        <button onClick={() => holder.current?.requestFullscreen()}>Full screen</button>
-      </div>
-      <div className="screen" ref={holder} onClick={() => rfb.current?.focus()} />
+    <div className={`console vc ${variant}`} ref={box}>
+      <VncBar status={status} onReconnect={() => setAttempt((a) => a + 1)} rfb={() => rfb.current} box={box} node={node} uuid={uuid} name={name} fit={fit} onFit={setFit}>
+        {extra}
+      </VncBar>
+      <div className={"screen" + (fit ? "" : " actual")} ref={holder} onClick={() => rfb.current?.focus()} />
     </div>
   );
 }
 
-export function SerialConsole({ node, uuid }: { node: number; uuid: string }) {
+export function SerialConsole({ node, uuid, variant = "tab", extra }: { node: number; uuid: string; variant?: Variant; extra?: ReactNode }) {
   const holder = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>("connecting");
   const [detail, setDetail] = useState<string | undefined>();
   const [attempt, setAttempt] = useState(0);
@@ -119,11 +107,19 @@ export function SerialConsole({ node, uuid }: { node: number; uuid: string }) {
     };
   }, [node, uuid, attempt]);
 
+  const copyAll = async () => {
+    const t = termRef.current;
+    if (!t) return;
+    t.selectAll();
+    const text = t.getSelection();
+    t.clearSelection();
+    await navigator.clipboard.writeText(text);
+  };
   return (
-    <div className="console">
-      <div className="toolbar">
-        <StatusLine status={status} detail={detail} onReconnect={() => setAttempt((a) => a + 1)} />
-      </div>
+    <div className={`console vc ${variant}`} ref={box}>
+      <SerialBar status={status} detail={detail} onReconnect={() => setAttempt((a) => a + 1)} box={box} copyAll={copyAll} clear={() => termRef.current?.clear()}>
+        {extra}
+      </SerialBar>
       <div className="screen term" ref={holder} />
     </div>
   );
