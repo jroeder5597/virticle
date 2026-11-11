@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 )
 
 // User preferences: small UI choices that follow the user across browsers. Only the keys below exist;
@@ -12,6 +13,12 @@ import (
 var prefAllowed = map[string][]string{
 	"tasksDock":    {"open", "closed"}, // the docked Tasks panel
 	"consoleClick": {"tab", "inline"},  // what a click on the console preview does
+}
+
+// prefSizes are pane sizes in px: a whole number in the range, or "" for the default size.
+var prefSizes = map[string][2]int{
+	"sidebarW": {100, 4000}, // width of the resource tree
+	"dockH":    {50, 4000},  // height of the open Tasks panel
 }
 
 const prefMaxKeys = 16
@@ -32,12 +39,20 @@ func validatePrefs(in map[string]json.RawMessage) (map[string]string, error) {
 	sort.Strings(keys)
 	for _, k := range keys {
 		allowed, ok := prefAllowed[k]
-		if !ok {
+		size, isSize := prefSizes[k]
+		if !ok && !isSize {
 			return nil, badRequest(fmt.Sprintf("unknown preference %q", clip(k, 40)))
 		}
 		var v string
 		if err := json.Unmarshal(in[k], &v); err != nil {
 			return nil, badRequest(fmt.Sprintf("preference %s must be a string", k))
+		}
+		if isSize {
+			if n, err := strconv.Atoi(v); v != "" && (err != nil || n < size[0] || n > size[1] || strconv.Itoa(n) != v) {
+				return nil, badRequest(fmt.Sprintf("preference %s must be a whole number from %d to %d, or empty", k, size[0], size[1]))
+			}
+			out[k] = v
+			continue
 		}
 		good := false
 		for _, a := range allowed {
@@ -71,7 +86,9 @@ func (s *Server) getPrefs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for k := range m { // a key retired from the allow-list is not reported
-		if _, ok := prefAllowed[k]; !ok {
+		_, choice := prefAllowed[k]
+		_, size := prefSizes[k]
+		if !choice && !size {
 			delete(m, k)
 		}
 	}

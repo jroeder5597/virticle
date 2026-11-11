@@ -86,3 +86,13 @@ body { overflow-x: hidden; }
   .trow .acts button { width: 28px; height: 24px; }
 }
 @media (hover: none) { .trow .acts { visibility: visible; } }
+
+/* Pane resizers: a 7px grab strip over the border; the line shows on hover, focus and while dragging. */
+.resizer { position: absolute; z-index: 95; background: transparent; touch-action: none; transition: background-color 100ms; }
+.resizer:hover, .resizer:focus-visible, body.resizing-x .rz-x, body.resizing-y .rz-y { background: var(--accent); outline: none; }
+.rz-x { top: 0; bottom: 0; right: -4px; width: 7px; cursor: col-resize; }
+.rz-y { left: 0; right: 0; bottom: calc(var(--dock-h) - 3px); height: 7px; cursor: row-resize; }
+.content { position: relative; }
+body.resizing-x, body.resizing-x * { cursor: col-resize !important; user-select: none; }
+body.resizing-y, body.resizing-y * { cursor: row-resize !important; user-select: none; }
+@media (max-width: 899px) { .rz-x { display: none; } }

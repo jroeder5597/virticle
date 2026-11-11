@@ -62,6 +62,13 @@ function usePassthrough(d: VMDetail) {
   return list;
 }
 
+/** Guest agent state. A VM that is not running has no agent to answer: hollow dot, "Not running". */
+function AgentBadge({ d }: { d: VMDetail }) {
+  if (d.agent === "absent") return <span className="badge s-agent-absent">Not set up</span>;
+  if (d.state !== "running") return <span className="badge s-shutoff">Not running</span>;
+  return <span className={"badge s-agent-" + d.agent}>{d.agent === "connected" ? "Connected" : "Not responding"}</span>;
+}
+
 type Stats = { points: VMPoint[] } | undefined;
 
 /** Power state, guest OS, agent, DNS name and IP addresses. Rows keep their place whether or not values have arrived. */
@@ -73,7 +80,7 @@ function SummaryCard({ d, g }: { d: VMDetail; g?: GuestInfo }) {
   const leaseName = lease?.host ? (lease.domain ? `${lease.host}.${lease.domain}` : lease.host) : undefined;
   const dns = gHost ?? leaseName;
   const os = agent && g?.available ? g.os?.prettyName || g.os?.name || g.os?.id : undefined;
-  const agentText = d.agent === "connected" ? "Connected" : d.agent === "absent" ? "Not set up" : "Not responding";
+  const agentBadge = <AgentBadge d={d} />;
   const ips = d.nics.flatMap((n) => n.ips);
   const passed = usePassthrough(d);
   return (
@@ -88,7 +95,7 @@ function SummaryCard({ d, g }: { d: VMDetail; g?: GuestInfo }) {
         <dd>{os ?? "Not reported"}</dd>
         <dt>QEMU Guest Agent</dt>
         <dd>
-          <span className={"badge s-agent-" + d.agent}>{agentText}</span>
+          {agentBadge}
         </dd>
         <dt>DNS Name</dt>
         <dd className="mono" title={dns ? undefined : !running ? "The VM is not running" : !agent ? "Needs the guest agent" : "The guest does not report a name"}>
@@ -340,7 +347,7 @@ function AgentCard({ d, base, onChanged }: { d: VMDetail; base: string; onChange
   return (
     <section className="card ov-wide">
       <h3>
-        Guest agent <span className={"badge s-agent-" + d.agent}>{d.agent === "connected" ? "Connected" : d.agent === "absent" ? "Not set up" : "Not responding"}</span>
+        Guest agent <AgentBadge d={d} />
       </h3>
       {d.agent === "absent" && (
         <>

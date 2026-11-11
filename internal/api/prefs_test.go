@@ -43,3 +43,20 @@ func TestValidatePrefs(t *testing.T) {
 		t.Error("too many keys accepted")
 	}
 }
+
+func TestValidatePrefsSizes(t *testing.T) {
+	ok := map[string]string{"sidebarW": `"320"`, "dockH": `""`}
+	in := map[string]json.RawMessage{}
+	for k, v := range ok {
+		in[k] = json.RawMessage(v)
+	}
+	out, err := validatePrefs(in)
+	if err != nil || out["sidebarW"] != "320" || out["dockH"] != "" {
+		t.Fatalf("got %v, %v", out, err)
+	}
+	for _, bad := range []string{`"12"`, `"99999"`, `"3e2"`, `"0320"`, `"wide"`, `320`} {
+		if _, err := validatePrefs(map[string]json.RawMessage{"sidebarW": json.RawMessage(bad)}); err == nil {
+			t.Errorf("sidebarW=%s was accepted", bad)
+		}
+	}
+}

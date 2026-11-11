@@ -18,7 +18,14 @@ import { AlertBell } from "./pages/Alerts";
 import { RoleContext } from "./auth";
 import { ThemeToggle } from "./theme";
 import TasksDock, { useDockOpen } from "./TasksDock";
-import { bindPrefs, loadPrefs } from "./prefs";
+import { bindPrefs, loadPrefs, usePref } from "./prefs";
+import Resizer, { clampSize } from "./Resizer";
+
+const SIDEBAR_MIN = 180;
+const DOCK_MIN = 96;
+const sidebarMax = () => Math.min(640, window.innerWidth * 0.5);
+const dockMax = () => window.innerHeight * 0.7;
+const px = (v: string | undefined) => (v && Number(v) > 0 ? Number(v) : undefined);
 
 type Session = { needsSetup: boolean; user: string; role: Role };
 
@@ -27,6 +34,12 @@ export default function App() {
   const [drawer, setDrawer] = useState(false);
   bindPrefs(session?.user ?? ""); // before anything reads a preference, so the first paint uses the local copy
   const dockOpen = useDockOpen();
+  const sideW = px(usePref("sidebarW"));
+  const dockH = px(usePref("dockH"));
+  // Saved pane sizes, kept inside what this window allows. Unset: the stylesheet defaults.
+  const sizes: Record<string, string> = {};
+  if (sideW) sizes["--sidebar-w"] = clampSize(sideW, SIDEBAR_MIN, sidebarMax()) + "px";
+  if (dockH && dockOpen) sizes["--dock-h"] = clampSize(dockH, DOCK_MIN, dockMax()) + "px";
   const scroller = useRef<HTMLDivElement>(null);
   const loc = useLocation();
   useEffect(() => setDrawer(false), [loc.pathname, loc.search]);
@@ -66,7 +79,7 @@ export default function App() {
     );
   return (
     <RoleContext.Provider value={session.role}>
-    <div className={"app" + (drawer ? " drawer-open" : "") + (dockOpen ? " dock-open" : "")}>
+    <div className={"app" + (drawer ? " drawer-open" : "") + (dockOpen ? " dock-open" : "")} style={sizes as React.CSSProperties}>
       <header className="topbar">
         <button className="menu-btn" aria-label="Open navigation" aria-expanded={drawer} onClick={() => setDrawer(!drawer)}>
           <Menu size={18} />
@@ -106,6 +119,7 @@ export default function App() {
         {session.role === "admin" && <NavLink to="/audit">Audit</NavLink>}
         </div>
         <Tree />
+        <Resizer axis="x" cssVar="--sidebar-w" pref="sidebarW" min={SIDEBAR_MIN} max={sidebarMax} current={() => document.querySelector(".sidebar")?.getBoundingClientRect().width ?? 260} label="Resize the resource tree" />
       </aside>
       {drawer && <div className="scrim" onClick={() => setDrawer(false)} />}
       <div className="content">
@@ -130,6 +144,7 @@ export default function App() {
         </Routes>
       </main>
       </div>
+      {dockOpen && <Resizer axis="y" cssVar="--dock-h" pref="dockH" min={DOCK_MIN} max={dockMax} current={() => document.querySelector(".dock")?.getBoundingClientRect().height ?? 200} label="Resize the tasks panel" />}
       <TasksDock />
       </div>
       <Toasts />
