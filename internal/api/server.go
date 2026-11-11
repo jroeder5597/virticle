@@ -111,6 +111,8 @@ func (s *Server) Handler() http.Handler {
 	auth("DELETE /api/cloudinit-profiles/{id}", s.deleteCloudProfile)
 
 	auth("GET /api/vms", s.listVMs)
+	auth("GET /api/pools", s.listAllPools)
+	auth("GET /api/networks", s.listAllNetworks)
 	auth("POST /api/nodes/{node}/vms", s.createVM)
 	auth("GET /api/nodes/{node}/vms/{uuid}", s.vmDetail)
 	auth("POST /api/nodes/{node}/vms/{uuid}/action", s.vmAction)

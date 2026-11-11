@@ -22,7 +22,7 @@ export interface HostPoint {
 }
 export interface AllStats {
   intervalSec: number;
-  nodes: Record<string, { host: HostPoint | null; vms: number; running: number; stale: boolean }>;
+  nodes: Record<string, { host: HostPoint | null; vms: number; running: number; stale: boolean; cpus?: number }>;
   vms: Record<string, VMPoint>; // "node/uuid"
 }
 

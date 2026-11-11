@@ -120,7 +120,7 @@ export default function VMActions(props: {
       {sealing && <SealDialog d={d} base={base} onClose={() => setSealing(false)} onDone={props.onChanged} />}
       {taking && <TakeSnapshot d={d} base={base} onClose={() => setTaking(false)} onDone={props.onChanged} />}
       {migrating && <MigrateDialog d={d} onClose={() => setMigrating(false)} />}
-      {deleting && <DeleteVM d={d} base={base} onClose={() => setDeleting(false)} onDeleted={() => nav("/")} />}
+      {deleting && <DeleteVM d={d} base={base} onClose={() => setDeleting(false)} onDeleted={() => nav("/datacenter/vms")} />}
     </>
   );
 }

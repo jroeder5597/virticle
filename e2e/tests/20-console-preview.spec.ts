@@ -243,7 +243,7 @@ test.describe.serial("console preview and extras", () => {
     await page.getByLabel("Username").fill(VIEWER);
     await page.getByLabel("Password").fill(PASS);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByRole("heading", { name: "Virtual machines" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Datacenter", level: 1 })).toBeVisible();
     await openVM(page, run);
     await expect(page.locator(".cc-note")).toContainText("operators and administrators");
     await page.waitForTimeout(1500);

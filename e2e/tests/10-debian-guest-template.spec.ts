@@ -20,7 +20,7 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     const vols: any[] = await api.get(`/nodes/${n1}/pools/default/volumes`);
     const img = vols.find((v) => v.name === env.debian);
     expect(img, `${env.debian} must exist in pool default on node 1`).toBeTruthy();
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await page.getByRole("button", { name: "New VM" }).click();
     const dlg = dialog(page, "New virtual machine");
     await field(dlg, "Name").fill(NAME);
@@ -148,7 +148,7 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     const dlg = dialog(page, `Delete ${CLONE}?`);
     await dlg.getByLabel(/Also delete its disk/).check();
     await dlg.getByRole("button", { name: "Delete VM" }).click();
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/datacenter\/vms$/);
     expect(await api.vmByName(CLONE)).toBeUndefined();
     await openVM(page, vm);
     await vmAction(page, "Template", "Convert back to a VM");
@@ -157,7 +157,7 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     const d2 = dialog(page, `Delete ${NAME}?`);
     await d2.getByLabel(/Also delete its disk/).check();
     await d2.getByRole("button", { name: "Delete VM" }).click();
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/datacenter\/vms$/);
     expect(await api.vmByName(NAME)).toBeUndefined();
   });
 });

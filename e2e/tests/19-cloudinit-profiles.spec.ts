@@ -56,7 +56,7 @@ test.describe.serial("cloud-init profiles", () => {
   });
 
   test("the create dialog preselects the default profile and a VM made from it gets a seed", async ({ page, api, n1 }) => {
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await page.getByRole("button", { name: "New VM" }).click();
     const dlg = dialog(page, "New virtual machine");
     await field(dlg, "Name").fill(VM);

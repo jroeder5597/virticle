@@ -77,7 +77,7 @@ test.describe.serial("backups", () => {
     expect(got.uuid).not.toBe(vm.uuid);
     const d = await api.vmDetail(got.node, got.uuid);
     expect(d.nics[0].mac).not.toBe((await api.vmDetail(vm.node, vm.uuid)).nics[0].mac);
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await expectBadge(row(page, RESTORED), "shutoff");
   });
 
