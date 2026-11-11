@@ -2,7 +2,7 @@
 // libvirt failures is libvirt's own error text.
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public data?: any) {
     super(message);
   }
 }
@@ -26,7 +26,7 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
   }
   if (!res.ok) {
     if (res.status === 401 && path !== "/login" && path !== "/setup") onUnauthorized();
-    throw new ApiError(res.status, data?.error ?? `${res.status} ${res.statusText}`);
+    throw new ApiError(res.status, data?.error ?? `${res.status} ${res.statusText}`, data);
   }
   return data as T;
 }

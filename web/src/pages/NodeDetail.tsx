@@ -15,6 +15,7 @@ import Networks from "./Networks";
 import Storage from "./Storage";
 import VMs from "./VMs";
 import "../node.css";
+import { StatusLine } from "../Checks";
 
 const TABS = [
   ["summary", "Summary"],
@@ -95,7 +96,7 @@ export default function NodeDetail() {
         <div className="empty nodeoffline">
           <ServerOff size={28} aria-hidden="true" />
           <p>{n.state === "connecting" ? "Connecting to this node" : "This node is offline, so nothing can be read from or changed on it."}</p>
-          {n.error && <p className="rowerror">{n.error}</p>}
+          {n.error && <StatusLine status="error">{n.error}</StatusLine>}
         </div>
       ) : (
         <>

@@ -12,6 +12,7 @@ import { netEvents, NodeErr, NodeErrors, NodeFilter, nodeEvents, nodeLabel, Node
 import ComboInput from "../ComboInput";
 import Select from "../Select";
 import { ErrorBox, Field, Modal, NodePicker, PageTitle, StateBadge, useAction, useConfirm } from "../ui";
+import { StatusLine } from "../Checks";
 
 const modeNames: Record<string, string> = { nat: "NAT", route: "Routed", open: "Open", isolated: "Isolated", bridge: "Bridge" };
 const modeLabel = (n: Network) => (modeNames[n.forward] ?? n.forward) + (n.vlan ? ` · VLAN ${n.vlan}` : "");
@@ -413,7 +414,7 @@ function XmlEditor({ url, n, onSaved }: { url: string; n: Network; onSaved: () =
       </small>
       <textarea spellCheck={false} rows={16} value={text} onChange={(e) => setText(e.target.value)} style={{ marginTop: 8 }} />
       <ErrorBox error={act.error} />
-      {note && <div className="note">{note}</div>}
+      {note && <StatusLine status="info">{note}</StatusLine>}
       <div className="actions" style={{ marginTop: 8 }}>
         <button className="primary" disabled={act.busy || !dirty} onClick={save}>
           Save XML

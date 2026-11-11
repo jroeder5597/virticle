@@ -7,6 +7,7 @@ import { DropdownMenu } from "../Menu";
 import { Modal } from "../ui";
 import { CODE, strokesFor, XK } from "./pasteKeys";
 import "./console.css";
+import { StatusLine as ResultLine } from "../Checks";
 
 export type Status = "connecting" | "connected" | "closed";
 
@@ -68,7 +69,7 @@ function PasteDialog({ onClose, onType }: { onClose: () => void; onType: (text: 
         differently (other layouts) come out wrong, and characters with no US key are skipped. Click into the right field in the guest first.
       </p>
       <textarea className="paste-text" value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} aria-label="Text to type" autoFocus />
-      {skipped > 0 && <p className="note">{skipped} character{skipped > 1 ? "s" : ""} cannot be typed and will be skipped.</p>}
+      {skipped > 0 && <ResultLine status="warning">{skipped} character{skipped > 1 ? "s" : ""} cannot be typed and will be skipped.</ResultLine>}
       <footer>
         <button onClick={onClose}>Cancel</button>
         <button
@@ -208,7 +209,7 @@ export function VncBar(p: VncBarProps) {
       </button>
       <FullscreenButton box={p.box} />
       {p.children}
-      {error && <div className="toolbar-error">{error}</div>}
+      {error && <div className="toolbar-error"><ResultLine status="error">{error}</ResultLine></div>}
       {paste && <PasteDialog onClose={() => setPaste(false)} onType={type} />}
     </div>
   );

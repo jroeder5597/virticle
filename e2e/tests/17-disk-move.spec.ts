@@ -33,7 +33,7 @@ test.describe.serial("disk move", () => {
     const dlg = dialog(page, /^Move vda/);
     await pickPool(dlg, "Target pool", POOL);
     await expect(dlg.getByText("Live: the VM keeps running")).toBeVisible();
-    await expect(dlg.locator("ul.checks li.error")).toHaveCount(0);
+    await expect(dlg.getByRole("img", { name: "failed" })).toHaveCount(0);
     await dlg.getByRole("button", { name: "Move disk" }).click();
     // "Delete the old volume afterwards" is on: ask first. Cancel changes nothing, confirm starts the move.
     await cancelConfirm(page, /^Move vda and delete the old volume/);
@@ -69,7 +69,7 @@ test.describe.serial("disk move", () => {
     await page.locator("section.card").filter({ has: page.getByRole("heading", { name: "Disks", exact: true }) }).getByRole("row", { name: /vda/ }).getByRole("button", { name: "Move", exact: true }).click();
     const dlg = dialog(page, /^Move vda/);
     await pickPool(dlg, "Target pool", POOL);
-    await expect(dlg.locator("ul.checks li.error")).toContainText("already has a volume");
+    await expect(dlg.locator("ul.checklist li").filter({ has: page.getByRole("img", { name: "failed" }) })).toContainText("already has a volume");
     await expect(dlg.getByRole("button", { name: "Move disk" })).toBeDisabled();
   });
 });

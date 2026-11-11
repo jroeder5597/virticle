@@ -12,7 +12,6 @@
 
 .dock-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .dock-note { padding: 10px 14px; color: var(--muted); }
-.dock-note.err { color: var(--danger); }
 
 .dock-table { display: table; width: 100%; border: 0; border-radius: 0; background: none; overflow: visible; font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .dk-head { display: table-header-group; }
@@ -30,7 +29,8 @@
 .dk-prog { display: flex; align-items: center; gap: 8px; }
 .dk-bar { flex: 0 1 160px; min-width: 60px; height: 6px; border-radius: 3px; background: var(--hover); border: 1px solid var(--line); overflow: hidden; }
 .dk-bar > span { display: block; height: 100%; background: var(--accent); }
-.dk-err { display: block; max-width: 100%; padding: 0; border: 0; background: none; color: var(--danger); font: inherit; font-weight: 400; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.dk-err { display: block; max-width: 100%; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-weight: 400; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.dk-err .cdot { margin: 0 6px 0 0; vertical-align: middle; }
 .dk-err:hover:not(:disabled) { background: none; text-decoration: underline; }
 .dk-err.open { white-space: normal; overflow-wrap: anywhere; }
 

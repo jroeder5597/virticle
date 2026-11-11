@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Lock } from "lucide-react";
 import { del, get, post } from "../api";
 import { useAction, useConfirm } from "../ui";
+import { CheckList, StatusLine } from "../Checks";
 
 export interface MigTLS {
   state: "not set up" | "ok" | "expiring" | "expired" | "mismatch";
@@ -40,7 +41,7 @@ export default function MigrationTLS({ node, online, admin }: { node: number; on
     if (online) load();
   }, [node, online]);
   if (!online) return null;
-  if (err) return <div className="rowerror">Encrypted migration: {err}</div>;
+  if (err) return <StatusLine status="error">Encrypted migration: {err}</StatusLine>;
   if (!st) return <span className="muted">Checking</span>;
 
   const setup = (force: boolean) =>
@@ -92,11 +93,9 @@ export default function MigrationTLS({ node, online, admin }: { node: number; on
         </button>
       )}
       {confirm.dialog}
-      {act.error && <div className="rowerror">{act.error}</div>}
+      {act.error && <StatusLine status="error">{act.error}</StatusLine>}
       {st.problems && st.problems.length > 0 && (
-        <div className="rowerror" role="status">
-          {st.problems.join("; ")}
-        </div>
+        <CheckList summary={false} label="Encrypted migration problems" items={st.problems.map((p) => ({ status: st.state === "expiring" ? "warning" : "error", detail: p }))} />
       )}
       {open && (
         <div className="updlist">
@@ -119,9 +118,7 @@ export default function MigrationTLS({ node, online, admin }: { node: number; on
         </div>
       )}
       {done && done.changes && (
-        <div className="updlist">
-          <small>Done: {done.changes.join("; ")}.</small>
-        </div>
+        <StatusLine status="ok">Done: {done.changes.join("; ")}.</StatusLine>
       )}
     </div>
   );

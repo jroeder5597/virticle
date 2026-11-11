@@ -6,6 +6,7 @@ import { useLive } from "../live";
 import PoolSelect from "../PoolSelect";
 import Select from "../Select";
 import { ErrorBox, Field, Modal, NodePicker, Progress, useAction, useConfirm } from "../ui";
+import { StatusLine } from "../Checks";
 
 interface Manifest {
   vm: string;
@@ -282,7 +283,7 @@ function BackupTable(props: { list: BackupEntry[]; global?: boolean; reload: () 
               <td>
                 {b.manifest ? when(b.manifest.created) : "?"}
                 {b.manifest && <div className="muted">{b.manifest.live ? "live" : "shut off"}{b.manifest.nvram ? ", UEFI variables" : ""}</div>}
-                {b.error && <div className="rowerror">{b.error}</div>}
+                {b.error && <StatusLine status="error">{b.error}</StatusLine>}
               </td>
               <td title={b.path}>
                 {b.nodeName}: {b.pool}
@@ -373,11 +374,11 @@ function SchedulePanel({ d }: { d: VMDetail }) {
               <span className={"badge " + (sch.enabled ? "s-running" : "")}>{sch.enabled ? "enabled" : "paused"}</span>{" "}
               {sch.mode === "interval" ? `Every ${sch.everyMinutes} minutes` : `Daily at ${sch.at} UTC`} to {sch.pool} on {nodeName(sch.targetNode)}, keeping the newest {sch.keepLast}.
               {cur.data?.last ? ` Last backup ${when(new Date(cur.data.last * 1000).toISOString())}.` : " No backup there yet."}
-              {cur.data?.lastError && <span className="rowerror"> Cannot read the target: {cur.data.lastError}</span>}
             </p>
           ) : (
             <p className="muted">No schedule. Runs for running and shut-off VMs; a failed run shows up in the task log and as an alert.</p>
           )}
+          {sch && cur.data?.lastError && <StatusLine status="error">Cannot read the target: {cur.data.lastError}</StatusLine>}
           {sch && <NextRunLine nextRun={cur.data?.nextRun} runner={cur.data?.runner} enabled={sch.enabled} tick={cur.data?.tick} onElapsed={cur.reload} />}
           {canEdit && (
             <div className="actions">

@@ -7,7 +7,6 @@
 .dcnodes th.num, .dcnodes td.num { padding-right: 0; padding-left: 10px; }
 .dcnodes td:first-child { white-space: normal; overflow-wrap: anywhere; }
 .nodeerrs { overflow-wrap: anywhere; }
-.nodeerrs > div + div { margin-top: 4px; }
 
 /* Unified tables have one more column; let names wrap instead of widening the table. */
 .dctable td, .dctable th { padding-left: 10px; padding-right: 10px; }

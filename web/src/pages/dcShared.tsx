@@ -1,5 +1,6 @@
 import Select from "../Select";
 import { Network, NodeStatus, Pool, ServerEvent } from "../api";
+import { CheckList } from "../Checks";
 
 /** Pool and network as returned by GET /api/pools and /api/networks: tagged with the node they live on. */
 export type NodePool = Pool & { node: number; nodeName: string };
@@ -17,12 +18,8 @@ export const nodeLabel = (n: Pick<NodeStatus, "hostname" | "addr">) => n.hostnam
 export function NodeErrors({ errors }: { errors?: NodeErr[] }) {
   if (!errors || errors.length === 0) return null;
   return (
-    <div className="error nodeerrs" role="alert">
-      {errors.map((e) => (
-        <div key={e.node}>
-          <strong>{e.nodeName}</strong> is not shown: {e.error}
-        </div>
-      ))}
+    <div className="nodeerrs" role="alert">
+      <CheckList summary={false} label="Nodes that could not be read" items={errors.map((e) => ({ key: String(e.node), status: "error", title: e.nodeName, detail: `is not shown: ${e.error}` }))} />
     </div>
   );
 }

@@ -121,18 +121,6 @@ func (s *Server) runningTasksOn(n store.Node, hostname string) []string {
 	return out
 }
 
-func (s *Server) testNodeSettings(cur store.Node, req nodeEditReq) (store.Node, bool, *cluster.TestResult, error) {
-	n, detect, err := mergeNodeEdit(cur, req)
-	if err != nil {
-		return n, detect, nil, err
-	}
-	res, err := s.Nodes.TestConnect(n, nodeTestTimeout)
-	if err != nil {
-		return n, detect, nil, err
-	}
-	return n, detect, &res, nil
-}
-
 // testNodeConnection tries the settings without saving anything.
 func (s *Server) testNodeConnection(w http.ResponseWriter, r *http.Request) {
 	id, err := s.nodeID(r)
@@ -150,14 +138,48 @@ func (s *Server) testNodeConnection(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	n, _, res, err := s.testNodeSettings(cur, req)
+	n, _, err := mergeNodeEdit(cur, req)
 	if err != nil {
-		failConn(w, err)
+		fail(w, err)
 		return
 	}
-	out := nodeEditResult{Test: res, Warnings: identityWarnings(cur, res)}
-	out.Warnings = append(out.Warnings, privilegeWarnings(n, res)...)
+	res, err := s.Nodes.TestConnect(n, nodeTestTimeout)
+	if len(res.Steps) == 0 {
+		// Nothing was tried (the settings could not even be turned into a target).
+		failConn(w, err, nil)
+		return
+	}
+	// A failed test is an answer, not an error: the steps say what failed.
+	out := nodeEditResult{Test: &res}
+	if err == nil {
+		out.Warnings = checkWarnings(cur, n, &res)
+	}
 	writeJSON(w, out)
+}
+
+// checkWarnings compares a successful test with the saved node and the new
+// settings. It returns the warnings and adds the matching steps: whether this
+// is the same libvirt host as before, and a privilege setting above what the
+// login really has.
+func checkWarnings(cur, n store.Node, res *cluster.TestResult) []string {
+	w := append(identityWarnings(cur, res), privilegeWarnings(n, res)...)
+	var steps []cluster.TestStep
+	for _, st := range res.Steps {
+		if st.ID == "privilege" && len(privilegeWarnings(n, res)) > 0 {
+			st.Status = cluster.StepWarning
+			st.Detail = fmt.Sprintf("set to %s but the node reports: %s", n.Privilege, res.PrivilegeNote)
+		}
+		steps = append(steps, st)
+		if st.ID == "libvirt" && cur.HostUUID != "" && res.HostUUID != "" {
+			id := cluster.TestStep{ID: "identity", Title: "Same libvirt host as before", Status: cluster.StepOK, Detail: "host UUID " + res.HostUUID}
+			if len(identityWarnings(cur, res)) > 0 {
+				id.Status, id.Detail = cluster.StepWarning, fmt.Sprintf("host UUID is %s, the node was %s; VMs and storage seen here are those of the new machine", res.HostUUID, cur.HostUUID)
+			}
+			steps = append(steps, id)
+		}
+	}
+	res.Steps = steps
+	return w
 }
 
 func identityWarnings(cur store.Node, res *cluster.TestResult) []string {
@@ -179,7 +201,7 @@ func privilegeWarnings(n store.Node, res *cluster.TestResult) []string {
 }
 
 // failConn reports a refused connection test as a 422 with the exact error.
-func failConn(w http.ResponseWriter, err error) {
+func failConn(w http.ResponseWriter, err error, res *cluster.TestResult) {
 	if _, ok := err.(badRequest); ok {
 		fail(w, err)
 		return
@@ -190,6 +212,7 @@ func failConn(w http.ResponseWriter, err error) {
 		"error":      "connection test failed: " + err.Error(),
 		"connection": true,
 		"hostKey":    strings.Contains(err.Error(), "key mismatch"),
+		"test":       res,
 	})
 }
 
@@ -226,18 +249,17 @@ func (s *Server) editNode(w http.ResponseWriter, r *http.Request) {
 	if !req.Force {
 		res, err := s.Nodes.TestConnect(n, nodeTestTimeout)
 		if err != nil {
-			failConn(w, err)
+			failConn(w, err, &res)
 			return
 		}
-		out.Test = &res
-		out.Warnings = append(out.Warnings, identityWarnings(cur, &res)...)
 		if detect {
 			n.Privilege = res.Privilege
 		}
 		if res.HostUUID != "" {
 			n.HostUUID = res.HostUUID
 		}
-		out.Warnings = append(out.Warnings, privilegeWarnings(n, &res)...)
+		out.Warnings = checkWarnings(cur, n, &res)
+		out.Test = &res
 	} else if detect {
 		n.Privilege = "" // detected on the first connection
 		out.Notes = append(out.Notes, "Saved without a trial connection; the privilege is detected when the node connects.")

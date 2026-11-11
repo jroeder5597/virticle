@@ -3,6 +3,7 @@ import { Bell, OctagonAlert, TriangleAlert, X } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { Alert, get } from "../api";
 import { useLive } from "../live";
+import { StatusDot } from "../Checks";
 
 /** Current alerts; refetched whenever the server announces a change. */
 export function useAlerts(): Alert[] {
@@ -51,7 +52,7 @@ export function AlertBell() {
               {alerts.map((a) => (
                 <li key={a.id} className={a.severity}>
                   <div className="atitle">
-                    <span className={"sev " + a.severity}>{a.severity}</span> {a.link ? <NavLink to={a.link} onClick={() => setOpen(false)}>{a.title}</NavLink> : a.title}
+                    <StatusDot status={a.severity === "critical" ? "error" : "warning"} /> {a.link ? <NavLink to={a.link} onClick={() => setOpen(false)}>{a.title}</NavLink> : a.title}
                   </div>
                   <div className="amsg">{a.message}</div>
                   <small>since {ago(a.since)}</small>

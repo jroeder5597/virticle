@@ -7,6 +7,7 @@ import { ErrorBox, Field, Modal, PageTitle, StateBadge, useAction } from "../ui"
 import { HostLoad, useHostSeries } from "../charts";
 import { AlertMarks, useAlerts } from "./Alerts";
 import Evacuate from "./Evacuate";
+import { StatusLine } from "../Checks";
 
 export default function Nodes() {
   const nodes = useLive(() => get<{ nodes: NodeStatus[]; publicKey: string }>("/nodes"), "nodes");
@@ -83,7 +84,7 @@ function NodeRow({ n, canRemove, alerts, onEvacuate, onMaintenance }: { n: NodeS
       </td>
       <td>
         <StateBadge state={n.state} />
-        {n.error && <div className="rowerror">{n.error}</div>}
+        {n.error && <StatusLine status="error">{n.error}</StatusLine>}
       </td>
       <td>
         {info ? `${info.cpus} × ${info.cpuModel}` : ""}

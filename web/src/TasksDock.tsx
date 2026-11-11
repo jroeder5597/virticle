@@ -12,6 +12,7 @@ import { useEvents } from "./live";
 import { setPref, usePref } from "./prefs";
 import { absTime, duration, orderTasks, relTime, TaskNode, TaskStatus, TaskTarget } from "./taskView";
 import "./tasksdock.css";
+import { StatusDot, StatusLine } from "./Checks";
 
 const SHOWN = 50; // rows kept in the DOM
 const KEPT = 150; // tasks kept in memory
@@ -63,6 +64,7 @@ const Row = memo(function Row({ t, inv, now, expanded, toggle }: RowProps) {
           </span>
         ) : t.error ? (
           <button type="button" className={"dk-err" + (expanded ? " open" : "")} title={t.error} aria-expanded={expanded} onClick={() => toggle(t.id)}>
+            <StatusDot status="error" />
             {t.error}
           </button>
         ) : null}
@@ -199,7 +201,7 @@ export default function TasksDock() {
       {open && (
         <div className="dock-body" id="tasks-dock-body">
           {error ? (
-            <div className="dock-note err">{error}</div>
+            <div className="dock-note"><StatusLine status="error">{error}</StatusLine></div>
           ) : !loaded ? (
             <div className="dock-note">Loading</div>
           ) : rows.length === 0 ? (

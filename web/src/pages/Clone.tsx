@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { get, post, VMDetail } from "../api";
 import { ErrorBox, Field, Modal, useAction } from "../ui";
 import CloudInitFields, { cloudInitPayload, cloudInitUsed, CloudInitValues, emptyCloudInit } from "./CloudInit";
+import { StatusLine } from "../Checks";
 
 interface CloneInfo {
   template: boolean;
@@ -100,7 +101,7 @@ export function CloneDialog({ d, base, linked: linkedFirst, onClose }: { d: VMDe
           : "Credentials go into a fresh cloud-init seed. Needs cloud-init in the guest."}
       </p>
       <ErrorBox error={act.error} />
-      {result && <p className="note">{result}</p>}
+      {result && <StatusLine status="info">{result}</StatusLine>}
       <footer>
         <button onClick={onClose}>Cancel</button>
         <button className="primary" disabled={act.busy || !name} onClick={submit}>
@@ -122,7 +123,7 @@ export function SealDialog({ d, base, onClose, onDone }: { d: VMDetail; base: st
         <li>Linux: clears the machine-id, deletes the SSH host keys, runs <code>cloud-init clean</code> if present, removes DHCP leases, logs and shell history.</li>
         <li>Windows: runs <code>sysprep /generalize /oobe /shutdown</code>, which takes minutes and cannot be undone for this installation.</li>
       </ul>
-      <p className="note">Not reversible for this guest. Seal a copy to keep it usable.</p>
+      <StatusLine status="warning">Not reversible for this guest. Seal a copy to keep it usable.</StatusLine>
       <ErrorBox error={act.error} />
       <footer>
         <button onClick={onClose}>Cancel</button>

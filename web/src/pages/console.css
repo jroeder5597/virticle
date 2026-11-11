@@ -5,7 +5,7 @@
 .console.vc .toolbar .spacer { flex: 1 1 0; }
 .console.vc .toolbar button { display: inline-flex; align-items: center; gap: 6px; }
 .console.vc .toolbar .status { min-width: 0; overflow-wrap: anywhere; }
-.console.vc .toolbar-error { flex-basis: 100%; color: var(--danger); font-size: 0.875rem; }
+.console.vc .toolbar-error { flex-basis: 100%; font-size: 0.875rem; }
 .console.vc .screen { border-radius: 0 0 8px 8px; overflow: hidden; }
 .console.vc .screen.actual { overflow: auto; }
 .console.vc.inline .screen { height: var(--console-h); }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { get, HostUpdates as Updates } from "../api";
+import { StatusLine } from "../Checks";
 
 /** Pending package updates of a node (read-only; nothing is installed from here). */
 export default function HostUpdates({ node, online }: { node: number; online: boolean }) {
@@ -22,7 +23,7 @@ export default function HostUpdates({ node, online }: { node: number; online: bo
     if (online) load(false);
   }, [node, online]);
   if (!online) return null;
-  if (err) return <div className="rowerror">Updates: {err}</div>;
+  if (err) return <StatusLine status="error">Updates: {err}</StatusLine>;
   if (!u) return <span className="muted">{busy ? "Checking updates" : ""}</span>;
   if (u.family === "unsupported") return <span className="muted" title={u.note}>Updates not checked ({u.distro || "unknown system"})</span>;
   return (

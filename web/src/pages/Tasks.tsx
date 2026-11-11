@@ -3,6 +3,7 @@ import { useLive } from "../live";
 import { useInventory } from "../inventory";
 import { absTime, TaskNode, TaskTarget } from "../taskView";
 import { ErrorBox, PageTitle, StateBadge } from "../ui";
+import { StatusLine } from "../Checks";
 
 export default function Tasks() {
   const inv = useInventory();
@@ -42,7 +43,7 @@ export default function Tasks() {
                 <td>
                   <StateBadge state={t.status} />
                   {t.status === "running" && t.progress > 0 && <span className="muted"> {(t.progress * 100).toFixed(0)}%</span>}
-                  {t.error && <div className="rowerror">{t.error}</div>}
+                  {t.error && <StatusLine status="error">{t.error}</StatusLine>}
                 </td>
               </tr>
             ))}

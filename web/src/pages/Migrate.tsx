@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Check, Lock, TriangleAlert, X } from "lucide-react";
+import { Lock } from "lucide-react";
+import { CheckList, preflightItems } from "../Checks";
 import { useNavigate } from "react-router-dom";
 import { bytes, get, NodeStatus, post, Task, VMDetail } from "../api";
 import Select from "../Select";
@@ -147,18 +148,7 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
                   {preview.mirrorBytes > 0 && <>Disk data mirrored while running: up to {bytes(preview.mirrorBytes)}.</>}
                 </p>
               )}
-              <ul className="checks">
-                {[...preview.checks]
-                  .sort((a, b) => rank(a) - rank(b))
-                  .map((c, i) => (
-                    <li key={i} className={c.ok ? "ok" : c.severity}>
-                      <span className="mark">{c.ok ? <Check size={14} aria-label="ok" /> : c.severity === "error" ? <X size={14} aria-label="error" /> : <TriangleAlert size={14} aria-label="warning" />}</span>
-                      <span>
-                        <strong>{c.check}</strong>: {c.message}
-                      </span>
-                    </li>
-                  ))}
-              </ul>
+              <CheckList items={preflightItems(preview.checks)} />
             </>
           )}
           <ErrorBox error={act.error} />
@@ -198,7 +188,3 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
   );
 }
 
-// Errors first, then warnings, then the rest.
-function rank(c: Check) {
-  return c.ok ? 2 : c.severity === "error" ? 0 : 1;
-}

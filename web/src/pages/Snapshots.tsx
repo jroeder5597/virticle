@@ -6,6 +6,7 @@ import { ErrorBox, Field, HelpTip, Modal, useAction, useConfirm } from "../ui";
 import { buildSnapRows } from "../snapTree";
 import SnapTree from "./SnapTree";
 import { NextRunLine, ScheduleTimeHelper } from "../ScheduleTime";
+import { CheckList, StatusLine } from "../Checks";
 
 interface Snap {
   name: string;
@@ -282,18 +283,12 @@ function DeleteSnapshots(props: { list: Snap[]; initial?: string; base: string; 
         Space ticks a snapshot, B ticks it and everything below.
       </p>
       {rows.length > 0 && problems.length > 0 && (
-        <div className="note" role="alert">
-          libvirt will not delete this selection as it stands:
-          <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-            {problems.map((x) => (
-              <li key={x.name}>
-                <span className="nameval">{x.name}</span>: {x.reason}
-              </li>
-            ))}
-          </ul>
-        </div>
+        <>
+          <p className="checksum">libvirt will not delete this selection as it stands</p>
+          <CheckList summary={false} label="Why the selection cannot be deleted" items={problems.map((x) => ({ key: x.name, status: "error", title: x.name, detail: x.reason }))} />
+        </>
       )}
-      {ready && plan?.error && <div className="error">{plan.error}</div>}
+      {ready && plan?.error && <StatusLine status="error">{plan.error}</StatusLine>}
       <ErrorBox error={act.error} />
       <footer>
         <button onClick={props.onClose} disabled={act.busy}>
@@ -360,9 +355,9 @@ function SchedulePanel({ d, base }: { d: VMDetail; base: string }) {
                 onElapsed={cur.reload}
               />
               {cur.data?.lastRun && (
-                <p className={"nextrun" + (cur.data.lastRun.ok ? "" : " rowerror")}>
+                <StatusLine status={cur.data.lastRun.ok ? "ok" : "error"}>
                   <strong>Last run:</strong> {cur.data.lastRun.kind === "snapshot prune" ? "pruning" : "taking a snapshot"} {cur.data.lastRun.ok ? "succeeded" : `failed: ${cur.data.lastRun.error}`} ({when(new Date(cur.data.lastRun.time * 1000))})
-                </p>
+                </StatusLine>
               )}
             </>
           )}

@@ -1,5 +1,6 @@
 import { FormEvent, Fragment, ReactNode, useEffect, useState } from "react";
-import { get, NodeStatus, post, put } from "../api";
+import { ApiError, get, NodeStatus, post, put } from "../api";
+import { CheckItem, CheckList, CheckStatus, StatusLine } from "../Checks";
 import Select from "../Select";
 import { ErrorBox, Field, Modal, StateBadge, useAction, useConfirm } from "../ui";
 
@@ -31,6 +32,18 @@ interface TestResult {
   privilege: string;
   privilegeNote: string;
   resolvedIps?: string[];
+  ok?: boolean;
+  steps?: { id: string; title: string; status: string; detail?: string }[];
+}
+
+/** The server's test steps as list items; a step that did not run shows as "Not run". */
+function stepItems(steps: NonNullable<TestResult["steps"]>): CheckItem[] {
+  return steps.map((s) => ({
+    key: s.id,
+    status: (s.status === "skipped" ? "pending" : s.status) as CheckStatus,
+    title: s.title,
+    detail: s.status === "skipped" ? "Not run" : s.detail,
+  }));
 }
 interface EditResponse {
   test?: TestResult;
@@ -55,7 +68,7 @@ export default function ConnectionCard({ n, admin }: { n: NodeStatus; admin: boo
   const [info, setInfo] = useState<ConnInfo | undefined>();
   const [err, setErr] = useState<string | undefined>();
   const [editing, setEditing] = useState(false);
-  const [notes, setNotes] = useState<string[]>([]);
+  const [notes, setNotes] = useState<CheckItem[]>([]);
   const act = useAction();
   const confirm = useConfirm();
   // Reloaded when the node's connection settings or state change, not on a timer.
@@ -100,27 +113,21 @@ export default function ConnectionCard({ n, admin }: { n: NodeStatus; admin: boo
           </Fragment>
         ))}
       </dl>
-      {n.error && <p className="rowerror">{n.error}</p>}
+      {n.error && <StatusLine status="error">{n.error}</StatusLine>}
       <ErrorBox error={err} />
       {info?.privilegeNote && <p className="muted">Detected: {info.privilegeNote}.</p>}
       {info && info.privilege && info.detectedPrivilege && info.privilege !== info.detectedPrivilege && (
-        <p className="rowerror">The node reports {info.detectedPrivilege}, but this node is set to {info.privilege}.</p>
+        <StatusLine status="warning">
+          The node reports {info.detectedPrivilege}, but this node is set to {info.privilege}.
+        </StatusLine>
       )}
       {blocked.length > 0 ? (
-        <ul className="capreasons">
-          {blocked.map((c) => (
-            <li key={c.reason}>{c.reason}</li>
-          ))}
-        </ul>
+        <CheckList summary={false} label="Features that need root" items={blocked.map((c, i) => ({ key: String(i), status: "warning", detail: c.reason ?? "Unavailable" }))} />
       ) : (
-        info && <p className="muted">All features that need root work with this login.</p>
+        info && <StatusLine status="ok">All features that need root work with this login.</StatusLine>
       )}
       <ErrorBox error={act.error} />
-      {notes.map((t) => (
-        <p className="muted" role="status" key={t}>
-          {t}
-        </p>
-      ))}
+      {notes.length > 0 && <CheckList summary={false} label="Result of the change" items={notes} />}
       {admin && (
         <div className="actions">
           <button onClick={() => setEditing(true)}>Edit connection</button>
@@ -137,7 +144,11 @@ export default function ConnectionCard({ n, admin }: { n: NodeStatus; admin: boo
           onClose={() => setEditing(false)}
           onSaved={(r) => {
             setEditing(false);
-            setNotes([...(r.warnings ?? []), ...(r.notes ?? [])]);
+            setNotes([
+              { status: "ok", detail: "Connection settings saved." },
+              ...(r.warnings ?? []).map((t): CheckItem => ({ status: "warning", detail: t })),
+              ...(r.notes ?? []).map((t): CheckItem => ({ status: "info", detail: t })),
+            ]);
           }}
         />
       )}
@@ -176,7 +187,17 @@ function EditConnection({ n, info, onClose, onSaved }: { n: NodeStatus; info: Co
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     let saved: EditResponse | undefined;
-    if (await act.run(async () => (saved = await put<EditResponse>(`/nodes/${n.id}`, body())))) onSaved(saved ?? {});
+    setTested(undefined);
+    const ok = await act.run(async () => {
+      try {
+        saved = await put<EditResponse>(`/nodes/${n.id}`, body());
+      } catch (e) {
+        // A refused save carries the steps of its trial connection.
+        if (e instanceof ApiError && e.data?.test?.steps) setTested({ test: e.data.test });
+        throw e;
+      }
+    });
+    if (ok) onSaved(saved ?? {});
   };
   return (
     <Modal title="Edit connection" onClose={onClose}>
@@ -223,18 +244,7 @@ function EditConnection({ n, info, onClose, onSaved }: { n: NodeStatus; info: Co
         <label className="check">
           <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> Save even if the connection test fails (for a node that is down)
         </label>
-        {tested?.test && (
-          <div className="testresult" role="status">
-            <p>
-              Connected to <b>{tested.test.hostname}</b>, libvirt {tested.test.libvirtVersion}. Detected: {tested.test.privilegeNote}.
-            </p>
-            {tested.warnings?.map((w) => (
-              <p className="rowerror" key={w}>
-                {w}
-              </p>
-            ))}
-          </div>
-        )}
+        {tested?.test?.steps && <CheckList sort={false} label="Connection test" items={stepItems(tested.test.steps)} />}
         <ErrorBox error={act.error} />
         <footer>
           <button type="button" onClick={onClose}>

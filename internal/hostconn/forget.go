@@ -35,6 +35,11 @@ func ForgetHostKey(path, addr string) (int, error) {
 	return n, os.Rename(tmp, path)
 }
 
+// HostKeyKnown reports whether a host key is on record for addr.
+func HostKeyKnown(knownHosts, addr string) bool {
+	return len(knownKeyTypes(knownHosts, withPort(addr))) > 0
+}
+
 // dropHost removes name from the host lists of known_hosts content. A line
 // whose list becomes empty is dropped.
 func dropHost(content, name string) (string, int) {

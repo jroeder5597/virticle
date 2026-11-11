@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { bytes, EvacPlan, EvacRun, get, NodeStatus, post } from "../api";
 import Select from "../Select";
 import { ErrorBox, Modal, useAction, useConfirm } from "../ui";
+import { CheckList, StatusLine } from "../Checks";
 
 /** Plan and run the evacuation of one node. */
 export default function Evacuate({ node, nodes, onClose }: { node: NodeStatus; nodes: NodeStatus[]; onClose: () => void }) {
@@ -122,11 +123,7 @@ export default function Evacuate({ node, nodes, onClose }: { node: NodeStatus; n
                       <td>{b.vm.state}</td>
                       <td>{bytes(b.vm.memoryKiB * 1024)}</td>
                       <td>
-                        <ul className="reasons">
-                          {b.reasons.map((r, i) => (
-                            <li key={i}>{r}</li>
-                          ))}
-                        </ul>
+                        <CheckList summary={false} label="Why it is blocked" items={b.reasons.map((r) => ({ status: "error", detail: r }))} />
                       </td>
                     </tr>
                   ))}
@@ -166,13 +163,9 @@ export default function Evacuate({ node, nodes, onClose }: { node: NodeStatus; n
                   <td>{r.name}</td>
                   <td>{r.targetName ?? ""}</td>
                   <td>
-                    <span className={"badge es-" + r.status}>{r.status}</span> {r.error && <span className="rowerror">{r.error}</span>}
+                    <span className={"badge es-" + r.status}>{r.status}</span> {r.error && <StatusLine status="error">{r.error}</StatusLine>}
                     {r.reasons && (
-                      <ul className="reasons">
-                        {r.reasons.map((x, i) => (
-                          <li key={i}>{x}</li>
-                        ))}
-                      </ul>
+                      <CheckList summary={false} label="Reasons" items={r.reasons.map((x) => ({ status: "warning", detail: x }))} />
                     )}
                   </td>
                 </tr>

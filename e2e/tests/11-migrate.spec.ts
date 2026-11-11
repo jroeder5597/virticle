@@ -17,10 +17,10 @@ test.describe.serial("live migration", () => {
     await expect(dlg.getByRole("combobox", { name: "Target node" })).toContainText(toName);
     await expect(dlg.getByLabel(/Live migration/)).toBeChecked();
     // the pre-flight list renders with at least one entry, none of them an error
-    const checks = dlg.locator("ul.checks li");
+    const checks = dlg.locator("ul.checklist li");
     await expect(checks.first()).toBeVisible({ timeout: 60_000 });
     expect(await checks.count()).toBeGreaterThan(2);
-    await expect(dlg.locator("ul.checks li.error")).toHaveCount(0);
+    await expect(dlg.getByRole("img", { name: "failed" })).toHaveCount(0);
     await expect(dlg).toContainText("Live: the VM keeps running");
     const go = dlg.getByRole("button", { name: "Migrate", exact: true });
     await expect(go).toBeEnabled();
