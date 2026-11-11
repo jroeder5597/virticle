@@ -1,6 +1,9 @@
 package hostconn
 
 import (
+	"crypto/hmac"
+	"crypto/sha1"
+	"encoding/base64"
 	"errors"
 	"os/exec"
 	"strings"
@@ -83,6 +86,14 @@ func TestDropHost(t *testing.T) {
 	out, n := dropHost(in, "10.0.0.1")
 	if n != 1 || strings.Contains(out, "AAAA") || !strings.Contains(out, "BBBB") || !strings.Contains(out, "DDDD") {
 		t.Errorf("n=%d out=%q", n, out)
+	}
+	// a hashed entry for 10.0.0.9
+	salt := []byte("0123456789abcdefghij")
+	m := hmac.New(sha1.New, salt)
+	m.Write([]byte("10.0.0.9"))
+	h := "|1|" + base64.StdEncoding.EncodeToString(salt) + "|" + base64.StdEncoding.EncodeToString(m.Sum(nil)) + " ssh-ed25519 EEEE"
+	if o, c := dropHost(h+"\n"+in, "10.0.0.9"); c != 1 || strings.Contains(o, "EEEE") || !strings.Contains(o, "BBBB") {
+		t.Errorf("hashed: %d %q", c, o)
 	}
 	out, n = dropHost(in, "10.0.0.2")
 	if n != 1 || !strings.Contains(out, "box ssh-ed25519 BBBB") || strings.Contains(out, "10.0.0.2") {

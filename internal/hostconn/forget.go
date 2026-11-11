@@ -1,6 +1,9 @@
 package hostconn
 
 import (
+	"crypto/hmac"
+	"crypto/sha1"
+	"encoding/base64"
 	"os"
 	"strings"
 
@@ -10,7 +13,7 @@ import (
 // ForgetHostKey removes every key recorded for addr from the known_hosts file
 // at path, so that the next connection trusts whatever key the host presents
 // (trust on first use again). It returns how many lines it removed or
-// shortened. Hashed entries are not recognised and stay.
+// shortened. Hashed entries (HashKnownHosts) are recognised too.
 func ForgetHostKey(path, addr string) (int, error) {
 	khMu.Lock()
 	defer khMu.Unlock()
@@ -39,8 +42,16 @@ func dropHost(content, name string) (string, int) {
 	n := 0
 	for _, line := range strings.Split(content, "\n") {
 		f := strings.Fields(line)
-		if len(f) < 3 || strings.HasPrefix(line, "#") || strings.HasPrefix(f[0], "|") {
+		if len(f) < 3 || strings.HasPrefix(line, "#") {
 			out = append(out, line)
+			continue
+		}
+		if strings.HasPrefix(f[0], "|1|") { // hashed entry: one host, HMAC-SHA1 of the name
+			if hashedMatches(f[0], name) {
+				n++
+			} else {
+				out = append(out, line)
+			}
 			continue
 		}
 		hosts := strings.Split(f[0], ",")
@@ -62,4 +73,20 @@ func dropHost(content, name string) (string, int) {
 		}
 	}
 	return strings.Join(out, "\n"), n
+}
+
+// hashedMatches reports whether a |1|salt|hash host field is the hash of name.
+func hashedMatches(field, name string) bool {
+	p := strings.Split(field, "|")
+	if len(p) != 4 {
+		return false
+	}
+	salt, err1 := base64.StdEncoding.DecodeString(p[2])
+	want, err2 := base64.StdEncoding.DecodeString(p[3])
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	m := hmac.New(sha1.New, salt)
+	m.Write([]byte(name))
+	return hmac.Equal(m.Sum(nil), want)
 }

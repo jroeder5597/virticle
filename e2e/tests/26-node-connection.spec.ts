@@ -17,9 +17,9 @@ test.describe.serial("node connection", () => {
     await page.goto(`/node/${n1}/settings`);
     const card = page.locator(".card", { has: page.getByRole("heading", { name: "Connection", exact: true }) });
     await expect(card).toBeVisible();
-    await expect(card.locator("dt", { hasText: "Address" })).toBeVisible();
+    await expect(card.locator("dt", { hasText: /^Address$/ })).toBeVisible();
     await expect(card).toContainText(node.addr);
-    for (const k of ["Reported hostname", "Resolved IP", "Migration address", "SSH user", "Jump host", "Root access"]) await expect(card.locator("dt", { hasText: k })).toBeVisible();
+    for (const k of ["Reported hostname", "Resolved IP", "Migration address", "SSH user", "Jump host", "Root access"]) await expect(card.locator("dt", { hasText: new RegExp(`^${k}$`) })).toBeVisible();
     await expect(card).toContainText(/root: the SSH user is root|sudo: commands|none: nothing runs/);
     const info = await api.get(`/nodes/${n1}`);
     expect(["root", "sudo", "none"]).toContain(info.privilege);
