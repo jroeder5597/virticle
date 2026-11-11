@@ -157,7 +157,7 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     const d2 = dialog(page, `Delete ${NAME}?`);
     await d2.getByLabel(/Also delete its disk/).check();
     await d2.getByRole("button", { name: "Delete VM" }).click();
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/datacenter\/vms$/);
     expect(await api.vmByName(NAME)).toBeUndefined();
   });
 });
