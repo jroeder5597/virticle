@@ -347,7 +347,7 @@ function CreateVM({ nodes, onClose }: { nodes: NodeStatus[]; onClose: () => void
           </Field>
         </div>
         <FirmwareFields node={node} value={fw} onChange={setFw} />
-        {source === "image" && <CloudInitFields vmName={name} value={ci} onChange={setCi} canSave />}
+        {source === "image" && <CloudInitFields vmName={name} value={ci} onChange={setCi} canSave preselect />}
         <label className="check">
           <input type="checkbox" checked={start} onChange={(e) => setStart(e.target.checked)} /> Start after creating
         </label>

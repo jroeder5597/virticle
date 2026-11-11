@@ -36,7 +36,7 @@ export function cloudInitPayload(v: CloudInitValues, vmName: string) {
 }
 
 /** Collapsible cloud-init section for the create-VM and clone dialogs. */
-export default function CloudInitFields(props: { vmName: string; value: CloudInitValues; onChange: (v: CloudInitValues) => void; profiles?: boolean; canSave?: boolean }) {
+export default function CloudInitFields(props: { vmName: string; value: CloudInitValues; onChange: (v: CloudInitValues) => void; profiles?: boolean; canSave?: boolean; preselect?: boolean }) {
   const { value: v, onChange } = props;
   const usable = props.profiles !== false;
   const [open, setOpen] = useState(false);
@@ -48,7 +48,8 @@ export default function CloudInitFields(props: { vmName: string; value: CloudIni
     if (!usable || !profiles || preselected) return;
     setPreselected(true);
     const d = profiles.find((p) => p.default);
-    if (d && !v.profile) {
+    // Only where asked: a clone keeps "no credentials, no seed disk" unless the user picks a profile.
+    if (props.preselect && d && !v.profile) {
       onChange({ ...v, profile: d.id });
       setOpen(true);
     }
