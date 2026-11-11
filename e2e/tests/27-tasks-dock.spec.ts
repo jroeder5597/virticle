@@ -84,7 +84,7 @@ test.describe.serial("tasks dock", () => {
     await api.post(`/nodes/${vm.node}/vms/${vm.uuid}/action`, { action: "start" });
     const started = dock.locator(".dk-row", { hasText: VM }).filter({ hasText: /start/ });
     await expect(started.first()).toBeVisible();
-    await expect(started.first()).toContainText("ok");
+    await expect(started.first()).toContainText("Ok");
     // the target is a link to the VM
     await expect(started.first().getByRole("link", { name: VM })).toHaveAttribute("href", `/vm/${vm.node}/${vm.uuid}`);
     await expect(dock.getByText(/\d+ running/)).toBeVisible();
@@ -92,11 +92,11 @@ test.describe.serial("tasks dock", () => {
     // a long download: running with a progress bar, then cancelled, which fails with a message
     await api.post(`/nodes/${n1}/pools/default/images`, { id: "debian-13", name: BIG });
     const big = dock.locator(".dk-row", { hasText: BIG });
-    await expect(big.first()).toContainText("running", { timeout: 30_000 });
+    await expect(big.first()).toContainText("Running", { timeout: 30_000 });
     await expect(big.first().locator(".dk-bar")).toBeVisible();
     await expect(dock.locator(".dock-count")).toContainText(/[1-9]\d* running/);
     await api.post(`/nodes/${n1}/pools/default/images/cancel`, { name: BIG });
-    await expect(big.first()).toContainText("failed", { timeout: 30_000 });
+    await expect(big.first()).toContainText("Error", { timeout: 30_000 });
     const err = big.first().locator(".dk-err");
     await expect(err).toContainText("cancelled");
     await expect(err).toHaveAttribute("title", /cancelled/);
@@ -122,7 +122,7 @@ test.describe.serial("tasks dock", () => {
     });
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto("/datacenter");
-    await expect(page.locator(DOCK).locator(".dk-row", { hasText: BIG }).first()).toContainText("running", { timeout: 30_000 });
+    await expect(page.locator(DOCK).locator(".dk-row", { hasText: BIG }).first()).toContainText("Running", { timeout: 30_000 });
     await page.waitForTimeout(30_000);
     expect(n, "GET /api/tasks requests in 30 s").toBe(1);
     await api.post(`/nodes/${n1}/pools/default/images/cancel`, { name: BIG }).catch(() => {});

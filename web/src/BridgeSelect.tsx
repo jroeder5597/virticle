@@ -28,7 +28,7 @@ function Face({ n, net }: { n?: HostNIC; net?: string }) {
     <span className="bs-face">
       <span className="bs-row">
         <span className="mono bs-name">{n.name}</span>
-        <span className={"badge s-" + (n.state === "up" ? "running" : "shutoff")}>{n.state}</span>
+        <span className={"badge s-" + (n.state === "up" ? "running" : "shutoff")}>{n.state === "up" ? "Up" : "Down"}</span>
       </span>
       <span className="bs-row bs-sub">
         <span className="mono bs-addr">{addr.length ? addr.join("  ") : "no address"}</span>

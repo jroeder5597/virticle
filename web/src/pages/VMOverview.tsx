@@ -73,7 +73,7 @@ function SummaryCard({ d, g }: { d: VMDetail; g?: GuestInfo }) {
   const leaseName = lease?.host ? (lease.domain ? `${lease.host}.${lease.domain}` : lease.host) : undefined;
   const dns = gHost ?? leaseName;
   const os = agent && g?.available ? g.os?.prettyName || g.os?.name || g.os?.id : undefined;
-  const agentText = d.agent === "connected" ? "connected" : d.agent === "absent" ? "not set up" : "not responding";
+  const agentText = d.agent === "connected" ? "Connected" : d.agent === "absent" ? "Not set up" : "Not responding";
   const ips = d.nics.flatMap((n) => n.ips);
   const passed = usePassthrough(d);
   return (
@@ -340,7 +340,7 @@ function AgentCard({ d, base, onChanged }: { d: VMDetail; base: string; onChange
   return (
     <section className="card ov-wide">
       <h3>
-        Guest agent <span className={"badge s-agent-" + d.agent}>{d.agent === "connected" ? "connected" : d.agent === "absent" ? "not set up" : "not responding"}</span>
+        Guest agent <span className={"badge s-agent-" + d.agent}>{d.agent === "connected" ? "Connected" : d.agent === "absent" ? "Not set up" : "Not responding"}</span>
       </h3>
       {d.agent === "absent" && (
         <>

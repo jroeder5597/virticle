@@ -1,5 +1,5 @@
 // Image catalogue: list, one-click download of CirrOS (21 MB, checksum verified on the node), the
-// "already in this pool" mark, "Create VM from this image", name clash, cancelling a download, and
+// "Already in this pool" mark, "Create VM from this image", name clash, cancelling a download, and
 // the hint in the New VM dialog. Wrong-checksum handling needs the test entry `ic-bad` from an
 // <data>/images.json override (see the notes in internal/catalog/catalog.go); without it that test skips.
 import { expect, test } from "../lib/fixtures";
@@ -52,7 +52,7 @@ test.describe.serial("image catalogue", () => {
     await expect(dlg.locator("li.catitem", { hasText: "Debian 13" })).toContainText("cloud-init");
     await expect(item).toContainText("no cloud-init");
     await item.getByRole("button", { name: "Download" }).click();
-    await expect(item.locator(".catok")).toHaveText("already in this pool", { timeout: 120_000 });
+    await expect(item.locator(".catok")).toHaveText("Already in this pool", { timeout: 120_000 });
     await expect(item.getByRole("link", { name: "Create VM from this image" })).toBeVisible();
     const v = (await vols(api, n1)).find((x) => x.name === CIRROS_VOL);
     expect(v).toBeTruthy();

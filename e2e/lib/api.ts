@@ -134,6 +134,7 @@ export async function sweep(api: Api, log = false): Promise<string[]> {
     const nets: any[] = await api.get(`/nodes/${n.id}/networks`).catch(() => []);
     for (const net of nets.filter((x) => x.name.startsWith(P))) {
       note(`network ${net.name} on ${n.hostname}`);
+      await api.post(`/nodes/${n.id}/networks/${net.name}/action`, { action: "stop" }).catch(() => {}); // an active network is not deleted
       await api.post(`/nodes/${n.id}/networks/${net.name}/action`, { action: "delete" }).catch((e) => console.log("  " + e));
     }
   }

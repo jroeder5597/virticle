@@ -334,7 +334,7 @@ function SchedulePanel({ d, base }: { d: VMDetail; base: string }) {
         <>
           {sch ? (
             <p>
-              <span className={"badge " + (sch.enabled ? "s-running" : "")}>{sch.enabled ? "enabled" : "paused"}</span>{" "}
+              <span className={"badge " + (sch.enabled ? "s-running" : "")}>{sch.enabled ? "Enabled" : "Paused"}</span>{" "}
               {sch.mode === "interval" ? `Every ${sch.everyMinutes} minutes` : `Daily at ${sch.at} UTC`}, keeping the newest {sch.keep} named <code>{sch.prefix}-&lt;timestamp&gt;</code>
               {sch.memory ? ", with memory" : ""}
               {sch.quiesce ? ", frozen via guest agent" : ""}.

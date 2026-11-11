@@ -73,7 +73,7 @@ function NodeRow({ n, canRemove, alerts, onEvacuate, onMaintenance }: { n: NodeS
         <Link to={`/node/${n.id}`}>{n.hostname || n.addr}</Link>
         {n.maintenance && (
           <span className="badge maint" title="Never chosen as a migration or evacuation target">
-            maintenance
+            Maintenance
           </span>
         )}
         <AlertMarks alerts={alerts} match={(a) => a.node === n.id && a.kind !== "pool-usage" && a.kind !== "vm-state"} />

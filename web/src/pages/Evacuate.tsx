@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { bytes, EvacPlan, EvacRun, get, NodeStatus, post } from "../api";
 import Select from "../Select";
-import { ErrorBox, Modal, useAction, useConfirm } from "../ui";
+import { ErrorBox, Modal, StateBadge, useAction, useConfirm } from "../ui";
 import { CheckList, StatusLine } from "../Checks";
 
 /** Plan and run the evacuation of one node. */
@@ -70,8 +70,8 @@ export default function Evacuate({ node, nodes, onClose }: { node: NodeStatus; n
                 <label key={n.id} className="check">
                   <input type="checkbox" checked={targets[n.id] !== false} disabled={n.state !== "online" || n.maintenance} onChange={(e) => setTargets({ ...targets, [n.id]: e.target.checked })} />
                   {n.hostname || n.addr}
-                  {n.state !== "online" && <span className="badge s-offline">{n.state}</span>}
-                  {n.maintenance && <span className="badge maint">maintenance</span>}
+                  {n.state !== "online" && <StateBadge state={n.state} />}
+                  {n.maintenance && <span className="badge maint">Maintenance</span>}
                 </label>
               ))}
             </div>
@@ -117,7 +117,7 @@ export default function Evacuate({ node, nodes, onClose }: { node: NodeStatus; n
                   {plan.blocked.map((b) => (
                     <tr key={b.vm.uuid} className="blockedrow">
                       <td>
-                        <span className="sev critical">blocked</span>
+                        <span className="sev critical">Blocked</span>
                       </td>
                       <td>{b.vm.name}</td>
                       <td>{b.vm.state}</td>
@@ -163,7 +163,7 @@ export default function Evacuate({ node, nodes, onClose }: { node: NodeStatus; n
                   <td>{r.name}</td>
                   <td>{r.targetName ?? ""}</td>
                   <td>
-                    <span className={"badge es-" + r.status}>{r.status}</span> {r.error && <StatusLine status="error">{r.error}</StatusLine>}
+                    <span className={"badge es-" + r.status}>{r.status === "ok" ? "Ok" : r.status === "failed" ? "Error" : r.status.charAt(0).toUpperCase() + r.status.slice(1)}</span> {r.error && <StatusLine status="error">{r.error}</StatusLine>}
                     {r.reasons && (
                       <CheckList summary={false} label="Reasons" items={r.reasons.map((x) => ({ status: "warning", detail: x }))} />
                     )}

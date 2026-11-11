@@ -59,7 +59,7 @@ export function ErrorBox({ error }: { error?: string }) {
 }
 
 export function StateBadge({ state }: { state: string }) {
-  return <span className={"badge s-" + state}>{state}</span>;
+  return <span className={"badge s-" + state}>{state.charAt(0).toUpperCase() + state.slice(1)}</span>;
 }
 
 /** A labelled form row. `group` is for rows of buttons: a <label> around buttons would swallow the first one's name. */

@@ -152,7 +152,7 @@ function Row<T extends SnapNode>({ r, i, focused, p, onFocus, onKey, rows }: { r
       <span className="smain">
         <span className="sline">
           <span className="sname" title={s.name}>{s.name}</span>
-          {s.isCurrent && <span className="badge s-running">current</span>}
+          {s.isCurrent && <span className="badge s-running">Current</span>}
           {s.scheduled && <Clock size={13} aria-label="Made by the schedule" />}
         </span>
         {block ? <span className="sreason" title={block}><StatusDot status="warning" />{block}</span> : s.description && !s.scheduled ? <span className="sdesc" title={s.description}>{s.description}</span> : <span className="sdesc" title={s.files.join("\n")}>{s.scheduled ? "Taken by the schedule" : s.files.length ? s.files.join(", ") : " "}</span>}

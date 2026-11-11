@@ -59,7 +59,7 @@ export default function NodeDetail() {
           <StateBadge state={n.state} />
           {n.maintenance && (
             <span className="badge maint" title="Never chosen as a migration or evacuation target">
-              maintenance
+              Maintenance
             </span>
           )}
           <span className="mono muted">

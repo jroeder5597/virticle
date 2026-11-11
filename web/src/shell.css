@@ -69,7 +69,6 @@ body { overflow-x: hidden; }
 .ctxmenu { position: fixed; z-index: 200; min-width: 190px; padding: 4px; display: grid; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius, 8px); box-shadow: var(--shadow, 0 2px 6px rgba(0, 0, 0, 0.3)); color: var(--text); }
 .ctxmenu button { display: flex; align-items: center; gap: 8px; border: 0; background: none; text-align: left; padding: 6px 10px; border-radius: 5px; color: inherit; font: inherit; cursor: pointer; }
 .ctxmenu button:hover, .ctxmenu button:focus-visible { background: var(--hover); outline: none; }
-.ctxmenu button.danger { color: var(--danger); }
 .ctxmenu .sep { height: 1px; margin: 4px 2px; background: var(--line); }
 
 @media (max-width: 899px) {

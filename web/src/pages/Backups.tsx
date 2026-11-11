@@ -371,7 +371,7 @@ function SchedulePanel({ d }: { d: VMDetail }) {
         <>
           {sch ? (
             <p>
-              <span className={"badge " + (sch.enabled ? "s-running" : "")}>{sch.enabled ? "enabled" : "paused"}</span>{" "}
+              <span className={"badge " + (sch.enabled ? "s-running" : "")}>{sch.enabled ? "Enabled" : "Paused"}</span>{" "}
               {sch.mode === "interval" ? `Every ${sch.everyMinutes} minutes` : `Daily at ${sch.at} UTC`} to {sch.pool} on {nodeName(sch.targetNode)}, keeping the newest {sch.keepLast}.
               {cur.data?.last ? ` Last backup ${when(new Date(cur.data.last * 1000).toISOString())}.` : " No backup there yet."}
             </p>

@@ -1,5 +1,4 @@
 // Pieces of a task row shared by the Tasks page and the Tasks dock.
-import { CircleCheck, CircleX, Loader } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { Task } from "./api";
 import { Inventory, taskLinks } from "./inventory";
@@ -25,15 +24,12 @@ export function duration(t: Task, nowMs: number): string {
   return `${Math.floor(s / 3600)} h ${String(Math.floor((s % 3600) / 60)).padStart(2, "0")} min`;
 }
 
-const ICON = { running: Loader, ok: CircleCheck, failed: CircleX } as const;
-const WORD = { running: "running", ok: "ok", failed: "failed" } as const;
+const WORD = { running: "Running", ok: "Ok", failed: "Error" } as const;
 
-/** Icon and word; colour comes from the shared s-* classes (static, no animation). */
+/** Dot and word; the dot colour comes from the shared s-* classes. */
 export function TaskStatus({ status }: { status: Task["status"] }) {
-  const Icon = ICON[status] ?? Loader;
   return (
     <span className={"tstatus s-" + status}>
-      <Icon size={14} aria-hidden />
       {WORD[status] ?? status}
     </span>
   );

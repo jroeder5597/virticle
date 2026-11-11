@@ -88,7 +88,7 @@ export default function ImageCatalogue(props: { node: number; nodeName?: string;
                   <div className="cattitle">
                     <b>{img.name}</b>
                     <span className="badge">{img.cloudInit ? "cloud-init" : "no cloud-init"}</span>
-                    {img.present && <span className="badge catok">already in this pool</span>}
+                    {img.present && <span className="badge catok">Already in this pool</span>}
                   </div>
                   <small className="muted">
                     ~{bytes(img.sizeBytes ?? 0)}

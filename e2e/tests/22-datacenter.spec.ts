@@ -192,7 +192,7 @@ test.describe.serial("datacenter", () => {
     await page.goto("/datacenter");
     await expect(page.locator(".nodeerrs")).toContainText(BOGUS);
     await expect(page.locator(".dctile", { hasText: "Storage in use" })).toContainText(/GiB of/);
-    await expect(row(page.locator(".dcnodes"), BOGUS)).toContainText(/offline|connecting/);
+    await expect(row(page.locator(".dcnodes"), BOGUS)).toContainText(/offline|connecting/i);
     await api.del(`/nodes/${bogusId}`);
     bogusId = 0;
   });

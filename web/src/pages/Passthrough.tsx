@@ -74,7 +74,7 @@ export default function PassthroughCard({ d, base, onChanged, bare }: { d: VMDet
               <tr key={a.key}>
                 <td>{a.kind.toUpperCase()}</td>
                 <td>{a.label}</td>
-                <td>{!a.present && <span className="badge s-offline">not on this node now</span>}</td>
+                <td>{!a.present && <span className="badge s-offline">Not on this node now</span>}</td>
                 <td className="actions">
                   <button className="iconbtn" aria-label="Remove" title="Remove" disabled={act.busy} onClick={() => remove(a.key)}>
                     <Trash2 size={15} aria-hidden="true" />

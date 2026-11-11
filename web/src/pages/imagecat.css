@@ -7,7 +7,6 @@
 .cattitle { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .catvol { overflow-wrap: anywhere; }
 .catact { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-.catok { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); border-color: var(--ok); }
 @media (max-width: 520px) {
   .catact { flex: 1 1 100%; }
   .catact .button, .catact button { flex: 1 1 auto; text-align: center; }

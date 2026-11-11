@@ -48,7 +48,7 @@ export default function Users() {
               <td>
                 <Select auto label={`Role of ${u.username}`} value={u.role} disabled={act.busy} onChange={(r) => change(u, { role: r })} options={roles.map((r) => ({ value: r, label: r }))} />
               </td>
-              <td>{u.disabled ? <span className="badge s-shutoff">disabled</span> : <span className="badge s-running">active</span>}</td>
+              <td>{u.disabled ? <span className="badge s-shutoff">Disabled</span> : <span className="badge s-running">Active</span>}</td>
               <td>{when(u.created)}</td>
               <td className="actions">
                 <button disabled={act.busy} onClick={() => change(u, { disabled: !u.disabled })}>

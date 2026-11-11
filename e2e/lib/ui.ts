@@ -75,5 +75,5 @@ export async function cancelConfirm(page: Page, title?: string | RegExp) {
 }
 
 export async function expectBadge(scope: Locator | Page, state: string) {
-  await expect(scope.locator(".badge", { hasText: new RegExp(`^${state}$`) }).first()).toBeVisible();
+  await expect(scope.locator(".badge", { hasText: new RegExp(`^${state}$`, "i") }).first()).toBeVisible();
 }

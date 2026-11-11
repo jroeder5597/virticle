@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bell, OctagonAlert, TriangleAlert, X } from "lucide-react";
+import { Bell, X } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { Alert, get } from "../api";
 import { useLive } from "../live";
@@ -75,7 +75,7 @@ export function AlertMarks({ alerts, match }: { alerts: Alert[]; match: (a: Aler
     <span className="marks">
       {mine.map((a) => (
         <span key={a.id} className={"mark " + a.severity} title={a.message}>
-          {a.severity === "critical" ? <OctagonAlert size={12} aria-hidden="true" /> : <TriangleAlert size={12} aria-hidden="true" />} {a.title}
+          {a.title}
         </span>
       ))}
     </span>

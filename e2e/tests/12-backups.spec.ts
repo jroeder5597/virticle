@@ -22,7 +22,7 @@ test.describe.serial("backups", () => {
     await expect(dlg.getByLabel("Target pool")).toContainText("default");
     await dlg.getByRole("button", { name: "Back up now" }).click();
     await expect(dlg.getByRole("progressbar")).toBeVisible();
-    await expect(dlg).toContainText("ok", { timeout: 200_000 });
+    await expect(dlg).toContainText(/ok/i, { timeout: 200_000 });
     // a finished task shows a full bar that is not alarming red
     const color = await dlg.getByRole("progressbar").locator("div").evaluate((e) => getComputedStyle(e).backgroundColor);
     const accent = await page.evaluate(() => {
@@ -70,7 +70,7 @@ test.describe.serial("backups", () => {
     await expect(dlg.getByLabel("New VM name")).toHaveValue(RESTORED);
     await dlg.getByRole("button", { name: "Restore", exact: true }).click();
     await expect(dlg.getByRole("progressbar")).toBeVisible();
-    await expect(dlg).toContainText("ok", { timeout: 200_000 });
+    await expect(dlg).toContainText(/ok/i, { timeout: 200_000 });
     await dlg.getByRole("button", { name: "Close dialog" }).click();
     const got = await api.vmByName(RESTORED);
     expect(got).toBeTruthy();
