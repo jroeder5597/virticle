@@ -10,6 +10,10 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/digitalocean/go-libvirt"
+
+	"virt-proj/internal/hostconn"
 )
 
 var volNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,200}$`)
@@ -57,68 +61,20 @@ func (s *Server) downloadVolume(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	raw, err := h.StoragePoolGetXMLDesc(pool, 0)
+	dir, err := poolDirectory(h, pool)
 	if err != nil {
 		fail(w, err)
-		return
-	}
-	var px struct {
-		Type   string `xml:"type,attr"`
-		Target struct {
-			Path string `xml:"path"`
-		} `xml:"target"`
-	}
-	if err := xml.Unmarshal([]byte(raw), &px); err != nil {
-		fail(w, err)
-		return
-	}
-	if px.Type != "dir" && px.Type != "netfs" && px.Type != "fs" || !strings.HasPrefix(px.Target.Path, "/") {
-		fail(w, badRequest("downloads need a pool backed by a directory (dir, netfs or fs), not a "+px.Type+" pool"))
-		return
-	}
-	if state, _, _, _, err := h.StoragePoolGetInfo(pool); err != nil || state != 2 {
-		fail(w, badRequest("the pool is not running"))
 		return
 	}
 	if _, err := h.StorageVolLookupByName(pool, req.Name); err == nil {
 		fail(w, badRequest("a volume named "+req.Name+" already exists in this pool"))
 		return
 	}
-	dest := strings.TrimRight(px.Target.Path, "/") + "/" + req.Name
+	dest := dir + "/" + req.Name
 	part := dest + ".part"
 
 	err = s.task(r, "download", pool.Name+"/"+req.Name, h.Name, func(progress func(float64)) error {
-		// Best effort: the size, for the progress bar.
-		var total int64
-		if out, err := h.Run("curl -q -sIL --max-time 20 --proto '=http,https' --proto-redir '=http,https' -- " + shQuote(req.URL)); err == nil {
-			for _, line := range strings.Split(out, "\n") {
-				if k, v, ok := strings.Cut(line, ":"); ok && strings.EqualFold(k, "content-length") {
-					if n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
-						total = n // the last response wins, after redirects
-					}
-				}
-			}
-		}
-		done := make(chan struct{})
-		defer close(done)
-		if total > 0 {
-			go func() {
-				tick := time.NewTicker(2 * time.Second)
-				defer tick.Stop()
-				for {
-					select {
-					case <-done:
-						return
-					case <-tick.C:
-						if out, err := h.Run("stat -c %s -- " + shQuote(part)); err == nil {
-							if n, err := strconv.ParseInt(out, 10, 64); err == nil {
-								progress(float64(n) / float64(total))
-							}
-						}
-					}
-				}
-			}()
-		}
+		defer watchPartSize(h, part, probeSize(h, req.URL), progress)()
 		// -f: an HTTP error status is a failure, not a saved error page.
 		cmd := fmt.Sprintf("umask 077; if [ -e %[3]s ]; then echo 'a file with this name already exists in the pool directory'; exit 1; fi; if curl -q -fsSL --proto '=http,https' --proto-redir '=http,https' --max-redirs 10 --connect-timeout 20 -o %[1]s -- %[2]s && mv -n -- %[1]s %[3]s; then :; else rc=$?; rm -f -- %[1]s; exit $rc; fi",
 			shQuote(part), shQuote(req.URL), shQuote(dest))
@@ -135,4 +91,70 @@ func (s *Server) downloadVolume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// poolDirectory returns the directory behind a running dir, netfs or fs pool,
+// the only kinds a node can download into.
+func poolDirectory(h *hostconn.Host, pool libvirt.StoragePool) (string, error) {
+	raw, err := h.StoragePoolGetXMLDesc(pool, 0)
+	if err != nil {
+		return "", err
+	}
+	var px struct {
+		Type   string `xml:"type,attr"`
+		Target struct {
+			Path string `xml:"path"`
+		} `xml:"target"`
+	}
+	if err := xml.Unmarshal([]byte(raw), &px); err != nil {
+		return "", err
+	}
+	if px.Type != "dir" && px.Type != "netfs" && px.Type != "fs" || !strings.HasPrefix(px.Target.Path, "/") {
+		return "", badRequest("downloads need a pool backed by a directory (dir, netfs or fs), not a " + px.Type + " pool")
+	}
+	if state, _, _, _, err := h.StoragePoolGetInfo(pool); err != nil || state != 2 {
+		return "", badRequest("the pool is not running")
+	}
+	return strings.TrimRight(px.Target.Path, "/"), nil
+}
+
+// probeSize asks the node for the size of a URL (best effort, 0 if unknown),
+// for the progress bar.
+func probeSize(h *hostconn.Host, rawURL string) int64 {
+	var total int64
+	if out, err := h.Run("curl -q -sIL --max-time 20 --proto '=http,https' --proto-redir '=http,https' -- " + shQuote(rawURL)); err == nil {
+		for _, line := range strings.Split(out, "\n") {
+			if k, v, ok := strings.Cut(line, ":"); ok && strings.EqualFold(k, "content-length") {
+				if n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
+					total = n // the last response wins, after redirects
+				}
+			}
+		}
+	}
+	return total
+}
+
+// watchPartSize reports the size of the growing file on the node as progress,
+// every 2 seconds, until the returned function is called.
+func watchPartSize(h *hostconn.Host, part string, total int64, progress func(float64)) (stop func()) {
+	done := make(chan struct{})
+	if total > 0 {
+		go func() {
+			tick := time.NewTicker(2 * time.Second)
+			defer tick.Stop()
+			for {
+				select {
+				case <-done:
+					return
+				case <-tick.C:
+					if out, err := h.Run("stat -c %s -- " + shQuote(part)); err == nil {
+						if n, err := strconv.ParseInt(out, 10, 64); err == nil {
+							progress(float64(n) / float64(total))
+						}
+					}
+				}
+			}
+		}()
+	}
+	return func() { close(done) }
 }

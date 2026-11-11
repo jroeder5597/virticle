@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { bytes, get, Network, NodeStatus, Pool, post, VM, Volume } from "../api";
 import { useLive } from "../live";
@@ -21,9 +21,12 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
   const [tagFilter, setTagFilter] = useState("");
   const act = useAction();
   const preferred = Number(params.get("new")) || 0; // set by the sidebar tree's "Add VM"
+  // &pool=&image= (the image catalogue's "Create VM from this image") preselect a base image.
+  const [preset, setPreset] = useState<{ pool: string; image: string } | undefined>();
   const online = (nodes.data?.nodes.filter((n) => n.state === "online" && (fixedNode === undefined || n.id === fixedNode)) ?? []).sort((a, b) => Number(b.id === preferred) - Number(a.id === preferred));
   useEffect(() => {
     if (preferred && nodes.data) {
+      setPreset(params.get("image") ? { pool: params.get("pool") ?? "", image: params.get("image") ?? "" } : undefined);
       setCreating(online.length > 0);
       setParams({}, { replace: true });
     }
@@ -145,7 +148,7 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
           </tbody>
         </table>
       )}
-      {creating && <CreateVM nodes={online} onClose={() => setCreating(false)} />}
+      {creating && <CreateVM nodes={online} preset={preset} onClose={() => setCreating(false)} />}
     </>
   );
 }
@@ -174,7 +177,7 @@ function UsageCells({ p }: { p?: VMPoint }) {
   );
 }
 
-function CreateVM({ nodes, onClose }: { nodes: NodeStatus[]; onClose: () => void }) {
+function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { pool: string; image: string }; onClose: () => void }) {
   const nav = useNavigate();
   const act = useAction();
   const [node, setNode] = useState(nodes[0].id);
@@ -182,8 +185,9 @@ function CreateVM({ nodes, onClose }: { nodes: NodeStatus[]; onClose: () => void
   const [vcpus, setVcpus] = useState(2);
   const [memoryMiB, setMemory] = useState(2048);
   const [fw, setFw] = useState<FwValues>(emptyFw);
-  const [source, setSource] = useState<"iso" | "image" | "empty" | "existing">("iso");
-  const [pool, setPool] = useState("");
+  const [source, setSource] = useState<"iso" | "image" | "empty" | "existing">(preset ? "image" : "iso");
+  const [pool, setPool] = useState(preset?.pool ?? "");
+  const presetImage = useRef(preset?.image); // used once, for the first load of the node's volumes
   const [diskGiB, setDisk] = useState(20);
   const [media, setMedia] = useState("");
   const [network, setNetwork] = useState("");
@@ -196,7 +200,8 @@ function CreateVM({ nodes, onClose }: { nodes: NodeStatus[]; onClose: () => void
   // Pools, networks and images belong to the chosen node.
   useEffect(() => {
     let live = true;
-    setMedia("");
+    setMedia(presetImage.current ?? "");
+    presetImage.current = undefined;
     (async () => {
       const [p, n] = await Promise.all([get<Pool[]>(`/nodes/${node}/pools`), get<Network[]>(`/nodes/${node}/networks`)]);
       if (!live) return;
@@ -307,6 +312,11 @@ function CreateVM({ nodes, onClose }: { nodes: NodeStatus[]; onClose: () => void
               ))}
             </select>
           </Field>
+        )}
+        {source === "image" && images.length === 0 && pool && (
+          <p className="muted">
+            No images in this pool. <Link to={`/node/${node}/storage?pool=${encodeURIComponent(pool)}&catalogue=1`}>Get a cloud image from the catalogue</Link>.
+          </p>
         )}
         {source === "existing" && (
           <Field label="Volume" hint="Used as the VM's disk as it is, not copied (an imported disk, say). Import other formats under Storage first.">

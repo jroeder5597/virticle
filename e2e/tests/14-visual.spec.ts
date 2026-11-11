@@ -182,6 +182,9 @@ test.describe.serial("visual pass", () => {
       await page.getByRole("button", { name: "New pool" }).click();
       await shot("new-pool-dialog", () => expect(page.getByRole("dialog")).toBeVisible());
       await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Image catalogue" }).click();
+      await shot("image-catalogue-dialog", () => expect(page.getByRole("dialog", { name: "Image catalogue" }).locator("li.catitem").first()).toBeVisible());
+      await page.keyboard.press("Escape");
       await page.goto(vmUrl + "?tab=hardware");
       await page.getByRole("button", { name: "Add disk" }).click();
       await shot("add-disk-dialog", () => expect(page.getByRole("dialog")).toBeVisible());
