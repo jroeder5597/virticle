@@ -262,11 +262,17 @@ func pickHostdev(devs []hostDevice, iommu bool, id, vmUUID string) (hostDevice, 
 				}
 			}
 		}
-		if len(d.GroupPeers) > 0 {
-			ids := make([]string, len(d.GroupPeers))
-			for i, p := range d.GroupPeers {
-				ids[i] = p.ID
+		var ids []string
+		for _, p := range d.GroupPeers {
+			port := false
+			for i := range devs {
+				port = port || (devs[i].ID == p.ID && staysWithHost(&devs[i]))
 			}
+			if !port {
+				ids = append(ids, p.ID)
+			}
+		}
+		if len(ids) > 0 {
 			note = fmt.Sprintf("IOMMU group %d also holds %s; the group is handed over as a whole, so pass those to this VM too or leave them unused.", *d.IOMMUGroup, strings.Join(ids, ", "))
 		}
 	}

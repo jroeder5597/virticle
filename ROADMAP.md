@@ -57,7 +57,7 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
 - [x] Evacuate a node (planner, per-VM tasks, cancel, maintenance flag); show pending host updates (read-only)
 
 ## Hardware
-- [~] Passthrough picker: PCI and USB with IOMMU groups, in-use and safety checks, migration warning. UNTESTED on real hardware (lab nodes have no IOMMU)
+- [x] Passthrough picker: PCI and USB with IOMMU groups, in-use and safety checks, migration warning. Verified on real hardware with a whole GPU (Quadro P1000 and its audio function: attach, guest sees it, host driver takes it back). USB passthrough, hot-plug of a PCI device and SR-IOV/vGPU are untested or not built
 - [x] CPU pinning, CPU model and topology, hugepages, NUMA policy (multi-cell NUMA untested)
 
 ## Operations
@@ -72,7 +72,7 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
 - [x] Image catalogue: ten built-in cloud images, downloaded by the node and verified by checksum (same-origin checksum: catches corruption, not a compromised mirror); `<data>/images.json` adds or overrides entries
 - [x] Cloud-init profiles (stored in the controller database, passwords as hashes only), selectable when creating and cloning
 - [x] Console preview card on the VM overview (still image, refreshed only while visible), standalone console page, console toolbar (Ctrl+Alt+Del, key combos, paste text, screenshot, full screen)
-- [~] go-libvirt can wedge a node connection when a stream ends abruptly (serial console, volume transfer). Screenshots avoid it by using virsh; fix and connection watchdog in progress
+- [x] go-libvirt could wedge a node connection when a stream ended abruptly: fixed with a small patch kept in `third_party/go-libvirt`, plus a per-node watchdog that reconnects an unresponsive connection. Screenshots still use virsh (a separate library bug)
 - [ ] Later: scheduled replication to a standby node; optional shared storage and HA
 
 ## Design notes

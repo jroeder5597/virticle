@@ -275,13 +275,22 @@ func markSafety(devs []hostDevice, f hostFacts) {
 			continue
 		}
 		for _, pid := range d.groupAddr {
-			if p := byID[pid]; p != nil && p.Unsafe {
+			if p := byID[pid]; p != nil && p.Unsafe && !staysWithHost(p) {
 				d.Unsafe = true
 				d.UnsafeReason = "it shares IOMMU group " + strconv.Itoa(*d.IOMMUGroup) + " with " + p.ID + " (" + p.Class + "), which must stay with the host: " + p.UnsafeReason
 				break
 			}
 		}
 	}
+}
+
+// staysWithHost reports a group member that the kernel leaves on the host
+// while the rest of its IOMMU group is handed to a VM: a PCIe port bound to
+// pcieport, which VFIO explicitly tolerates. A graphics card in the CPU's
+// slot always shares its group with such a root port (seen on real
+// hardware: Quadro P1000 behind 0000:00:01.0), so it must not block the card.
+func staysWithHost(d *hostDevice) bool {
+	return d.Kind == "pci" && d.Class == "PCI bridge" && d.Driver == "pcieport"
 }
 
 // parseFacts reads the output of the fixed script in hostdev.go: lines of

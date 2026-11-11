@@ -207,3 +207,37 @@ func TestVMHostdevsAndMatching(t *testing.T) {
 		t.Error("detach matching wrong")
 	}
 }
+
+// Seen on real hardware: a graphics card in the CPU's slot shares its
+// IOMMU group with the PCIe root port above it. The port stays with the host.
+func TestGPUBehindRootPortIsAllowed(t *testing.T) {
+	g := 2
+	devs := []hostDevice{
+		{ID: "0000:00:01.0", Kind: "pci", Class: "PCI bridge", Category: "bridge", Driver: "pcieport", IOMMUGroup: &g, groupAddr: []string{"0000:01:00.0", "0000:01:00.1"}},
+		{ID: "0000:01:00.0", Kind: "pci", Class: "VGA controller", Category: "gpu", Driver: "nvidia", IOMMUGroup: &g, groupAddr: []string{"0000:00:01.0", "0000:01:00.1"}},
+		{ID: "0000:01:00.1", Kind: "pci", Class: "Audio device", Category: "other", Driver: "snd_hda_intel", IOMMUGroup: &g, groupAddr: []string{"0000:00:01.0", "0000:01:00.0"}},
+	}
+	markSafety(devs, hostFacts{Known: true, NIC: map[string]string{}, Storage: map[string]string{}})
+	if !devs[0].Unsafe {
+		t.Error("the root port itself must not be offered")
+	}
+	if devs[1].Unsafe || devs[2].Unsafe {
+		t.Errorf("GPU and its audio function must be allowed: %q / %q", devs[1].UnsafeReason, devs[2].UnsafeReason)
+	}
+	_, xml, note, err := pickHostdev(devs, true, "0000:01:00.0", "vm")
+	if err != nil || xml == "" {
+		t.Fatalf("attach refused: %v", err)
+	}
+	if !strings.Contains(note, "0000:01:00.1") || strings.Contains(note, "0000:00:01.0") {
+		t.Errorf("note should name the audio function, not the root port: %q", note)
+	}
+	// A bridge of another kind (ISA, host) in the group still blocks.
+	devs[0].Class, devs[0].Driver = "ISA bridge", ""
+	for i := range devs {
+		devs[i].Unsafe, devs[i].UnsafeReason, devs[i].GroupPeers = false, "", nil
+	}
+	markSafety(devs, hostFacts{Known: true, NIC: map[string]string{}, Storage: map[string]string{}})
+	if !devs[1].Unsafe {
+		t.Error("a device sharing its group with an ISA bridge must stay refused")
+	}
+}
