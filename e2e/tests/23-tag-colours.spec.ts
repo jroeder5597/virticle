@@ -193,7 +193,7 @@ test.describe.serial("tag colours and the tag editor", () => {
     const chip = page.locator(".titleline .tag", { hasText: TAG });
     await expect(chip).toBeVisible();
     await expect.poll(async () => (await chipColors(chip)).bg).toBe("#6e56cf");
-    expect((await api.vmDetail(v2.node, v2.uuid)).tags).toEqual([TAG]);
+    await expect.poll(async () => (await api.vmDetail(v2.node, v2.uuid)).tags).toEqual([TAG]); // the chip shows before the write lands
     // Escape returns to the button
     await page.getByRole("button", { name: "+ Add Tag", exact: true }).click();
     await page.keyboard.press("Escape");
