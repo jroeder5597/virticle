@@ -53,7 +53,7 @@ export function TagEditor({ tags, base, onChanged }: { tags: string[]; base: str
       </span>
       <input
         value={draft}
-        placeholder="add tag…"
+        placeholder="add tag"
         maxLength={31}
         disabled={act.busy}
         onChange={(e) => setDraft(e.target.value)}

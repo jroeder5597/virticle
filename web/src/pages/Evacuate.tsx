@@ -88,7 +88,7 @@ export default function Evacuate({ node, nodes, onClose }: { node: NodeStatus; n
             </div>
           </div>
           <button onClick={runCheck} disabled={check.busy || others.length === 0}>
-            {check.busy ? "Checking…" : plan ? "Check again" : "Check what can move"}
+            {check.busy ? "Checking" : plan ? "Check again" : "Check what can move"}
           </button>
           <ErrorBox error={check.error} />
           {plan && (
@@ -152,7 +152,7 @@ export default function Evacuate({ node, nodes, onClose }: { node: NodeStatus; n
             <div style={{ width: `${(done / Math.max(1, run.results.length)) * 100}%` }} />
           </div>
           <p>
-            {run.running ? (run.cancelled ? "Cancelling: no further VMs will be started." : `Evacuating… ${done} of ${run.results.length} finished.`) : run.cancelled ? "Cancelled." : "Finished."}
+            {run.running ? (run.cancelled ? "Cancelling: no further VMs will be started." : `Evacuating ${done} of ${run.results.length} finished.`) : run.cancelled ? "Cancelled." : "Finished."}
           </p>
           <table className="compact">
             <thead>

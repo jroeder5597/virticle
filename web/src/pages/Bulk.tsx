@@ -85,10 +85,10 @@ export function BulkBar({ selected, onClear }: { selected: VM[]; onClear: () => 
         Force off
       </button>
       <button disabled={running} onClick={() => setTagging(true)}>
-        Tags…
+        Tags
       </button>
       <button className="danger" disabled={running} onClick={() => setDeleting(true)}>
-        Delete…
+        Delete
       </button>
       <button className="ghost" onClick={onClear}>
         Clear selection

@@ -100,7 +100,7 @@ export default function ImportDialog({ node, pool, volumes, initial, onClose, on
               }}
               required
             >
-              <option value="">Choose a volume…</option>
+              <option value="">Choose a volume</option>
               {volumes.map((v) => (
                 <option key={v.name} value={v.name}>
                   {v.name} ({bytes(v.capacity)})
@@ -123,7 +123,7 @@ export default function ImportDialog({ node, pool, volumes, initial, onClose, on
         )}
         <div className="actions" style={{ marginBottom: 10 }}>
           <button type="button" disabled={!ready || inspectAct.busy} onClick={inspect}>
-            {inspectAct.busy ? "Inspecting…" : "Inspect"}
+            {inspectAct.busy ? "Inspecting" : "Inspect"}
           </button>
         </div>
         <ErrorBox error={inspectAct.error} />
@@ -146,7 +146,7 @@ export default function ImportDialog({ node, pool, volumes, initial, onClose, on
         )}
         {progress !== undefined && (
           <div className="progress">
-            Converting… {(progress * 100).toFixed(0)}%
+            Converting {(progress * 100).toFixed(0)}%
             <div className="bar">
               <div style={{ width: progress * 100 + "%" }} />
             </div>
@@ -158,7 +158,7 @@ export default function ImportDialog({ node, pool, volumes, initial, onClose, on
             Cancel
           </button>
           <button className="primary" disabled={!info || !name || act.busy}>
-            {act.busy ? "Importing…" : "Import"}
+            {act.busy ? "Importing" : "Import"}
           </button>
         </footer>
       </form>

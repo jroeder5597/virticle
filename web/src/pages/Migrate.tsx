@@ -132,7 +132,7 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
             </label>
           )}
           <h3>Pre-flight checks</h3>
-          {checking && <p className="muted">Checking {targetName}…</p>}
+          {checking && <p className="muted">Checking {targetName}</p>}
           {preview && (
             <>
               {preview.mode && (
@@ -173,7 +173,7 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
       {taskId !== 0 && (
         <>
           <p>
-            Moving <strong>{d.name}</strong> to <strong>{targetName}</strong>…
+            Moving <strong>{d.name}</strong> to <strong>{targetName}</strong>
           </p>
           <div className="bar" role="progressbar" aria-valuenow={Math.round((task?.progress ?? 0) * 100)}>
             <div className={task?.status === "failed" ? "full" : ""} style={{ width: (task?.status === "ok" ? 1 : task?.progress ?? 0) * 100 + "%" }} />

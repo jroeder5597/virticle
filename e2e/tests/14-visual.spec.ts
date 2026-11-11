@@ -99,6 +99,25 @@ async function clipped(page: Page): Promise<string[]> {
   });
 }
 
+/** The user's rule: no ellipsis in labels, placeholders or status text. */
+async function ellipses(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const bad = new Set<string>();
+    const has = (t: string) => t.includes("\u2026") || t.includes("...");
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      const t = (n.textContent ?? "").trim();
+      if (t && has(t) && !n.parentElement?.closest(".xterm, pre, code, textarea, script, style")) bad.add(t.slice(0, 60));
+    }
+    for (const el of Array.from(document.querySelectorAll("[placeholder], [title], [aria-label]")))
+      for (const a of ["placeholder", "title", "aria-label"]) {
+        const t = el.getAttribute(a) ?? "";
+        if (has(t)) bad.add(`${a}: ${t.slice(0, 60)}`);
+      }
+    return [...bad];
+  });
+}
+
 const modes = [
   { name: "dark", scheme: "dark" as const, viewport: { width: 1280, height: 800 } },
   { name: "light", scheme: "light" as const, viewport: { width: 1440, height: 900 } },
@@ -132,6 +151,7 @@ test.describe.serial("visual pass", () => {
         await page.screenshot({ path: `${OUT}/${m.name}-${name}.png`, fullPage: true });
         const issues = await lowContrast(page);
         for (const i of issues) problems.push(`${m.name}/${name}: low contrast: ${i}`);
+        for (const e of await ellipses(page)) problems.push(`${m.name}/${name}: ellipsis in "${e}"`);
         const over = await sideways(page);
         if (over > 1 && !opts.wide) problems.push(`${m.name}/${name}: page scrolls sideways by ${over}px`);
         if (m.viewport.width >= 1000 && !opts.wide) for (const c of await clipped(page)) problems.push(`${m.name}/${name}: ${c}`);

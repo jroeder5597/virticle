@@ -96,7 +96,7 @@ function NodeRow({ n, canRemove, alerts, onEvacuate, onMaintenance }: { n: NodeS
       <td className="actions nodeactions">
         {canRemove && n.state === "online" && (
           <button onClick={onEvacuate} title="Move the virtual machines of this node to the others">
-            Evacuate…
+            Evacuate
           </button>
         )}
         {canRemove && (

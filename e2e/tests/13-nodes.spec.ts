@@ -34,7 +34,7 @@ test.describe.serial("nodes", () => {
     await expect(r2.locator(".badge.maint")).toBeVisible();
     expect((await api.nodes()).find((n) => n.id === n2)?.maintenance).toBe(true);
     // a node in maintenance is not offered as an evacuation target
-    await row(page, env.node1).getByRole("button", { name: "Evacuate…" }).click();
+    await row(page, env.node1).getByRole("button", { name: "Evacuate" }).click();
     const dlg = dialog(page, `Evacuate ${env.node1}`);
     await expect(dlg.locator("label.check", { hasText: env.node2 }).locator("input")).toBeDisabled();
     await expect(dlg.locator("label.check", { hasText: env.node2 }).locator(".badge.maint")).toBeVisible();
@@ -51,7 +51,7 @@ test.describe.serial("nodes", () => {
     test.setTimeout(300_000);
     const vm = await createCirros(api, n1, VM);
     await page.goto("/nodes");
-    await row(page, env.node1).getByRole("button", { name: "Evacuate…" }).click();
+    await row(page, env.node1).getByRole("button", { name: "Evacuate" }).click();
     const dlg = dialog(page, `Evacuate ${env.node1}`);
     // only the second node as the target
     await dlg.getByRole("button", { name: "Check what can move" }).click();

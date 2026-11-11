@@ -40,7 +40,7 @@ export default function MigrationTLS({ node, online, admin }: { node: number; on
   }, [node, online]);
   if (!online) return null;
   if (err) return <div className="rowerror">Encrypted migration: {err}</div>;
-  if (!st) return <span className="muted">Checking…</span>;
+  if (!st) return <span className="muted">Checking</span>;
 
   const setup = (force: boolean) =>
     act.run(async () => {
@@ -76,7 +76,7 @@ export default function MigrationTLS({ node, online, admin }: { node: number; on
           disabled={act.busy}
           onClick={() => window.confirm(`Replace the certificate files in ${st.dir} on ${st.hostname}?\n\n${(st.problems ?? []).join("\n")}\n\nExisting files that this server did not create are kept as *.virt-proj-orig.`) && setup(true)}
         >
-          Repair…
+          Repair
         </button>
       )}
       {admin && st.state !== "not set up" && (

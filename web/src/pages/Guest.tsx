@@ -14,7 +14,7 @@ export function GuestCard({ d, base }: { d: VMDetail; base: string }) {
   return (
     <section className="card">
       <h3>Guest</h3>
-      {!g && <p className="muted">Asking the guest agent…</p>}
+      {!g && <p className="muted">Asking the guest agent</p>}
       {g && !g.available && <p className="muted">The guest agent did not answer: {g.error}</p>}
       {g?.available && (
         <>
@@ -128,7 +128,7 @@ export function VirtioWin({ d, base, help }: { d: VMDetail; base: string; help: 
             ))}
           </select>
           <button disabled={act.busy || !pool} onClick={download}>
-            {act.busy ? "Downloading…" : "Download to pool"}
+            {act.busy ? "Downloading" : "Download to pool"}
           </button>
         </div>
       ) : (
@@ -164,7 +164,7 @@ export function ShutdownMenu({ d, busy, run }: { d: VMDetail; busy: boolean; run
   return (
     <div className="menu" ref={box}>
       <button className="main" disabled={busy} onClick={() => go({ action: "shutdown" }, false)}>
-        {waiting ? "Shutting down…" : "Shut down"}
+        {waiting ? "Shutting down" : "Shut down"}
       </button>
       <button className="split" disabled={busy} aria-label="More shutdown options" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
         ▾

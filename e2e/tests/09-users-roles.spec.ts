@@ -80,7 +80,7 @@ test.describe.serial("users and roles", () => {
     await page.goto(`/vm/${vm.node}/${vm.uuid}`);
     await expect(page.getByRole("heading", { level: 1, name: VM })).toBeVisible();
     for (const b of ["Start", "Delete", "Clone", "Migrate"]) await expect(page.locator(".head").getByRole("button", { name: b })).toBeHidden();
-    await expect(page.getByPlaceholder("add tag…")).toHaveCount(0);
+    await expect(page.getByPlaceholder("add tag")).toHaveCount(0);
     await expect(page.locator(".tabs").getByRole("button", { name: "Console" })).toHaveCount(0);
     await expect(page.getByRole("checkbox", { name: /^No$|^Yes$/ })).toBeDisabled();
 

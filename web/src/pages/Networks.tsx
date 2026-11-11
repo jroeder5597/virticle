@@ -393,7 +393,7 @@ function CreateNetwork({ base, onClose, onDone }: { base: string; onClose: () =>
         </Field>
         {mode === "xml" ? (
           <Field label="Network definition" hint="Checked against libvirt's schema. A network with an existing name is refused.">
-            <textarea spellCheck={false} rows={12} value={f.xml} onChange={set("xml")} required placeholder="<network>…</network>" autoFocus />
+            <textarea spellCheck={false} rows={12} value={f.xml} onChange={set("xml")} required placeholder="Network definition (XML)" autoFocus />
           </Field>
         ) : (
           <>

@@ -64,7 +64,7 @@ export default function AdvancedCard({ d, base, onChanged }: { d: VMDetail; base
     });
 
   if (loadErr) return <section className="card"><h3>Advanced</h3><ErrorBox error={loadErr} /></section>;
-  if (!t) return <section className="card"><h3>Advanced</h3><div className="muted">Loading…</div></section>;
+  if (!t) return <section className="card"><h3>Advanced</h3><div className="muted">Loading</div></section>;
   const s = t.saved;
   return (
     <section className="card advanced" style={{ gridColumn: "1 / -1" }}>

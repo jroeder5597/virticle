@@ -52,7 +52,7 @@ export default function Audit() {
             <option key={m}>{m}</option>
           ))}
         </select>
-        <input placeholder="Path contains…" value={path} onChange={(e) => setPath(e.target.value)} aria-label="Filter by path" />
+        <input placeholder="Path contains" value={path} onChange={(e) => setPath(e.target.value)} aria-label="Filter by path" />
         <button className="primary">Search</button>
       </form>
       <ErrorBox error={error} />

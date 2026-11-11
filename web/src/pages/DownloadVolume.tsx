@@ -24,7 +24,7 @@ export default function DownloadVolume(props: { node: number; pool: string; onCl
     <Modal title={`Download into ${props.pool}`} onClose={props.onClose}>
       <form onSubmit={submit}>
         <Field label="URL" hint="http or https. The node downloads it directly; this can take a while for large images.">
-          <input type="url" value={url} onChange={(e) => onUrl(e.target.value)} required autoFocus placeholder="https://…/image.qcow2" pattern="https?://.+" />
+          <input type="url" value={url} onChange={(e) => onUrl(e.target.value)} required autoFocus placeholder="https://example.org/image.qcow2" pattern="https?://.+" />
         </Field>
         <Field label="Volume name">
           <input value={name} onChange={(e) => setName(e.target.value)} required pattern="[A-Za-z0-9][A-Za-z0-9._+\-]*" />
@@ -35,7 +35,7 @@ export default function DownloadVolume(props: { node: number; pool: string; onCl
             Cancel
           </button>
           <button className="primary" disabled={act.busy}>
-            {act.busy ? "Downloading…" : "Download"}
+            {act.busy ? "Downloading" : "Download"}
           </button>
         </footer>
       </form>

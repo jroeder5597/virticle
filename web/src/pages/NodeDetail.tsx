@@ -68,7 +68,7 @@ export default function NodeDetail() {
           <div className="actions">
             {online && (
               <button onClick={() => setEvacuating(true)} title="Move the virtual machines of this node to the others">
-                Evacuate…
+                Evacuate
               </button>
             )}
             <button onClick={toggleMaintenance} disabled={act.busy} title="A node in maintenance is never chosen as a migration or evacuation target">
@@ -91,7 +91,7 @@ export default function NodeDetail() {
       {!online && tab !== "settings" ? (
         <div className="empty nodeoffline">
           <ServerOff size={28} aria-hidden="true" />
-          <p>{n.state === "connecting" ? "Connecting to this node…" : "This node is offline, so nothing can be read from or changed on it."}</p>
+          <p>{n.state === "connecting" ? "Connecting to this node" : "This node is offline, so nothing can be read from or changed on it."}</p>
           {n.error && <p className="rowerror">{n.error}</p>}
         </div>
       ) : (

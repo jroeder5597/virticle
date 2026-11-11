@@ -62,7 +62,7 @@ function CloneDialog({ d, base, onClose }: { d: VMDetail; base: string; onClose:
       note = [r.sysprep && `Identity reset by: ${r.sysprep}.`, r.startError && `It was created but did not start: ${r.startError}`].filter(Boolean).join(" ");
     });
     if (!ok) return;
-    if (note) setResult(note + "\n\nOpening the new VM...");
+    if (note) setResult(note + "\n\nOpening the new VM.");
     setTimeout(() => nav(`/vm/${d.node}/${uuid}`), note ? 2500 : 0);
   };
 
@@ -103,7 +103,7 @@ function CloneDialog({ d, base, onClose }: { d: VMDetail; base: string; onClose:
           </small>
         )}
         {info?.sysprepProblem && <small>{info.sysprepProblem}</small>}
-        {!info && !infoError && <small>Checking what the node supports...</small>}
+        {!info && !infoError && <small>Checking what the node supports</small>}
         {infoError && <small>{infoError}</small>}
       </div>
       <CloudInitFields vmName={name} value={ci} onChange={setCi} profiles={!!info && !windows} />
@@ -117,7 +117,7 @@ function CloneDialog({ d, base, onClose }: { d: VMDetail; base: string; onClose:
       <footer>
         <button onClick={onClose}>Cancel</button>
         <button className="primary" disabled={act.busy || !name} onClick={submit}>
-          {act.busy ? "Cloning..." : "Clone"}
+          {act.busy ? "Cloning" : "Clone"}
         </button>
       </footer>
     </Modal>
@@ -178,7 +178,7 @@ function SealDialog({ d, base, onClose, onDone }: { d: VMDetail; base: string; o
             }
           }}
         >
-          {act.busy ? "Sealing..." : "Seal and convert"}
+          {act.busy ? "Sealing" : "Seal and convert"}
         </button>
       </footer>
     </Modal>

@@ -236,7 +236,7 @@ export function VMCharts({ base }: { base: string }) {
   const tx = col((p) => p.netTx);
   const diskMax = rateMax([dr, dw], 100 * 1024);
   const netMax = rateMax([rx, tx], 10 * 1024);
-  if (!s) return <div className="muted">Loading statistics…</div>;
+  if (!s) return <div className="muted">Loading statistics</div>;
   if (pts.length === 0) return <div className="muted">No samples yet. The server samples every 5 s while the VM is running.</div>;
   return (
     <div className="charts">

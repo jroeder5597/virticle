@@ -91,7 +91,7 @@ function Tokens({ role }: { role: Role }) {
     <div className="card">
       <h2>API tokens</h2>
       <p className="muted">
-        Send a token as <code>Authorization: Bearer …</code>. A token has your role or a lower one and works until it expires or you revoke it. It cannot manage tokens or your password.
+        Send a token as <code>Authorization: Bearer TOKEN</code>. A token has your role or a lower one and works until it expires or you revoke it. It cannot manage tokens or your password.
       </p>
       {secret && (
         <div className="secretbox">

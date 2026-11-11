@@ -615,7 +615,7 @@ function NICForm({ d, nic, send, onClose }: { d: VMDetail; nic?: NicT; send: Sen
             </select>
           </Field>
           <Field label="MAC address" hint="Leave empty to generate one.">
-            <input className="mono" placeholder="52:54:00:..." value={mac} onChange={(e) => setMac(e.target.value)} />
+            <input className="mono" placeholder="52:54:00:12:34:56" value={mac} onChange={(e) => setMac(e.target.value)} />
           </Field>
         </div>
       )}

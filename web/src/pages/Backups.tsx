@@ -55,7 +55,7 @@ function TaskFollow(props: { id: number; onDone: (ok: boolean) => void; onCancel
   return (
     <div>
       <p>
-        {t ? t.kind : "…"} {t?.target}: <strong>{t?.status ?? "starting"}</strong>
+        {t ? t.kind : "task"} {t?.target}: <strong>{t?.status ?? "starting"}</strong>
       </p>
       <Progress value={t?.status === "ok" ? 1 : (t?.progress ?? 0)} failed={t?.status === "failed"} />
       {t?.status === "failed" && <ErrorBox error={t.error} />}
@@ -428,7 +428,7 @@ export default function BackupsTab({ d }: { d: VMDetail; base: string }) {
       </div>
       <p className="muted">Backups of this VM on all nodes. {notIncluded}</p>
       <ErrorBox error={list.error} />
-      {!list.data && !list.error && <div className="empty">Looking for backups on all nodes…</div>}
+      {!list.data && !list.error && <div className="empty">Looking for backups on all nodes</div>}
       {list.data && list.data.length === 0 && <div className="empty">No backups of this VM yet.</div>}
       {list.data && list.data.length > 0 && <BackupTable list={list.data} reload={list.reload} />}
       <SchedulePanel d={d} />
@@ -507,7 +507,7 @@ export function BackupsSection() {
       </div>
       <p className="muted">Every backup found in the directory pools of all nodes. {notIncluded}</p>
       <ErrorBox error={list.error} />
-      {!list.data && !list.error && <div className="empty">Looking for backups on all nodes…</div>}
+      {!list.data && !list.error && <div className="empty">Looking for backups on all nodes</div>}
       {list.data && list.data.length === 0 && <div className="empty">No backups yet. Use the Backups tab of a VM to make one.</div>}
       {list.data && list.data.length > 0 && <BackupTable list={list.data} global reload={list.reload} />}
       {importing && <ImportFile onClose={() => setImporting(false)} onDone={list.reload} />}

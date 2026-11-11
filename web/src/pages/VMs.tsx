@@ -61,7 +61,7 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
       <ErrorBox error={vms.error ?? act.error} />
       {all.length > 0 && (
         <div className="filters">
-          <input type="search" placeholder="Search name, node, state or tag…" aria-label="Search VMs" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input type="search" placeholder="Search name, node, state or tag" aria-label="Search VMs" value={search} onChange={(e) => setSearch(e.target.value)} />
           {allTags.length > 0 && (
             <select aria-label="Filter by tag" value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
               <option value="">All tags</option>
@@ -292,7 +292,7 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
         {source === "iso" && (
           <Field label="ISO" hint={isos.length === 0 ? "No ISO images on this node. Upload one under Storage." : undefined}>
             <select value={media} onChange={(e) => setMedia(e.target.value)} required>
-              <option value="">Choose an ISO…</option>
+              <option value="">Choose an ISO</option>
               {isos.map((v) => (
                 <option key={v.path} value={v.path}>
                   {v.pool}/{v.name}
@@ -304,7 +304,7 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
         {source === "image" && (
           <Field label="Base image" hint="The new disk starts as a copy of this image, in the same pool.">
             <select value={media} onChange={(e) => setMedia(e.target.value)} required>
-              <option value="">Choose an image…</option>
+              <option value="">Choose an image</option>
               {images.map((v) => (
                 <option key={v.path} value={v.name}>
                   {v.name} ({bytes(v.capacity)})
@@ -321,7 +321,7 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
         {source === "existing" && (
           <Field label="Volume" hint="Used as the VM's disk as it is, not copied (an imported disk, say). Import other formats under Storage first.">
             <select value={media} onChange={(e) => setMedia(e.target.value)} required>
-              <option value="">Choose a volume…</option>
+              <option value="">Choose a volume</option>
               {images.map((v) => (
                 <option key={v.path} value={v.name}>
                   {v.name} ({bytes(v.capacity)})
@@ -367,7 +367,7 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
             Cancel
           </button>
           <button className="primary" disabled={act.busy}>
-            {act.busy ? "Creating…" : "Create"}
+            {act.busy ? "Creating" : "Create"}
           </button>
         </footer>
       </form>

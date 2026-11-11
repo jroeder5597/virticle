@@ -349,7 +349,7 @@ export default function Tree() {
         items.push({ label: "Force off", icon: Power, danger: true, run: () => window.confirm(`Force ${v.name} off? Unsaved data in the guest is lost.`) && vmAction(v, "poweroff") });
         items.push({ label: "Console", icon: Terminal, run: () => page("console") });
       }
-      items.push("sep", { label: "Snapshots…", icon: Camera, run: () => page("snapshots") }, { label: "Migrate…", icon: ArrowRightLeft, run: () => page() }, { label: "Clone…", icon: Copy, run: () => page() });
+      items.push("sep", { label: "Snapshots", icon: Camera, run: () => page("snapshots") }, { label: "Migrate", icon: ArrowRightLeft, run: () => page() }, { label: "Clone", icon: Copy, run: () => page() });
       return items;
     },
     [canOp, nav, vmAction],
@@ -357,14 +357,14 @@ export default function Tree() {
   const nodeItems = useCallback(
     (n: NodeStatus): MenuItem[] => {
       const items: MenuItem[] = [{ label: "Open node", icon: ExternalLink, run: () => nav(`/node/${n.id}`) }];
-      if (canOp && n.state === "online") items.push({ label: "Add VM…", icon: Plus, run: () => nav(`/?new=${n.id}`) });
+      if (canOp && n.state === "online") items.push({ label: "Add VM", icon: Plus, run: () => nav(`/?new=${n.id}`) });
       if (canAdmin) {
         items.push({
           label: n.maintenance ? "End maintenance" : "Enter maintenance",
           icon: Wrench,
           run: () => put(`/nodes/${n.id}/maintenance`, { on: !n.maintenance }).then(loadNodes, fail),
         });
-        items.push({ label: "Evacuate…", icon: ArrowRightLeft, run: () => nav("/nodes") });
+        items.push({ label: "Evacuate", icon: ArrowRightLeft, run: () => nav("/nodes") });
       }
       return items;
     },

@@ -79,7 +79,7 @@ export default function PassthroughCard({ d, base, onChanged }: { d: VMDetail; b
         </table>
       )}
       <footer style={{ justifyContent: "flex-start" }}>
-        <button onClick={() => { setPicking(true); load(); }}>Add host device…</button>
+        <button onClick={() => { setPicking(true); load(); }}>Add host device</button>
       </footer>
       {picking && l && (
         <Picker

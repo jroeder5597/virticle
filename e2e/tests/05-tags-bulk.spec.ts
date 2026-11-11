@@ -16,7 +16,7 @@ test.describe.serial("tags and bulk actions", () => {
     a = await createCirros(api, n1, A, { start: true });
     b = await createCirros(api, n1, B, { start: true });
     await openVM(page, a);
-    const input = page.getByPlaceholder("add tag…");
+    const input = page.getByPlaceholder("add tag");
     await input.fill("blue team");
     await input.press("Enter");
     await expect(page.locator(".tagedit .tag", { hasText: "blue team" })).toBeVisible();
@@ -63,7 +63,7 @@ test.describe.serial("tags and bulk actions", () => {
     await expect(bar).toContainText("2 selected");
 
     // tag both
-    await bar.getByRole("button", { name: "Tags…" }).click();
+    await bar.getByRole("button", { name: "Tags" }).click();
     const td = dialog(page, "Tags on the selected VMs");
     await expect(field(td, "Tag")).toBeFocused();
     await field(td, "Tag").fill("bulk-test");
@@ -75,7 +75,7 @@ test.describe.serial("tags and bulk actions", () => {
     await expect(row(page, A).locator(".tag", { hasText: "bulk-test" })).toBeVisible();
 
     // Delete is refused for running VMs: they are listed as skipped
-    await bar.getByRole("button", { name: "Delete…" }).click();
+    await bar.getByRole("button", { name: "Delete" }).click();
     const early = dialog(page, /^Delete 0 VM/);
     await expect(early).toContainText("will be skipped");
     await expect(early.getByRole("button", { name: /Delete 0 VM/ })).toBeDisabled();
@@ -90,7 +90,7 @@ test.describe.serial("tags and bulk actions", () => {
     await expectBadge(row(page, B), "shutoff");
 
     // delete, with the typed word
-    await bar.getByRole("button", { name: "Delete…" }).click();
+    await bar.getByRole("button", { name: "Delete" }).click();
     const del = dialog(page, "Delete 2 VM(s)?");
     const go = del.getByRole("button", { name: "Delete 2 VM(s)" });
     await expect(go).toBeDisabled();

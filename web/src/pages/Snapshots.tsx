@@ -138,7 +138,7 @@ function TakeSnapshot(props: { d: VMDetail; base: string; onClose: () => void; o
   return (
     <Modal title="Take snapshot" onClose={props.onClose}>
       <Field label="Name" hint="Optional. Letters, digits, dot, dash and underscore. Defaults to snap-<timestamp>.">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="snap-…" autoFocus />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="snap-1" autoFocus />
       </Field>
       <Field label="Description">
         <input value={description} onChange={(e) => setDescription(e.target.value)} />
@@ -187,7 +187,7 @@ function TakeSnapshot(props: { d: VMDetail; base: string; onClose: () => void; o
       <div className="actions" style={{ justifyContent: "flex-end", marginTop: 14 }}>
         <button onClick={props.onClose}>Cancel</button>
         <button className="primary" disabled={act.busy} onClick={submit}>
-          {act.busy ? "Taking snapshot…" : "Take snapshot"}
+          {act.busy ? "Taking snapshot" : "Take snapshot"}
         </button>
       </div>
     </Modal>
@@ -227,7 +227,7 @@ function Revert(props: { snap: Snap; base: string; onClose: () => void; onDone: 
       <div className="actions" style={{ justifyContent: "flex-end", marginTop: 14 }}>
         <button onClick={props.onClose}>Cancel</button>
         <button className="danger" disabled={act.busy} onClick={submit}>
-          {act.busy ? "Reverting…" : "Revert"}
+          {act.busy ? "Reverting" : "Revert"}
         </button>
       </div>
     </Modal>
@@ -263,7 +263,7 @@ function Delete(props: { snap: Snap; base: string; onClose: () => void; onDone: 
       <div className="actions" style={{ justifyContent: "flex-end", marginTop: 14 }}>
         <button onClick={props.onClose}>Cancel</button>
         <button className="danger" disabled={act.busy} onClick={submit}>
-          {act.busy ? "Deleting…" : "Delete"}
+          {act.busy ? "Deleting" : "Delete"}
         </button>
       </div>
     </Modal>

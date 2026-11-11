@@ -23,7 +23,7 @@ export default function HostUpdates({ node, online }: { node: number; online: bo
   }, [node, online]);
   if (!online) return null;
   if (err) return <div className="rowerror">Updates: {err}</div>;
-  if (!u) return <span className="muted">{busy ? "Checking updates…" : ""}</span>;
+  if (!u) return <span className="muted">{busy ? "Checking updates" : ""}</span>;
   if (u.family === "unsupported") return <span className="muted" title={u.note}>Updates not checked ({u.distro || "unknown system"})</span>;
   return (
     <div className="hostupdates">

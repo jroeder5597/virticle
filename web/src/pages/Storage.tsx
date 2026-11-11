@@ -161,7 +161,7 @@ function Volumes({ node, pool, openCatalogue }: { node: number; pool: Pool; open
       </div>
       {upload && (
         <div className="progress">
-          Uploading {upload.name}… {(upload.progress * 100).toFixed(0)}%
+          Uploading {upload.name} {(upload.progress * 100).toFixed(0)}%
           <div className="bar">
             <div style={{ width: upload.progress * 100 + "%" }} />
           </div>
@@ -329,7 +329,7 @@ function CreatePool({ node, onClose }: { node: number; onClose: () => void }) {
         )}
         {type === "xml" && (
           <Field label="Pool definition" hint="Any pool type libvirt supports: Ceph RBD, ZFS, Gluster and others.">
-            <textarea spellCheck={false} rows={10} value={f.xml} onChange={set("xml")} required placeholder="<pool type='rbd'>…</pool>" />
+            <textarea spellCheck={false} rows={10} value={f.xml} onChange={set("xml")} required placeholder="Pool definition (XML)" />
           </Field>
         )}
         <ErrorBox error={act.error} />
