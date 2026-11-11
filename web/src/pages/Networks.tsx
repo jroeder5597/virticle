@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { del, DhcpHost, get, Network, NodeStatus, post, put } from "../api";
 import { orEvents, useLive } from "../live";
 import { useRole } from "../auth";
-import { ErrorBox, Field, Modal, NodePicker, StateBadge, useAction } from "../ui";
+import { ErrorBox, Field, Modal, NodePicker, StateBadge, useAction, useConfirm } from "../ui";
 
 const modeNames: Record<string, string> = { nat: "NAT", route: "Routed", open: "Open", isolated: "Isolated", bridge: "Bridge" };
 const modeLabel = (n: Network) => (modeNames[n.forward] ?? n.forward) + (n.vlan ? ` · VLAN ${n.vlan}` : "");
@@ -20,20 +20,32 @@ export default function Networks({ fixedNode }: { fixedNode?: number } = {}) {
   }, [all, node]);
   const nets = useLive(() => (node ? get<Network[]>(`/nodes/${node}/networks`) : Promise.resolve([])), `nets/${node}`, orEvents("network"));
   const act = useAction();
+  const confirm = useConfirm();
   const base = `/nodes/${node}/networks`;
   const net = nets.data?.find((n) => n.name === selected) ?? nets.data?.[0];
   const action = (n: Network, body: object) => act.run(() => post(`${base}/${encodeURIComponent(n.name)}/action`, body));
 
-  const stop = (n: Network) => {
-    const running = n.interfaces.filter((i) => i.running);
-    if (running.length === 0) return action(n, { action: "stop" });
-    const names = [...new Set(running.map((i) => i.vm))].join(", ");
-    if (window.confirm(`Running VMs are attached to ${n.name} (${names}). Stopping the network cuts their connectivity. Stop it anyway?`)) return action(n, { action: "stop", force: true });
+  const stop = async (n: Network) => {
+    const running = [...new Set(n.interfaces.filter((i) => i.running).map((i) => i.vm))];
+    const ok = await confirm.ask({
+      title: `Stop network ${n.name}`,
+      message: running.length
+        ? `The network ${n.name} stops. The running VMs below are attached to it and lose their connectivity.`
+        : `The network ${n.name} stops. VMs that use it lose their connection until it is started again.`,
+      items: running,
+      confirm: "Stop network",
+    });
+    if (ok) return action(n, running.length ? { action: "stop", force: true } : { action: "stop" });
   };
-  const remove = (n: Network) => {
-    const attached = n.interfaces.length > 0;
-    const msg = `Delete network ${n.name}?` + (attached ? ` VMs are still attached to it (${[...new Set(n.interfaces.map((i) => i.vm))].join(", ")}) and will not start until you give them another network.` : "");
-    if (window.confirm(msg)) return action(n, { action: "delete", force: n.active || attached });
+  const remove = async (n: Network) => {
+    const attached = [...new Set(n.interfaces.map((i) => i.vm))];
+    const ok = await confirm.ask({
+      title: `Delete network ${n.name}`,
+      message: `The network ${n.name} is deleted.` + (attached.length ? " The VMs below are still attached to it and will not start until you give them another network." : ""),
+      items: attached,
+      confirm: "Delete network",
+    });
+    if (ok) return action(n, { action: "delete", force: n.active || attached.length > 0 });
   };
 
   return (
@@ -100,6 +112,7 @@ export default function Networks({ fixedNode }: { fixedNode?: number } = {}) {
           </tbody>
         </table>
       )}
+      {confirm.dialog}
       {net && <Detail key={node + "/" + net.name} base={base} name={net.name} />}
       {creating && <CreateNetwork base={base} onClose={() => setCreating(false)} onDone={(name) => setSelected(name)} />}
     </>
@@ -214,6 +227,7 @@ function Detail({ base, name }: { base: string; name: string }) {
 function Reservations({ url, n, onChange }: { url: string; n: Network; onChange: () => void }) {
   const [f, setF] = useState({ mac: "", ip: "", name: "" });
   const [editing, setEditing] = useState(false);
+  const confirm = useConfirm();
   const act = useAction();
   const reserved = new Set(n.hosts.map((h) => h.mac.toLowerCase()));
   const free = n.interfaces.filter((i) => !reserved.has(i.mac.toLowerCase()));
@@ -233,10 +247,16 @@ function Reservations({ url, n, onChange }: { url: string; n: Network; onChange:
     setEditing(true);
   };
   const remove = async (h: DhcpHost) => {
-    if (window.confirm(`Remove the reservation of ${h.ip} for ${h.mac}?`) && (await act.run(() => del(`${url}/dhcp-hosts/${encodeURIComponent(h.mac)}`)))) onChange();
+    const ok = await confirm.ask({
+      title: "Remove DHCP reservation",
+      message: `The reservation of ${h.ip} for ${h.mac}${h.name ? ` (${h.name})` : ""} on network ${n.name} is removed. The guest may get another address when its lease renews.`,
+      confirm: "Remove reservation",
+    });
+    if (ok && (await act.run(() => del(`${url}/dhcp-hosts/${encodeURIComponent(h.mac)}`)))) onChange();
   };
   return (
     <div className="card">
+      {confirm.dialog}
       <h3>DHCP reservations</h3>
       <small>Changes apply immediately, without restarting the network. A VM that already has a lease picks up the reserved address when it renews.</small>
       {n.hosts.length > 0 && (

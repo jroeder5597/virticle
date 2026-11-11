@@ -2,7 +2,7 @@
 import { Page } from "@playwright/test";
 import { expect, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
-import { dialog, expectBadge, field, row } from "../lib/ui";
+import { dialog, expectBadge, field, row, confirm } from "../lib/ui";
 
 const POOL = `${P}pool`;
 const PATH = `/var/lib/libvirt/${P}pool`;
@@ -127,21 +127,24 @@ test.describe.serial("storage", () => {
     await page.getByRole("combobox").first().selectOption({ label: env.node1 });
     await row(page, POOL).click();
 
-    const clone = answerNext(page, `${P}vol1-copy.qcow2`);
     await row(page, `${P}vol1.qcow2`).getByRole("button", { name: "Clone" }).click();
+    const cd = page.getByRole("dialog", { name: /^Clone / });
+    await field(cd, "Name of the copy").fill(`${P}vol1-copy.qcow2`);
+    await cd.getByRole("button", { name: "Clone", exact: true }).click();
     await expect(row(page, `${P}vol1-copy.qcow2`)).toBeVisible();
-    expect(clone[0].type).toBe("prompt");
     expect(await vol(api, n1, `${P}vol1-copy.qcow2`)).toBeTruthy();
 
-    answerNext(page, "2");
     await row(page, `${P}vol1-copy.qcow2`).getByRole("button", { name: "Resize" }).click();
+    const rd = page.getByRole("dialog", { name: /^Resize / });
+    await field(rd, "New size (GiB)").fill("2");
+    await rd.getByRole("button", { name: "Resize", exact: true }).click();
     await expect(row(page, `${P}vol1-copy.qcow2`)).toContainText("2.0 GiB");
     expect((await vol(api, n1, `${P}vol1-copy.qcow2`)).capacity).toBe(2 * 2 ** 30);
 
-    const del = answerNext(page);
     await row(page, `${P}vol1-copy.qcow2`).getByRole("button", { name: "Delete" }).click();
+    await expect(page.getByRole("dialog").last()).toContainText(`${P}vol1-copy.qcow2`);
+    await confirm(page, /^Delete volume/);
     await expect(row(page, `${P}vol1-copy.qcow2`)).toHaveCount(0);
-    expect(del[0].message).toContain(`${P}vol1-copy.qcow2`);
     expect(await vol(api, n1, `${P}vol1-copy.qcow2`)).toBeUndefined();
   });
 
@@ -150,12 +153,13 @@ test.describe.serial("storage", () => {
     await page.getByRole("combobox").first().selectOption({ label: env.node1 });
     const r = row(page, POOL);
     await r.getByRole("button", { name: "Stop" }).click();
+    await confirm(page, /^Stop pool/);
     await expectBadge(r, "inactive");
     await r.getByRole("button", { name: "Start" }).click();
     await expectBadge(r, "running");
     for (const v of await vols(api, n1)) await api.del(`/nodes/${n1}/pools/${POOL}/volumes/${encodeURIComponent(v.name)}`);
-    answerNext(page);
     await r.getByRole("button", { name: "Remove" }).click();
+    await confirm(page, /^Remove pool/);
     await expect(r).toHaveCount(0);
     expect((await api.get(`/nodes/${n1}/pools`)).some((x: any) => x.name === POOL)).toBe(false);
   });

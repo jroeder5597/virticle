@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ApiError, bytes, del, get, NodeStatus, Pool, post, put, Task, VMDetail } from "../api";
 import { useRole } from "../auth";
 import { useLive } from "../live";
-import { ErrorBox, Field, Modal, NodePicker, Progress, UsageBar, useAction } from "../ui";
+import { ErrorBox, Field, Modal, NodePicker, Progress, UsageBar, useAction, useConfirm } from "../ui";
 
 interface Manifest {
   vm: string;
@@ -34,6 +34,7 @@ const notIncluded = "A backup holds the VM's current state: snapshots are not in
 
 /** Follows a task started in the background, showing progress and the result. */
 function TaskFollow(props: { id: number; onDone: (ok: boolean) => void; onCancel?: () => void }) {
+  const confirm = useConfirm();
   const [t, setT] = useState<Task | undefined>();
   useEffect(() => {
     let finished = false;
@@ -58,9 +59,13 @@ function TaskFollow(props: { id: number; onDone: (ok: boolean) => void; onCancel
         {t ? t.kind : "task"} {t?.target}: <strong>{t?.status ?? "starting"}</strong>
       </p>
       <Progress value={t?.status === "ok" ? 1 : (t?.progress ?? 0)} failed={t?.status === "failed"} />
+      {confirm.dialog}
       {t?.status === "failed" && <ErrorBox error={t.error} />}
       {t?.status === "running" && props.onCancel && (
-        <button className="danger" onClick={props.onCancel}>
+        <button
+          className="danger"
+          onClick={async () => (await confirm.ask({ title: "Stop backup", message: "The running backup is stopped before it finishes. No usable backup of this run is kept.", confirm: "Stop backup" })) && props.onCancel?.()}
+        >
           Cancel
         </button>
       )}
@@ -165,6 +170,7 @@ function Restore(props: { b: BackupEntry; onClose: () => void; onDone: () => voi
   const { b } = props;
   const m = b.manifest!;
   const act = useAction();
+  const confirm = useConfirm();
   const [mode, setMode] = useState<"new" | "original">(b.vmExists ? "new" : "original");
   const [name, setName] = useState(m.vm + "-restored");
   const [node, setNode] = useState(b.node);
@@ -173,14 +179,24 @@ function Restore(props: { b: BackupEntry; onClose: () => void; onDone: () => voi
   const [start, setStart] = useState(false);
   const [task, setTask] = useState(0);
   const [warnings, setWarnings] = useState<string[]>([]);
-  const submit = () =>
-    act.run(async () => {
+  const submit = async () => {
+    if (mode === "original" && replace) {
+      const ok = await confirm.ask({
+        title: `Replace ${m.vm}`,
+        message: `The existing VM ${m.vm} on the target node is deleted together with its disks, and replaced by the backup from ${when(m.created)}.`,
+        confirm: "Replace VM",
+      });
+      if (!ok) return;
+    }
+    return act.run(async () => {
       const r = await post<{ task: number; warnings: string[] }>(`${url(b)}/restore`, { mode, name, targetNode: node, pool, replace, start });
       setWarnings(r.warnings ?? []);
       setTask(r.task);
     });
+  };
   return (
     <Modal title={`Restore ${m.vm}`} onClose={props.onClose}>
+      {confirm.dialog}
       {task ? (
         <>
           <TaskFollow id={task} onDone={props.onDone} />
@@ -323,6 +339,7 @@ function SchedulePanel({ d }: { d: VMDetail }) {
   const cur = useLive(() => get<{ schedule: BackupSched | null; last?: number; lastError?: string }>(path), path, (e) => e.type === "node" || (e.type === "task" && e.task?.status !== "running"));
   const nodes = useNodes();
   const act = useAction();
+  const confirm = useConfirm();
   const [form, setForm] = useState<BackupSched | undefined>();
   const sch = cur.data?.schedule;
   const nodeName = (id: number) => {
@@ -339,11 +356,13 @@ function SchedulePanel({ d }: { d: VMDetail }) {
     }
   };
   const remove = async () => {
-    if (window.confirm("Remove the backup schedule? Backups already made are kept.") && (await act.run(() => del(path)))) cur.reload();
+    const ok = await confirm.ask({ title: "Remove backup schedule", message: `The backup schedule of ${d.name} is removed. Backups already made are kept.`, confirm: "Remove schedule" });
+    if (ok && (await act.run(() => del(path)))) cur.reload();
   };
   const canEdit = role !== "viewer";
   return (
     <section className="card" style={{ marginTop: 20 }} id="backup-schedule">
+      {confirm.dialog}
       <h3>Scheduled backups</h3>
       <ErrorBox error={cur.error} />
       {!form && (

@@ -102,13 +102,14 @@ export interface VMDetail extends VM {
   machine: string;
   firmware: string;
   boot: string[];
-  disks: { target: string; bus: string; device: string; format?: string; source?: string; readOnly: boolean; capacity?: number; bootOrder?: number }[];
+  disks: { target: string; bus: string; device: string; format?: string; source?: string; readOnly: boolean; capacity?: number; allocation?: number; bootOrder?: number }[];
   nics: { mac: string; type: string; source: string; model?: string; ips: string[]; linkState: string; bootOrder?: number }[];
   hasVNC: boolean;
   hasSerial: boolean;
   tpm: boolean;
   passthroughDevices: number;
   agent: "connected" | "disconnected" | "absent";
+  ipSource?: "agent" | "lease";
   snapshots: string[];
   xml: string;
   fw?: { firmware: "bios" | "uefi"; secureBoot: boolean; nvram?: string; tpmModel?: string; tpmVersion?: string };

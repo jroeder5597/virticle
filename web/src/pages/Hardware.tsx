@@ -93,7 +93,7 @@ function CpuMemory({ d, send, run, busy }: CardProps) {
   };
   const num = (set: (n: number) => void) => (e: React.ChangeEvent<HTMLInputElement>) => set(Number(e.target.value));
   return (
-    <section className="card">
+    <section className="card" id="hw-cpu">
       <h3>CPU and memory</h3>
       {!editing ? (
         <>
@@ -147,7 +147,7 @@ function Disks({ d, disks, send, run, busy, onChanged }: CardProps & { disks: Di
   const [detaching, setDetaching] = useState<DiskT>();
   const [moving, setMoving] = useState<DiskT>();
   return (
-    <section className="card span">
+    <section className="card span" id="hw-disks">
       <h3>Disks</h3>
       <table className="compact">
         <thead>
@@ -386,7 +386,7 @@ function AddDisk({ d, send, onClose }: { d: VMDetail; send: Send; onClose: () =>
 function CDROMs({ d, cdroms, send, run, busy }: CardProps & { cdroms: DiskT[] }) {
   const [picking, setPicking] = useState<DiskT>();
   return (
-    <section className="card">
+    <section className="card" id="hw-cdrom">
       <h3>CD-ROM</h3>
       <table className="compact">
         <tbody>
@@ -484,7 +484,7 @@ function NICs({ d, send, run, busy }: CardProps) {
   const [form, setForm] = useState<{ nic?: NicT } | null>(null);
   const [removing, setRemoving] = useState<NicT>();
   return (
-    <section className="card span">
+    <section className="card span" id="hw-nics">
       <h3>Network interfaces</h3>
       <table className="compact">
         <thead>
@@ -686,7 +686,7 @@ function Boot({ d, send, run, busy }: CardProps) {
   };
   const rest = all.filter((x) => !order.includes(x.id));
   return (
-    <section className="card">
+    <section className="card" id="hw-boot">
       <h3>Boot order</h3>
       {legacy && <p className="muted">This VM uses the older class-based boot list ({d.boot.join(", ")}). Saving switches it to a per-device order.</p>}
       <table className="compact">

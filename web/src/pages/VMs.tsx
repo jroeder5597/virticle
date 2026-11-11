@@ -3,7 +3,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { bytes, get, Network, NodeStatus, Pool, post, VM, Volume } from "../api";
 import { useLive } from "../live";
 import CloudInitFields, { CloudInitValues, cloudInitPayload, cloudInitUsed, emptyCloudInit } from "./CloudInit";
-import { ErrorBox, Field, Modal, NodePicker, StateBadge, useAction } from "../ui";
+import { ErrorBox, Field, Modal, NodePicker, StateBadge, useAction, useConfirm } from "../ui";
+import { powerConfirm, powerLabel } from "../power";
 import { BulkBar } from "./Bulk";
 import { emptyFw, FirmwareFields, fwPayload, FwValues } from "./Firmware";
 import { TagChips } from "./Tags";
@@ -48,7 +49,12 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
       return n;
     });
   const allShown = list.length > 0 && list.every((v) => selected.has(keyOf(v)));
-  const action = (vm: VM, a: string) => act.run(() => post(`/nodes/${vm.node}/vms/${vm.uuid}/action`, { action: a }));
+  const confirm = useConfirm();
+  const action = async (vm: VM, a: string) => {
+    const spec = powerConfirm(a, [vm.name]);
+    if (spec && !(await confirm.ask(spec))) return;
+    return act.run(() => post(`/nodes/${vm.node}/vms/${vm.uuid}/action`, { action: a }));
+  };
 
   return (
     <>
@@ -125,7 +131,7 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
                 <td className="actions">
                   {vm.state === "shutoff" && vm.template ? null : vm.state === "shutoff" ? (
                     <button disabled={act.busy} onClick={() => action(vm, "start")}>
-                      Start
+                      {powerLabel.start}
                     </button>
                   ) : (
                     <>
@@ -135,7 +141,7 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
                         </button>
                       )}
                       <button disabled={act.busy} onClick={() => action(vm, "shutdown")}>
-                        Shut down
+                        {powerLabel.shutdown}
                       </button>
                       <Link className="button" to={`/vm/${vm.node}/${vm.uuid}?tab=console`}>
                         Console
@@ -148,6 +154,7 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
           </tbody>
         </table>
       )}
+      {confirm.dialog}
       {creating && <CreateVM nodes={online} preset={preset} onClose={() => setCreating(false)} />}
     </>
   );

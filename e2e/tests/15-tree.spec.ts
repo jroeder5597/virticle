@@ -2,6 +2,7 @@
 import { Page } from "@playwright/test";
 import { cleanVMs, createCirros, expect, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
+import { confirm, cancelConfirm } from "../lib/ui";
 
 const NAME = `${P}tree1`;
 
@@ -32,13 +33,17 @@ test.describe.serial("resource tree", () => {
     await page.goto("/");
     const row = vmRow(page);
     await row.hover();
-    await row.locator(`button[aria-label="Start ${NAME}"]`).click();
+    await row.locator(`button[aria-label="Power On ${NAME}"]`).click();
     await expect(row).toHaveAttribute("data-state", "running");
     await expect(row.locator(".dot.v-running")).toBeVisible();
     expect((await api.vmDetail(vm.node, vm.uuid)).state).toBe("running");
-    page.once("dialog", (d) => d.accept());
     await row.click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Force off" }).click();
+    await page.getByRole("menuitem", { name: "Halt (Force Shutdown)" }).click();
+    await cancelConfirm(page, "Halt (Force Shutdown)");
+    expect((await api.vmDetail(vm.node, vm.uuid)).state).toBe("running");
+    await row.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Halt (Force Shutdown)" }).click();
+    await confirm(page, "Halt (Force Shutdown)");
     await expect(row).toHaveAttribute("data-state", "shutoff");
   });
 

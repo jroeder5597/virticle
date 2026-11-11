@@ -1,7 +1,7 @@
 // Move a disk to another storage pool: live (block copy) and offline (volume copy), through the UI.
 import { cleanVMs, createCirros, expect, openVM, test } from "../lib/fixtures";
 import { P } from "../lib/env";
-import { dialog, expectBadge, field } from "../lib/ui";
+import { dialog, expectBadge, field, confirm, cancelConfirm } from "../lib/ui";
 
 const NAME = `${P}mv1`;
 const POOL = `${P}mvpool`;
@@ -35,6 +35,11 @@ test.describe.serial("disk move", () => {
     await expect(dlg.getByText("Live: the VM keeps running")).toBeVisible();
     await expect(dlg.locator("ul.checks li.error")).toHaveCount(0);
     await dlg.getByRole("button", { name: "Move disk" }).click();
+    // "Delete the old volume afterwards" is on: ask first. Cancel changes nothing, confirm starts the move.
+    await cancelConfirm(page, /^Move vda and delete the old volume/);
+    await expect(dlg.getByText("Done.")).toHaveCount(0);
+    await dlg.getByRole("button", { name: "Move disk" }).click();
+    await confirm(page, /^Move vda and delete the old volume/);
     await expect(dlg.getByText("Done.")).toBeVisible({ timeout: 120_000 });
     await dlg.locator("footer").getByRole("button", { name: "Close" }).click();
     const after = (await disk(api)).source as string;

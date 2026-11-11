@@ -4,7 +4,8 @@
 import { useEffect, useState } from "react";
 import { Check, Ellipsis, Minus, X } from "lucide-react";
 import { del, get, post, put, VM, VMDetail } from "../api";
-import { ErrorBox, Field, Modal, useAction } from "../ui";
+import { ErrorBox, Field, Modal, useAction, useConfirm } from "../ui";
+import { powerConfirm, powerLabel } from "../power";
 import { MAX_TAGS, TAG_RE } from "./Tags";
 
 const CONCURRENCY = 3;
@@ -39,6 +40,7 @@ export function BulkBar({ selected, onClear }: { selected: VM[]; onClear: () => 
   const [running, setRunning] = useState(false);
   const [tagging, setTagging] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const confirm = useConfirm();
 
   const execute = async (label: string, plan: Plan) => {
     setTitle(label);
@@ -61,28 +63,32 @@ export function BulkBar({ selected, onClear }: { selected: VM[]; onClear: () => 
     setRunning(false);
   };
 
-  const action = (label: string, name: string, applies: (vm: VM) => string | undefined) =>
-    execute(label, (vm) => {
+  const action = async (name: keyof typeof powerLabel, applies: (vm: VM) => string | undefined) => {
+    // One confirmation for the whole selection, listing the VMs the action will reach.
+    const spec = powerConfirm(name, selected.filter((vm) => !applies(vm)).map((vm) => vm.name));
+    if (spec && !(await confirm.ask(spec))) return;
+    execute(powerLabel[name], (vm) => {
       const why = applies(vm);
       return why ? { skip: why } : { run: () => post(`${base(vm)}/action`, { action: name }) };
     });
+  };
   const notRunning = (vm: VM) => (vm.state === "shutoff" ? "not running" : undefined);
 
   const n = selected.length;
   return (
     <div className="bulkbar">
       <strong>{n} selected</strong>
-      <button disabled={running} onClick={() => action("Start", "start", (vm) => (vm.template ? "template" : vm.state !== "shutoff" ? "already " + vm.state : undefined))}>
-        Start
+      <button disabled={running} onClick={() => action("start", (vm) => (vm.template ? "template" : vm.state !== "shutoff" ? "already " + vm.state : undefined))}>
+        Power On
       </button>
-      <button disabled={running} onClick={() => action("Shut down", "shutdown", notRunning)}>
-        Shut down
+      <button disabled={running} onClick={() => action("shutdown", notRunning)}>
+        Shutdown (graceful)
       </button>
-      <button disabled={running} onClick={() => action("Reboot", "reboot", notRunning)}>
-        Reboot
+      <button disabled={running} onClick={() => action("reboot", notRunning)}>
+        Reboot (Graceful)
       </button>
-      <button className="danger" disabled={running} onClick={() => window.confirm(`Force ${n} VM(s) off? Unsaved data in the guests is lost.`) && action("Force off", "poweroff", notRunning)}>
-        Force off
+      <button className="danger" disabled={running} onClick={() => action("poweroff", notRunning)}>
+        Halt (Force Shutdown)
       </button>
       <button disabled={running} onClick={() => setTagging(true)}>
         Tags
@@ -93,6 +99,7 @@ export function BulkBar({ selected, onClear }: { selected: VM[]; onClear: () => 
       <button className="ghost" onClick={onClear}>
         Clear selection
       </button>
+      {confirm.dialog}
       {results && <BulkResults title={title} results={results} running={running} onClose={() => { setResults(undefined); if (selected.length === 0) onClear(); }} />}
       {tagging && (
         <TagDialog

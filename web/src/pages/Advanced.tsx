@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { bytes, get, put, VMDetail } from "../api";
-import { ErrorBox, Field, useAction } from "../ui";
+import { ErrorBox, Field, useAction, useConfirm } from "../ui";
 
 interface Tuning {
   state: string;
@@ -63,11 +63,11 @@ export default function AdvancedCard({ d, base, onChanged }: { d: VMDetail; base
       onChanged();
     });
 
-  if (loadErr) return <section className="card"><h3>Advanced</h3><ErrorBox error={loadErr} /></section>;
-  if (!t) return <section className="card"><h3>Advanced</h3><div className="muted">Loading</div></section>;
+  if (loadErr) return <section className="card" id="hw-advanced"><h3>Advanced</h3><ErrorBox error={loadErr} /></section>;
+  if (!t) return <section className="card" id="hw-advanced"><h3>Advanced</h3><div className="muted">Loading</div></section>;
   const s = t.saved;
   return (
-    <section className="card advanced" style={{ gridColumn: "1 / -1" }}>
+    <section className="card advanced" id="hw-advanced" style={{ gridColumn: "1 / -1" }}>
       <h3>Advanced: CPU placement, huge pages, NUMA</h3>
       <div className="note">{t.warning}</div>
       <p className="muted">
@@ -192,6 +192,7 @@ function Pinning({ t, busy, save }: P) {
   const s = t.saved;
   const [pins, setPins] = useState<string[]>(() => Array.from({ length: t.maxVcpus || s.vcpus }, (_, i) => s.pins.find((p) => p.vcpu === i)?.cpuset ?? ""));
   const [emu, setEmu] = useState(s.emulatorPin ?? "");
+  const confirm = useConfirm();
   const hostList = cpuList(t.host.cpus);
   const apply = () =>
     save("pinning", {
@@ -224,10 +225,11 @@ function Pinning({ t, busy, save }: P) {
         <button disabled={busy} onClick={apply}>
           Save pinning
         </button>
-        <button disabled={busy || (s.pins.length === 0 && !s.emulatorPin)} onClick={() => window.confirm("Remove all CPU pinning of this VM?") && save("pinning", { clear: true })}>
+        <button disabled={busy || (s.pins.length === 0 && !s.emulatorPin)} onClick={async () => (await confirm.ask({ title: "Remove CPU pinning", message: "All CPU pinning of this VM is removed. Its vCPUs and emulator threads may then run on any host CPU.", confirm: "Remove pinning" })) && save("pinning", { clear: true })}>
           Remove pinning
         </button>
       </footer>
+      {confirm.dialog}
     </div>
   );
 }

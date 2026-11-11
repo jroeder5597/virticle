@@ -99,11 +99,11 @@ test.describe.serial("console preview and extras", () => {
     await setHidden(page, false);
     await expect(page.locator(".cc-open img")).toBeVisible();
 
-    // scroll the card out of view: a short window scrolled to the top shows only the cards above it
+    // scroll the card out of view: the preview is at the top of the page, so scroll to the bottom of a short window
     await page.setViewportSize({ width: 1280, height: 300 });
     await page.evaluate(() => {
-      document.scrollingElement!.scrollTo(0, 0);
-      document.querySelector("main")!.scrollTo(0, 0);
+      document.scrollingElement!.scrollTo(0, 99999);
+      document.querySelector("main")!.scrollTo(0, 99999);
     });
     const gone = await page.locator(".cc-box").evaluate((e) => {
       const r = e.getBoundingClientRect();

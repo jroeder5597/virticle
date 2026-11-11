@@ -4,6 +4,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { wsURL } from "../api";
+import { usePrompt } from "../ui";
 import { cssVar, useTheme } from "../theme";
 import { SerialBar, Status, VncBar } from "./ConsoleToolbar";
 
@@ -22,6 +23,9 @@ export function VNCConsole({ node, uuid, name, variant = "tab", extra }: { node:
     if (rfb.current) rfb.current.scaleViewport = fit;
   }, [fit]);
   const rfb = useRef<RFB | null>(null);
+  const pw = usePrompt();
+  const askPw = useRef(pw.ask);
+  askPw.current = pw.ask;
   const [status, setStatus] = useState<Status>("connecting");
   const [attempt, setAttempt] = useState(0);
 
@@ -34,9 +38,10 @@ export function VNCConsole({ node, uuid, name, variant = "tab", extra }: { node:
     r.addEventListener("connect", () => setStatus("connected"));
     r.addEventListener("disconnect", () => setStatus("closed"));
     r.addEventListener("credentialsrequired", () => {
-      const password = window.prompt("This VM's display is password protected. VNC password:");
-      if (password !== null) r.sendCredentials({ password });
-      else r.disconnect();
+      askPw.current({ title: "VNC password", label: "This VM's display is password protected. VNC password", type: "password", confirm: "Connect" }).then((password) => {
+        if (password !== undefined) r.sendCredentials({ password });
+        else r.disconnect();
+      });
     });
     rfb.current = r;
     return () => {
@@ -52,6 +57,7 @@ export function VNCConsole({ node, uuid, name, variant = "tab", extra }: { node:
 
   return (
     <div className={`console vc ${variant}`} ref={box}>
+      {pw.dialog}
       <VncBar status={status} onReconnect={() => setAttempt((a) => a + 1)} rfb={() => rfb.current} box={box} node={node} uuid={uuid} name={name} fit={fit} onFit={setFit}>
         {extra}
       </VncBar>

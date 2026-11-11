@@ -1,0 +1,159 @@
+// The "Actions" menu of the VM page: power, hardware, snapshots, clone, template, migrate, delete.
+// Entries that do not apply to the VM's state are disabled with a reason, never hidden, so the
+// menu keeps its shape. Destructive power actions ask for confirmation first.
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { del, post, put, VMDetail } from "../api";
+import { atLeast, useRole } from "../auth";
+import { DropdownMenu, MenuEntry } from "../Menu";
+import { powerConfirm, powerLabel } from "../power";
+import { ErrorBox, Modal, useAction, useConfirm } from "../ui";
+import { CloneDialog, SealDialog } from "./Clone";
+import MigrateDialog from "./Migrate";
+import { TakeSnapshot } from "./Snapshots";
+
+/** Hardware areas, in the order of the Hardware tab; `id` is the card's element id. */
+export const hardwareAreas: [string, string][] = [
+  ["CPU and memory", "hw-cpu"],
+  ["Disks", "hw-disks"],
+  ["Network interfaces", "hw-nics"],
+  ["CD-ROM", "hw-cdrom"],
+  ["Boot order", "hw-boot"],
+  ["Firmware and TPM", "hw-firmware"],
+  ["Advanced", "hw-advanced"],
+  ["Passthrough devices", "hw-passthrough"],
+];
+
+export default function VMActions(props: {
+  d: VMDetail;
+  base: string;
+  /** Switch tab, then scroll the element with this id into view. */
+  goto: (tab: string, card?: string) => void;
+  onChanged: () => void;
+  /** Runs a call with the page's busy and error state. */
+  run: (fn: () => Promise<unknown>) => Promise<boolean>;
+  busy: boolean;
+}) {
+  const { d, base, goto, run, busy } = props;
+  const nav = useNavigate();
+  const op = atLeast(useRole(), "operator");
+  const confirm = useConfirm();
+  const [cloning, setCloning] = useState<{ linked: boolean }>();
+  const [sealing, setSealing] = useState(false);
+  const [taking, setTaking] = useState(false);
+  const [migrating, setMigrating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const off = d.state === "shutoff";
+  const running = d.state === "running";
+  const paused = d.state === "paused";
+  const need = op ? undefined : "Needs the operator role";
+  const act = async (a: string, body: { action: string; timeoutSec?: number; force?: boolean } = { action: a }) => {
+    let spec = powerConfirm(a, [d.name]);
+    if (spec && body.timeoutSec) spec = { ...spec, message: `${spec.message} If it has not powered off after ${body.timeoutSec} s, it is forced off and unsaved data is lost.` };
+    if (spec && !(await confirm.ask(spec))) return;
+    run(() => post(`${base}/action`, body));
+  };
+  const when = (ok: boolean, why: string) => ({ disabled: !op || busy || !ok, title: need ?? (ok ? undefined : why) });
+  const stateNow = off ? "The VM is shut off" : `The VM is ${d.state}`;
+
+  const power: MenuEntry[] = [
+    { label: powerLabel.start, run: () => act("start"), ...when(off && !d.template, d.template ? "A template cannot be started" : "The VM is already on") },
+    { label: powerLabel.shutdown, run: () => act("shutdown"), ...when(running, stateNow) },
+    { label: "Shutdown (force off after 60 s)", run: () => act("shutdown", { action: "shutdown", timeoutSec: 60, force: true }), ...when(running, stateNow) },
+    { label: powerLabel.poweroff, danger: true, run: () => act("poweroff"), ...when(!off, stateNow) },
+    { label: powerLabel.reboot, run: () => act("reboot"), ...when(running, stateNow) },
+    { label: powerLabel.reset, danger: true, run: () => act("reset"), ...when(!off, stateNow) },
+    "sep",
+    { label: powerLabel.pause, run: () => act("pause"), ...when(running, stateNow) },
+    { label: powerLabel.resume, run: () => act("resume"), ...when(paused, "The VM is not paused") },
+  ];
+  const settings: MenuEntry[] = hardwareAreas.map(([label, id]) => ({ label, run: () => goto("hardware", id) }));
+  const snapshots: MenuEntry[] = [
+    { label: "Take snapshot", run: () => setTaking(true), disabled: !op, title: need },
+    { label: "Manage snapshots", run: () => goto("snapshots") },
+    { label: "Schedule", run: () => goto("snapshots", "snap-schedule") },
+  ];
+  const clone: MenuEntry[] = [
+    { label: "Clone this VM", run: () => setCloning({ linked: false }), ...when(off, "Shut the VM down to clone it") },
+    {
+      label: "Linked clone (from a template)",
+      run: () => setCloning({ linked: true }),
+      ...when(off && d.template, !d.template ? "A linked clone needs a template as its source. Use Template, Convert to template first." : "Shut the VM down to clone it"),
+    },
+  ];
+  const template: MenuEntry[] = [
+    d.template
+      ? { label: "Convert back to a VM", run: () => run(async () => { await put(`${base}/template`, { template: false }); props.onChanged(); }), ...when(off, "Shut the VM down first") }
+      : {
+          label: "Convert to template",
+          run: () => run(async () => { await put(`${base}/template`, { template: true }); props.onChanged(); }),
+          ...when(off, "Shut the VM down first. A template can be cloned (also linked) but not started."),
+        },
+    {
+      label: "Seal template",
+      run: () => setSealing(true),
+      ...when(running && d.agent === "connected" && !d.template, d.template ? "This VM is already a template" : !running ? "Needs a running VM with the guest agent connected" : "Needs the guest agent to be connected"),
+    },
+  ];
+  const migrate: MenuEntry[] = [
+    { label: "Migrate to another node", run: () => setMigrating(true), disabled: !op, title: need },
+    { label: "Move a disk to another pool", run: () => goto("hardware", "hw-disks"), disabled: !op, title: need },
+  ];
+  const remove: MenuEntry[] = [{ label: "Delete VM", danger: true, run: () => setDeleting(true), ...when(off, "Shut the VM down first") }];
+
+  const items: MenuEntry[] = [
+    { label: "Power", items: power, disabled: !op, title: need },
+    { label: "Edit Settings", items: settings, disabled: !op, title: need },
+    { label: "Snapshots", items: snapshots },
+    { label: "Clone", items: clone, disabled: !op, title: need },
+    { label: "Template", items: template, disabled: !op, title: need },
+    { label: "Migrate", items: migrate, disabled: !op, title: need },
+    { label: "Delete", items: remove, disabled: !op, title: need },
+  ];
+
+  return (
+    <>
+      <DropdownMenu label="Actions" items={items} className="primary" />
+      {confirm.dialog}
+      {cloning && <CloneDialog d={d} base={base} linked={cloning.linked} onClose={() => setCloning(undefined)} />}
+      {sealing && <SealDialog d={d} base={base} onClose={() => setSealing(false)} onDone={props.onChanged} />}
+      {taking && <TakeSnapshot d={d} base={base} onClose={() => setTaking(false)} onDone={props.onChanged} />}
+      {migrating && <MigrateDialog d={d} onClose={() => setMigrating(false)} />}
+      {deleting && <DeleteVM d={d} base={base} onClose={() => setDeleting(false)} onDeleted={() => nav("/")} />}
+    </>
+  );
+}
+
+function DeleteVM(props: { d: VMDetail; base: string; onClose: () => void; onDeleted: () => void }) {
+  const { d } = props;
+  const [disks, setDisks] = useState(false);
+  const act = useAction();
+  const owned = d.disks.filter((k) => k.device === "disk" && !k.readOnly && k.source);
+  return (
+    <Modal title={`Delete ${d.name}?`} onClose={props.onClose}>
+      <p>The VM's definition{d.snapshots.length ? `, its ${d.snapshots.length} snapshot record(s)` : ""} and firmware settings are removed. This cannot be undone.</p>
+      {owned.length > 0 && (
+        <label className="check">
+          <input type="checkbox" checked={disks} onChange={(e) => setDisks(e.target.checked)} />
+          Also delete its disk{owned.length > 1 ? "s" : ""}: <span className="mono">{owned.map((k) => k.source).join(", ")}</span>
+        </label>
+      )}
+      <ErrorBox error={act.error} />
+      <footer>
+        <button autoFocus onClick={props.onClose}>Cancel</button>
+        <button className="danger" disabled={act.busy} onClick={async () => {
+            let left: string[] = [];
+            const ok = await act.run(async () => {
+              left = (await del<{ leftDisks: string[] }>(`${props.base}${disks ? "?disks=1" : ""}`)).leftDisks;
+            });
+            if (!ok) return;
+            if (left.length) window.alert(`The VM was deleted, but these disks are not in any storage pool and were left in place:\n\n${left.join("\n")}`);
+            props.onDeleted();
+          }}>
+          Delete VM
+        </button>
+      </footer>
+    </Modal>
+  );
+}

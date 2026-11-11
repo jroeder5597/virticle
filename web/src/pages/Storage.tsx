@@ -6,7 +6,7 @@ import DownloadVolume from "./DownloadVolume";
 import ImageCatalogue from "./ImageCatalogue";
 import { AlertMarks, useAlerts } from "./Alerts";
 import ImportDialog from "./Import";
-import { ErrorBox, Field, Modal, NodePicker, StateBadge, UsageBar, useAction } from "../ui";
+import { ErrorBox, Field, Modal, NodePicker, StateBadge, UsageBar, useAction, useConfirm, usePrompt } from "../ui";
 
 /** `fixedNode` pins the page to one node (node page tab): no node picker, no node auto-selection. */
 export default function Storage({ fixedNode }: { fixedNode?: number } = {}) {
@@ -28,8 +28,19 @@ export default function Storage({ fixedNode }: { fixedNode?: number } = {}) {
   const pools = useLive(() => (node ? get<Pool[]>(`/nodes/${node}/pools`) : Promise.resolve([])), `pools/${node}`, orEvents("pool"));
   const alerts = useAlerts();
   const act = useAction();
+  const confirm = useConfirm();
   const pool = pools.data?.find((p) => p.name === selected) ?? pools.data?.[0];
-  const poolAction = (p: Pool, action: string) => act.run(() => post(`/nodes/${node}/pools/${encodeURIComponent(p.name)}/action`, { action }));
+  const poolAction = async (p: Pool, action: string) => {
+    if (action === "stop" || action === "remove") {
+      const ok = await confirm.ask(
+        action === "stop"
+          ? { title: `Stop pool ${p.name}`, message: `The storage pool ${p.name} is stopped. VMs whose disks are in it cannot start, and running ones may fail on their next disk access, until it is started again.`, confirm: "Stop pool" }
+          : { title: `Remove pool ${p.name}`, message: `The storage pool ${p.name} is removed from this node. The data in it is not deleted.`, confirm: "Remove pool" },
+      );
+      if (!ok) return;
+    }
+    return act.run(() => post(`/nodes/${node}/pools/${encodeURIComponent(p.name)}/action`, { action }));
+  };
 
   if (fixedNode === undefined && nodes.data && all.length === 0) {
     return (
@@ -99,7 +110,7 @@ export default function Storage({ fixedNode }: { fixedNode?: number } = {}) {
                 <button
                   className="danger"
                   disabled={act.busy}
-                  onClick={() => window.confirm(`Remove pool ${p.name} from this node? The data in it is not deleted.`) && poolAction(p, "remove")}
+                  onClick={() => poolAction(p, "remove")}
                 >
                   Remove
                 </button>
@@ -109,6 +120,7 @@ export default function Storage({ fixedNode }: { fixedNode?: number } = {}) {
         </tbody>
       </table>
       {pool && pool.state === "running" && <Volumes node={node} nodeName={all.find((n) => n.id === node)?.hostname} pool={pool} openCatalogue={openCatalogue} />}
+      {confirm.dialog}
       {creating && <CreatePool node={node} onClose={() => setCreating(false)} />}
     </>
   );
@@ -118,6 +130,8 @@ function Volumes({ node, nodeName, pool, openCatalogue }: { node: number; nodeNa
   const base = `/nodes/${node}/pools/${encodeURIComponent(pool.name)}/volumes`;
   const vols = useLive(() => get<Volume[]>(base), base);
   const act = useAction();
+  const confirm = useConfirm();
+  const prompt = usePrompt();
   const [creating, setCreating] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [catalogue, setCatalogue] = useState(!!openCatalogue);
@@ -134,14 +148,24 @@ function Volumes({ node, nodeName, pool, openCatalogue }: { node: number; nodeNa
     vols.reload();
   };
   const volAction = (v: Volume, body: object) => act.run(() => post(`${base}/${encodeURIComponent(v.name)}/action`, body));
-  const resize = (v: Volume) => {
-    const answer = window.prompt(`New size for ${v.name} in GiB (currently ${(v.capacity / 2 ** 30).toFixed(1)}). Volumes can only grow.`);
+  const resize = async (v: Volume) => {
+    const answer = await prompt.ask({
+      title: `Resize ${v.name}`,
+      label: "New size (GiB)",
+      hint: `Currently ${(v.capacity / 2 ** 30).toFixed(1)} GiB. Volumes can only grow.`,
+      type: "number",
+      confirm: "Resize",
+    });
     const gib = Number(answer);
     if (answer && gib > 0) volAction(v, { action: "resize", capacity: Math.round(gib * 2 ** 30) });
   };
-  const clone = (v: Volume) => {
-    const name = window.prompt(`Name for the copy of ${v.name}:`, v.name.replace(/(\.[^.]+)?$/, "-copy$1"));
+  const clone = async (v: Volume) => {
+    const name = await prompt.ask({ title: `Clone ${v.name}`, label: "Name of the copy", initial: v.name.replace(/(\.[^.]+)?$/, "-copy$1"), confirm: "Clone" });
     if (name) volAction(v, { action: "clone", name });
+  };
+  const remove = async (v: Volume) => {
+    const ok = await confirm.ask({ title: `Delete volume ${v.name}`, message: `The volume ${v.name} in pool ${pool.name} is deleted. Its data is destroyed and cannot be recovered.`, confirm: "Delete volume" });
+    if (ok) act.run(() => del(`${base}/${encodeURIComponent(v.name)}`));
   };
 
   return (
@@ -201,7 +225,7 @@ function Volumes({ node, nodeName, pool, openCatalogue }: { node: number; nodeNa
                   <button
                     className="danger"
                     disabled={act.busy}
-                    onClick={() => window.confirm(`Delete ${v.name}? Its data is destroyed and cannot be recovered.`) && act.run(() => del(`${base}/${encodeURIComponent(v.name)}`))}
+                    onClick={() => remove(v)}
                   >
                     Delete
                   </button>
@@ -211,6 +235,8 @@ function Volumes({ node, nodeName, pool, openCatalogue }: { node: number; nodeNa
           </tbody>
         </table>
       )}
+      {confirm.dialog}
+      {prompt.dialog}
       {downloading && <DownloadVolume node={node} pool={pool.name} onClose={() => setDownloading(false)} onDone={vols.reload} />}
       {catalogue && <ImageCatalogue node={node} nodeName={nodeName} pool={pool.name} onClose={() => setCatalogue(false)} onDone={vols.reload} />}
       {creating && <CreateVolume base={base} pool={pool} onClose={() => setCreating(false)} />}

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Check, TriangleAlert, X } from "lucide-react";
 import { bytes, get, Pool, post, Task, VMDetail } from "../api";
 import { useEvents } from "../live";
-import { ErrorBox, Field, Modal, useAction } from "../ui";
+import { ErrorBox, Field, Modal, useAction, useConfirm } from "../ui";
 
 interface CheckT {
   check: string;
@@ -42,6 +42,7 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
   const [task, setTask] = useState<Task>();
   const act = useAction();
   const cancel = useAction();
+  const confirm = useConfirm();
 
   useEffect(() => {
     get<Pool[]>(`/nodes/${d.node}/pools`).then((ps) => {
@@ -83,17 +84,27 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
   }, [task?.status]);
 
   const busy = taskId !== 0 && task?.status !== "ok" && task?.status !== "failed";
-  const start = () =>
-    act.run(async () => {
+  const start = async () => {
+    if (deleteOld) {
+      const ok = await confirm.ask({
+        title: `Move ${disk.target} and delete the old volume`,
+        message: `${disk.target} of ${d.name} is copied to pool ${pool}. When the copy has finished, the old volume ${oldName} is deleted and cannot be recovered.`,
+        confirm: "Move and delete old volume",
+      });
+      if (!ok) return;
+    }
+    return act.run(async () => {
       const r = await post<{ task: number }>(base, { pool, name, format, deleteOld, flatten });
       setTask(undefined);
       setTaskId(r.task);
     });
+  };
   const live = plan?.mode === "live";
   const pct = Math.round((task?.status === "ok" ? 1 : task?.progress ?? 0) * 100);
 
   return (
     <Modal title={`Move ${disk.target} to another pool`} onClose={() => !busy && onClose()} wide>
+      {confirm.dialog}
       {!taskId && (
         <>
           <p className="muted">
@@ -190,7 +201,7 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
           <ErrorBox error={task?.status === "failed" ? task.error : cancel.error} />
           <footer>
             {busy ? (
-              <button className="danger" disabled={cancel.busy} onClick={() => cancel.run(() => post(`${base}/cancel`))}>
+              <button className="danger" disabled={cancel.busy} onClick={async () => (await confirm.ask({ title: "Stop disk move", message: `The running move of ${disk.target} of ${d.name} is stopped. The disk stays where it is and a partial copy is removed.`, confirm: "Stop move" })) && cancel.run(() => post(`${base}/cancel`))}>
                 Cancel move
               </button>
             ) : (

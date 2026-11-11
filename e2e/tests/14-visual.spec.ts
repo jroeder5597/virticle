@@ -145,10 +145,10 @@ test.describe.serial("visual pass", () => {
       await ctx.addInitScript((t) => localStorage.setItem("vp-theme", t), m.scheme);
       const page = await ctx.newPage();
       const problems: string[] = [];
-      const shot = async (name: string, ready: () => Promise<unknown>, opts: { contrast?: boolean; wide?: boolean } = {}) => {
+      const shot = async (name: string, ready: () => Promise<unknown>, opts: { contrast?: boolean; wide?: boolean; viewportOnly?: boolean } = {}) => {
         await ready();
         await page.waitForTimeout(400);
-        await page.screenshot({ path: `${OUT}/${m.name}-${name}.png`, fullPage: true });
+        await page.screenshot({ path: `${OUT}/${m.name}-${name}.png`, fullPage: !opts.viewportOnly });
         const issues = await lowContrast(page);
         for (const i of issues) problems.push(`${m.name}/${name}: low contrast: ${i}`);
         for (const e of await ellipses(page)) problems.push(`${m.name}/${name}: ellipsis in "${e}"`);
@@ -172,7 +172,14 @@ test.describe.serial("visual pass", () => {
       await page.keyboard.press("Escape");
 
       await page.goto(vmUrl);
-      await shot("vm-overview", () => expect(page.locator(".charts")).toBeVisible({ timeout: 30_000 }));
+      await shot("vm-overview", () => expect(page.locator("#utilization .st-val").first()).toContainText("%", { timeout: 30_000 }));
+      // the Actions menu with its Power submenu open, and a confirmation dialog
+      await page.locator(".head").getByRole("button", { name: "Actions", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Power", exact: true }).click();
+      await shot("actions-menu-power", () => expect(page.getByRole("menuitem", { name: "Reset (Hard Reboot)", exact: true })).toBeVisible(), { viewportOnly: true });
+      await page.getByRole("menuitem", { name: "Halt (Force Shutdown)", exact: true }).click();
+      await shot("confirm-dialog", () => expect(page.getByRole("dialog", { name: "Halt (Force Shutdown)" })).toBeVisible());
+      await page.getByRole("button", { name: "Cancel", exact: true }).click();
       for (const [tab, check] of [
         ["hardware", "Boot order"],
         ["console", "Connected"],
@@ -243,7 +250,9 @@ test.describe.serial("visual pass", () => {
       await shot("disk-move-dialog", () => expect(page.getByRole("dialog").locator("ul.checks li").first()).toBeVisible({ timeout: 60_000 }));
       await page.keyboard.press("Escape");
       await page.goto(vmUrl);
-      await page.locator(".head").getByRole("button", { name: "Migrate" }).click();
+      await page.locator(".head").getByRole("button", { name: "Actions", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Migrate", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Migrate to another node", exact: true }).click();
       await shot("migrate-dialog", () => expect(page.getByRole("dialog").locator("ul.checks li").first()).toBeVisible({ timeout: 60_000 }));
       await page.keyboard.press("Escape");
 

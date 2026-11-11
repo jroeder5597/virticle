@@ -1,11 +1,22 @@
 // Small shared building blocks.
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import "./menu.css";
+
+// Open modals, oldest first: Escape closes only the topmost (a confirmation opened from a dialog).
+const modalStack: object[] = [];
 
 export function Modal(props: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   const box = useRef<HTMLDivElement>(null);
+  const me = useRef({}).current;
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && props.onClose();
+    modalStack.push(me);
+    return () => {
+      modalStack.splice(modalStack.indexOf(me), 1);
+    };
+  }, [me]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && modalStack[modalStack.length - 1] === me && props.onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
@@ -118,4 +129,109 @@ export function NodePicker(props: { nodes: { id: number; hostname?: string; addr
       ))}
     </select>
   );
+}
+
+export interface ConfirmSpec {
+  title: string;
+  /** What exactly will happen to which object. */
+  message: ReactNode;
+  /** The button label: the action itself ("Halt", "Delete volume"). */
+  confirm: string;
+  /** Objects affected, one per line (a bulk action lists its VMs). */
+  items?: string[];
+  /** Not styled as dangerous when false. */
+  danger?: boolean;
+}
+
+/**
+ * Confirmation step for a destructive action. Cancel has the focus, so Enter cancels rather than
+ * confirming by accident; Escape cancels.
+ */
+export function ConfirmDialog(props: ConfirmSpec & { onResult: (ok: boolean) => void }) {
+  return (
+    <Modal title={props.title} onClose={() => props.onResult(false)}>
+      <p>{props.message}</p>
+      {props.items && props.items.length > 0 && (
+        <ul className="confirm-items mono">
+          {props.items.map((x) => (
+            <li key={x}>{x}</li>
+          ))}
+        </ul>
+      )}
+      <footer>
+        <button autoFocus onClick={() => props.onResult(false)}>
+          Cancel
+        </button>
+        <button className={props.danger === false ? "primary" : "danger"} onClick={() => props.onResult(true)}>
+          {props.confirm}
+        </button>
+      </footer>
+    </Modal>
+  );
+}
+
+/**
+ * `const confirm = useConfirm()`, render `{confirm.dialog}` once, then
+ * `if (!(await confirm.ask({...}))) return;` before the action.
+ */
+export function useConfirm() {
+  const [state, setState] = useState<{ spec: ConfirmSpec; resolve: (ok: boolean) => void }>();
+  const ask = (spec: ConfirmSpec) => new Promise<boolean>((resolve) => setState({ spec, resolve }));
+  const dialog = state ? (
+    <ConfirmDialog
+      {...state.spec}
+      onResult={(ok) => {
+        setState(undefined);
+        state.resolve(ok);
+      }}
+    />
+  ) : null;
+  return { ask, dialog };
+}
+
+export interface PromptSpec {
+  title: string;
+  label: string;
+  hint?: string;
+  initial?: string;
+  confirm: string;
+  type?: "text" | "password" | "number";
+}
+
+/** A one-field dialog in place of window.prompt: `const v = await prompt.ask({...})`, undefined when cancelled. */
+export function usePrompt() {
+  const [state, setState] = useState<{ spec: PromptSpec; resolve: (v: string | undefined) => void }>();
+  const [value, setValue] = useState("");
+  const ask = (spec: PromptSpec) =>
+    new Promise<string | undefined>((resolve) => {
+      setValue(spec.initial ?? "");
+      setState({ spec, resolve });
+    });
+  const finish = (v: string | undefined) => {
+    state?.resolve(v);
+    setState(undefined);
+  };
+  const dialog = state ? (
+    <Modal title={state.spec.title} onClose={() => finish(undefined)}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          finish(value);
+        }}
+      >
+        <Field label={state.spec.label} hint={state.spec.hint}>
+          <input autoFocus type={state.spec.type ?? "text"} value={value} onChange={(e) => setValue(e.target.value)} />
+        </Field>
+        <footer>
+          <button type="button" onClick={() => finish(undefined)}>
+            Cancel
+          </button>
+          <button className="primary" disabled={!value.trim()}>
+            {state.spec.confirm}
+          </button>
+        </footer>
+      </form>
+    </Modal>
+  ) : null;
+  return { ask, dialog };
 }

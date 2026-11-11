@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, del, get, VMDetail } from "../api";
-import { ErrorBox, Modal, useAction } from "../ui";
+import { ErrorBox, Modal, useAction, useConfirm } from "../ui";
 
 interface Dev {
   kind: "pci" | "usb";
@@ -40,12 +40,14 @@ export default function PassthroughCard({ d, base, onChanged }: { d: VMDetail; b
   const [picking, setPicking] = useState(false);
   const [msg, setMsg] = useState<string | undefined>();
   const act = useAction();
+  const confirm = useConfirm();
   const load = () => get<Listing>(`${base}/hostdevs`).then((x) => { setL(x); setErr(undefined); }, (e) => setErr(String(e.message ?? e)));
   useEffect(() => {
     load();
   }, [base, d.state]);
   const remove = async (key: string) => {
-    if (!window.confirm("Remove this device from the VM? A running guest has to let go of it first.")) return;
+    const dev = l?.attached.find((a) => a.key === key);
+    if (!(await confirm.ask({ title: "Remove passthrough device", message: `${dev ? dev.label : "The device"} is removed from ${d.name}. A running guest has to let go of it first.`, confirm: "Remove device" }))) return;
     await act.run(async () => {
       const r = await del<Result>(`${base}/hostdevs/${encodeURIComponent(key)}`);
       setMsg(r.note);
@@ -54,7 +56,8 @@ export default function PassthroughCard({ d, base, onChanged }: { d: VMDetail; b
     });
   };
   return (
-    <section className="card" style={{ gridColumn: "1 / -1" }}>
+    <section className="card" id="hw-passthrough" style={{ gridColumn: "1 / -1" }}>
+      {confirm.dialog}
       <h3>Passthrough devices (PCI, GPU, USB)</h3>
       <div className="note">{l?.warning ?? "A VM with a passed-through device cannot be live-migrated and is tied to this node until the device is removed."}</div>
       <ErrorBox error={err ?? act.error} />

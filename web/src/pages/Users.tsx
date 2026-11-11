@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { del, get, post, put, Role, User } from "../api";
-import { ErrorBox, Field, Modal, useAction } from "../ui";
+import { ErrorBox, Field, Modal, useAction, useConfirm } from "../ui";
 
 const roles: Role[] = ["admin", "operator", "viewer"];
 const when = (unix: number) => new Date(unix * 1000).toLocaleDateString();
@@ -11,6 +11,7 @@ export default function Users() {
   const [adding, setAdding] = useState(false);
   const [resetting, setResetting] = useState<User | undefined>();
   const act = useAction();
+  const confirm = useConfirm();
   const reload = useCallback(() => get<User[]>("/users").then(setUsers, (e) => setLoadError(String(e.message ?? e))), []);
   useEffect(() => {
     reload();
@@ -59,7 +60,7 @@ export default function Users() {
                 <button disabled={act.busy} onClick={() => setResetting(u)}>
                   Reset password
                 </button>
-                <button className="danger" disabled={act.busy} onClick={() => window.confirm(`Delete user ${u.username}? Their API tokens stop working.`) && act.run(() => del(`/users/${u.id}`)).then(reload)}>
+                <button className="danger" disabled={act.busy} onClick={async () => (await confirm.ask({ title: `Delete user ${u.username}`, message: `The user ${u.username} is deleted. Their API tokens stop working.`, confirm: "Delete user" })) && act.run(() => del(`/users/${u.id}`)).then(reload)}>
                   Delete
                 </button>
               </td>
@@ -67,6 +68,7 @@ export default function Users() {
           ))}
         </tbody>
       </table>
+      {confirm.dialog}
       {adding && <AddUser onClose={() => setAdding(false)} onDone={reload} />}
       {resetting && <ResetPassword user={resetting} onClose={() => setResetting(undefined)} />}
     </>

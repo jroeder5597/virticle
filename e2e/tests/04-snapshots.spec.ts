@@ -1,7 +1,7 @@
 // Snapshots tab: take (with memory), tree, revert, delete, and the schedule form.
 import { cleanVMs, createCirros, expect, openVM, tab, test } from "../lib/fixtures";
 import { P } from "../lib/env";
-import { autoDialogs, dialog, expectBadge, field, row } from "../lib/ui";
+import { autoDialogs, dialog, expectBadge, field, row, confirm } from "../lib/ui";
 
 const NAME = `${P}snap1`;
 
@@ -94,6 +94,7 @@ test.describe.serial("snapshots", () => {
     await expect(sec).toContainText("Every 720 minutes");
 
     await sec.getByRole("button", { name: "Remove" }).click();
+    await confirm(page, "Remove snapshot schedule");
     await expect(sec.getByRole("button", { name: "Set up schedule" })).toBeVisible();
     got = await api.get(`/nodes/${vm.node}/vms/${vm.uuid}/snapshot-schedule`);
     expect(got.schedule).toBeNull();
