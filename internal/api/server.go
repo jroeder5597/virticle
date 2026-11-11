@@ -131,6 +131,11 @@ func (s *Server) Handler() http.Handler {
 	auth("POST /api/nodes/{node}/vms/{uuid}/clone", s.vmClone)
 	auth("GET /api/nodes/{node}/vms/{uuid}/vnc", s.vmVNC)
 	auth("GET /api/nodes/{node}/vms/{uuid}/serial", s.vmSerial)
+	auth("POST /api/nodes/{node}/vms/{uuid}/serial-console", s.vmSerialAdd)
+	auth("DELETE /api/nodes/{node}/vms/{uuid}/serial-console", s.vmSerialRemove)
+	auth("GET /api/nodes/{node}/vms/{uuid}/clock", s.vmClock)
+	auth("PUT /api/nodes/{node}/vms/{uuid}/clock", s.hwClock)
+	auth("POST /api/nodes/{node}/vms/{uuid}/clock/sync", s.vmClockSync)
 	auth("GET /api/nodes/{node}/vms/{uuid}/screenshot", s.vmScreenshot)
 	auth("POST /api/nodes/{node}/vms/{uuid}/sendkey", s.sendKeys)
 

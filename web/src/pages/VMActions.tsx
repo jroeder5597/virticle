@@ -23,6 +23,8 @@ export const hardwareAreas: [string, HwArea][] = [
   ["Firmware and TPM", "firmware"],
   ["Advanced", "advanced"],
   ["Passthrough devices", "passthrough"],
+  ["Serial console", "serial"],
+  ["Clock", "clock"],
 ];
 
 export default function VMActions(props: {
@@ -69,6 +71,9 @@ export default function VMActions(props: {
     { label: powerLabel.poweroff, danger: true, run: () => act("poweroff"), ...when(!off, stateNow) },
     { label: powerLabel.reset, danger: true, run: () => act("reset"), ...when(!off, stateNow) },
   ];
+  const guest: MenuEntry[] = [
+    { label: "Sync guest clock", run: () => run(() => post(`${base}/clock/sync`)), ...when(running && d.agent === "connected", !running ? stateNow : "Needs the guest agent to be connected") },
+  ];
   const settings: MenuEntry[] = hardwareAreas.map(([label, area]) => ({ label, run: () => setEditing([label, area]) }));
   const snapshots: MenuEntry[] = [
     { label: "Take snapshot", run: () => setTaking(true), disabled: !op, title: need },
@@ -105,6 +110,7 @@ export default function VMActions(props: {
 
   const items: MenuEntry[] = [
     { label: "Power", items: power, disabled: !op, title: need },
+    { label: "Guest", items: guest, disabled: !op, title: need },
     { label: "Edit Settings", items: settings, disabled: !op, title: need },
     { label: "Snapshots", items: snapshots },
     { label: "Clone", items: clone, disabled: !op, title: need },

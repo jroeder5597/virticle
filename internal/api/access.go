@@ -98,6 +98,12 @@ var routeLevels = map[string]string{
 	"GET /api/nodes/{node}/vms/{uuid}/screenshot":     operator,
 	"POST /api/nodes/{node}/vms/{uuid}/sendkey":       operator,
 
+	"POST /api/nodes/{node}/vms/{uuid}/serial-console":   operator,
+	"DELETE /api/nodes/{node}/vms/{uuid}/serial-console": operator,
+	"GET /api/nodes/{node}/vms/{uuid}/clock":             viewer,
+	"PUT /api/nodes/{node}/vms/{uuid}/clock":             operator,
+	"POST /api/nodes/{node}/vms/{uuid}/clock/sync":       operator,
+
 	"PUT /api/nodes/{node}/vms/{uuid}/cpu":                         operator,
 	"PUT /api/nodes/{node}/vms/{uuid}/memory":                      operator,
 	"POST /api/nodes/{node}/vms/{uuid}/disks":                      operator,

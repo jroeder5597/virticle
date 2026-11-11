@@ -1173,6 +1173,7 @@ func (m *migRun) runOnline() error {
 		}
 	}
 	m.progress(0.97)
+	m.s.autoSyncClock("system", "migration", m.dst, moved)
 	return m.cleanSource()
 }
 

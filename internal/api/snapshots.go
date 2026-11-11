@@ -374,6 +374,7 @@ func (s *Server) revertSnapshot(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	s.autoSyncClock(userOf(r), "snapshot revert", h, dom)
 	writeJSON(w, map[string]bool{"ok": true})
 }
 

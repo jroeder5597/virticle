@@ -11,6 +11,7 @@ import FirmwareCard from "./Firmware";
 import AdvancedCard from "./Advanced";
 import PassthroughCard from "./Passthrough";
 import DiskMoveDialog from "./DiskMove";
+import { ClockCard, SerialCard } from "./SerialClock";
 import PoolSelect from "../PoolSelect";
 import BridgeSelect from "../BridgeSelect";
 import "./hw.css";
@@ -51,7 +52,7 @@ function useHw(d: VMDetail, base: string, onChanged: () => void) {
   return { send, run, busy: act.busy, error: act.error, outcome };
 }
 
-export type HwArea = "cpu" | "disks" | "nics" | "cdrom" | "boot" | "firmware" | "advanced" | "passthrough";
+export type HwArea = "cpu" | "disks" | "nics" | "cdrom" | "boot" | "firmware" | "advanced" | "passthrough" | "serial" | "clock";
 
 function Outcome({ hw }: { hw: ReturnType<typeof useHw> }) {
   return (
@@ -82,6 +83,10 @@ function Section({ area, d, base, onChanged, hw, bare }: { area: HwArea; d: VMDe
       return <AdvancedCard d={d} base={base} onChanged={onChanged} bare={bare} />;
     case "passthrough":
       return <PassthroughCard d={d} base={base} onChanged={onChanged} bare={bare} />;
+    case "serial":
+      return <SerialCard {...p} base={base} />;
+    case "clock":
+      return <ClockCard {...p} base={base} />;
   }
 }
 
@@ -119,10 +124,12 @@ export default function Hardware({ d, base, onChanged }: { d: VMDetail; base: st
         <div className="hwcol">
           {S("cpu")}
           {S("firmware")}
+          {S("serial")}
         </div>
         <div className="hwcol">
           {S("boot")}
           {S("cdrom")}
+          {S("clock")}
         </div>
         {S("disks")}
         {S("nics")}
