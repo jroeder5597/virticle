@@ -75,7 +75,18 @@ func Dial(t Target, knownHosts string) (*Host, error) {
 // Close tears down the libvirt session and the SSH connection(s).
 func (h *Host) Close() {
 	if h.Libvirt != nil {
-		h.Libvirt.Disconnect()
+		// Disconnect sends a close request first, which blocks for ever on a
+		// wedged connection (the case the cluster watchdog reconnects for),
+		// so do not wait for it: the SSH close below ends the transport.
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			h.Libvirt.Disconnect()
+		}()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+		}
 	}
 	h.ssh.Close()
 	if h.jump != nil {

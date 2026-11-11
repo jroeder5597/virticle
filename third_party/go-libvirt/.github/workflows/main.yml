@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+  # allow manual execution from the web interface
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: ['ubuntu-22.04', 'ubuntu-24.04']
+        toolchain: ['oldstable', 'stable']
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6 # respository path: $GITHUB_WORKSPACE
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.toolchain }}
+
+      - name: Install golint
+        run: go install golang.org/x/lint/golint@latest
+      - name: Install goyacc
+        run: go install golang.org/x/tools/cmd/goyacc@latest
+
+      - name: Install libvirt
+        run: |
+          sudo apt-get update
+          sudo apt-get -qqy install libvirt-daemon-system
+
+      - name: Stop libvirtd
+        run: sudo systemctl stop libvirtd
+      - name: Start libvirtd with custom config
+        run: sudo libvirtd -d -l -f $GITHUB_WORKSPACE/.github/workflows/libvirtd.conf
+
+      - name: Setup test artifacts
+        env:
+          TESTDATA: ${{ github.workspace }}/testdata
+        run: |
+          go get -d ./...
+          sudo qemu-img create -f raw -o size=10M /var/lib/libvirt/images/test.raw
+          sudo virsh define $TESTDATA/test-domain.xml
+          sudo virsh start test
+          sudo virsh pool-create $TESTDATA/test-pool.xml
+          sudo virsh secret-define $TESTDATA/test-secret.xml
+
+      - name: Lint and Vet
+        run: |
+          golint -set_exit_status ./...
+          go vet ./...
+
+      - name: Unit test
+        run: go test -race ./...
+
+      - name: integration test
+        run: sudo go test -race -tags=integration ./...
+
+      - name: Build
+        run: go build ./...
