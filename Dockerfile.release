@@ -1,0 +1,15 @@
+# Used by goreleaser (dockers_v2): the binary is built already and arrives in
+# the build context as $TARGETPLATFORM/virticle. For a source build use the
+# Dockerfile in the same directory.
+FROM --platform=$BUILDPLATFORM alpine:3.20 AS data
+RUN mkdir /data
+
+FROM gcr.io/distroless/static-debian12:nonroot
+ARG TARGETPLATFORM
+COPY $TARGETPLATFORM/virticle /usr/bin/virticle
+COPY --from=data --chown=65532:65532 /data /data
+USER 65532:65532
+VOLUME /data
+EXPOSE 8080
+ENTRYPOINT ["/usr/bin/virticle"]
+CMD ["-listen", "0.0.0.0:8080", "-data", "/data"]

@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+# remove: keep /var/lib/virticle and /etc/virticle. purge: delete them and the
+# service user. The data holds the database and the controller's SSH key.
+if [ -d /run/systemd/system ]; then
+	systemctl daemon-reload || true
+fi
+if [ "$1" = purge ]; then
+	rm -rf /var/lib/virticle /etc/virticle
+	if getent passwd virticle >/dev/null; then
+		userdel virticle || true
+	fi
+	if getent group virticle >/dev/null; then
+		groupdel virticle || true
+	fi
+fi
+exit 0

@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+# Debian convention: enable and start the service after a first install;
+# restart it after an upgrade when it was running.
+if [ "$1" = configure ]; then
+	if [ -d /run/systemd/system ]; then
+		systemctl daemon-reload || true
+		if [ -z "$2" ]; then
+			systemctl enable virticle.service || true
+			systemctl start virticle.service || true
+		elif systemctl is-active --quiet virticle.service; then
+			systemctl restart virticle.service || true
+		fi
+	elif [ -z "$2" ]; then
+		systemctl enable virticle.service 2>/dev/null || true
+	fi
+fi
+exit 0

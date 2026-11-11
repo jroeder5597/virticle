@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+# Stop and disable on removal; an upgrade leaves the service alone (the
+# postinst of the new version restarts it).
+if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
+	systemctl stop virticle.service || true
+	systemctl disable virticle.service || true
+fi
+exit 0
