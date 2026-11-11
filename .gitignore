@@ -5,3 +5,4 @@ lab/*.img
 web/node_modules/
 web/dist/
 /.claude/
+/data-e2e/

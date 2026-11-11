@@ -17,7 +17,7 @@ test.describe.serial("hardware editing", () => {
 
   test("upload an ISO-named file on the Storage page", async ({ page, api, n1 }) => {
     vm = await createCirros(api, n1, NAME);
-    await page.goto("/storage");
+    await page.goto(`/node/${n1}/storage`); // the node's own storage tab: the unified page lists every node's "default"
     await row(page, /^default/).first().click();
     await expect(page.getByRole("heading", { name: "Volumes in default" })).toBeVisible();
     await page.locator('input[type="file"]').setInputFiles({ name: ISO, mimeType: "application/octet-stream", buffer: Buffer.alloc(64 * 1024, 1) });

@@ -279,11 +279,11 @@ test.describe.serial("snapshot tree, delete dialog, schedule, bridge picker", ()
     expect(got.nextRun).toBeGreaterThan(Date.now() / 1000);
     expect(got.nextRun - Date.now() / 1000).toBeLessThanOrEqual(86400 + 60);
     expect(new Date(got.nextRun * 1000).toISOString().slice(11, 16)).toBe("03:30");
-    expect(got.runner).toBe("disabled"); // this server runs with -no-scheduler
+    expect(["this", "disabled"]).toContain(got.runner); // "disabled" when the server runs with -no-scheduler
     await openVM(page, vm, "snapshots");
     const line = page.locator("#snap-schedule .nextrun").first();
     await expect(line).toContainText("Next Run:");
-    await expect(line).toContainText("-no-scheduler");
+    if (got.runner === "disabled") await expect(line).toContainText("-no-scheduler");
     // paused schedule: no next run
     await api.put(`${base()}/snapshot-schedule`, { enabled: false, mode: "daily", at: "03:30", keep: 3, prefix: `${P}auto`, memory: false, quiesce: false });
     expect((await api.get(`${base()}/snapshot-schedule`)).nextRun).toBeUndefined();
