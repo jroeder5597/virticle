@@ -175,7 +175,7 @@ export interface Task {
   finished?: number;
 }
 export interface ServerEvent {
-  type: "node" | "domain" | "network" | "pool" | "task" | "alert";
+  type: "node" | "domain" | "network" | "pool" | "task" | "alert" | "tags";
   node?: number;
   name?: string;
   uuid?: string;

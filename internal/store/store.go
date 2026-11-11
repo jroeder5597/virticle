@@ -73,6 +73,9 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(profileSchema); err != nil {
 		return nil, err
 	}
+	if _, err := db.Exec(tagSchema); err != nil {
+		return nil, err
+	}
 	// Tasks still marked running belong to a previous process that is gone.
 	if _, err := db.Exec(`UPDATE tasks SET status='failed', error='controller restarted', finished=? WHERE status='running'`, time.Now().Unix()); err != nil {
 		return nil, err
