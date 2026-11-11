@@ -44,7 +44,7 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
 ## Snapshots and backup
 - [~] Snapshots with memory, tree view, revert, delete (done). Default type chosen per node (see note). Open: quiesce untested with a real agent, UEFI guests untested
 - [x] Scheduled snapshots with retention (schedule stored in domain metadata; times in UTC)
-- [~] Backup and restore to another pool or node (live, no snapshot left behind); export/import a VM as one tar file. Open: scheduled backups; TPM state and snapshots are not part of a backup
+- [~] Backup and restore to another pool or node (live, no snapshot left behind); export/import a VM as one tar file. Scheduled backups with retention (one unexplained stall seen in testing, not reproduced). Open: TPM state and snapshots are not part of a backup
 
 ## Networking
 - [~] Virtual network editor: NAT, isolated, routed, open, bridged, DHCP reservations (done); VLAN tags only for Open vSwitch bridges, untested on real OVS
@@ -65,6 +65,9 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
 - [x] Bulk actions and tags (tags stored in libvirt `<metadata>`; bulk actions fan out from the browser)
 - [x] Users and roles (admin, operator, viewer), API tokens, audit log, login rate limiting
 - [x] Alerts: pool full, node down, host memory, failed scheduled job, VM crashed or paused on I/O error, certificate expiry; optional webhook (`-alert-webhook`)
+- [x] Resource tree (Datacenter → nodes → VMs, storage, networks, host NICs) with quick actions; node page with tabs (summary, VMs, storage, network, updates, settings)
+- [x] Theme from the user's DESIGN.md: dark by default, light option, bundled fonts, no animation. Idle cost measured: 0 running animations, at most one stats request per shown host every 5 s, none on pages without charts
+- [x] Browser suite (`make e2e`, 86 tests) including a fit check: no element cut off or spilling out of its card at 1280 and 1440 px, both themes, plus phone width
 - [ ] Later: scheduled replication to a standby node; optional shared storage and HA
 
 ## Design notes
@@ -96,12 +99,13 @@ VMs get internal snapshots; live disk-only snapshots are always external.
 
 **Access levels.** Every API route needs an entry in `routeLevels`
 (`internal/api/access.go`); an unlisted route requires admin and fails a unit
-test. Behind a reverse proxy the same-origin check and per-IP rate limit need
-work (Host header, X-Forwarded-For are not trusted).
+test. Behind a reverse proxy, name it with `-trusted-proxy` so the same-origin
+check and per-IP rate limit use the forwarded host and client address.
 
 **One controller per set of nodes.** Scheduled snapshots are driven by the
 controller from VM metadata, so two controllers pointed at the same nodes
-would both run every schedule.
+would both run every schedule. `-no-scheduler` turns one of them off, and an
+alert appears when another controller's scheduled snapshots are seen.
 
 **Open:** project name (working name `virt-proj`).
 
