@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 import { Moon, Sun } from "lucide-react";
 
 export type Theme = "dark" | "light";
-const KEY = "vp-theme";
+const KEY = "virticle-theme";
 const META: Record<Theme, string> = { dark: "#2C3942", light: "#F8F8F8" };
 
 const current = (): Theme => (document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark");

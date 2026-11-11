@@ -9,8 +9,8 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/cluster"
-	"virt-proj/internal/store"
+	"virticle/internal/cluster"
+	"virticle/internal/store"
 )
 
 type createVMRequest struct {

@@ -8,7 +8,7 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/hostconn"
+	"virticle/internal/hostconn"
 )
 
 // Tags are short free-form labels kept as <tags><tag>x</tag>...</tags> in the

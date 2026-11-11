@@ -32,8 +32,8 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/cluster"
-	"virt-proj/internal/hostconn"
+	"virticle/internal/cluster"
+	"virticle/internal/hostconn"
 )
 
 type backupReq struct {
@@ -88,7 +88,7 @@ var bkRuns = struct {
 var errBackupCancelled = errors.New("backup cancelled")
 
 func newWork(h *hostconn.Host, dir, tag string) (*workDir, error) {
-	prefix := dir + "/.virt-proj-" + tag + "."
+	prefix := dir + "/.virticle-" + tag + "."
 	out, err := h.Run("umask 077 && mktemp -d -- " + shq(prefix+"XXXXXX"))
 	if err != nil || !strings.HasPrefix(out, prefix) || hasControl(out) {
 		return nil, fmt.Errorf("cannot create a work directory in %s on %s: %s", dir, h.Name, impFirstLine(out))

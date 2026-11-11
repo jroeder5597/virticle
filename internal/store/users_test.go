@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -169,5 +170,24 @@ func TestTokenHashedAtRest(t *testing.T) {
 	}
 	if _, err := s.TokenUser(stored); err == nil {
 		t.Error("the stored hash works as a token")
+	}
+}
+
+// Tokens issued before the rename start with "vp_"; they are matched by hash
+// only, so they keep working.
+func TestOldTokenPrefixStillWorks(t *testing.T) {
+	s := open(t)
+	u, _ := s.CreateUser("u", "password one", RoleAdmin)
+	const secret = "vp_oldtokenvalue"
+	if _, err := s.db.Exec(`INSERT INTO api_tokens(user_id, name, hash, role, created, expires) VALUES(?,?,?,?,?,?)`,
+		u.ID, "old", hashToken(secret), RoleAdmin, 1, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.TokenUser(secret); err != nil {
+		t.Error(err)
+	}
+	_, fresh, _ := s.CreateToken(u.ID, "new", RoleAdmin, 0)
+	if !strings.HasPrefix(fresh, "virticle_") {
+		t.Errorf("new token %q", fresh)
 	}
 }

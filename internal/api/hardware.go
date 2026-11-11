@@ -13,8 +13,8 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/domxml"
-	"virt-proj/internal/hostconn"
+	"virticle/internal/domxml"
+	"virticle/internal/hostconn"
 )
 
 // Hardware editing. Every change goes through libvirt's device-level calls or

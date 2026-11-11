@@ -1,14 +1,15 @@
 // What a click on the console preview does. Per browser, like the theme.
 import { useSyncExternalStore } from "react";
+import { getPref } from "./storage";
 
 export type ClickMode = "tab" | "inline";
-const KEY = "vp-console-click";
+const KEY = "virticle-console-click";
 const listeners = new Set<() => void>();
 let fallback: ClickMode | undefined; // the choice when storage is unavailable
 
 const read = (): ClickMode => {
   try {
-    const v = localStorage.getItem(KEY);
+    const v = getPref(KEY, "vp-console-click");
     if (v === "inline" || v === "tab") return v;
   } catch {
     /* storage blocked */

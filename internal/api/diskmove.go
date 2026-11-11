@@ -15,9 +15,9 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/cluster"
-	"virt-proj/internal/domxml"
-	"virt-proj/internal/hostconn"
+	"virticle/internal/cluster"
+	"virticle/internal/domxml"
+	"virticle/internal/hostconn"
 )
 
 // Moving a VM's disk to another storage pool on the same node.

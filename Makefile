@@ -2,7 +2,7 @@
 
 # One binary with the web UI embedded.
 build: web
-	go build -o bin/virt-proj ./cmd/virt-proj
+	go build -o bin/virticle ./cmd/virticle
 
 web:
 	cd web && npm ci --no-audit --no-fund && npm run build

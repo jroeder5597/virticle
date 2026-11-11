@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"virt-proj/internal/cloudinit"
-	"virt-proj/internal/store"
+	"virticle/internal/cloudinit"
+	"virticle/internal/store"
 )
 
 const testKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKtnt72pPWXOyE7vKx9bVhHeiDsdpEoi3OD1lfAd3vmi t@t"

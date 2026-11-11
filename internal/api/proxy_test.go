@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"virt-proj/internal/store"
+	"virticle/internal/store"
 )
 
 func mustProxies(t *testing.T, s string) []netip.Prefix {

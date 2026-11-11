@@ -8,8 +8,8 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/domxml"
-	"virt-proj/internal/hostconn"
+	"virticle/internal/domxml"
+	"virticle/internal/hostconn"
 )
 
 // fwCaps is what a node can do for new VMs, derived from libvirt's domain

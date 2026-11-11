@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"virt-proj/internal/migpki"
+	"virticle/internal/migpki"
 )
 
 func TestParseQemuConf(t *testing.T) {
@@ -233,5 +233,28 @@ func TestMigTLSAlert(t *testing.T) {
 	}
 	if len(got) != 2 || got["migtls-expiry:1"] != "warning" || got["migtls-expiry:3"] != "critical" {
 		t.Fatalf("alerts %v", got)
+	}
+}
+
+// A marker written by the version before the rename is still read; the
+// current name wins when both exist.
+func TestParseStateLegacyMarker(t *testing.T) {
+	marker := func(fp string) string {
+		return `{"caFingerprint":"` + fp + `","installed":{"ca-cert.pem":"aa"}}`
+	}
+	st, err := parseState("@@content marker\n@@content oldmarker\n"+marker("old")+"\n@@end\n", "/d", "n1")
+	if err != nil || st.snap.Marker == nil || st.snap.Marker.CAFingerprint != "old" || st.markerFile != migpki.FileMarkerLegacy {
+		t.Fatalf("%+v %v", st.snap.Marker, err)
+	}
+	st, _ = parseState("@@content marker\n"+marker("new")+"\n@@content oldmarker\n"+marker("old")+"\n@@end\n", "/d", "n1")
+	if st.snap.Marker == nil || st.snap.Marker.CAFingerprint != "new" || st.markerFile != migpki.FileMarker {
+		t.Fatalf("%+v", st.snap.Marker)
+	}
+	st, _ = parseState("@@content marker\n@@content oldmarker\n@@end\n", "/d", "n1")
+	if st.snap.Marker != nil || st.snap.MarkerBad {
+		t.Fatal("no marker expected")
+	}
+	if !strings.Contains(stateScript("/d"), ".virt-proj-migration.json:oldmarker") {
+		t.Fatal("state script does not read the old marker")
 	}
 }

@@ -4,10 +4,22 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"virticle/internal/snapsched"
 )
 
-// vpNS is the namespace of this application's data in a domain's <metadata>.
-const vpNS = "https://virt-proj.invalid/ns/1"
+// appNamespaces are the namespaces of this application's data in a domain's
+// <metadata>: the current one and the one written before the rename.
+var appNamespaces = []string{snapsched.NS, snapsched.LegacyNS}
+
+func isAppMeta(element string) bool {
+	for _, ns := range appNamespaces {
+		if strings.Contains(element, ns) {
+			return true
+		}
+	}
+	return false
+}
 
 // cloneEdit describes the changes that turn a template's definition into a
 // clone's. Everything not named here is left exactly as it was.
@@ -63,7 +75,7 @@ func cloneDomainXML(src string, e cloneEdit) (string, error) {
 
 	// Application metadata (template marker, snapshot schedule) is not inherited.
 	out = reVPElement.ReplaceAllStringFunc(out, func(m string) string {
-		if strings.Contains(m, vpNS) {
+		if isAppMeta(m) {
 			return ""
 		}
 		return m

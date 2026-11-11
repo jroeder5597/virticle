@@ -22,13 +22,13 @@ import (
 	"strings"
 	"time"
 
-	"virt-proj/internal/cluster"
+	"virticle/internal/cluster"
 )
 
 const (
 	backupFormat      = 1
 	backupSuffix      = ".vmbackup"
-	backupAppVersion  = "virt-proj dev"
+	backupAppVersion  = "virticle dev"
 	backupTimeLayout  = "20060102T150405Z"
 	backupMaxManifest = 64 << 10
 	backupMaxXML      = 1 << 20

@@ -10,8 +10,8 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/cluster"
-	"virt-proj/internal/hostconn"
+	"virticle/internal/cluster"
+	"virticle/internal/hostconn"
 )
 
 var poolStates = []string{"inactive", "building", "running", "degraded", "inaccessible"}

@@ -10,9 +10,9 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/cloudinit"
-	"virt-proj/internal/cluster"
-	"virt-proj/internal/hostconn"
+	"virticle/internal/cloudinit"
+	"virticle/internal/cluster"
+	"virticle/internal/hostconn"
 )
 
 type cloneRequest struct {

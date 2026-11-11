@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"virt-proj/internal/store"
+	"virticle/internal/store"
 )
 
 // route is one registered pattern; Handler records them so a test can check

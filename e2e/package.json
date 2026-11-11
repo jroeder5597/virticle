@@ -1,5 +1,5 @@
 {
-  "name": "virt-proj-e2e",
+  "name": "virticle-e2e",
   "private": true,
   "version": "1.0.0",
   "scripts": { "test": "playwright test" },

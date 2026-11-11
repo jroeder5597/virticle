@@ -142,7 +142,7 @@ test.describe.serial("visual pass", () => {
       test.setTimeout(240_000);
       const ctx = await browser.newContext({ storageState: ".auth/admin.json", viewport: m.viewport });
       // The theme no longer follows the OS: pick it the way the toggle does (localStorage, read before first paint).
-      await ctx.addInitScript((t) => localStorage.setItem("vp-theme", t), m.scheme);
+      await ctx.addInitScript((t) => localStorage.setItem("virticle-theme", t), m.scheme);
       const page = await ctx.newPage();
       const problems: string[] = [];
       const shot = async (name: string, ready: () => Promise<unknown>, opts: { contrast?: boolean; wide?: boolean; viewportOnly?: boolean } = {}) => {
@@ -196,11 +196,11 @@ test.describe.serial("visual pass", () => {
         await page.locator(".cc-box").scrollIntoViewIfNeeded(); // the preview only loads while the card is on screen
         await expect(page.locator(".cc-open img")).toBeVisible({ timeout: 30_000 });
       });
-      await page.evaluate(() => localStorage.setItem("vp-console-click", "inline"));
+      await page.evaluate(() => localStorage.setItem("virticle-console-click", "inline"));
       await page.goto(vmUrl);
       await page.locator(".cc-open").click();
       await shot("vm-console-inline", () => expect(page.locator(".cc .console.inline").getByText("Connected")).toBeVisible({ timeout: 30_000 }));
-      await page.evaluate(() => localStorage.removeItem("vp-console-click"));
+      await page.evaluate(() => localStorage.removeItem("virticle-console-click"));
       await page.goto(`/console/${vm.node}/${vm.uuid}`);
       await shot("console-page", () => expect(page.getByText("Connected")).toBeVisible({ timeout: 30_000 }));
       await page.goto(`${vmUrl}?tab=console`);

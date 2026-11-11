@@ -22,7 +22,7 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/hostconn"
+	"virticle/internal/hostconn"
 )
 
 const (

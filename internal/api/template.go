@@ -11,8 +11,9 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/domxml"
-	"virt-proj/internal/hostconn"
+	"virticle/internal/domxml"
+	"virticle/internal/hostconn"
+	"virticle/internal/snapsched"
 )
 
 // templateMark is the state kept in the domain's <metadata>: whether the VM
@@ -80,9 +81,9 @@ func metaSetChild(meta, name, elem string) (string, error) {
 			}
 		}
 	}
-	// libvirt returns the children with the "vp:" prefix, which only the
+	// libvirt returns the children with the namespace prefix, which only the
 	// root declares; written back they must be plain.
-	inner = strings.NewReplacer("<vp:", "<", "</vp:", "</").Replace(inner) + elem
+	inner = snapsched.StripPrefixes(inner) + elem
 	if strings.TrimSpace(inner) == "" {
 		return "", nil
 	}

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"virt-proj/internal/hostconn"
+	"virticle/internal/hostconn"
 )
 
 // The NUMA and huge page layout of a node, from ConnectGetCapabilities, plus

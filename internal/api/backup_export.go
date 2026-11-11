@@ -14,7 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"virt-proj/internal/hostconn"
+	"virticle/internal/hostconn"
 )
 
 // streamOut sends the first write's headers lazily, so a failure before any

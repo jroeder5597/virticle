@@ -128,7 +128,7 @@ func newCA(now time.Time) (*CA, []byte, error) {
 	}
 	tpl := &x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "virt-proj migration CA", Organization: []string{"virt-proj"}},
+		Subject:               pkix.Name{CommonName: "virticle migration CA", Organization: []string{"virticle"}},
 		NotBefore:             now.Add(-time.Hour),
 		NotAfter:              now.Add(CAValidity),
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
@@ -189,7 +189,7 @@ func (ca *CA) Issue(n Names, now time.Time) (certPEM, keyPEM []byte, err error) 
 	}
 	tpl := &x509.Certificate{
 		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: hosts[0], Organization: []string{"virt-proj migration"}},
+		Subject:      pkix.Name{CommonName: hosts[0], Organization: []string{"virticle migration"}},
 		NotBefore:    now.Add(-time.Hour),
 		NotAfter:     notAfter,
 		KeyUsage:     x509.KeyUsageDigitalSignature,

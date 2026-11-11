@@ -5,7 +5,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 
 test("wrong password shows an error and stays on the sign-in form", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "virt-proj" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Virticle" })).toBeVisible();
   await page.getByLabel("Username").fill(env.user);
   await page.getByLabel("Password").fill("definitely-not-the-password");
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -37,4 +37,17 @@ test("an unauthenticated deep link asks for sign-in and then keeps working", asy
   await page.getByLabel("Password").fill(env.pass);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Storage" })).toBeVisible();
+});
+
+test("settings stored under the old product name are carried over once", async ({ page }) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("seeded")) return;
+    sessionStorage.setItem("seeded", "1");
+    localStorage.clear();
+    localStorage.setItem("vp-theme", "light");
+    localStorage.setItem("vp-console-click", "inline");
+  });
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  expect(await page.evaluate(() => [localStorage.getItem("virticle-theme"), localStorage.getItem("vp-theme")])).toEqual(["light", null]);
 });

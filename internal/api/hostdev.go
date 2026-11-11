@@ -10,9 +10,9 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/cluster"
-	"virt-proj/internal/domxml"
-	"virt-proj/internal/hostconn"
+	"virticle/internal/cluster"
+	"virticle/internal/domxml"
+	"virticle/internal/hostconn"
 )
 
 // Passthrough of host PCI and USB devices. The list comes from libvirt's node

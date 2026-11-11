@@ -185,3 +185,17 @@ func TestRemapDisks(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// A manifest written by the version before the rename (appVersion
+// "virt-proj dev") is read like any other: the product name is informational.
+func TestParseManifestFromBeforeRename(t *testing.T) {
+	raw := `{"format":1,"vm":"web-1","uuid":"0dc0f2ac-2086-4f51-9633-9d6952479016","created":"2026-11-10T19:30:00Z",` +
+		`"sourceNode":"n1","appVersion":"virt-proj dev","live":false,"disks":[{"target":"vda","file":"vda.qcow2","format":"qcow2","virtualSize":1073741824,"bytes":1000}],"tpm":false,"notes":[]}`
+	m, err := parseBackupManifest([]byte(raw))
+	if err != nil || m.AppVersion != "virt-proj dev" || m.VM != "web-1" {
+		t.Fatalf("%+v %v", m, err)
+	}
+	if backupAppVersion != "virticle dev" {
+		t.Fatalf("new manifests carry %q", backupAppVersion)
+	}
+}

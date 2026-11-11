@@ -13,7 +13,7 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/hostconn"
+	"virticle/internal/hostconn"
 )
 
 // guestAgentWait bounds every agent call made for a page view. A guest whose
@@ -144,10 +144,10 @@ func (s *Server) vmGuest(w http.ResponseWriter, r *http.Request) {
 const virtioWinURL = "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"
 
 // virtioWinPattern is the volume name that counts as the virtio-win ISO
-// (matched case-insensitively). VIRT_VIRTIO_WIN_PATTERN overrides it, for
+// (matched case-insensitively). VIRTICLE_VIRTIO_WIN_PATTERN overrides it, for
 // sites that name the file differently.
 var virtioWinPattern = sync.OnceValue(func() string {
-	if p := os.Getenv("VIRT_VIRTIO_WIN_PATTERN"); p != "" {
+	if p := os.Getenv("VIRTICLE_VIRTIO_WIN_PATTERN"); p != "" {
 		return strings.ToLower(p)
 	}
 	return "virtio-win*.iso"

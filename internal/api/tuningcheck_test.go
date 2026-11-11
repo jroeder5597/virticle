@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"virt-proj/internal/domxml"
+	"virticle/internal/domxml"
 )
 
 func TestTuningChecksForMigration(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"virt-proj/internal/store"
+	"virticle/internal/store"
 )
 
 func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {

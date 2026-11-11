@@ -139,8 +139,8 @@ func TestTagsCoexist(t *testing.T) {
 		t.Fatal(err)
 	}
 	// libvirt hands the children back prefixed.
-	back := `<vp:meta xmlns:vp="https://virt-proj.invalid/ns/1">` + strings.ReplaceAll(strings.TrimSuffix(strings.TrimPrefix(meta, "<meta>"), "</meta>"), "<", "<vp:") + `</vp:meta>`
-	back = strings.ReplaceAll(back, "<vp:/", "</vp:")
+	back := `<virticle:meta xmlns:virticle="https://virticle.invalid/ns/1">` + strings.ReplaceAll(strings.TrimSuffix(strings.TrimPrefix(meta, "<meta>"), "</meta>"), "<", "<virticle:") + `</virticle:meta>`
+	back = strings.ReplaceAll(back, "<virticle:/", "</virticle:")
 	meta, err = metaSetChild(back, "tags", tagsElem([]string{"a&b", "prod"}))
 	if err != nil {
 		t.Fatal(err)

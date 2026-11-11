@@ -133,7 +133,7 @@ test.describe.serial("console preview and extras", () => {
     await openVM(page, run);
     await page.getByRole("button", { name: "Console preview click behaviour" }).click();
     await page.getByRole("menuitemradio", { name: /inside the card/ }).click();
-    expect(await page.evaluate(() => localStorage.getItem("vp-console-click"))).toBe("inline");
+    expect(await page.evaluate(() => localStorage.getItem("virticle-console-click"))).toBe("inline");
     await page.locator(".cc-open").click();
     const con = page.locator(".cc .console.inline");
     await expect(con.getByText("Connected")).toBeVisible({ timeout: 30_000 });
@@ -146,7 +146,7 @@ test.describe.serial("console preview and extras", () => {
     const radio = page.getByRole("radiogroup", { name: "Console preview opens" });
     await expect(radio.getByRole("radio", { name: "inside the card" })).toBeChecked();
     await radio.getByRole("radio", { name: "in a new tab" }).check();
-    expect(await page.evaluate(() => localStorage.getItem("vp-console-click"))).toBe("tab");
+    expect(await page.evaluate(() => localStorage.getItem("virticle-console-click"))).toBe("tab");
   });
 
   test("toolbar: keys menu, paste dialog, screenshot download, scale toggle, fullscreen, Ctrl+Alt+Del reaches the guest", async ({ page, api }) => {

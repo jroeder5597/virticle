@@ -20,7 +20,7 @@ export default function ConsolePage() {
   const d = vm.data;
   useEffect(() => {
     document.title = d?.name ?? "Console";
-    return () => void (document.title = "virt-proj");
+    return () => void (document.title = "Virticle");
   }, [d?.name]);
 
   const msg = (text: string) => <div className="empty" style={{ margin: 24 }}>{text}</div>;

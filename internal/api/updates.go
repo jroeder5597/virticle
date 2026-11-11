@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"virt-proj/internal/hostconn"
+	"virticle/internal/hostconn"
 )
 
 // Pending host updates. Strictly read-only: the commands below only list what

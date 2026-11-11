@@ -9,7 +9,7 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/hostconn"
+	"virticle/internal/hostconn"
 )
 
 // agentCmd sends one QEMU guest agent command and returns its "return" value.

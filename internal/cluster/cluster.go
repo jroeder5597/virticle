@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"virt-proj/internal/hostconn"
-	"virt-proj/internal/store"
+	"virticle/internal/hostconn"
+	"virticle/internal/store"
 )
 
 // Event is pushed to every subscriber (the web UI's WebSocket).
@@ -62,7 +62,7 @@ func NewManager(keyFile, knownHosts string) *Manager {
 }
 
 // Target builds the SSH target for a node record. A jump host authenticates
-// with the controller key, or with VIRT_JUMP_PASSWORD if that is set.
+// with the controller key, or with VIRTICLE_JUMP_PASSWORD if that is set.
 func (m *Manager) Target(n store.Node) (hostconn.Target, error) {
 	t := hostconn.Target{Addr: n.Addr, User: n.User, KeyFile: m.keyFile}
 	if n.Jump != "" {
@@ -70,7 +70,7 @@ func (m *Manager) Target(n store.Node) (hostconn.Target, error) {
 		if !ok {
 			return t, fmt.Errorf("jump host must be user@address")
 		}
-		t.Jump = &hostconn.Target{Addr: a, User: u, KeyFile: m.keyFile, Password: os.Getenv("VIRT_JUMP_PASSWORD")}
+		t.Jump = &hostconn.Target{Addr: a, User: u, KeyFile: m.keyFile, Password: os.Getenv("VIRTICLE_JUMP_PASSWORD")}
 	}
 	return t, nil
 }

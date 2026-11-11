@@ -9,8 +9,8 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"virt-proj/internal/cloudinit"
-	"virt-proj/internal/store"
+	"virticle/internal/cloudinit"
+	"virticle/internal/store"
 )
 
 // Cloud-init profiles are controller settings (SQLite), not VM state: they

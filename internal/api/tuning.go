@@ -9,8 +9,8 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/domxml"
-	"virt-proj/internal/hostconn"
+	"virticle/internal/domxml"
+	"virticle/internal/hostconn"
 )
 
 // Advanced VM tuning: CPU pinning, CPU model and topology, huge pages and

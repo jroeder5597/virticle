@@ -31,14 +31,14 @@ import (
 	"sync"
 	"time"
 
-	"virt-proj/internal/hostconn"
-	"virt-proj/internal/migpki"
+	"virticle/internal/hostconn"
+	"virticle/internal/migpki"
 )
 
 const (
 	migTLSDirName   = "migration-ca"
-	migBackupSuffix = ".virt-proj-orig"
-	tmpSuffix       = ".vp-tmp"
+	migBackupSuffix = ".virticle-orig"
+	tmpSuffix       = ".virticle-tmp"
 	migTLSPublicMsg = "Key material is generated on the controller and sent to the node over the existing SSH connection (on standard input of an install command, never on a command line)."
 )
 
@@ -188,7 +188,7 @@ func (s *Server) migTLSStatus(w http.ResponseWriter, r *http.Request) {
 
 type migTLSReq struct {
 	// Force replaces certificate files this controller did not create (the old
-	// ones are kept as *.virt-proj-orig and put back on removal) and removes
+	// ones are kept as *.virticle-orig and put back on removal) and removes
 	// files that were changed after installation.
 	Force bool `json:"force"`
 	// AllowConfigChange is accepted for forward compatibility. Nothing needs a
@@ -293,7 +293,7 @@ func (s *Server) installMigTLS(id int64, h *hostconn.Host, req migTLSReq, progre
 	}
 	var backups [][2]string
 	if !ours && (st.snap.Marker != nil || st.snap.MarkerBad) {
-		foreign = append(foreign, migpki.FileMarker)
+		foreign = append(foreign, st.markerFile)
 	}
 	for _, f := range foreign {
 		b := f + migBackupSuffix
@@ -365,6 +365,10 @@ func (s *Server) installMigTLS(id int64, h *hostconn.Host, req migTLSReq, progre
 	}
 	for _, f := range append(append([]string{}, migpki.Files...), migpki.FileMarker) {
 		sh.WriteString("mv -f -- " + shq(path.Join(dir, f+tmpSuffix)) + " " + shq(path.Join(dir, f)) + "; ")
+	}
+	if st.markerFile == migpki.FileMarkerLegacy && ours {
+		// Our own marker under the old name is replaced by the new one.
+		sh.WriteString("rm -f -- " + shq(path.Join(dir, migpki.FileMarkerLegacy)) + "; ")
 	}
 	// SELinux hosts (RHEL family) need the file contexts libvirt expects.
 	if env.Restore {
@@ -474,11 +478,14 @@ func (s *Server) removeMigTLS(h *hostconn.Host, req migTLSReq) (migTLSInfo, erro
 			changes = append(changes, "restored "+path.Join(dir, f)+" from "+path.Join(dir, b))
 		}
 	}
-	sh.WriteString("rm -f -- " + shq(path.Join(dir, migpki.FileMarker)) + "; ")
-	changes = append(changes, "removed "+path.Join(dir, migpki.FileMarker))
-	if b := m.Backups[migpki.FileMarker]; b != "" && st.listing[b] {
-		sh.WriteString("mv -- " + shq(path.Join(dir, b)) + " " + shq(path.Join(dir, migpki.FileMarker)) + "; ")
-		changes = append(changes, "restored the previous marker file")
+	mf := st.markerFile // the marker that was read: the current name, or the old one
+	sh.WriteString("rm -f -- " + shq(path.Join(dir, mf)) + "; ")
+	changes = append(changes, "removed "+path.Join(dir, mf))
+	for _, name := range []string{migpki.FileMarker, migpki.FileMarkerLegacy} {
+		if b := m.Backups[name]; b != "" && st.listing[b] {
+			sh.WriteString("mv -- " + shq(path.Join(dir, b)) + " " + shq(path.Join(dir, name)) + "; ")
+			changes = append(changes, "restored the previous marker file")
+		}
 	}
 	sh.WriteString("true")
 	if out, err := h.Run(sh.String()); err != nil {

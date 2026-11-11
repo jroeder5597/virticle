@@ -12,7 +12,7 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/hostconn"
+	"virticle/internal/hostconn"
 )
 
 // Snapshot strategy (libvirt 11.3 on Debian 13, verified on the lab):

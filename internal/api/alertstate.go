@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"virt-proj/internal/store"
+	"virticle/internal/store"
 )
 
 // Alerts are derived from live data on every check; nothing about them is

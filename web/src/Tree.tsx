@@ -12,6 +12,7 @@ import { ChevronRight, ChevronDown, Ellipsis, Play, Power, Terminal, Pause, Rota
 import { get, NodeStatus, Network as Net, Pool, post, put, ServerEvent, VM } from "./api";
 import { atLeast, useRole } from "./auth";
 import { useEvents } from "./live";
+import { getPref } from "./storage";
 import "./shell.css";
 
 interface NIC {
@@ -45,11 +46,11 @@ interface Quick {
   run: () => void;
 }
 
-const STORE = "vp.tree.open";
+const STORE = "virticle.tree.open";
 const defaultOpen = (key: string) => key === "dc" || /^n:\d+$/.test(key);
 function loadOpen(): Record<string, boolean> {
   try {
-    return JSON.parse(localStorage.getItem(STORE) ?? "{}") ?? {};
+    return JSON.parse(getPref(STORE, "vp.tree.open") ?? "{}") ?? {};
   } catch {
     return {};
   }

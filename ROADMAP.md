@@ -98,9 +98,12 @@ libvirt cannot delete external snapshots ("block-commit: Permission denied",
 Debian 13), and when the VM's current snapshot is already internal. Shut-off
 VMs get internal snapshots; live disk-only snapshots are always external.
 
-**App metadata.** One root element `<vp:meta>` in namespace
-`https://virt-proj.invalid/ns/1` holds one child per feature
+**App metadata.** One root element `<virticle:meta>` in namespace
+`https://virticle.invalid/ns/1` holds one child per feature
 (`template`, `snapshot-schedule`, `tags`). Clones do not inherit it.
+Before the rename the namespace was `https://virt-proj.invalid/ns/1` (prefix
+`vp`): it is still read when no new element exists, and every write stores the
+complete content under the new namespace and removes the old element.
 
 **Access levels.** Every API route needs an entry in `routeLevels`
 (`internal/api/access.go`); an unlisted route requires admin and fails a unit
@@ -112,12 +115,12 @@ controller from VM metadata, so two controllers pointed at the same nodes
 would both run every schedule. `-no-scheduler` turns one of them off, and an
 alert appears when another controller's scheduled snapshots are seen.
 
-**Open:** project name (working name `virt-proj`).
+The project is called Virticle (working name until then: `virt-proj`).
 
 ## Build and run
 
     make build                      # needs Go and Node.js
-    ./bin/virt-proj -listen 127.0.0.1:8080 -data ./data
+    ./bin/virticle -listen 127.0.0.1:8080 -data ./data
 
 The first visit creates the administrator account. `data/` holds the SQLite
 database and the controller's SSH key; its public half is shown in the

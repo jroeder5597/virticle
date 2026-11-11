@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"time"
 
-	"virt-proj/internal/hostconn"
+	"virticle/internal/hostconn"
 )
 
 // go-libvirt does not route network and storage pool events, so they are read

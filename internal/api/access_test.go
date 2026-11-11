@@ -15,8 +15,8 @@ import (
 
 	"github.com/coder/websocket"
 
-	"virt-proj/internal/cluster"
-	"virt-proj/internal/store"
+	"virticle/internal/cluster"
+	"virticle/internal/store"
 )
 
 const testPW = "correct horse battery"
@@ -222,7 +222,7 @@ func TestTokens(t *testing.T) {
 		Token  store.APIToken
 	}
 	decode(t, w, &created)
-	if !strings.HasPrefix(created.Secret, "vp_") || created.Token.Role != viewer {
+	if !strings.HasPrefix(created.Secret, "virticle_") || created.Token.Role != viewer {
 		t.Fatalf("unexpected token %+v", created)
 	}
 	list := e.do("GET", "/api/account/tokens", nil, cookieOf(e, "ann"))

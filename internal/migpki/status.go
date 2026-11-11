@@ -16,7 +16,10 @@ const (
 	FileServerKey  = "server-key.pem"
 	FileClientCert = "client-cert.pem"
 	FileClientKey  = "client-key.pem"
-	FileMarker     = ".virt-proj-migration.json"
+	FileMarker     = ".virticle-migration.json"
+	// FileMarkerLegacy is the marker's name before the rename. It is still
+	// read (and removed on the next setup or removal), never written.
+	FileMarkerLegacy = ".virt-proj-migration.json"
 )
 
 // Files lists the certificate files in install order (keys before certs).

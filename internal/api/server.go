@@ -15,10 +15,10 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/catalog"
-	"virt-proj/internal/cluster"
-	"virt-proj/internal/hostconn"
-	"virt-proj/internal/store"
+	"virticle/internal/catalog"
+	"virticle/internal/cluster"
+	"virticle/internal/hostconn"
+	"virticle/internal/store"
 )
 
 const cookieName = "virt_session"

@@ -49,3 +49,17 @@ func TestStampAndForeign(t *testing.T) {
 		t.Error(w)
 	}
 }
+
+// Snapshots described by the version before the rename are still ours.
+func TestLegacyMarker(t *testing.T) {
+	const old = "Scheduled snapshot (virt-proj)"
+	if Controller(old+" [controller 1a2b3c4d]") != "1a2b3c4d" || Controller(old) != "" {
+		t.Error("legacy stamp")
+	}
+	if !Ours(Snap{"auto-20260101-000000", old, time.Time{}}, "auto") || !Ours(Snap{"auto-20260101-000000", old + " [controller x]", time.Time{}}, "auto") {
+		t.Error("legacy scheduled snapshot not recognised")
+	}
+	if Stamp("x") != "Scheduled snapshot (virticle) [controller x]" {
+		t.Errorf("new stamp %q", Stamp("x"))
+	}
+}
