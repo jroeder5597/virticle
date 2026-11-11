@@ -252,7 +252,7 @@ th.sel, td.sel { width: 28px; padding-right: 0; }
 .plot .stroke { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
 .plot .area { fill: currentColor; fill-opacity: 0.14; stroke: none; }
 .meter { display: flex; align-items: center; gap: 8px; }
-.meter-bar { height: 6px; width: 90px; background: var(--hover); border-radius: 3px; overflow: hidden; border: 1px solid var(--line); flex: none; }
+.meter-bar { height: 6px; width: 64px; background: var(--hover); border-radius: 3px; overflow: hidden; border: 1px solid var(--line); flex: none; }
 .meter-bar > div { height: 100%; background: var(--accent); }
 .meter-bar > div.full { background: var(--danger); }
 .meter-label { font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -326,3 +326,8 @@ textarea[readonly] { opacity: 0.8; }
 
 /* Row actions as icons (labelled for screen readers and on hover), so wide tables keep fitting. */
 .iconbtn { padding: 5px 8px; display: inline-flex; align-items: center; vertical-align: middle; }
+
+/* The VM list has many columns: keep numbers on one line and let the name cell (with its tags) give way. */
+td.num, th.num { white-space: nowrap; }
+table.vmlist td.vmname { max-width: 240px; overflow-wrap: anywhere; }
+table.vmlist td.vmnode { max-width: 150px; overflow-wrap: anywhere; }
