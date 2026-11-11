@@ -229,6 +229,13 @@ test.describe.serial("visual pass", () => {
           await page.waitForLoadState("networkidle");
         });
       }
+      // the Edit connection dialog of the node page's Settings tab, and its Test connection result
+      await page.goto(`/node/${vm.node}/settings`);
+      await page.getByRole("button", { name: "Edit connection" }).click();
+      await shot("node-edit-connection-dialog", () => expect(page.getByRole("dialog", { name: "Edit connection" }).locator(".keybox code")).toContainText("ssh-ed25519"));
+      await page.getByRole("dialog", { name: "Edit connection" }).getByRole("button", { name: "Test connection" }).click();
+      await shot("node-edit-connection-tested", () => expect(page.getByRole("dialog", { name: "Edit connection" }).locator(".testresult")).toContainText("Detected:", { timeout: 30_000 }));
+      await page.keyboard.press("Escape");
       // modals that carry the most layout
       await page.goto("/storage");
       await page.getByRole("button", { name: "New pool" }).click();

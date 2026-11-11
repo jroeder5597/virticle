@@ -63,7 +63,9 @@ func (h *Host) CanRoot() bool { return h.priv != PrivNone }
 func (h *Host) RunRoot(cmd string) (string, error) {
 	w, err := WrapRoot(h.priv, cmd)
 	if err != nil {
-		return "", err
+		// Callers show the output in their messages; for a refused command
+		// that is the reason.
+		return err.Error(), err
 	}
 	return h.Run(w)
 }
@@ -72,7 +74,7 @@ func (h *Host) RunRoot(cmd string) (string, error) {
 func (h *Host) RunInputRoot(cmd, stdin string) (string, error) {
 	w, err := WrapRoot(h.priv, cmd)
 	if err != nil {
-		return "", err
+		return err.Error(), err
 	}
 	return h.RunInput(w, stdin)
 }

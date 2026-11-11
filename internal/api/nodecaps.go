@@ -1,6 +1,10 @@
 package api
 
-import "virt-proj/internal/hostconn"
+import (
+	"net/http"
+
+	"virt-proj/internal/hostconn"
+)
 
 // capability says whether a feature can work on a node, given how its login
 // user gets root, and if not, why in words the UI can show.
@@ -34,4 +38,19 @@ func nodeCapabilities(priv string) map[string]capability {
 		out[f.key] = c
 	}
 	return out
+}
+
+// needs refuses a request for a feature the node's login user cannot run, with
+// the reason, before the handler starts any work. A node that is offline or
+// unknown passes through: the handler reports that itself.
+func (s *Server) needs(key string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, h, err := s.host(r); err == nil {
+			if c := nodeCapabilities(string(h.Privilege()))[key]; !c.OK {
+				conflict(w, c.Reason)
+				return
+			}
+		}
+		next(w, r)
+	}
 }
