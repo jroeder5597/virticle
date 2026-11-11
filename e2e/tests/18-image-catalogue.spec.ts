@@ -83,10 +83,10 @@ test.describe.serial("image catalogue", () => {
 
   test("cancelling a download removes the partial file", async ({ api, n1 }) => {
     await api.post(`${poolBase(n1)}/images`, { id: "debian-13", name: BIG_VOL });
-    await api.waitFor("download running with progress", async () => (await api.get("/tasks")).find((t: any) => t.target === `${POOL}/${BIG_VOL}` && t.status === "running" && t.progress > 0.01), 90_000, 1500);
+    const started = await api.waitFor("download running with progress", async () => (await api.get("/tasks")).find((t: any) => t.target === `${POOL}/${BIG_VOL}` && t.status === "running" && t.progress > 0.01), 90_000, 1500);
     expect((await imgs(api, n1)).running).toContain(BIG_VOL);
     await api.post(`${poolBase(n1)}/images/cancel`, { name: BIG_VOL });
-    const t = await api.waitFor("task to end", async () => (await api.get("/tasks")).find((x: any) => x.target === `${POOL}/${BIG_VOL}` && x.status !== "running"), 30_000, 1000);
+    const t = await api.waitFor("task to end", async () => (await api.get("/tasks")).find((x: any) => x.id === started.id && x.status !== "running"), 30_000, 1000); // by id: earlier runs leave tasks with the same target
     expect(t.status).toBe("failed");
     expect(t.error).toContain("cancelled");
     expect((await imgs(api, n1)).running).toEqual([]);

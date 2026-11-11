@@ -31,8 +31,17 @@ export default function VMDetailPage() {
   const waitingForAgent = vm.data?.state === "running" && vm.data.agent !== "connected";
   useEffect(() => {
     if (!waitingForAgent) return;
-    const h = setInterval(() => document.visibilityState !== "hidden" && vm.reload(), 5000);
-    return () => clearInterval(h);
+    // Often for the first two minutes (a guest that is booting), rarely after that (a guest without the agent).
+    let tries = 0;
+    let h: ReturnType<typeof setTimeout>;
+    const again = () => {
+      h = setTimeout(() => {
+        if (document.visibilityState !== "hidden") vm.reload();
+        again();
+      }, tries++ < 24 ? 5000 : 60000);
+    };
+    again();
+    return () => clearTimeout(h);
   }, [waitingForAgent, vm.reload]);
   const [deleting, setDeleting] = useState(false);
   const [migrating, setMigrating] = useState(false);

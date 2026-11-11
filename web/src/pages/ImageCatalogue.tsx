@@ -30,7 +30,7 @@ interface PoolImages {
  * The checksum comes from the same project as the image: it catches a corrupt
  * download, not a compromised mirror.
  */
-export default function ImageCatalogue(props: { node: number; pool: string; onClose: () => void; onDone: () => void }) {
+export default function ImageCatalogue(props: { node: number; nodeName?: string; pool: string; onClose: () => void; onDone: () => void }) {
   const base = `/nodes/${props.node}/pools/${encodeURIComponent(props.pool)}/images`;
   const list = useLive(() => get<PoolImages>(base), base);
   const act = useAction();
@@ -41,6 +41,7 @@ export default function ImageCatalogue(props: { node: number; pool: string; onCl
   useEvents((e) => {
     const t = e.task;
     if (e.type !== "task" || !t || t.kind !== "image" || !t.target.startsWith(props.pool + "/")) return;
+    if (props.nodeName && t.node && t.node !== props.nodeName) return; // another node's pool of the same name
     const vol = t.target.slice(props.pool.length + 1);
     if (t.status === "running") {
       setProgress((p) => ({ ...p, [vol]: t.progress }));

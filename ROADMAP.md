@@ -67,7 +67,12 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
 - [x] Alerts: pool full, node down, host memory, failed scheduled job, VM crashed or paused on I/O error, certificate expiry; optional webhook (`-alert-webhook`)
 - [x] Resource tree (Datacenter → nodes → VMs, storage, networks, host NICs) with quick actions; node page with tabs (summary, VMs, storage, network, updates, settings)
 - [x] Theme from the user's DESIGN.md: dark by default, light option, bundled fonts, no animation. Idle cost measured: 0 running animations, at most one stats request per shown host every 5 s, none on pages without charts
-- [x] Browser suite (`make e2e`, 86 tests) including a fit check: no element cut off or spilling out of its card at 1280 and 1440 px, both themes, plus phone width
+- [x] Browser suite (`make e2e`, 109 tests) including a no-ellipsis check and a fit check: no element cut off or spilling out of its card at 1280 and 1440 px, both themes, plus phone width
+- [x] Move a disk to another pool: live (block copy and pivot) or offline, with pre-flight checks, progress and cancel. Verified on Debian and Rocky; not tested under guest writes; dir pools only tested
+- [x] Image catalogue: ten built-in cloud images, downloaded by the node and verified by checksum (same-origin checksum: catches corruption, not a compromised mirror); `<data>/images.json` adds or overrides entries
+- [x] Cloud-init profiles (stored in the controller database, passwords as hashes only), selectable when creating and cloning
+- [x] Console preview card on the VM overview (still image, refreshed only while visible), standalone console page, console toolbar (Ctrl+Alt+Del, key combos, paste text, screenshot, full screen)
+- [~] go-libvirt can wedge a node connection when a stream ends abruptly (serial console, volume transfer). Screenshots avoid it by using virsh; fix and connection watchdog in progress
 - [ ] Later: scheduled replication to a standby node; optional shared storage and HA
 
 ## Design notes

@@ -108,13 +108,13 @@ export default function Storage({ fixedNode }: { fixedNode?: number } = {}) {
           ))}
         </tbody>
       </table>
-      {pool && pool.state === "running" && <Volumes node={node} pool={pool} openCatalogue={openCatalogue} />}
+      {pool && pool.state === "running" && <Volumes node={node} nodeName={all.find((n) => n.id === node)?.hostname} pool={pool} openCatalogue={openCatalogue} />}
       {creating && <CreatePool node={node} onClose={() => setCreating(false)} />}
     </>
   );
 }
 
-function Volumes({ node, pool, openCatalogue }: { node: number; pool: Pool; openCatalogue?: boolean }) {
+function Volumes({ node, nodeName, pool, openCatalogue }: { node: number; nodeName?: string; pool: Pool; openCatalogue?: boolean }) {
   const base = `/nodes/${node}/pools/${encodeURIComponent(pool.name)}/volumes`;
   const vols = useLive(() => get<Volume[]>(base), base);
   const act = useAction();
@@ -212,7 +212,7 @@ function Volumes({ node, pool, openCatalogue }: { node: number; pool: Pool; open
         </table>
       )}
       {downloading && <DownloadVolume node={node} pool={pool.name} onClose={() => setDownloading(false)} onDone={vols.reload} />}
-      {catalogue && <ImageCatalogue node={node} pool={pool.name} onClose={() => setCatalogue(false)} onDone={vols.reload} />}
+      {catalogue && <ImageCatalogue node={node} nodeName={nodeName} pool={pool.name} onClose={() => setCatalogue(false)} onDone={vols.reload} />}
       {creating && <CreateVolume base={base} pool={pool} onClose={() => setCreating(false)} />}
       {importing !== undefined && <ImportDialog node={node} pool={pool.name} volumes={vols.data ?? []} initial={importing} onClose={() => setImporting(undefined)} onDone={vols.reload} />}
     </>
