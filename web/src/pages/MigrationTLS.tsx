@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Lock } from "lucide-react";
 import { del, get, post } from "../api";
-import { useAction } from "../ui";
+import { useAction, useConfirm } from "../ui";
 
 export interface MigTLS {
   state: "not set up" | "ok" | "expiring" | "expired" | "mismatch";
@@ -26,6 +26,7 @@ export default function MigrationTLS({ node, online, admin }: { node: number; on
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState<MigTLS | undefined>();
   const act = useAction();
+  const confirm = useConfirm();
   const load = () =>
     get<MigTLS>(`/nodes/${node}/migration-tls`).then(
       (d) => {
@@ -74,7 +75,7 @@ export default function MigrationTLS({ node, online, admin }: { node: number; on
       {admin && st.state === "mismatch" && (
         <button
           disabled={act.busy}
-          onClick={() => window.confirm(`Replace the certificate files in ${st.dir} on ${st.hostname}?\n\n${(st.problems ?? []).join("\n")}\n\nExisting files that this server did not create are kept as *.virt-proj-orig.`) && setup(true)}
+          onClick={async () => (await confirm.ask({ title: "Repair encrypted migration", message: `The certificate files in ${st.dir} on ${st.hostname} are replaced. Existing files that this server did not create are kept as *.virt-proj-orig.`, items: st.problems ?? [], confirm: "Replace certificates" })) && setup(true)}
         >
           Repair
         </button>
@@ -83,11 +84,12 @@ export default function MigrationTLS({ node, online, admin }: { node: number; on
         <button
           className="danger"
           disabled={act.busy}
-          onClick={() => window.confirm(`Remove the migration certificates this server installed on ${st.hostname}? Live migrations to and from it will be unencrypted.`) && remove()}
+          onClick={async () => (await confirm.ask({ title: "Remove encrypted migration", message: `The migration certificates this server installed on ${st.hostname} are removed. Live migrations to and from it will be unencrypted.`, confirm: "Remove certificates" })) && remove()}
         >
           Remove
         </button>
       )}
+      {confirm.dialog}
       {act.error && <div className="rowerror">{act.error}</div>}
       {st.problems && st.problems.length > 0 && (
         <div className="rowerror" role="status">

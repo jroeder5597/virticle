@@ -3,7 +3,7 @@ import { Browser, expect as pwExpect, request } from "@playwright/test";
 import { cleanVMs, createCirros, expect, openVM, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
 import { Api } from "../lib/api";
-import { autoDialogs, dialog, field, row } from "../lib/ui";
+import { autoDialogs, dialog, field, row, confirm } from "../lib/ui";
 
 const OP = `${P}op`;
 const VIEWER = `${P}viewer`;
@@ -75,11 +75,18 @@ test.describe.serial("users and roles", () => {
     await expect(nav.getByRole("link", { name: "Users" })).toHaveCount(0);
     await expect(nav.getByRole("link", { name: "Audit" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "New VM" })).toBeHidden();
-    await expect(row(page, VM).getByRole("button", { name: "Start" })).toBeHidden();
+    await expect(row(page, VM).getByRole("button", { name: "Power On" })).toBeHidden();
 
     await page.goto(`/vm/${vm.node}/${vm.uuid}`);
     await expect(page.getByRole("heading", { level: 1, name: VM })).toBeVisible();
-    for (const b of ["Start", "Delete", "Clone", "Migrate"]) await expect(page.locator(".head").getByRole("button", { name: b })).toBeHidden();
+    // The Actions menu is there, but nothing that changes the VM is enabled
+    await page.locator(".head").getByRole("button", { name: "Actions", exact: true }).click();
+    for (const g of ["Power", "Edit Settings", "Clone", "Template", "Migrate", "Delete"]) await expect(page.getByRole("menuitem", { name: g, exact: true })).toBeDisabled();
+    await page.getByRole("menuitem", { name: "Snapshots", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Take snapshot", exact: true })).toBeDisabled();
+    await expect(page.getByRole("menuitem", { name: "Manage snapshots", exact: true })).toBeEnabled();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
     await expect(page.getByPlaceholder("add tag")).toHaveCount(0);
     await expect(page.locator(".tabs").getByRole("button", { name: "Console" })).toHaveCount(0);
     await expect(page.getByRole("checkbox", { name: /^No$|^Yes$/ })).toBeDisabled();
@@ -118,7 +125,7 @@ test.describe.serial("users and roles", () => {
     await expect(nav.getByRole("link", { name: "Users" })).toHaveCount(0);
     await expect(nav.getByRole("link", { name: "Audit" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "New VM" })).toBeVisible();
-    await row(page, VM).getByRole("button", { name: "Start" }).click();
+    await row(page, VM).getByRole("button", { name: "Power On" }).click();
     await expect(row(page, VM).locator(".badge", { hasText: "running" })).toBeVisible();
     await api.post(`/nodes/${vm.node}/vms/${vm.uuid}/action`, { action: "poweroff" });
     const status = await ctx.request.get("/api/users");
@@ -175,6 +182,7 @@ test.describe.serial("users and roles", () => {
     expect(forced.status()).toBe(403);
 
     await row(card, tokName).getByRole("button", { name: "Revoke" }).click();
+    await confirm(page, `Revoke token ${tokName}`);
     await expect(row(card, tokName)).toHaveCount(0);
     expect((await tok.get("/api/vms")).status()).toBe(401);
     await tok.dispose();
@@ -204,6 +212,7 @@ test.describe.serial("users and roles", () => {
     await page.goto("/users");
     for (const name of [OP, VIEWER]) {
       await row(page, name).getByRole("button", { name: "Delete" }).click();
+      await confirm(page, `Delete user ${name}`);
       await expect(row(page, name)).toHaveCount(0);
     }
   });

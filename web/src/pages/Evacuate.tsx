@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { bytes, EvacPlan, EvacRun, get, NodeStatus, post } from "../api";
-import { ErrorBox, Modal, useAction } from "../ui";
+import { ErrorBox, Modal, useAction, useConfirm } from "../ui";
 
 /** Plan and run the evacuation of one node. */
 export default function Evacuate({ node, nodes, onClose }: { node: NodeStatus; nodes: NodeStatus[]; onClose: () => void }) {
@@ -13,6 +13,7 @@ export default function Evacuate({ node, nodes, onClose }: { node: NodeStatus; n
   const check = useAction();
   const start = useAction();
   const cancel = useAction();
+  const confirm = useConfirm();
   const others = nodes.filter((n) => n.id !== node.id);
   const chosen = others.filter((n) => targets[n.id] !== false).map((n) => n.id);
   const name = node.hostname || node.addr;
@@ -181,10 +182,11 @@ export default function Evacuate({ node, nodes, onClose }: { node: NodeStatus; n
               ))}
             </tbody>
           </table>
+          {confirm.dialog}
           <ErrorBox error={cancel.error} />
           <footer>
             {run.running && (
-              <button className="danger" disabled={cancel.busy || run.cancelled} onClick={() => cancel.run(() => post(`/nodes/${node.id}/evacuate/cancel`))}>
+              <button className="danger" disabled={cancel.busy || run.cancelled} onClick={async () => (await confirm.ask({ title: "Stop the evacuation", message: `No further VMs of ${name} are moved. Moves that are already running finish.`, confirm: "Stop evacuation" })) && cancel.run(() => post(`/nodes/${node.id}/evacuate/cancel`))}>
                 Stop starting new moves
               </button>
             )}

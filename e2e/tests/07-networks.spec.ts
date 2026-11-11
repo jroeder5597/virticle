@@ -1,7 +1,7 @@
 // Networks page: NAT network, DHCP reservations (add, edit, remove), stop/start, delete.
 import { expect, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
-import { autoDialogs, dialog, expectBadge, field, row } from "../lib/ui";
+import { autoDialogs, dialog, expectBadge, field, row, confirm } from "../lib/ui";
 
 const NET = `${P}net`;
 const OCT = 100 + Math.floor(Math.random() * 100);
@@ -81,6 +81,7 @@ test.describe.serial("networks", () => {
     await expect(card.locator(".error")).toBeVisible();
 
     await row(card, mac).getByRole("button", { name: "Remove" }).click();
+    await confirm(page, "Remove DHCP reservation");
     await expect(row(card, mac)).toHaveCount(0);
     expect((await detail(api, n1)).hosts).toHaveLength(0);
   });
@@ -91,6 +92,7 @@ test.describe.serial("networks", () => {
     await page.getByRole("combobox").first().selectOption({ label: env.node1 });
     const r = row(page, NET);
     await r.getByRole("button", { name: "Stop" }).click();
+    await confirm(page, `Stop network ${NET}`);
     await expectBadge(r, "inactive");
     expect((await detail(api, n1)).active).toBe(false);
     await r.getByRole("button", { name: "Start", exact: true }).click();
@@ -105,12 +107,11 @@ test.describe.serial("networks", () => {
   });
 
   test("delete the network", async ({ page, api, n1 }) => {
-    const seen = autoDialogs(page);
     await page.goto("/networks");
     await page.getByRole("combobox").first().selectOption({ label: env.node1 });
     await row(page, NET).getByRole("button", { name: "Delete" }).click();
+    await confirm(page, `Delete network ${NET}`);
     await expect(row(page, NET)).toHaveCount(0);
-    expect(seen[0]).toContain(`Delete network ${NET}`);
     expect((await api.get(`/nodes/${n1}/networks`)).some((x: any) => x.name === NET)).toBe(false);
   });
 });

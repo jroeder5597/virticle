@@ -211,19 +211,32 @@ export function ConsoleCard({ d }: { d: VMDetail }) {
       </button>
     );
     return (
-      <section className="card span cc" aria-label="Console">
+      <>
+        <section className="card cc cc-thumb" aria-label="Console preview">
+          <div className="cc-head">
+            <h3>Console</h3>
+          </div>
+          <div className="cc-box">
+            <div className="cc-note">The console is open below.</div>
+          </div>
+          <div className="cc-foot">
+            <span className="muted">&nbsp;</span>
+          </div>
+        </section>
+      <section className="card span cc cc-wide" aria-label="Console">
         <div className="cc-head">
           <h3>Console</h3>
           <ModeMenu />
         </div>
         {kind === "vnc" ? <VNCConsole node={d.node} uuid={d.uuid} name={d.name} variant="inline" extra={back} /> : <SerialConsole node={d.node} uuid={d.uuid} variant="inline" extra={back} />}
       </section>
+      </>
     );
   }
 
   const clickable = !!kind && !viewer && alive;
   return (
-    <section className="card span cc" aria-label="Console">
+    <section className="card cc cc-thumb" aria-label="Console">
       <div className="cc-head">
         <h3>Console</h3>
         {!viewer && <ModeMenu />}
@@ -248,7 +261,7 @@ export function ConsoleCard({ d }: { d: VMDetail }) {
               <RefreshCw size={14} aria-hidden /> Refresh
             </button>
             <span className="muted">
-              {p.error ? `Preview failed: ${p.error}` : p.at ? `Updated ${p.at.toLocaleTimeString()}${d.state === "running" ? ", every 10 s while visible" : ""}` : " "}
+              {p.error ? `Preview failed: ${p.error}` : p.at ? `Updated ${p.at.toLocaleTimeString()}` : " "}
             </span>
           </>
         ) : (

@@ -1,7 +1,7 @@
 // Migrate dialog: pre-flight list, live migration n1 -> n2 and back, progress, landing on the new node's page.
 import { cleanVMs, createCirros, expect, openVM, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
-import { dialog, expectBadge } from "../lib/ui";
+import { dialog, expectBadge, vmAction } from "../lib/ui";
 
 const NAME = `${P}mig1`;
 
@@ -12,7 +12,7 @@ test.describe.serial("live migration", () => {
 
   async function migrate(page: any, api: any, from: number, to: number, toName: string) {
     await openVM(page, { node: from, uuid: vm.uuid, name: NAME });
-    await page.locator(".head").getByRole("button", { name: "Migrate" }).click();
+    await vmAction(page, "Migrate", "Migrate to another node");
     const dlg = dialog(page, `Migrate ${NAME}`);
     await expect(dlg.getByRole("combobox", { name: "Target node" })).toHaveValue(String(to));
     await expect(dlg.getByLabel(/Live migration/)).toBeChecked();
@@ -32,7 +32,7 @@ test.describe.serial("live migration", () => {
     // and the page follows the VM to its new node
     await expect(page).toHaveURL(new RegExp(`/vm/${to}/${vm.uuid}`), { timeout: 30_000 });
     await expect(page.getByRole("heading", { level: 1, name: NAME })).toBeVisible();
-    await expect(page.locator(".card", { hasText: "Summary" }).first()).toContainText(toName);
+    await expect(page.locator("section.card").filter({ has: page.getByRole("heading", { name: "Hardware", exact: true }) })).toContainText(toName);
     const d = await api.vmDetail(to, vm.uuid);
     expect(d.state).toBe("running");
     expect(d.nodeName).toBe(toName);
@@ -55,7 +55,7 @@ test.describe.serial("live migration", () => {
     await api.post(`/nodes/${n1}/vms/${vm.uuid}/action`, { action: "poweroff" });
     await api.waitFor("off", async () => (await api.vmDetail(n1, vm.uuid)).state === "shutoff");
     await openVM(page, { node: n1, uuid: vm.uuid, name: NAME });
-    await page.locator(".head").getByRole("button", { name: "Migrate" }).click();
+    await vmAction(page, "Migrate", "Migrate to another node");
     const dlg = dialog(page, `Migrate ${NAME}`);
     await expect(dlg).toContainText("Offline: the VM is shut off", { timeout: 60_000 });
     await expect(dlg.getByLabel(/Live migration/)).toHaveCount(0);

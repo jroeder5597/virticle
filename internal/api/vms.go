@@ -179,6 +179,8 @@ type vmDisk struct {
 	// has no per-device boot order.
 	Capacity  uint64 `json:"capacity,omitempty"`
 	BootOrder int    `json:"bootOrder,omitempty"`
+	// Allocation is the space the image really uses on the host (bytes).
+	Allocation uint64 `json:"allocation,omitempty"`
 }
 
 type vmNIC struct {
@@ -209,7 +211,9 @@ type vmDetail struct {
 	Passthrough int      `json:"passthroughDevices"`
 	// Agent is "connected", "disconnected" (channel present, nothing
 	// answering inside the guest) or "absent" (no channel device).
-	Agent     string   `json:"agent"`
+	Agent string `json:"agent"`
+	// IPSource says where the addresses in NICs came from: "agent", "lease" or "" (none looked up).
+	IPSource  string   `json:"ipSource,omitempty"`
 	Snapshots []string `json:"snapshots"`
 	XML       string   `json:"xml"`
 	// FW is the firmware state: UEFI, Secure Boot, NVRAM file, TPM model.
@@ -271,8 +275,9 @@ func (s *Server) vmDetail(w http.ResponseWriter, r *http.Request) {
 		}
 		vd := vmDisk{Target: k.Target.Dev, Bus: k.Target.Bus, Device: k.Device, Format: k.Driver.Type, Source: src, ReadOnly: k.ReadOnly != nil, BootOrder: k.Boot.Order}
 		if k.Device == "disk" && src != "" {
-			if _, capacity, _, err := h.DomainGetBlockInfo(dom, k.Target.Dev, 0); err == nil {
+			if alloc, capacity, _, err := h.DomainGetBlockInfo(dom, k.Target.Dev, 0); err == nil {
 				vd.Capacity = capacity
+				vd.Allocation = alloc
 			}
 		}
 		d.Disks = append(d.Disks, vd)
@@ -297,9 +302,11 @@ func (s *Server) vmDetail(w http.ResponseWriter, r *http.Request) {
 		if d.Agent == "connected" {
 			if m, err := agentIPs(h, dom); err == nil {
 				ips, fromAgent = m, true
+				d.IPSource = "agent"
 			}
 		}
 		if !fromAgent { // no agent, or it did not answer in time
+			d.IPSource = "lease"
 			if ifs, err := h.DomainInterfaceAddresses(dom, uint32(libvirt.DomainInterfaceAddressesSrcLease), 0); err == nil {
 				for _, i := range ifs {
 					if len(i.Hwaddr) == 0 {

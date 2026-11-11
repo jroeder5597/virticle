@@ -2,7 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiToken, del, get, post, Role } from "../api";
 import { atLeast, useRole } from "../auth";
-import { ErrorBox, Field, useAction } from "../ui";
+import { ErrorBox, Field, useAction, useConfirm } from "../ui";
 import { ConsolePrefCard } from "./ConsolePreview";
 
 const when = (unix?: number) => (unix ? new Date(unix * 1000).toLocaleString() : "");
@@ -72,6 +72,7 @@ function Tokens({ role }: { role: Role }) {
   const [secret, setSecret] = useState<string | undefined>();
   const [copied, setCopied] = useState(false);
   const act = useAction();
+  const confirm = useConfirm();
   const reload = useCallback(() => get<ApiToken[]>("/account/tokens").then(setTokens, () => {}), []);
   useEffect(() => {
     reload();
@@ -106,6 +107,7 @@ function Tokens({ role }: { role: Role }) {
           </button>
         </div>
       )}
+      {confirm.dialog}
       {tokens.length > 0 && (
         <table className="compact">
           <thead>
@@ -125,7 +127,7 @@ function Tokens({ role }: { role: Role }) {
                 <td>{t.expires ? when(t.expires) : "never"}</td>
                 <td>{when(t.lastUsed) || "never"}</td>
                 <td className="actions">
-                  <button className="danger" disabled={act.busy} onClick={() => window.confirm(`Revoke token ${t.name}?`) && act.run(() => del(`/account/tokens/${t.id}`)).then(reload)}>
+                  <button className="danger" disabled={act.busy} onClick={async () => (await confirm.ask({ title: `Revoke token ${t.name}`, message: `The API token ${t.name} is revoked. Whatever uses it stops working.`, confirm: "Revoke token" })) && act.run(() => del(`/account/tokens/${t.id}`)).then(reload)}>
                     Revoke
                   </button>
                 </td>

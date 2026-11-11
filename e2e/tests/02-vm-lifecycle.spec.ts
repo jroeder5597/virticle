@@ -1,7 +1,7 @@
 // Creating a VM through the form, its consoles, and every lifecycle button.
 import { cleanVMs, expect, openVM, stateOf, tab, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
-import { autoDialogs, dialog, expectBadge, field, row } from "../lib/ui";
+import { autoDialogs, dialog, expectBadge, field, row, vmAction, confirm, cancelConfirm } from "../lib/ui";
 
 const NAME = `${P}life1`;
 
@@ -53,7 +53,7 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
     await expect(r.getByRole("cell", { name: env.node1 })).toBeVisible();
     await r.getByRole("link", { name: NAME }).click();
     await expect(page.getByRole("heading", { level: 1, name: NAME })).toBeVisible();
-    const summary = page.locator(".card", { hasText: "Summary" }).first();
+    const summary = page.locator("section.card").filter({ has: page.getByRole("heading", { name: "Hardware", exact: true }) });
     await expect(summary).toContainText("BIOS");
     await expect(summary).toContainText("128 MiB");
     await expect(summary).toContainText(vm.uuid);
@@ -79,16 +79,17 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
   });
 
   test("pause, resume, reboot, reset", async ({ page, api }) => {
-    autoDialogs(page);
     await openVM(page, vm);
     const head = page.locator(".head");
-    await head.getByRole("button", { name: "Pause" }).click();
+    await vmAction(page, "Power", "Pause");
     await expectBadge(head, "paused");
     expect(await stateOf(api, vm)).toBe("paused");
-    await head.getByRole("button", { name: "Resume" }).click();
+    await vmAction(page, "Power", "Resume");
     await expectBadge(head, "running");
-    await head.getByRole("button", { name: "Reboot" }).click();
-    await head.getByRole("button", { name: "Reset" }).click();
+    await vmAction(page, "Power", "Reboot (Graceful)");
+    await confirm(page, "Reboot (Graceful)");
+    await vmAction(page, "Power", "Reset (Hard Reboot)");
+    await confirm(page, "Reset (Hard Reboot)");
     await expect(page.locator(".error")).toHaveCount(0);
     await expectBadge(head, "running");
     expect(await stateOf(api, vm)).toBe("running");
@@ -106,30 +107,33 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
         await route.continue({ postData: JSON.stringify(req) });
       } else await route.continue();
     });
-    await page.getByRole("button", { name: "More shutdown options" }).click();
-    await expect(page.getByRole("menu")).toBeVisible();
-    await page.getByRole("menuitem", { name: /force off after 60 s/ }).click();
+    await vmAction(page, "Power", "Shutdown (force off after 60 s)");
+    await confirm(page, "Shutdown (graceful)");
     expect(await expect.poll(() => body).toMatchObject({ action: "shutdown", force: true }));
     await expectBadge(page.locator(".head"), "shutoff");
     expect(await stateOf(api, vm)).toBe("shutoff");
     await page.unroute("**/api/nodes/*/vms/*/action");
   });
 
-  test("start from the detail page, then force off with confirmation", async ({ page, api }) => {
-    const seen = autoDialogs(page);
+  test("power on from the detail page, then halt with confirmation", async ({ page, api }) => {
     await openVM(page, vm);
-    await page.locator(".head").getByRole("button", { name: "Start" }).click();
+    await vmAction(page, "Power", "Power On");
     await expectBadge(page.locator(".head"), "running");
-    await page.locator(".head").getByRole("button", { name: "Force off" }).click();
+    await vmAction(page, "Power", "Halt (Force Shutdown)");
+    // Cancel does nothing
+    await cancelConfirm(page, "Halt (Force Shutdown)");
+    await page.waitForTimeout(1500);
+    expect(await stateOf(api, vm)).toBe("running");
+    await vmAction(page, "Power", "Halt (Force Shutdown)");
+    await confirm(page, "Halt (Force Shutdown)");
     await expectBadge(page.locator(".head"), "shutoff");
-    expect(seen.some((m) => /Force .* off/.test(m))).toBe(true);
     expect(await stateOf(api, vm)).toBe("shutoff");
   });
 
-  test("list buttons: Start and Shut down on the row", async ({ page, api }) => {
+  test("list buttons: Power On and Shutdown (graceful) on the row", async ({ page, api }) => {
     await page.goto("/");
     const r = row(page, NAME);
-    await r.getByRole("button", { name: "Start" }).click();
+    await r.getByRole("button", { name: "Power On" }).click();
     await expectBadge(r, "running");
     await expect(r.getByRole("link", { name: "Console" })).toBeVisible();
     await api.post(`/nodes/${vm.node}/vms/${vm.uuid}/action`, { action: "poweroff" });
@@ -138,10 +142,10 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
 
   test("delete from the detail page removes the VM and its disk", async ({ page, api, n1 }) => {
     await openVM(page, vm);
-    await page.locator(".head").getByRole("button", { name: "Delete" }).click();
+    await vmAction(page, "Delete", "Delete VM");
     const dlg = dialog(page, `Delete ${NAME}?`);
     await dlg.getByLabel(/Also delete its disk/).check();
-    await dlg.getByRole("button", { name: "Delete" }).click();
+    await dlg.getByRole("button", { name: "Delete VM" }).click();
     await expect(page).toHaveURL(/\/$/);
     await expect(row(page, NAME)).toHaveCount(0);
     expect(await api.vmByName(NAME)).toBeUndefined();

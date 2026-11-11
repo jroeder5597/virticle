@@ -1,7 +1,7 @@
 // Hardware tab: CPU/memory, disks, CD-ROM (with an ISO uploaded through the Storage page), NICs, boot order.
 import { cleanVMs, createCirros, expect, openVM, tab, test } from "../lib/fixtures";
 import { P } from "../lib/env";
-import { autoDialogs, dialog, expectBadge, field, row } from "../lib/ui";
+import { autoDialogs, dialog, expectBadge, field, row, vmAction } from "../lib/ui";
 
 const NAME = `${P}hw1`;
 const ISO = `${P}tiny.iso`;
@@ -72,7 +72,7 @@ test.describe.serial("hardware editing", () => {
 
   test("start the VM", async ({ page, api }) => {
     await openVM(page, vm);
-    await page.locator(".head").getByRole("button", { name: "Start" }).click();
+    await vmAction(page, "Power", "Power On");
     await expectBadge(page.locator(".head"), "running");
   });
 
@@ -145,7 +145,7 @@ test.describe.serial("hardware editing", () => {
 
   test("start again for the NIC tests", async ({ page, api }) => {
     await openVM(page, vm);
-    await page.locator(".head").getByRole("button", { name: "Start" }).click();
+    await vmAction(page, "Power", "Power On");
     await expectBadge(page.locator(".head"), "running");
   });
 

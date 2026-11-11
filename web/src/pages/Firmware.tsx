@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { get, put, VMDetail } from "../api";
-import { ErrorBox, Field, useAction } from "../ui";
+import { ErrorBox, Field, useAction, useConfirm } from "../ui";
 
 export interface FwCaps {
   uefi: boolean;
@@ -103,6 +103,7 @@ export function FirmwareFields({ node, value, onChange }: { node: number; value:
 /** Firmware, Secure Boot and TPM of an existing VM (Hardware tab). */
 export default function FirmwareCard({ d, base, onChanged }: { d: VMDetail; base: string; onChanged: () => void }) {
   const act = useAction();
+  const confirm = useConfirm();
   const [caps, setCaps] = useState<FwCaps | undefined>();
   const [outcome, setOutcome] = useState<string | undefined>();
   useEffect(() => {
@@ -118,7 +119,8 @@ export default function FirmwareCard({ d, base, onChanged }: { d: VMDetail; base
       onChanged();
     });
   return (
-    <section className="card">
+    <section className="card" id="hw-firmware">
+      {confirm.dialog}
       <h3>Firmware and TPM</h3>
       <dl>
         <dt>Firmware</dt>
@@ -136,7 +138,7 @@ export default function FirmwareCard({ d, base, onChanged }: { d: VMDetail; base
       </dl>
       <div className="actions" style={{ marginTop: 10 }}>
         {hasTPM ? (
-          <button disabled={!off || act.busy} title={off ? undefined : "Shut the VM down first"} onClick={() => window.confirm("Remove the TPM from this VM? Disk encryption keys sealed to it (BitLocker, LUKS+TPM) will not unlock.") && toggle(false)}>
+          <button disabled={!off || act.busy} title={off ? undefined : "Shut the VM down first"} onClick={async () => (await confirm.ask({ title: "Remove TPM", message: `The TPM is removed from ${d.name}. Disk encryption keys sealed to it (BitLocker, LUKS+TPM) will not unlock.`, confirm: "Remove TPM" })) && toggle(false)}>
             Remove TPM
           </button>
         ) : (

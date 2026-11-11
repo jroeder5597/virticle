@@ -4,7 +4,7 @@ import ServerOff from "lucide-react/icons/server-off";
 import { bytes, del, get, Network, NodeInfo, NodeStatus, Pool, put, VM } from "../api";
 import { useLive } from "../live";
 import { useRole } from "../auth";
-import { ErrorBox, StateBadge, useAction } from "../ui";
+import { ErrorBox, StateBadge, useAction, useConfirm } from "../ui";
 import { HostLoad, useHostSeries } from "../charts";
 import { AlertMarks, useAlerts } from "./Alerts";
 import Evacuate from "./Evacuate";
@@ -33,6 +33,7 @@ export default function NodeDetail() {
   const admin = useRole() === "admin";
   const alerts = useAlerts();
   const act = useAction();
+  const confirm = useConfirm();
   const [evacuating, setEvacuating] = useState(false);
   const n = nodes.data?.nodes.find((x) => x.id === id);
   const tab: Tab = TABS.some(([k]) => k === tabParam) ? (tabParam as Tab) : "summary";
@@ -44,7 +45,7 @@ export default function NodeDetail() {
   const name = n.hostname || n.addr;
   const toggleMaintenance = () => act.run(() => put(`/nodes/${n.id}/maintenance`, { on: !n.maintenance }));
   const remove = async () => {
-    if (!window.confirm(`Remove ${name}? Its virtual machines keep running; they just stop being shown here.`)) return;
+    if (!(await confirm.ask({ title: `Remove node ${name}`, message: `The node ${name} is removed from this controller. Its virtual machines keep running; they just stop being shown here.`, confirm: "Remove node" }))) return;
     if (await act.run(() => del(`/nodes/${n.id}`))) nav("/nodes");
   };
 
@@ -81,6 +82,7 @@ export default function NodeDetail() {
         )}
       </div>
       <ErrorBox error={act.error} />
+      {confirm.dialog}
       <div className="tabs" role="tablist">
         {TABS.map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => nav(`/node/${id}/${k}`)}>

@@ -3,9 +3,11 @@
 // only once its group is opened. No polling: the event stream triggers debounced refetches, only
 // for what changed, and nothing happens while the tab is hidden (one refresh when it is shown again).
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
+import { MenuPopup, MenuEntry } from "./Menu";
+import { useConfirm } from "./ui";
+import { powerConfirm, powerLabel } from "./power";
 import { ChevronRight, ChevronDown, Ellipsis, Play, Power, Terminal, Pause, RotateCw, Camera, Copy, ArrowRightLeft, Plus, Wrench, HardDrive, Network, Cable, Boxes, LayoutTemplate, ExternalLink, Search } from "lucide-react";
 import { get, NodeStatus, Network as Net, Pool, post, put, ServerEvent, VM } from "./api";
 import { atLeast, useRole } from "./auth";
@@ -36,7 +38,7 @@ interface RowModel {
   muted?: boolean;
   node?: number;
 }
-type MenuItem = { label: string; icon: LucideIcon; run: () => void; danger?: boolean } | "sep";
+type MenuItem = MenuEntry;
 interface Quick {
   label: string;
   icon: LucideIcon;
@@ -99,6 +101,9 @@ export default function Tree() {
   const [error, setError] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number; up: number; items: MenuItem[]; key: string } | null>(null);
   const box = useRef<HTMLDivElement>(null);
+  const confirm = useConfirm();
+  const askRef = useRef(confirm.ask);
+  askRef.current = confirm.ask;
 
   // ---- data ----
   const dirty = useRef(new Set<string>()); // what to refresh when the tab becomes visible: "nodes", "vms", "d:<id>"
@@ -317,20 +322,30 @@ export default function Tree() {
     }
   }, [loadVMs]);
 
+  // Destructive power actions ask first.
+  const power = useCallback(
+    async (v: VM, a: string) => {
+      const spec = powerConfirm(a, [v.name]);
+      if (spec && !(await askRef.current(spec))) return;
+      return vmAction(v, a);
+    },
+    [vmAction],
+  );
+
   const quick = useCallback(
     (v: VM): Quick[] => {
       if (!canOp || v.template) return [];
       const go = (tab: string) => nav(`/vm/${v.node}/${v.uuid}?tab=${tab}`);
-      if (v.state === "shutoff") return [{ label: "Start", icon: Play, run: () => vmAction(v, "start") }];
-      if (v.state === "paused") return [{ label: "Resume", icon: Play, run: () => vmAction(v, "resume") }];
+      if (v.state === "shutoff") return [{ label: powerLabel.start, icon: Play, run: () => power(v, "start") }];
+      if (v.state === "paused") return [{ label: powerLabel.resume, icon: Play, run: () => power(v, "resume") }];
       if (v.state === "running" || v.state === "blocked")
         return [
-          { label: "Shut down", icon: Power, run: () => vmAction(v, "shutdown") },
+          { label: powerLabel.shutdown, icon: Power, run: () => power(v, "shutdown") },
           { label: "Console", icon: Terminal, run: () => go("console") },
         ];
       return [];
     },
-    [canOp, nav, vmAction],
+    [canOp, nav, vmAction, power],
   );
   const vmItems = useCallback(
     (v: VM): MenuItem[] => {
@@ -338,21 +353,22 @@ export default function Tree() {
       const items: MenuItem[] = [{ label: "Open", icon: ExternalLink, run: () => page() }];
       if (!canOp) return items;
       const on = v.state !== "shutoff";
-      if (v.state === "shutoff" && !v.template) items.push({ label: "Start", icon: Play, run: () => vmAction(v, "start") });
-      if (v.state === "paused") items.push({ label: "Resume", icon: Play, run: () => vmAction(v, "resume") });
+      if (v.state === "shutoff" && !v.template) items.push({ label: powerLabel.start, icon: Play, run: () => power(v, "start") });
+      if (v.state === "paused") items.push({ label: powerLabel.resume, icon: Play, run: () => power(v, "resume") });
       if (v.state === "running") {
-        items.push({ label: "Shut down", icon: Power, run: () => vmAction(v, "shutdown") });
-        items.push({ label: "Reboot", icon: RotateCw, run: () => vmAction(v, "reboot") });
-        items.push({ label: "Pause", icon: Pause, run: () => vmAction(v, "pause") });
+        items.push({ label: powerLabel.shutdown, icon: Power, run: () => power(v, "shutdown") });
+        items.push({ label: powerLabel.reboot, icon: RotateCw, run: () => power(v, "reboot") });
+        items.push({ label: powerLabel.pause, icon: Pause, run: () => power(v, "pause") });
       }
       if (on) {
-        items.push({ label: "Force off", icon: Power, danger: true, run: () => window.confirm(`Force ${v.name} off? Unsaved data in the guest is lost.`) && vmAction(v, "poweroff") });
+        items.push({ label: powerLabel.reset, icon: RotateCw, danger: true, run: () => power(v, "reset") });
+        items.push({ label: powerLabel.poweroff, icon: Power, danger: true, run: () => power(v, "poweroff") });
         items.push({ label: "Console", icon: Terminal, run: () => page("console") });
       }
       items.push("sep", { label: "Snapshots", icon: Camera, run: () => page("snapshots") }, { label: "Migrate", icon: ArrowRightLeft, run: () => page() }, { label: "Clone", icon: Copy, run: () => page() });
       return items;
     },
-    [canOp, nav, vmAction],
+    [canOp, nav, power],
   );
   const nodeItems = useCallback(
     (n: NodeStatus): MenuItem[] => {
@@ -463,7 +479,8 @@ export default function Tree() {
         {nodes && nodes.length === 0 && <div className="tree-note">No nodes yet.</div>}
         {needle && rows.length === 1 && <div className="tree-note">Nothing matches.</div>}
       </div>
-      {menu && <Menu {...menu} onClose={() => { setMenu(null); focusKey(menu.key); }} />}
+      {menu && <MenuPopup x={menu.x} y={menu.y} up={menu.up} items={menu.items} onClose={() => { setMenu(null); focusKey(menu.key); }} />}
+      {confirm.dialog}
     </div>
   );
 }
@@ -580,66 +597,5 @@ function PoolBar({ p, text }: { p: Pool; text: string }) {
         <span className={pct > 90 ? "full" : ""} style={{ width: pct + "%" }} />
       </span>
     </span>
-  );
-}
-
-function Menu({ x, y, up, items, onClose }: { x: number; y: number; up: number; items: MenuItem[]; key?: string; onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ left: x, top: y });
-  useEffect(() => {
-    const m = ref.current!;
-    const w = m.offsetWidth,
-      h = m.offsetHeight;
-    // Near the right edge the menu grows leftwards from x; near the bottom it opens upwards from the anchor's top.
-    const left = x + w > window.innerWidth - 4 ? x - w : x;
-    const top = y + h > window.innerHeight - 4 ? up - h : y;
-    setPos({ left: Math.max(4, Math.min(left, window.innerWidth - w - 4)), top: Math.max(4, Math.min(top, window.innerHeight - h - 4)) });
-    m.querySelector<HTMLElement>("button")?.focus();
-    const away = (e: Event) => !m.contains(e.target as Node) && onClose();
-    window.addEventListener("mousedown", away);
-    window.addEventListener("scroll", onClose, true);
-    window.addEventListener("resize", onClose);
-    return () => {
-      window.removeEventListener("mousedown", away);
-      window.removeEventListener("scroll", onClose, true);
-      window.removeEventListener("resize", onClose);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const onKey = (e: React.KeyboardEvent) => {
-    const bs = [...ref.current!.querySelectorAll<HTMLElement>("button")];
-    const i = bs.indexOf(document.activeElement as HTMLElement);
-    if (e.key === "Escape") onClose();
-    else if (e.key === "ArrowDown") bs[(i + 1) % bs.length].focus();
-    else if (e.key === "ArrowUp") bs[(i - 1 + bs.length) % bs.length].focus();
-    else if (e.key === "Home") bs[0].focus();
-    else if (e.key === "End") bs[bs.length - 1].focus();
-    else if (e.key === "Tab") onClose();
-    else return;
-    e.preventDefault();
-    e.stopPropagation();
-  };
-  return createPortal(
-    <div ref={ref} className="ctxmenu" role="menu" style={pos} onKeyDown={onKey}>
-      {items.map((it, i) =>
-        it === "sep" ? (
-          <div key={i} className="sep" role="separator" />
-        ) : (
-          <button
-            key={it.label}
-            role="menuitem"
-            className={it.danger ? "danger" : ""}
-            onClick={() => {
-              onClose();
-              it.run();
-            }}
-          >
-            <it.icon size={14} aria-hidden />
-            {it.label}
-          </button>
-        ),
-      )}
-    </div>,
-    document.body,
   );
 }

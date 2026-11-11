@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { get, post, put, VMDetail } from "../api";
+import { get, post, VMDetail } from "../api";
 import { ErrorBox, Field, Modal, useAction } from "../ui";
 import CloudInitFields, { cloudInitPayload, cloudInitUsed, CloudInitValues, emptyCloudInit } from "./CloudInit";
 
@@ -13,26 +13,13 @@ interface CloneInfo {
   sysprepProblem?: string;
 }
 
-/** The "Clone" button and its dialog. */
-export function CloneButton({ d, base }: { d: VMDetail; base: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button disabled={d.state !== "shutoff"} title={d.state !== "shutoff" ? "Shut the VM down to clone it" : undefined} onClick={() => setOpen(true)}>
-        Clone
-      </button>
-      {open && <CloneDialog d={d} base={base} onClose={() => setOpen(false)} />}
-    </>
-  );
-}
-
-function CloneDialog({ d, base, onClose }: { d: VMDetail; base: string; onClose: () => void }) {
+export function CloneDialog({ d, base, linked: linkedFirst, onClose }: { d: VMDetail; base: string; linked?: boolean; onClose: () => void }) {
   const nav = useNavigate();
   const act = useAction();
   const [info, setInfo] = useState<CloneInfo>();
   const [infoError, setInfoError] = useState<string>();
   const [name, setName] = useState(d.name + "-clone");
-  const [linked, setLinked] = useState(false);
+  const [linked, setLinked] = useState(!!linkedFirst && d.template);
   const [start, setStart] = useState(false);
   const [sysprep, setSysprep] = useState(false);
   const [ci, setCi] = useState<CloudInitValues>(emptyCloudInit);
@@ -124,35 +111,7 @@ function CloneDialog({ d, base, onClose }: { d: VMDetail; base: string; onClose:
   );
 }
 
-/** Template conversion buttons for the VM header. */
-export function TemplateActions({ d, base, onChanged }: { d: VMDetail; base: string; onChanged: () => void }) {
-  const act = useAction();
-  const [sealing, setSealing] = useState(false);
-  const set = (template: boolean) => act.run(async () => { await put(`${base}/template`, { template }); onChanged(); });
-  return (
-    <>
-      {d.state === "shutoff" && !d.template && (
-        <button disabled={act.busy} onClick={() => set(true)} title="Mark as a template: it can be cloned (also linked) but not started">
-          Convert to template
-        </button>
-      )}
-      {d.state === "shutoff" && d.template && (
-        <button disabled={act.busy} onClick={() => set(false)}>
-          Convert back to VM
-        </button>
-      )}
-      {d.state === "running" && d.agent === "connected" && !d.template && (
-        <button disabled={act.busy} onClick={() => setSealing(true)}>
-          Seal and convert to template
-        </button>
-      )}
-      {act.error && <span className="error">{act.error}</span>}
-      {sealing && <SealDialog d={d} base={base} onClose={() => setSealing(false)} onDone={onChanged} />}
-    </>
-  );
-}
-
-function SealDialog({ d, base, onClose, onDone }: { d: VMDetail; base: string; onClose: () => void; onDone: () => void }) {
+export function SealDialog({ d, base, onClose, onDone }: { d: VMDetail; base: string; onClose: () => void; onDone: () => void }) {
   const act = useAction();
   return (
     <Modal title={`Seal ${d.name}`} onClose={onClose}>

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CornerDownRight } from "lucide-react";
 import { del, get, post, put, VMDetail } from "../api";
 import { useLive } from "../live";
-import { ErrorBox, Field, Modal, StateBadge, useAction } from "../ui";
+import { ErrorBox, Field, Modal, StateBadge, useAction, useConfirm } from "../ui";
 
 interface Snap {
   name: string;
@@ -118,7 +118,7 @@ export default function SnapshotsTab({ d, base }: { d: VMDetail; base: string })
   );
 }
 
-function TakeSnapshot(props: { d: VMDetail; base: string; onClose: () => void; onDone: () => void }) {
+export function TakeSnapshot(props: { d: VMDetail; base: string; onClose: () => void; onDone: () => void }) {
   const { d } = props;
   const act = useAction();
   const [name, setName] = useState("");
@@ -274,6 +274,7 @@ function SchedulePanel({ d, base }: { d: VMDetail; base: string }) {
   const path = `${base}/snapshot-schedule`;
   const cur = useLive(() => get<{ schedule: Schedule | null; last?: number }>(path), path, (e) => e.type === "node" || (e.type === "task" && e.task?.status !== "running"));
   const act = useAction();
+  const confirm = useConfirm();
   const [form, setForm] = useState<Schedule | undefined>();
   const sch = cur.data?.schedule;
   const edit = () =>
@@ -287,12 +288,14 @@ function SchedulePanel({ d, base }: { d: VMDetail; base: string }) {
     }
   };
   const remove = async () => {
-    if (window.confirm("Remove the snapshot schedule? Snapshots already taken are kept.") && (await act.run(() => del(path)))) cur.reload();
+    const ok = await confirm.ask({ title: "Remove snapshot schedule", message: `The snapshot schedule of ${d.name} is removed. Snapshots already taken are kept.`, confirm: "Remove schedule" });
+    if (ok && (await act.run(() => del(path)))) cur.reload();
   };
   const agentOK = d.agent === "connected";
 
   return (
-    <section className="card" style={{ marginTop: 20 }}>
+    <section className="card" id="snap-schedule" style={{ marginTop: 20 }}>
+      {confirm.dialog}
       <h3>Scheduled snapshots</h3>
       <ErrorBox error={cur.error} />
       {!form && (

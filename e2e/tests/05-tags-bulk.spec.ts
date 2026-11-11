@@ -1,7 +1,7 @@
 // Tags on the detail page, list filter and search, then bulk select -> tag -> force off -> delete.
 import { cleanVMs, createCirros, expect, openVM, test } from "../lib/fixtures";
 import { P } from "../lib/env";
-import { autoDialogs, dialog, expectBadge, field, row } from "../lib/ui";
+import { autoDialogs, dialog, expectBadge, field, row, confirm, confirmDialog } from "../lib/ui";
 
 const A = `${P}bulk-a`;
 const B = `${P}bulk-b`;
@@ -82,8 +82,13 @@ test.describe.serial("tags and bulk actions", () => {
     await early.getByRole("button", { name: "Cancel" }).click();
 
     // force off both
-    await bar.getByRole("button", { name: "Force off" }).click();
-    const off = dialog(page, /^Force off/);
+    await bar.getByRole("button", { name: "Halt (Force Shutdown)" }).click();
+    // one confirmation for the whole selection, listing both VMs
+    const ask = dialog(page, /^Halt \(Force Shutdown\): 2 VMs/);
+    await expect(ask).toContainText(A);
+    await expect(ask).toContainText(B);
+    await confirm(page, /^Halt \(Force Shutdown\): 2 VMs/);
+    const off = dialog(page, "Halt (Force Shutdown)");
     await expect(off).toContainText("2 of 2 done");
     await off.getByRole("button", { name: "Close", exact: true }).click();
     await expectBadge(row(page, A), "shutoff");

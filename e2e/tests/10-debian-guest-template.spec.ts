@@ -1,7 +1,7 @@
 // A real distro image: cloud-init create, guest agent, guest card, charts, seal into a template, linked clone that boots.
 import { cleanVMs, expect, openVM, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
-import { dialog, expectBadge, field } from "../lib/ui";
+import { dialog, expectBadge, field, vmAction } from "../lib/ui";
 
 const NAME = `${P}deb1`;
 const CLONE = `${P}deb1-clone`;
@@ -47,32 +47,33 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     expect(d.disks.some((k: any) => k.device === "cdrom" && /seed/.test(k.source ?? ""))).toBe(true);
   });
 
-  test("the guest agent connects and the Guest card shows OS and filesystems", async ({ page, api }) => {
+  test("the guest agent connects: summary shows OS, DNS name and address; utilization shows guest filesystems", async ({ page, api }) => {
     test.setTimeout(AGENT_WAIT + 60_000);
     await openVM(page, vm);
-    const agentCard = page.locator("section.card", { hasText: "Guest agent" });
-    await expect(agentCard.locator(".badge")).toHaveText("connected", { timeout: AGENT_WAIT });
+    const summary = page.locator("section#summary");
+    await expect(summary.locator(".badge", { hasText: "connected" })).toBeVisible({ timeout: AGENT_WAIT });
     expect((await api.vmDetail(vm.node, vm.uuid)).agent).toBe("connected");
+    await expect(summary).toContainText(/Debian/i, { timeout: 60_000 });
+    // the guest's own host name, and addresses from the agent
+    await expect(summary.locator("dd").nth(3)).not.toContainText("Not reported", { timeout: 60_000 });
+    await expect(summary.locator("dd").nth(4)).toContainText(/\d+\.\d+\.\d+\.\d+/, { timeout: 60_000 });
+    await expect(summary).toContainText("From the guest agent");
+    const util = page.locator("section#utilization");
+    await expect(util.locator(".fsbar .mono", { hasText: /^\/$/ })).toBeVisible({ timeout: 60_000 });
+    await expect(util).toContainText(/of \d+(\.\d)? GiB \(\d+%\)/);
+    // the Guest card keeps version, kernel and time zone, and no longer repeats host name and filesystems
     const guest = page.locator("section.card").filter({ has: page.getByRole("heading", { name: "Guest", exact: true }) });
-    await expect(guest).toContainText(/Debian/i, { timeout: 60_000 });
-    await expect(guest.getByText("Filesystems")).toBeVisible();
-    await expect(guest.locator(".fsbar .mono").first()).toHaveText("/");
-    await expect(guest).toContainText(/Host name/);
-    // the NIC row shows the address the agent reported
-    await expect(page.locator("section.card", { hasText: "Network interfaces" })).toContainText(/\d+\.\d+\.\d+\.\d+/, { timeout: 60_000 });
+    await expect(guest).toContainText(/Kernel/);
   });
 
-  test("usage charts render with data", async ({ page, api }) => {
+  test("utilization shows CPU and memory with data and sparklines", async ({ page, api }) => {
     await openVM(page, vm);
-    const charts = page.locator(".charts .chart");
-    await expect(charts).toHaveCount(4);
-    for (const t of ["CPU", "Memory", "Disk I/O", "Network"]) await expect(charts.filter({ hasText: t }).first()).toBeVisible();
-    const mem = charts.filter({ hasText: "Memory" }).locator(".chart-val");
-    await expect(mem).toContainText(/\d/, { timeout: 30_000 });
-    const text = await mem.innerText();
-    expect(text).toMatch(/\d+ MiB of (4[5-9]\d|5[01]\d) MiB/); // guest-reported total is a bit under 512
-    expect(text).not.toMatch(/^0 /);
-    await expect.poll(async () => charts.first().locator("svg path[d]").count(), { timeout: 30_000 }).toBeGreaterThan(0);
+    const util = page.locator("section#utilization");
+    await expect(util.locator(".st-val").nth(0)).toContainText(/\d%/, { timeout: 30_000 });
+    await expect(util.locator(".st-val").nth(1)).toContainText(/\d%/);
+    await expect(util).toContainText(/\d+ MiB of (4[5-9]\d|5[01]\d) MiB/); // guest-reported total is a bit under 512
+    await expect(util.locator("svg.plot")).toHaveCount(2);
+    await expect.poll(async () => util.locator("svg path[d]").count(), { timeout: 30_000 }).toBeGreaterThan(0);
     const stats = await api.get(`/nodes/${vm.node}/vms/${vm.uuid}/stats`);
     expect(stats.points.length).toBeGreaterThan(1);
     expect(stats.points.some((p: any) => p.memUsedKiB > 0)).toBe(true);
@@ -82,7 +83,7 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
   test("seal and convert to a template through the dialog", async ({ page, api }) => {
     test.setTimeout(240_000);
     await openVM(page, vm);
-    await page.locator(".head").getByRole("button", { name: "Seal and convert to template" }).click();
+    await vmAction(page, "Template", "Seal template");
     const dlg = dialog(page, `Seal ${NAME}`);
     await expect(dlg).toContainText("machine-id");
     await dlg.getByRole("button", { name: "Seal and convert" }).click();
@@ -94,13 +95,17 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     expect(d.sealed).toBe("linux");
     expect(d.state).toBe("shutoff");
     // a template cannot be started
-    await expect(page.locator(".head").getByRole("button", { name: "Start" })).toHaveCount(0);
+    await page.locator(".head").getByRole("button", { name: "Actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Power", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Power On", exact: true })).toBeDisabled();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
   });
 
   test("linked clone with credentials through the Clone dialog", async ({ page, api }) => {
     test.setTimeout(120_000);
     await openVM(page, vm);
-    await page.locator(".head").getByRole("button", { name: "Clone", exact: true }).click();
+    await vmAction(page, "Clone", "Linked clone (from a template)");
     const dlg = dialog(page, `Clone ${NAME}`);
     await expect(field(dlg, "Name of the clone")).toBeFocused();
     await field(dlg, "Name of the clone").fill(CLONE);
@@ -125,9 +130,13 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     test.setTimeout(AGENT_WAIT + 60_000);
     await openVM(page, clone);
     await expectBadge(page.locator(".head"), "running");
-    const agentCard = page.locator("section.card", { hasText: "Guest agent" });
-    await expect(agentCard.locator(".badge")).toHaveText("connected", { timeout: AGENT_WAIT });
-    await expect(page.locator("section.card").filter({ has: page.getByRole("heading", { name: "Guest", exact: true }) })).toContainText(/Debian/i, { timeout: 60_000 });
+    const summary = page.locator("section#summary");
+    await expect(summary.locator(".badge.s-agent-connected")).toBeVisible({ timeout: AGENT_WAIT });
+    await expect(summary).toContainText(/Debian/i, { timeout: 60_000 });
+    const status = page.locator("section#utilization");
+    await expect(status).toContainText("Storage in the guest");
+    await expect(status.locator(".fsbar").first()).toBeVisible({ timeout: 60_000 });
+    await expect(summary.locator("dd.mono").first()).toContainText(/\w/);
   });
 
   test("delete the clone and its disks, then the template", async ({ page, api }) => {
@@ -135,19 +144,19 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     await api.post(`/nodes/${clone.node}/vms/${clone.uuid}/action`, { action: "poweroff" });
     await api.waitFor("clone off", async () => (await api.vmDetail(clone.node, clone.uuid)).state === "shutoff");
     await openVM(page, clone);
-    await page.locator(".head").getByRole("button", { name: "Delete" }).click();
+    await vmAction(page, "Delete", "Delete VM");
     const dlg = dialog(page, `Delete ${CLONE}?`);
     await dlg.getByLabel(/Also delete its disk/).check();
-    await dlg.getByRole("button", { name: "Delete" }).click();
+    await dlg.getByRole("button", { name: "Delete VM" }).click();
     await expect(page).toHaveURL(/\/$/);
     expect(await api.vmByName(CLONE)).toBeUndefined();
     await openVM(page, vm);
-    await page.locator(".head").getByRole("button", { name: "Convert back to VM" }).click();
-    await expect(page.locator(".head").getByRole("button", { name: "Delete" })).toBeVisible();
-    await page.locator(".head").getByRole("button", { name: "Delete" }).click();
+    await vmAction(page, "Template", "Convert back to a VM");
+    await expect(page.locator(".head .badge", { hasText: "Template" })).toHaveCount(0);
+    await vmAction(page, "Delete", "Delete VM");
     const d2 = dialog(page, `Delete ${NAME}?`);
     await d2.getByLabel(/Also delete its disk/).check();
-    await d2.getByRole("button", { name: "Delete" }).click();
+    await d2.getByRole("button", { name: "Delete VM" }).click();
     await expect(page).toHaveURL(/\/$/);
     expect(await api.vmByName(NAME)).toBeUndefined();
   });

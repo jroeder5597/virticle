@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Check, Lock, TriangleAlert, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { bytes, get, NodeStatus, post, Task, VMDetail } from "../api";
-import { ErrorBox, Field, Modal, useAction } from "../ui";
+import { ErrorBox, Field, Modal, useAction, useConfirm } from "../ui";
 
 interface Check {
   check: string;
@@ -36,6 +36,7 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
   const [task, setTask] = useState<Task | undefined>();
   const act = useAction();
   const cancel = useAction();
+  const confirm = useConfirm();
   const base = `/nodes/${d.node}/vms/${d.uuid}`;
   const running = d.state !== "shutoff";
 
@@ -181,10 +182,11 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
           <p className="muted">
             {task?.status === "ok" ? "Done." : task?.status === "failed" ? "Failed." : `${Math.round((task?.progress ?? 0) * 100)}%`}
           </p>
+          {confirm.dialog}
           <ErrorBox error={task?.status === "failed" ? task.error : cancel.error} />
           <footer>
             {busy ? (
-              <button className="danger" disabled={cancel.busy} onClick={() => cancel.run(() => post(`${base}/migrate/cancel`))}>
+              <button className="danger" disabled={cancel.busy} onClick={async () => (await confirm.ask({ title: "Stop migration", message: `The running migration of ${d.name} to ${targetName} is stopped. The VM stays on its current node.`, confirm: "Stop migration" })) && cancel.run(() => post(`${base}/migrate/cancel`))}>
                 Cancel migration
               </button>
             ) : (

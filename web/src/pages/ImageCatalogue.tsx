@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { bytes, get, post } from "../api";
 import { useEvents, useLive } from "../live";
-import { ErrorBox, Modal, useAction } from "../ui";
+import { ErrorBox, Modal, useAction, useConfirm } from "../ui";
 import "./imagecat.css";
 
 export interface CatalogueImage {
@@ -34,6 +34,7 @@ export default function ImageCatalogue(props: { node: number; nodeName?: string;
   const base = `/nodes/${props.node}/pools/${encodeURIComponent(props.pool)}/images`;
   const list = useLive(() => get<PoolImages>(base), base);
   const act = useAction();
+  const confirm = useConfirm();
   const [progress, setProgress] = useState<Record<string, number>>({});
   const [failure, setFailure] = useState<string | undefined>();
 
@@ -62,7 +63,10 @@ export default function ImageCatalogue(props: { node: number; nodeName?: string;
       list.reload();
     }
   };
-  const cancel = (img: CatalogueImage) => act.run(() => post(base + "/cancel", { name: img.volumeName }));
+  const cancel = async (img: CatalogueImage) => {
+    if (!(await confirm.ask({ title: "Stop download", message: `The download of ${img.name} into pool ${props.pool} is stopped and the partial file is removed.`, confirm: "Stop download" }))) return;
+    return act.run(() => post(base + "/cancel", { name: img.volumeName }));
+  };
   const running = new Set([...(list.data?.running ?? []), ...Object.keys(progress)]);
 
   return (
@@ -70,6 +74,7 @@ export default function ImageCatalogue(props: { node: number; nodeName?: string;
       <p className="muted catnote">
         The node downloads the image into <b>{props.pool}</b> and checks its checksum before the file appears. The checksum comes from the same project as the image: it detects a damaged download, not a compromised mirror.
       </p>
+      {confirm.dialog}
       <ErrorBox error={list.error ?? act.error ?? failure} />
       {list.data && !list.data.downloadable && <div className="empty">{list.data.reason ?? "This pool cannot be downloaded into."}</div>}
       {list.data?.downloadable && (
