@@ -54,9 +54,9 @@ export default function Datacenter() {
   );
 }
 
-function Tile(props: { label: string; value: string; note?: string; meter?: { value: number; max: number } }) {
+function Tile(props: { label: string; title?: string; value: string; note?: string; meter?: { value: number; max: number } }) {
   return (
-    <div className="card dctile">
+    <div className="card dctile" title={props.title}>
       <div className="muted">{props.label}</div>
       <div className="dcval">{props.value}</div>
       {props.meter && <Meter value={props.meter.value} max={props.meter.max} label={props.note ?? ""} />}
@@ -69,7 +69,7 @@ function Tile(props: { label: string; value: string; note?: string; meter?: { va
 function Summary() {
   const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes", nodeEvents);
   const vms = useLiveDebounced(() => get<VM[]>("/vms"), "vms", orEvents(), 1500);
-  const pools = useLiveDebounced(() => get<{ pools: NodePool[]; errors: NodeErr[] }>("/pools"), "pools/all/true", poolEvents);
+  const pools = useLiveDebounced(() => get<{ pools: NodePool[]; errors: NodeErr[]; storage?: { node: number; capacity: number; used: number }[] }>("/pools"), "pools/all/true", poolEvents);
   const stats = useAllStats();
   const alerts = useAlerts();
   const all = nodes.data?.nodes ?? [];
@@ -85,8 +85,9 @@ function Summary() {
     },
     { used: 0, total: 0 },
   );
-  const live = (pools.data?.pools ?? []).filter((p) => p.state === "running");
-  const sto = { used: live.reduce((a, p) => a + p.allocation, 0), total: live.reduce((a, p) => a + p.capacity, 0) };
+  // Per node, already counted once per filesystem by the server.
+  const stores = pools.data?.storage ?? [];
+  const sto = { used: stores.reduce((a, s) => a + s.used, 0), total: stores.reduce((a, s) => a + s.capacity, 0) };
   const dash = "–";
   return (
     <>
@@ -97,7 +98,7 @@ function Summary() {
         <Tile label="Virtual machines running" value={vms.data ? `${running.length} of ${list.length}` : dash} />
         <Tile label="vCPUs of running VMs" value={vms.data && hostCpus ? `${vcpus} of ${hostCpus}` : dash} note="host CPUs on all nodes" />
         <Tile label="Memory in use" value={mem.total ? `${bytes(mem.used * 1024)} of ${bytes(mem.total * 1024)}` : dash} meter={mem.total ? { value: mem.used, max: mem.total } : undefined} note={mem.total ? pct((mem.used / mem.total) * 100) : undefined} />
-        <Tile label="Storage in use" value={pools.data ? `${bytes(sto.used)} of ${bytes(sto.total)}` : dash} meter={sto.total ? { value: sto.used, max: sto.total } : undefined} note={pools.data ? "sum of pools" : undefined} />
+        <Tile label="Storage in use" title="Estimate: running pools of one node with the same size and free space are counted as one filesystem" value={pools.data ? `${bytes(sto.used)} of ${bytes(sto.total)}` : dash} meter={sto.total ? { value: sto.used, max: sto.total } : undefined} note={sto.total ? pct((sto.used / sto.total) * 100) : undefined} />
       </div>
       <div className="cards dccards">
         <div className="card">

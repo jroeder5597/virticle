@@ -1,0 +1,38 @@
+/* Tasks dock: a bar (always) and a compact table (when open). No animation: it opens and closes instantly. */
+.dock { flex: none; display: flex; flex-direction: column; height: var(--dock-h); background: var(--panel); border-top: 1px solid var(--line); min-width: 0; }
+.dock-bar { flex: none; display: flex; align-items: center; gap: 12px; height: var(--dock-bar-h); padding: 0 8px 0 14px; background: var(--chrome, var(--panel)); }
+.dock.open .dock-bar { border-bottom: 1px solid var(--line); }
+.dock-title { font-weight: 700; }
+.dock-count { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dock-count.busy { color: var(--text); }
+.dock-all { white-space: nowrap; }
+.dock-spacer { flex: 1; }
+.dock-toggle { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 24px; padding: 0; border: 0; background: none; color: var(--muted); border-radius: 4px; }
+.dock-toggle:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+
+.dock-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.dock-note { padding: 10px 14px; color: var(--muted); }
+.dock-note.err { color: var(--danger); }
+
+.dock-table { display: table; width: 100%; border: 0; border-radius: 0; background: none; overflow: visible; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.dock-table th, .dock-table td { padding: 3px 10px; white-space: nowrap; vertical-align: middle; }
+.dock-table th { position: sticky; top: 0; z-index: 1; background: var(--panel); border-bottom: 1px solid var(--line); }
+.dock-table tbody tr:hover { background: var(--hover); }
+.dock-table td.c-kind, .dock-table td.c-target, .dock-table td.c-node { white-space: normal; overflow-wrap: anywhere; }
+.dock-table td.c-res { width: 100%; max-width: 0; }
+.dock-table td.c-user { max-width: 110px; white-space: normal; overflow-wrap: anywhere; }
+.tstatus { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; background: none; border: 0; }
+.dk-prog { display: flex; align-items: center; gap: 8px; }
+.dk-bar { flex: 0 1 160px; min-width: 60px; height: 6px; border-radius: 3px; background: var(--hover); border: 1px solid var(--line); overflow: hidden; }
+.dk-bar > span { display: block; height: 100%; background: var(--accent); }
+.dk-err { display: block; max-width: 100%; padding: 0; border: 0; background: none; color: var(--danger); font: inherit; font-weight: 400; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.dk-err:hover:not(:disabled) { background: none; text-decoration: underline; }
+.dk-err.open { white-space: normal; overflow-wrap: anywhere; }
+
+@media (max-width: 760px) {
+  .dock-table .c-kind, .dock-table .c-node, .dock-table .c-user, .dock-table .c-when, .dock-table .c-dur { display: none; }
+  .dock-table th, .dock-table td { padding: 3px 8px; }
+  .dock-table td.c-res { width: auto; max-width: none; }
+  .dock-table td.c-target { width: 100%; }
+  .dk-bar { flex-basis: 70px; min-width: 40px; }
+}

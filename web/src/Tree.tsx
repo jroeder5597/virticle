@@ -12,6 +12,7 @@ import { ChevronRight, ChevronDown, Ellipsis, Play, Power, Terminal, Pause, Rota
 import { get, NodeStatus, Network as Net, Pool, post, put, ServerEvent, VM } from "./api";
 import { atLeast, useRole } from "./auth";
 import { useEvents } from "./live";
+import { publishInventory } from "./inventory";
 import { TreeTags } from "./TreeTags";
 import "./shell.css";
 
@@ -141,6 +142,7 @@ export default function Tree() {
     [],
   );
 
+  useEffect(() => publishInventory(nodes, vms), [nodes, vms]);
   const firstLoad = useRef(0);
   useEffect(() => {
     firstLoad.current = Date.now();

@@ -1,5 +1,5 @@
 import { Menu, User, LogOut } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import Tree from "./Tree";
 import "./shell.css";
@@ -17,14 +17,20 @@ import ConsolePage from "./pages/ConsolePage";
 import { AlertBell } from "./pages/Alerts";
 import { RoleContext } from "./auth";
 import { ThemeToggle } from "./theme";
+import TasksDock, { useDockOpen } from "./TasksDock";
+import { bindPrefs, loadPrefs } from "./prefs";
 
 type Session = { needsSetup: boolean; user: string; role: Role };
 
 export default function App() {
   const [session, setSession] = useState<Session | undefined>();
   const [drawer, setDrawer] = useState(false);
+  bindPrefs(session?.user ?? ""); // before anything reads a preference, so the first paint uses the local copy
+  const dockOpen = useDockOpen();
+  const scroller = useRef<HTMLDivElement>(null);
   const loc = useLocation();
   useEffect(() => setDrawer(false), [loc.pathname, loc.search]);
+  useEffect(() => scroller.current?.scrollTo(0, 0), [loc.pathname]);
   useEffect(() => {
     if (!drawer) return;
     const k = (e: KeyboardEvent) => e.key === "Escape" && setDrawer(false);
@@ -43,6 +49,9 @@ export default function App() {
     }
   }, [session?.user]);
 
+  useEffect(() => {
+    if (session?.user) void loadPrefs();
+  }, [session?.user]);
   if (!session) return null;
   if (!session.user) return <SignIn setup={session.needsSetup} onDone={refresh} />;
   if (loc.pathname.startsWith("/console/"))
@@ -55,7 +64,7 @@ export default function App() {
     );
   return (
     <RoleContext.Provider value={session.role}>
-    <div className={"app" + (drawer ? " drawer-open" : "")}>
+    <div className={"app" + (drawer ? " drawer-open" : "") + (dockOpen ? " dock-open" : "")}>
       <header className="topbar">
         <button className="menu-btn" aria-label="Open navigation" aria-expanded={drawer} onClick={() => setDrawer(!drawer)}>
           <Menu size={18} />
@@ -97,6 +106,8 @@ export default function App() {
         <Tree />
       </aside>
       {drawer && <div className="scrim" onClick={() => setDrawer(false)} />}
+      <div className="content">
+      <div className="content-scroll" ref={scroller}>
       <main className={session.role}>
         <Routes>
           <Route path="/datacenter/:tab?" element={<Datacenter />} />
@@ -116,6 +127,9 @@ export default function App() {
           <Route path="*" element={<div className="empty">There is nothing at this address, or your role does not allow it.</div>} />
         </Routes>
       </main>
+      </div>
+      <TasksDock />
+      </div>
       <Toasts />
     </div>
     </RoleContext.Provider>

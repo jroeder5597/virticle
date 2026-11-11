@@ -127,7 +127,48 @@ type nodeNetwork struct {
 func (s *Server) listAllPools(w http.ResponseWriter, r *http.Request) {
 	res := gatherNodes(s, nodeTimeout, collectPools)
 	pools, errs := mergeNodes(res, func(p poolInfo, id int64, name string) nodePool { return nodePool{p, id, name} })
-	writeJSON(w, map[string]any{"pools": pools, "errors": errs})
+	writeJSON(w, map[string]any{"pools": pools, "errors": errs, "storage": nodeStorage(pools)})
+}
+
+// nodeStore is the storage one node really has: its running pools with pools that share a
+// filesystem counted once.
+type nodeStore struct {
+	Node     int64  `json:"node"`
+	Capacity uint64 `json:"capacity"`
+	Used     uint64 `json:"used"`
+}
+
+// nodeStorage totals running pools per node. Libvirt does not say which directory pools sit on the
+// same filesystem, so pools of one node with identical capacity AND identical available bytes are taken
+// to be one filesystem and counted once. An estimate: two distinct disks of the same size and fill would
+// be merged too.
+func nodeStorage(pools []nodePool) []nodeStore {
+	type fs struct {
+		node       int64
+		cap, avail uint64
+	}
+	seen := map[fs]bool{}
+	idx := map[int64]int{}
+	out := []nodeStore{}
+	for _, p := range pools {
+		if p.State != "running" {
+			continue
+		}
+		k := fs{p.Node, p.Capacity, p.Available}
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		i, ok := idx[p.Node]
+		if !ok {
+			i = len(out)
+			idx[p.Node] = i
+			out = append(out, nodeStore{Node: p.Node})
+		}
+		out[i].Capacity += p.Capacity
+		out[i].Used += p.Allocation
+	}
+	return out
 }
 
 // listAllNetworks is GET /api/networks: every network of every node.

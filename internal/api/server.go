@@ -86,6 +86,8 @@ func (s *Server) Handler() http.Handler {
 	auth("GET /api/account/tokens", s.listTokens)
 	auth("POST /api/account/tokens", s.createToken)
 	auth("DELETE /api/account/tokens/{id}", s.deleteToken)
+	auth("GET /api/me/prefs", s.getPrefs)
+	auth("PUT /api/me/prefs", s.putPrefs)
 	auth("GET /api/audit", s.auditLog)
 
 	auth("GET /api/nodes", s.listNodes)

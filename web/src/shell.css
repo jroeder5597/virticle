@@ -1,9 +1,14 @@
 /* App shell: sticky top bar, resource-tree sidebar, drawer below 900px.
    No animation beyond a short colour transition; the drawer and menus open instantly. */
-:root { --topbar-h: 48px; --sidebar-w: 260px; }
+:root { --topbar-h: 48px; --sidebar-w: 260px; --dock-bar-h: 30px; }
 body { overflow-x: hidden; }
 
-.app { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); grid-template-rows: var(--topbar-h) minmax(0, 1fr); min-height: 100dvh; }
+/* The window is the page: the app is exactly one screen high. The main area scrolls on its own, so the page
+   never grows, and the Tasks dock under it keeps its place. --dock-h is the dock's height (bar only when collapsed). */
+.app { --dock-h: var(--dock-bar-h); display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); grid-template-rows: var(--topbar-h) minmax(0, 1fr); height: 100dvh; overflow: hidden; }
+.app.dock-open { --dock-h: clamp(140px, 25dvh, 320px); }
+.content { grid-row: 2; grid-column: 2; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.content-scroll { flex: 1; min-height: 0; overflow: auto; }
 .topbar { grid-column: 1 / -1; position: sticky; top: 0; z-index: 100; height: var(--topbar-h); display: flex; align-items: center; gap: 4px; padding: 0 12px; background: var(--chrome, var(--panel)); border-bottom: 1px solid var(--line); min-width: 0; }
 .topbar .brand { font-weight: 700; font-size: 16px; padding: 0 12px 0 4px; color: var(--text); white-space: nowrap; }
 .topbar .spacer { flex: 1; }
@@ -18,8 +23,7 @@ body { overflow-x: hidden; }
 .topbar .alertbell { position: relative; }
 .topbar .alertpanel { left: auto; right: 0; top: 100%; bottom: auto; margin-top: 6px; z-index: 200; }
 
-.sidebar { grid-row: 2; grid-column: 1; position: sticky; top: var(--topbar-h); height: calc(100dvh - var(--topbar-h)); background: var(--chrome, var(--panel)); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; z-index: 90; }
-.app > main { grid-row: 2; grid-column: 2; }
+.sidebar { grid-row: 2; grid-column: 1; position: relative; min-height: 0; background: var(--chrome, var(--panel)); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; z-index: 90; }
 .drawer-links { display: none; }
 .scrim { display: none; }
 
@@ -69,7 +73,7 @@ body { overflow-x: hidden; }
 
 @media (max-width: 899px) {
   .app { grid-template-columns: minmax(0, 1fr); }
-  .app > main { grid-column: 1; }
+  .content { grid-column: 1; }
   .topbar .menu-btn { display: inline-flex; }
   .toplinks, .topbar .name { display: none; }
   .topbar .bell .count { display: inline-block; }
