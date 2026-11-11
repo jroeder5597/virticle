@@ -1,8 +1,9 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { bytes, del, get, NodeStatus, Pool, post, uploadVolume, Volume } from "../api";
 import { orEvents, useLive } from "../live";
 import DownloadVolume from "./DownloadVolume";
+import ImageCatalogue from "./ImageCatalogue";
 import { AlertMarks, useAlerts } from "./Alerts";
 import ImportDialog from "./Import";
 import { ErrorBox, Field, Modal, NodePicker, StateBadge, UsageBar, useAction } from "../ui";
@@ -12,7 +13,13 @@ export default function Storage({ fixedNode }: { fixedNode?: number } = {}) {
   const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes");
   const [pickedNode, setNode] = useState(0);
   const node = fixedNode ?? pickedNode;
-  const [selected, setSelected] = useState("");
+  // ?pool=NAME&catalogue=1 (a link from the New VM dialog) selects a pool and opens the image catalogue.
+  const [qs, setQs] = useSearchParams();
+  const [selected, setSelected] = useState(qs.get("pool") ?? "");
+  const [openCatalogue] = useState(qs.get("catalogue") === "1");
+  useEffect(() => {
+    if (qs.has("catalogue") || qs.has("pool")) setQs({}, { replace: true });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [creating, setCreating] = useState(false);
   const all = nodes.data?.nodes ?? [];
   useEffect(() => {
@@ -101,18 +108,19 @@ export default function Storage({ fixedNode }: { fixedNode?: number } = {}) {
           ))}
         </tbody>
       </table>
-      {pool && pool.state === "running" && <Volumes node={node} pool={pool} />}
+      {pool && pool.state === "running" && <Volumes node={node} pool={pool} openCatalogue={openCatalogue} />}
       {creating && <CreatePool node={node} onClose={() => setCreating(false)} />}
     </>
   );
 }
 
-function Volumes({ node, pool }: { node: number; pool: Pool }) {
+function Volumes({ node, pool, openCatalogue }: { node: number; pool: Pool; openCatalogue?: boolean }) {
   const base = `/nodes/${node}/pools/${encodeURIComponent(pool.name)}/volumes`;
   const vols = useLive(() => get<Volume[]>(base), base);
   const act = useAction();
   const [creating, setCreating] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [catalogue, setCatalogue] = useState(!!openCatalogue);
   const [importing, setImporting] = useState<string | undefined>();
   const [upload, setUpload] = useState<{ name: string; progress: number } | undefined>();
   const file = useRef<HTMLInputElement>(null);
@@ -146,6 +154,7 @@ function Volumes({ node, pool }: { node: number; pool: Pool }) {
             Upload image or ISO
           </button>
           <button onClick={() => setDownloading(true)}>Download from URL</button>
+          <button onClick={() => setCatalogue(true)}>Image catalogue</button>
           <button onClick={() => setImporting("")}>Import disk or OVA</button>
           <button onClick={() => setCreating(true)}>New volume</button>
         </div>
@@ -203,6 +212,7 @@ function Volumes({ node, pool }: { node: number; pool: Pool }) {
         </table>
       )}
       {downloading && <DownloadVolume node={node} pool={pool.name} onClose={() => setDownloading(false)} onDone={vols.reload} />}
+      {catalogue && <ImageCatalogue node={node} pool={pool.name} onClose={() => setCatalogue(false)} onDone={vols.reload} />}
       {creating && <CreateVolume base={base} pool={pool} onClose={() => setCreating(false)} />}
       {importing !== undefined && <ImportDialog node={node} pool={pool.name} volumes={vols.data ?? []} initial={importing} onClose={() => setImporting(undefined)} onDone={vols.reload} />}
     </>

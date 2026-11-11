@@ -15,6 +15,7 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
+	"virt-proj/internal/catalog"
 	"virt-proj/internal/cluster"
 	"virt-proj/internal/hostconn"
 	"virt-proj/internal/store"
@@ -41,6 +42,8 @@ type Server struct {
 	InstanceID string
 
 	bk        bkSchedState
+	catMu     sync.Mutex
+	cat       *catalog.Source // image catalogue, see images.go
 	condMu    sync.Mutex
 	conflicts map[int64]schedConflict // nodes where another controller schedules snapshots
 
@@ -179,6 +182,10 @@ func (s *Server) Handler() http.Handler {
 	auth("PUT /api/nodes/{node}/pools/{pool}/volumes/{vol}", s.uploadVolume)
 	auth("POST /api/nodes/{node}/pools/{pool}/volumes/{vol}/action", s.volumeAction)
 	auth("DELETE /api/nodes/{node}/pools/{pool}/volumes/{vol}", s.deleteVolume)
+	auth("GET /api/images", s.listImages)
+	auth("GET /api/nodes/{node}/pools/{pool}/images", s.listPoolImages)
+	auth("POST /api/nodes/{node}/pools/{pool}/images", s.downloadImage)
+	auth("POST /api/nodes/{node}/pools/{pool}/images/cancel", s.cancelImage)
 
 	auth("GET /api/nodes/{node}/networks", s.listNetworks)
 	auth("POST /api/nodes/{node}/networks", s.createNetwork)

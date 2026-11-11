@@ -1,0 +1,14 @@
+/* Image catalogue dialog: rows wrap instead of overflowing, so it fits at 390px. */
+.catnote { margin: 0 0 12px; }
+.catlist { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); }
+.catitem { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 12px; border-top: 1px solid var(--line); }
+.catitem:first-child { border-top: none; }
+.catmain { flex: 1 1 260px; min-width: 0; }
+.cattitle { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.catvol { overflow-wrap: anywhere; }
+.catact { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.catok { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); border-color: var(--ok); }
+@media (max-width: 520px) {
+  .catact { flex: 1 1 100%; }
+  .catact .button, .catact button { flex: 1 1 auto; text-align: center; }
+}

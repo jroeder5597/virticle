@@ -189,6 +189,9 @@ test.describe.serial("visual pass", () => {
       await page.getByRole("button", { name: "New pool" }).click();
       await shot("new-pool-dialog", () => expect(page.getByRole("dialog")).toBeVisible());
       await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Image catalogue" }).click();
+      await shot("image-catalogue-dialog", () => expect(page.getByRole("dialog", { name: "Image catalogue" }).locator("li.catitem").first()).toBeVisible());
+      await page.keyboard.press("Escape");
       await page.goto("/cloudinit-profiles");
       await page.getByRole("button", { name: "New profile" }).click();
       await shot("new-profile-dialog", () => expect(page.getByRole("dialog")).toBeVisible());
