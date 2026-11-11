@@ -73,6 +73,8 @@ var routeLevels = map[string]string{
 	"DELETE /api/cloudinit-profiles/{id}": operator,
 
 	"GET /api/vms":                                    viewer,
+	"GET /api/pools":                                  viewer,
+	"GET /api/networks":                               viewer,
 	"POST /api/nodes/{node}/vms":                      operator,
 	"GET /api/nodes/{node}/vms/{uuid}":                viewer,
 	"POST /api/nodes/{node}/vms/{uuid}/action":        operator,

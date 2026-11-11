@@ -1,5 +1,5 @@
 // Small shared building blocks.
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import "./menu.css";
 
@@ -234,4 +234,10 @@ export function usePrompt() {
     </Modal>
   ) : null;
   return { ask, dialog };
+}
+
+/** True inside the Datacenter tabs, where the page itself owns the h1 and tab headings drop to h2. */
+export const EmbeddedContext = createContext(false);
+export function PageTitle({ children }: { children: ReactNode }) {
+  return useContext(EmbeddedContext) ? <h2>{children}</h2> : <h1>{children}</h1>;
 }

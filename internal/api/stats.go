@@ -50,6 +50,7 @@ type nodeSeries struct {
 	lastErr    string
 	cpuN, memN int32 // parameter counts libvirt wants for the host calls
 	tookMS     int64
+	cpus       uint16
 }
 
 type statsHub struct {
@@ -108,6 +109,13 @@ func (s *Server) sampleNode(id int64) {
 			return
 		}
 		start := time.Now()
+		if ns.cpus == 0 { // fixed for the life of the connection; read once
+			if _, _, c, _, _, _, _, _, err := h.NodeGetInfo(); err == nil {
+				ns.mu.Lock()
+				ns.cpus = uint16(c)
+				ns.mu.Unlock()
+			}
+		}
 		ns.sample(h, start)
 		ns.mu.Lock()
 		ns.tookMS = time.Since(start).Milliseconds()
@@ -294,6 +302,8 @@ type nodeLatest struct {
 	Running int              `json:"running"`
 	// Stale is set when no sample arrived for three intervals.
 	Stale bool `json:"stale"`
+	// CPUs is the number of host CPUs, 0 until the sampler has asked.
+	CPUs uint16 `json:"cpus"`
 }
 
 // allStats returns the newest sample of every node and running VM, for the
@@ -314,7 +324,7 @@ func (s *Server) allStats(w http.ResponseWriter, r *http.Request) {
 	for id, ns := range nodes {
 		ns.mu.Lock()
 		key := strconv.FormatInt(id, 10)
-		nl := nodeLatest{VMs: ns.total, Running: ns.running, Stale: time.Since(ns.lastTick) > 3*stats.Interval}
+		nl := nodeLatest{VMs: ns.total, Running: ns.running, Stale: time.Since(ns.lastTick) > 3*stats.Interval, CPUs: ns.cpus}
 		if p, ok := ns.host.Last(); ok {
 			nl.Host = &p
 		}

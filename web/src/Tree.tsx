@@ -216,7 +216,7 @@ export default function Tree() {
     if ((m = p.match(/^\/node\/(\d+)\/storage/))) return { key: `s:${m[1]}`, anc: ["dc", `n:${m[1]}`] };
     if ((m = p.match(/^\/node\/(\d+)\/network/))) return { key: `w:${m[1]}`, anc: ["dc", `n:${m[1]}`] };
     if ((m = p.match(/^\/node\/(\d+)/))) return { key: `n:${m[1]}`, anc: ["dc"] };
-    if (p === "/nodes") return { key: "dc", anc: [] as string[] };
+    if (p === "/datacenter" || p.startsWith("/datacenter/")) return { key: "dc", anc: [] as string[] };
     return { key: "", anc: [] as string[] };
   }, [loc.pathname]);
   useEffect(() => {
@@ -276,7 +276,7 @@ export default function Tree() {
       if (nodeOpen) out.push(...list);
     }
     wanted.current = { storage: wantS, network: wantN };
-    return [{ key: "dc", kind: "dc" as Kind, level: 1, label: "Datacenter", href: "/nodes", open: isOpen("dc") } as RowModel, ...(isOpen("dc") ? out : [])];
+    return [{ key: "dc", kind: "dc" as Kind, level: 1, label: "Datacenter", href: "/datacenter", open: isOpen("dc") } as RowModel, ...(isOpen("dc") ? out : [])];
   }, [nodes, byNode, data, isOpen, needle]);
 
   // Fetch what became visible: opened groups only.
