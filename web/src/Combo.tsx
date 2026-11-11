@@ -86,7 +86,6 @@ export default function Combo<T extends ComboItem>(p: ComboProps<T>) {
 
   useEffect(() => {
     if (!open) return;
-    (search.current ?? pop.current)?.focus();
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
       if (!pop.current?.contains(t) && !btn.current?.contains(t)) setOpen(false);
@@ -109,6 +108,11 @@ export default function Combo<T extends ComboItem>(p: ComboProps<T>) {
     };
   }, [open]);
 
+  // Focus the search box (or the list) once the popup is placed and visible; a hidden element cannot take focus.
+  const placed = !!pos;
+  useEffect(() => {
+    if (open && placed) (search.current ?? pop.current)?.focus();
+  }, [open, placed]);
   // Keep the active item valid while the filter changes, and in view.
   useEffect(() => {
     if (!open) return;

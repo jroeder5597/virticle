@@ -357,13 +357,13 @@ test.describe.serial("snapshot tree, delete dialog, schedule, bridge picker", ()
       await expect(v).toContainText("192.168.122.1/24");
       await expect(v).toContainText("used by libvirt network default");
       await expect(page.getByRole("group", { name: "Managed by libvirt networks" })).toContainText("virbr0");
-      await expect(page.getByRole("listbox")).toContainText("usually the better choice");
+      await expect(page.getByRole("listbox")).toContainText("Usually better: pick the libvirt network itself");
       // search by name and by address
       await page.keyboard.type("zzz");
       await expect(page.getByText("Nothing matches zzz")).toBeVisible();
-      await page.getByRole("searchbox").fill("122.1");
+      await page.getByRole("searchbox", { name: "Search bridges by name or address" }).fill("122.1");
       await expect(opts).toHaveCount(1);
-      await page.getByRole("searchbox").fill("vir");
+      await page.getByRole("searchbox", { name: "Search bridges by name or address" }).fill("vir");
       await expect(opts).toHaveCount(1);
       // keyboard: Enter chooses, the request carries the bridge
       await page.keyboard.press("ArrowDown");
