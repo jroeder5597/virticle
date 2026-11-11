@@ -74,7 +74,6 @@ function SummaryCard({ d, g }: { d: VMDetail; g?: GuestInfo }) {
   const os = agent && g?.available ? g.os?.prettyName || g.os?.name || g.os?.id : undefined;
   const agentText = d.agent === "connected" ? "connected" : d.agent === "absent" ? "not set up" : "not responding";
   const ips = d.nics.flatMap((n) => n.ips);
-  const uefi = d.firmware === "uefi";
   const passed = usePassthrough(d);
   return (
     <section className="card" id="summary" aria-label="Summary">
@@ -98,10 +97,22 @@ function SummaryCard({ d, g }: { d: VMDetail; g?: GuestInfo }) {
         <dd className="mono" title={!running ? "The VM is not running" : d.ipSource === "agent" ? "From the guest agent" : d.ipSource === "lease" ? "From the network's DHCP leases" : undefined}>
           {ips.length ? ips.join("  ") : running ? "No address" : dash}
         </dd>
-        <dt>Secure Boot</dt>
-        <dd title={uefi ? undefined : "Needs UEFI firmware"}>{d.fw?.secureBoot ? <span className="badge s-ok">Enabled</span> : uefi ? "Disabled" : dash}</dd>
-        <dt>vTPM</dt>
-        <dd>{d.tpm ? <span className="badge s-ok">{d.fw?.tpmVersion ? `TPM ${d.fw.tpmVersion}` : "Enabled"}</span> : "None"}</dd>
+        {d.fw?.secureBoot && (
+          <>
+            <dt>Secure Boot</dt>
+            <dd>
+              <span className="badge s-ok">Enabled</span>
+            </dd>
+          </>
+        )}
+        {d.tpm && (
+          <>
+            <dt>vTPM</dt>
+            <dd>
+              <span className="badge s-ok">{d.fw?.tpmVersion ? `TPM ${d.fw.tpmVersion}` : "Enabled"}</span>
+            </dd>
+          </>
+        )}
         <dt>Passthrough</dt>
         <dd className="ov-pass">
           {d.passthroughDevices === 0

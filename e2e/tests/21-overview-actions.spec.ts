@@ -52,11 +52,9 @@ test.describe.serial("overview and actions", () => {
     await expect(sum).toContainText("QEMU Guest Agent");
     // rows in the order requested
     const labels = await sum.locator("dt").allTextContents();
-    expect(labels).toEqual(["Power State", "Guest OS", "QEMU Guest Agent", "DNS Name", "IP Addresses", "Secure Boot", "vTPM", "Passthrough"]);
-    // a BIOS guest without a TPM or host devices
-    await expect(sum.locator("dd").nth(5)).toHaveText("–");
-    await expect(sum.locator("dd").nth(6)).toHaveText("None");
-    await expect(sum.locator("dd").nth(7)).toHaveText("None");
+    expect(labels).toEqual(["Power State", "Guest OS", "QEMU Guest Agent", "DNS Name", "IP Addresses", "Passthrough"]);
+    // Secure Boot and vTPM rows show only when enabled; this is a BIOS guest without host devices
+    await expect(sum.locator("dd").nth(5)).toHaveText("None");
     // a cirros guest has no agent: the fallback text says so plainly
     await expect(sum.locator("dd").nth(3)).toHaveText("Not reported");
     await expect(sum.locator("dd").nth(3)).toHaveAttribute("title", "Needs the guest agent");
