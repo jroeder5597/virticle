@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -48,7 +49,8 @@ type node struct {
 }
 
 type Manager struct {
-	keyFile, knownHosts string
+	keyFile, knownHosts   string
+	wdInterval, wdTimeout time.Duration // connection watchdog, see watchdog.go
 
 	mu    sync.Mutex
 	nodes map[int64]*node
@@ -56,7 +58,7 @@ type Manager struct {
 }
 
 func NewManager(keyFile, knownHosts string) *Manager {
-	return &Manager{keyFile: keyFile, knownHosts: knownHosts, nodes: map[int64]*node{}, subs: map[chan Event]struct{}{}}
+	return &Manager{keyFile: keyFile, knownHosts: knownHosts, wdInterval: watchInterval, wdTimeout: watchTimeout, nodes: map[int64]*node{}, subs: map[chan Event]struct{}{}}
 }
 
 // Target builds the SSH target for a node record. A jump host authenticates
@@ -114,14 +116,20 @@ func (m *Manager) run(ctx context.Context, n *node) {
 		if ctx.Err() != nil {
 			return
 		}
-		msg := "connection lost"
+		msg, state := "connection lost", "offline"
 		if err != nil {
 			msg = err.Error()
 		} else {
 			backoff = time.Second
 		}
-		n.set(nil, "offline", msg)
-		m.Publish(Event{Type: "node", Node: n.cfg.ID, Detail: "offline"})
+		if errors.Is(err, errWedged) {
+			// The transport was fine, so retry at once rather than backing off.
+			state, backoff = "connecting", time.Second
+			msg += ", reconnecting"
+			log.Printf("node %s: %s", n.cfg.Addr, msg)
+		}
+		n.set(nil, state, msg)
+		m.Publish(Event{Type: "node", Node: n.cfg.ID, Detail: state})
 		select {
 		case <-ctx.Done():
 			return
@@ -158,6 +166,10 @@ func (m *Manager) session(ctx context.Context, n *node) error {
 	n.hostname = h.Name
 	n.mu.Unlock()
 	go m.objectEvents(evctx, n.cfg.ID, h)
+	wedged := make(chan error, 1)
+	go func() {
+		wedged <- watch(evctx, func() error { _, err := h.ConnectGetLibVersion(); return err }, m.wdInterval, m.wdTimeout)
+	}()
 	n.set(h, "online", "")
 	m.Publish(Event{Type: "node", Node: n.cfg.ID, Detail: "online"})
 
@@ -166,6 +178,11 @@ func (m *Manager) session(ctx context.Context, n *node) error {
 		case <-ctx.Done():
 			return nil
 		case <-h.Disconnected():
+			return nil
+		case err := <-wedged:
+			if err != nil && h.IsConnected() {
+				return err
+			}
 			return nil
 		case ev, ok := <-events:
 			if !ok {
