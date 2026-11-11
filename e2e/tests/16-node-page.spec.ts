@@ -29,14 +29,14 @@ test.describe.serial("node page", () => {
 
   test("summary shows host facts", async ({ page }) => {
     await page.goto("/nodes");
-    await page.getByRole("link", { name: env.node1 }).click();
+    await page.locator("main").getByRole("link", { name: env.node1 }).click();
     await expect(page.locator(".card", { hasText: "Host" }).first()).toContainText(/\d+ ×/);
     await expect(page.locator(".card", { hasText: "Inventory" })).toContainText(/\d+ of \d+/);
   });
 
   test("storage tab shows the default pool, network tab lists host interfaces", async ({ page }) => {
     await page.goto("/nodes");
-    await page.getByRole("link", { name: env.node1 }).click();
+    await page.locator("main").getByRole("link", { name: env.node1 }).click();
     await page.getByRole("tab", { name: "Storage", exact: true }).click();
     await expect(page.locator("tbody tr").filter({ hasText: "default" }).first()).toBeVisible();
     await page.getByRole("tab", { name: "Network", exact: true }).click();
@@ -53,7 +53,7 @@ test.describe.serial("node page", () => {
   test("no sideways scroll at 390px on any tab", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/nodes");
-    await page.getByRole("link", { name: env.node1 }).click();
+    await page.locator("main").getByRole("link", { name: env.node1 }).click();
     for (const [label] of TABS) {
       await page.getByRole("tab", { name: label, exact: true }).click();
       await page.waitForTimeout(1200);

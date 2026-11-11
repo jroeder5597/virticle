@@ -71,7 +71,7 @@ test.describe.serial("users and roles", () => {
 
   test("viewer: read-only everywhere, 403 message on a forced request", async ({ browser }) => {
     const { ctx, page } = await signInAs(browser, VIEWER, PASS);
-    const nav = page.locator("nav");
+    const nav = page.locator(".topbar");
     await expect(nav.getByRole("link", { name: "Users" })).toHaveCount(0);
     await expect(nav.getByRole("link", { name: "Audit" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "New VM" })).toBeHidden();
@@ -113,7 +113,7 @@ test.describe.serial("users and roles", () => {
 
   test("operator: manages VMs but sees no Users or Audit", async ({ browser, api }) => {
     const { ctx, page } = await signInAs(browser, OP, PASS);
-    const nav = page.locator("nav");
+    const nav = page.locator(".topbar");
     await expect(nav.getByRole("link", { name: "Storage" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Users" })).toHaveCount(0);
     await expect(nav.getByRole("link", { name: "Audit" })).toHaveCount(0);

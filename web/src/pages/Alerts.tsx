@@ -33,7 +33,7 @@ export function AlertBell() {
     <div className="alertbell">
       <button className="bell" onClick={() => setOpen(!open)} aria-label={`Alerts: ${alerts.length}`} aria-expanded={open} title="Alerts">
         <Bell size={16} aria-hidden="true" />
-        <span>Alerts</span>
+        <span className="name">Alerts</span>
         {alerts.length > 0 && <span className={"count " + (critical ? "critical" : "warning")}>{alerts.length}</span>}
       </button>
       {open && (

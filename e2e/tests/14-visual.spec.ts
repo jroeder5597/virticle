@@ -123,7 +123,7 @@ test.describe.serial("visual pass", () => {
         ["xml", "Revert"],
       ] as const) {
         await page.goto(`${vmUrl}?tab=${tab}`);
-        await shot("vm-" + tab, () => expect(page.getByText(check).first()).toBeVisible({ timeout: 30_000 }), { wide: tab === "xml" });
+        await shot("vm-" + tab, () => expect(page.locator("main").getByText(check).first()).toBeVisible({ timeout: 30_000 }), { wide: tab === "xml" });
       }
       for (const [path, name, h] of [
         ["/storage", "storage", "Storage"],
