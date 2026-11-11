@@ -88,7 +88,7 @@ export function TakeSnapshot(props: { d: VMDetail; base: string; onClose: () => 
   const live = d.state !== "shutoff";
   const agentOK = d.agent === "connected";
   const submit = async () => {
-    const ok = await act.run(() => post(`${props.base}/snapshots`, { name, description, memory, quiesce, mode: memory ? mode : "" }));
+    const ok = await act.run(() => post(`${props.base}/snapshots?async=1`, { name, description, memory, quiesce, mode: memory ? mode : "" }));
     if (ok) {
       props.onDone();
       props.onClose();
@@ -170,7 +170,7 @@ function Revert(props: { snap: Snap; base: string; onClose: () => void; onDone: 
   const [start, setStart] = useState("");
   const [force, setForce] = useState(false);
   const submit = async () => {
-    const ok = await act.run(() => post(`${props.base}/snapshots/${encodeURIComponent(snap.name)}/revert`, { start, force }));
+    const ok = await act.run(() => post(`${props.base}/snapshots/${encodeURIComponent(snap.name)}/revert?async=1`, { start, force }));
     if (ok) {
       props.onDone();
       props.onClose();
@@ -255,7 +255,7 @@ function DeleteSnapshots(props: { list: Snap[]; initial?: string; base: string; 
   const n = sel.size;
   const external = list.some((x) => sel.has(x.name) && x.kind === "external");
   const submit = async () => {
-    const ok = await act.run(() => post(`${props.base}/snapshots/delete`, { names: [...sel] }));
+    const ok = await act.run(() => post(`${props.base}/snapshots/delete?async=1`, { names: [...sel] }));
     props.onDone();
     if (ok) props.onClose();
   };

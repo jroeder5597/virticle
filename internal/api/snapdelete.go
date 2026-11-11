@@ -242,7 +242,7 @@ func (s *Server) deleteSnapshotsHandler(w http.ResponseWriter, r *http.Request) 
 	if len(plan.Order) > 3 {
 		target = fmt.Sprintf("%s@%d snapshots", dom.Name, len(plan.Order))
 	}
-	err = s.task(r, "snapshot delete", target, h.Name, func(progress func(float64)) error {
+	err = s.taskAsync(r, "snapshot delete", target, h.Name, func(progress func(float64)) error {
 		defer refreshPools(h)
 		for i, name := range plan.Order {
 			v, err := h.DomainSnapshotLookupByName(dom, name, 0)

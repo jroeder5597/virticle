@@ -37,7 +37,7 @@ test.describe.serial("tasks dock", () => {
     await api.put("/me/prefs", { tasksDock: "open" }).catch(() => {});
   });
 
-  test("open by default at the bottom quarter; the page does not grow; the main area scrolls", async ({ page, api, n1 }) => {
+  test("open by default, three rows high; the page does not grow; the main area scrolls", async ({ page, api, n1 }) => {
     vm = await createCirros(api, n1, VM);
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto("/datacenter");
@@ -45,8 +45,7 @@ test.describe.serial("tasks dock", () => {
     await expect(dock).toBeVisible();
     await expect(page.getByRole("button", { name: "Hide tasks" })).toHaveAttribute("aria-expanded", "true");
     const box = (await dock.boundingBox())!;
-    expect(box.y / 720).toBeGreaterThan(0.72);
-    expect(box.y / 720).toBeLessThan(0.78);
+    expect(Math.round(box.height)).toBe(134); // the bar, the column heads and three rows
     expect(Math.round(box.y + box.height)).toBe(720);
     // the tree keeps its full height next to it
     const tree = (await page.locator(".sidebar").boundingBox())!;

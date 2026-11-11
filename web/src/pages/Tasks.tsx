@@ -1,8 +1,9 @@
 import { get, Task } from "../api";
 import { useLive } from "../live";
 import { useInventory } from "../inventory";
-import { absTime, TaskNode, TaskTarget } from "../taskView";
-import { ErrorBox, PageTitle, StateBadge } from "../ui";
+import { absTime, orderTasks, TaskNode, TaskStatus, TaskTarget } from "../taskView";
+import { ErrorBox, PageTitle } from "../ui";
+import "../tasksdock.css";
 import { StatusLine } from "../Checks";
 
 export default function Tasks() {
@@ -29,7 +30,7 @@ export default function Tasks() {
             </tr>
           </thead>
           <tbody>
-            {(tasks.data ?? []).map((t) => (
+            {orderTasks(tasks.data ?? []).map((t) => (
               <tr key={t.id}>
                 <td>{absTime(t.started)}</td>
                 <td>{t.kind}</td>
@@ -41,8 +42,15 @@ export default function Tasks() {
                 </td>
                 <td>{t.user}</td>
                 <td>
-                  <StateBadge state={t.status} />
-                  {t.status === "running" && t.progress > 0 && <span className="muted"> {(t.progress * 100).toFixed(0)}%</span>}
+                  <TaskStatus status={t.status} />
+                  {t.status === "running" && (
+                    <span className="dk-prog">
+                      <span className="dk-bar">
+                        <span style={{ width: `${Math.round(Math.min(1, t.progress) * 100)}%` }} />
+                      </span>
+                      <span className="num">{t.progress > 0 ? `${(t.progress * 100).toFixed(0)}%` : ""}</span>
+                    </span>
+                  )}
                   {t.error && <StatusLine status="error">{t.error}</StatusLine>}
                 </td>
               </tr>

@@ -317,10 +317,17 @@ func (s *Server) createSnapshot(r *http.Request, h *hostconn.Host, dom libvirt.D
 	}
 	body.WriteString("</domainsnapshot>")
 
-	err = s.task(r, "snapshot create", dom.Name, h.Name, func(func(float64)) error {
+	xmlBody, withMemory := body.String(), active && q.Memory
+	err = s.taskAsync(r, "snapshot create", dom.Name, h.Name, func(progress func(float64)) error {
 		defer refreshPools(h)
-		_, err := h.DomainSnapshotCreateXML(dom, body.String(), uint32(flags))
-		return err
+		create := func() error {
+			_, err := h.DomainSnapshotCreateXML(dom, xmlBody, uint32(flags))
+			return err
+		}
+		if withMemory {
+			return withJobProgress(h, dom, progress, create)
+		}
+		return create()
 	})
 	return q.Name, err
 }
@@ -366,7 +373,7 @@ func (s *Server) revertSnapshot(w http.ResponseWriter, r *http.Request) {
 	if q.Force {
 		flags |= libvirt.DomainSnapshotRevertForce
 	}
-	err = s.task(r, "snapshot revert", dom.Name+"@"+sn.Name, h.Name, func(func(float64)) error {
+	err = s.taskAsync(r, "snapshot revert", dom.Name+"@"+sn.Name, h.Name, func(func(float64)) error {
 		defer refreshPools(h)
 		return h.DomainRevertToSnapshot(sn, uint32(flags))
 	})
@@ -388,7 +395,7 @@ func (s *Server) deleteSnapshot(w http.ResponseWriter, r *http.Request) {
 	// descendants are deleted one by one, deepest first. Deleting a snapshot
 	// that has children but without this option merges it into them.
 	withChildren := r.URL.Query().Get("children") == "1"
-	err = s.task(r, "snapshot delete", dom.Name+"@"+sn.Name, h.Name, func(progress func(float64)) error {
+	err = s.taskAsync(r, "snapshot delete", dom.Name+"@"+sn.Name, h.Name, func(progress func(float64)) error {
 		defer refreshPools(h)
 		victims := []string{sn.Name}
 		if withChildren {

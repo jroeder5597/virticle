@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/digitalocean/go-libvirt"
 
@@ -247,6 +248,13 @@ type badRequest string
 func (b badRequest) Error() string { return string(b) }
 
 func fail(w http.ResponseWriter, err error) {
+	var ac accepted
+	if errors.As(err, &ac) { // not a failure: the work goes on as a background task
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(map[string]any{"accepted": true, "task": ac.Task})
+		return
+	}
 	code := http.StatusInternalServerError
 	var lv libvirt.Error
 	var br badRequest
@@ -328,6 +336,57 @@ func (s *Server) task(r *http.Request, kind, target, node string, fn func(progre
 	s.Store.FinishTask(&t, err)
 	s.Nodes.Publish(cluster.Event{Type: "task", Task: t})
 	return err
+}
+
+// accepted is returned by taskAsync when the work was started in the background; fail answers it with 202.
+type accepted struct{ Task int64 }
+
+func (a accepted) Error() string { return "accepted as a background task" }
+
+// taskAsync is s.task for work that can take long and whose handler needs nothing from its result. A request
+// with ?async=1 (the web UI) gets its answer as soon as the task is recorded: 202 with the task id, and the
+// outcome arrives through the task log and the event stream. Without it the call waits, as scripts expect.
+// fn must not use the request: it may run after the handler has returned.
+func (s *Server) taskAsync(r *http.Request, kind, target, node string, fn func(progress func(float64)) error) error {
+	if r == nil || r.URL == nil || r.URL.Query().Get("async") != "1" {
+		return s.task(r, kind, target, node, fn)
+	}
+	id, err := s.startBackground(r, kind, target, node, fn)
+	if err != nil {
+		return err
+	}
+	return accepted{Task: id}
+}
+
+// withJobProgress runs call and, while it is in flight, reports the domain job's progress (a snapshot that
+// saves memory, for example). Never reports 1: the caller's return finishes the task.
+func withJobProgress(h *hostconn.Host, dom libvirt.Domain, progress func(float64), call func() error) error {
+	done := make(chan error, 1)
+	go func() { done <- call() }()
+	tick := time.NewTicker(500 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case err := <-done:
+			return err
+		case <-tick.C:
+			jt, ps, err := h.DomainGetJobStats(dom, 0)
+			if err != nil || jt == 0 {
+				continue
+			}
+			st := map[string]float64{}
+			for _, tp := range ps {
+				st[tp.Field] = toFloat(tp.Value.I)
+			}
+			total, got := st["data_total"], st["data_processed"]
+			if total == 0 {
+				total, got = st["memory_total"], st["memory_processed"]
+			}
+			if total > 0 {
+				progress(min(0.99, got/total))
+			}
+		}
+	}
 }
 
 // --- session ---
