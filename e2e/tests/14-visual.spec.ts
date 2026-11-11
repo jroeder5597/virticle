@@ -3,7 +3,7 @@
 // Screenshots go to test-results/visual/ for a human to look at; the automatic checks catch
 // unreadable text (contrast) and pages that scroll sideways.
 import { Page } from "@playwright/test";
-import { mkdirSync } from "fs";
+import { mkdirSync, readFileSync } from "fs";
 import { cleanVMs, createCirros, expect, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
 import { field, pick, row } from "../lib/ui";
@@ -314,6 +314,25 @@ test.describe.serial("visual pass", () => {
       await page.getByRole("dialog", { name: "Edit connection" }).getByRole("button", { name: "Test connection" }).click();
       await shot("node-edit-connection-tested", () => expect(page.getByRole("dialog", { name: "Edit connection" }).locator("ul.checklist")).toContainText("Root access", { timeout: 30_000 }));
       await page.keyboard.press("Escape");
+      // Prepare node: the form, then the result of a check against a lab node (needs the administrator key)
+      await page.goto("/nodes");
+      await page.getByRole("button", { name: "Add node" }).click();
+      await page.getByRole("dialog", { name: "Add node" }).getByRole("button", { name: "Prepare this node" }).click();
+      await shot("prepare-node-form", () => expect(page.getByRole("dialog", { name: "Prepare node" })).toBeVisible());
+      await page.getByRole("dialog", { name: "Prepare node" }).getByRole("checkbox", { name: /Full sudo/ }).check();
+      await shot("prepare-node-form-options", () => expect(page.getByRole("dialog", { name: "Prepare node" }).getByRole("checkbox", { name: /Full sudo/ })).toBeChecked());
+      const adminKey = (() => { try { return readFileSync(process.env.E2E_ADMIN_KEY_FILE ?? "/root/virt-proj/lab/keys/controller", "utf8").trim(); } catch { return ""; } })();
+      if (adminKey) {
+        const n1 = (await (await page.request.get("/api/nodes")).json()).nodes.find((n: any) => n.hostname === env.node1 || n.addr === env.node1);
+        const dlg = page.getByRole("dialog", { name: "Prepare node" });
+        await field(dlg, "Address").fill(n1.addr);
+        await field(dlg, "Jump host (optional)").fill(n1.jump ?? "");
+        await pick(dlg, "Credential", "Private key");
+        await dlg.locator("textarea").fill(adminKey);
+        await dlg.getByRole("button", { name: "Check", exact: true }).click();
+        await shot("prepare-node-result", () => expect(page.getByRole("dialog", { name: "Check node" }).locator("ul.checklist")).toContainText("Existing VMs are left alone", { timeout: 60_000 }));
+      }
+      await page.goto("/nodes"); // leaves both dialogs
       // modals that carry the most layout
       await page.goto("/storage");
       await page.getByRole("button", { name: "New pool" }).click();

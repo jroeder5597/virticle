@@ -233,9 +233,14 @@ func (m *Manager) TestConnect(cfg store.Node, timeout time.Duration) (res TestRe
 		return res, err
 	}
 	res.Privilege, res.PrivilegeNote = string(p), note
-	if p == hostconn.PrivNone {
+	switch p {
+	case hostconn.PrivNone:
 		st.add("privilege", StepWarning, note+"; features that need root are off")
-	} else {
+	case hostconn.PrivSudo:
+		st.add("privilege", StepWarning, "Broad sudo; run Prepare node to scope it. "+note)
+	case hostconn.PrivHelper:
+		st.add("privilege", StepOK, "Scoped access (helper): "+note+". Backups, migration, pool writes and disk moves need broad sudo or root")
+	default:
 		st.add("privilege", StepOK, string(p)+": "+note)
 	}
 	status, detail := migrationStep(h, cfg)

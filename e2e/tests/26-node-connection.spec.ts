@@ -20,9 +20,9 @@ test.describe.serial("node connection", () => {
     await expect(card.locator("dt", { hasText: /^Address$/ })).toBeVisible();
     await expect(card).toContainText(node.addr);
     for (const k of ["Reported hostname", "Resolved IP", "Migration address", "SSH user", "Jump host", "Root access"]) await expect(card.locator("dt", { hasText: new RegExp(`^${k}$`) })).toBeVisible();
-    await expect(card).toContainText(/root: the SSH user is root|sudo: commands|none: nothing runs/);
+    await expect(card).toContainText(/root: the SSH user is root|helper: scoped sudo|sudo: commands|none: nothing runs/);
     const info = await api.get(`/nodes/${n1}`);
-    expect(["root", "sudo", "none"]).toContain(info.privilege);
+    expect(["root", "helper", "sudo", "none"]).toContain(info.privilege);
     expect(info.hostUuid).toMatch(/^[0-9a-f-]{36}$/);
     expect(info.capabilities.installTLS).toHaveProperty("ok");
     expect(info.effectiveMigrationAddress).toBeTruthy();

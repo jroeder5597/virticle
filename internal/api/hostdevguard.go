@@ -53,7 +53,7 @@ func hostDriverInUse(h *hostconn.Host, d hostDevice) string {
 	if d.Kind != "pci" || d.Category != "gpu" || d.Driver == "" || d.Driver == "vfio-pci" || d.Driver == "pci-stub" {
 		return ""
 	}
-	out, err := h.RunRoot(gpuUsersCommand(d.ID))
+	out, err := gpuUsers(h, d.ID)
 	users, complete := parseGPUUsers(out)
 	if err != nil || !complete {
 		// Without root the node's other processes cannot be inspected; say so rather than guess.

@@ -73,7 +73,7 @@ export interface NodeStatus {
   error?: string;
   hostname?: string;
   maintenance?: boolean;
-  privilege?: "root" | "sudo" | "none" | "";
+  privilege?: "root" | "helper" | "sudo" | "none" | "";
   migrationAddress?: string;
   capabilities?: Record<string, { ok: boolean; reason?: string }>;
 }

@@ -35,6 +35,9 @@ func renameEnv(old, name string) {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "node" {
+		os.Exit(nodeCommand(os.Args[2:])) // node.go
+	}
 	listen := flag.String("listen", "127.0.0.1:8080", "address to serve the web UI and API on")
 	data := flag.String("data", "data", "directory for the database and the controller's SSH key")
 	tlsCert := flag.String("tls-cert", "", "PEM certificate to serve HTTPS with (needs -tls-key)")

@@ -45,7 +45,7 @@ func (s *Server) addNode(w http.ResponseWriter, r *http.Request) {
 		n.Privilege = ""
 	}
 	if n.Privilege != "" && !hostconn.Privilege(n.Privilege).Valid() {
-		fail(w, badRequest("privilege must be root, sudo, none or auto"))
+		fail(w, badRequest("privilege must be root, helper, sudo, none or auto"))
 		return
 	}
 	if n.Addr == "" {

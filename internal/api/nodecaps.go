@@ -16,13 +16,17 @@ type capability struct {
 // Features that run commands as root on the node (see internal/hostconn
 // privilege.go). Everything else the app does goes through libvirt, which a
 // member of the libvirt group may use, or reads world-readable system files.
-var rootFeatures = []struct{ key, reason string }{
-	{"installTLS", "Encrypted migration needs root or sudo on this node: the certificates go into /etc/pki/qemu"},
-	{"writePools", "Downloading or importing into a storage pool needs root or sudo on this node: the pool directories belong to root"},
-	{"backups", "Backups need root or sudo on this node: they read and write disk images in the pool directories"},
-	{"migration", "Moving a VM to or from this node needs root or sudo on it: disk images and snapshot files are copied as root"},
-	{"diskMove", "Moving a disk between pools needs root or sudo on this node"},
-	{"clone", "Cloning with guest preparation needs root or sudo on this node"},
+// scoped marks the features the virticle helper covers (scoped sudo access).
+var rootFeatures = []struct {
+	key, reason string
+	scoped      bool
+}{
+	{"installTLS", "Encrypted migration needs root or sudo on this node: the certificates go into /etc/pki/qemu", true},
+	{"writePools", "Downloading or importing into a storage pool needs root or sudo on this node: the pool directories belong to root", false},
+	{"backups", "Backups need root or sudo on this node: they read and write disk images in the pool directories", false},
+	{"migration", "Moving a VM to or from this node needs root or sudo on it: disk images and snapshot files are copied as root", false},
+	{"diskMove", "Moving a disk between pools needs root or sudo on this node", false},
+	{"clone", "Cloning with guest preparation needs root or sudo on this node", false},
 }
 
 // nodeCapabilities evaluates every feature for a privilege setting. An
@@ -32,8 +36,11 @@ func nodeCapabilities(priv string) map[string]capability {
 	out := map[string]capability{}
 	for _, f := range rootFeatures {
 		c := capability{OK: true}
-		if hostconn.Privilege(priv) == hostconn.PrivNone {
+		switch {
+		case hostconn.Privilege(priv) == hostconn.PrivNone:
 			c = capability{OK: false, Reason: f.reason}
+		case hostconn.Privilege(priv) == hostconn.PrivHelper && !f.scoped:
+			c = capability{OK: false, Reason: "Needs broad sudo or root on this node; the scoped account (virticle helper) does not cover it"}
 		}
 		out[f.key] = c
 	}

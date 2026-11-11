@@ -97,6 +97,8 @@ func (s *Server) Handler() http.Handler {
 	auth("PUT /api/nodes/{node}", s.editNode)
 	auth("POST /api/nodes/{node}/test-connection", s.testNodeConnection)
 	auth("POST /api/nodes/{node}/forget-host-key", s.forgetHostKey)
+	auth("POST /api/prepare", s.prepareStart)
+	auth("GET /api/prepare/{task}", s.prepareStatus)
 	auth("GET /api/nodes/{node}", s.nodeInfo)
 	auth("POST /api/nodes/{node}/evacuate/check", s.evacuateCheck)
 	auth("POST /api/nodes/{node}/evacuate", s.evacuate)

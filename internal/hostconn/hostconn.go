@@ -34,6 +34,8 @@ type Target struct {
 	User     string
 	KeyFile  string // private key path; optional if Password is set
 	Password string // optional
+	KeyPEM   []byte // optional private key held in memory (a one-time administrator key)
+	Agent    bool   // also offer the keys of the SSH agent in SSH_AUTH_SOCK
 	Jump     *Target
 	Timeout  time.Duration // per SSH connection attempt; default 15s
 }
@@ -254,6 +256,16 @@ func dialSSH(t Target, knownHosts string, via *ssh.Client) (*ssh.Client, error) 
 			return nil, err
 		}
 		auth = append(auth, ssh.PublicKeys(signer))
+	}
+	if len(t.KeyPEM) > 0 {
+		signer, err := ssh.ParsePrivateKey(t.KeyPEM)
+		if err != nil {
+			return nil, fmt.Errorf("private key: %w", err)
+		}
+		auth = append(auth, ssh.PublicKeys(signer))
+	}
+	if t.Agent {
+		auth = append(auth, ssh.PublicKeysCallback(agentSigners))
 	}
 	if t.Password != "" {
 		auth = append(auth, ssh.Password(t.Password))
