@@ -50,7 +50,7 @@ export function useEvents(fn: Listener) {
 }
 
 // Network and pool events are only interesting to the pages that show them.
-const defaultWhen = (e: ServerEvent) => (e.type === "task" ? e.task?.status !== "running" : e.type !== "network" && e.type !== "pool");
+const defaultWhen = (e: ServerEvent) => (e.type === "task" ? e.task?.status !== "running" : e.type !== "network" && e.type !== "pool" && e.type !== "tags");
 export const orEvents = (...types: ServerEvent["type"][]) => (e: ServerEvent) => types.includes(e.type) || defaultWhen(e);
 
 /**
@@ -88,4 +88,10 @@ export function useLive<T>(load: () => Promise<T>, key: string, when?: (e: Serve
     if (relevant) reload();
   });
   return { data, error, reload };
+}
+
+/** Subscribe outside a component (a module-level store). Returns the unsubscribe function. */
+export function onEvent(fn: Listener): () => void {
+  listeners.add(fn);
+  return () => void listeners.delete(fn);
 }
