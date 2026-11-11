@@ -91,6 +91,9 @@ func (s *Server) Handler() http.Handler {
 	auth("GET /api/nodes", s.listNodes)
 	auth("POST /api/nodes", s.addNode)
 	auth("DELETE /api/nodes/{node}", s.deleteNode)
+	auth("PUT /api/nodes/{node}", s.editNode)
+	auth("POST /api/nodes/{node}/test-connection", s.testNodeConnection)
+	auth("POST /api/nodes/{node}/forget-host-key", s.forgetHostKey)
 	auth("GET /api/nodes/{node}", s.nodeInfo)
 	auth("POST /api/nodes/{node}/evacuate/check", s.evacuateCheck)
 	auth("POST /api/nodes/{node}/evacuate", s.evacuate)
@@ -135,7 +138,7 @@ func (s *Server) Handler() http.Handler {
 	auth("DELETE /api/nodes/{node}/vms/{uuid}/disks/{target}", s.hwDiskDelete)
 	auth("POST /api/nodes/{node}/vms/{uuid}/disks/{target}/resize", s.hwDiskResize)
 	auth("GET /api/nodes/{node}/vms/{uuid}/disks/{target}/move/plan", s.diskMovePlan)
-	auth("POST /api/nodes/{node}/vms/{uuid}/disks/{target}/move", s.diskMove)
+	auth("POST /api/nodes/{node}/vms/{uuid}/disks/{target}/move", s.needs("diskMove", s.diskMove))
 	auth("POST /api/nodes/{node}/vms/{uuid}/disks/{target}/move/cancel", s.diskMoveCancel)
 	auth("POST /api/nodes/{node}/vms/{uuid}/cdrom", s.hwCDROMAdd)
 	auth("PUT /api/nodes/{node}/vms/{uuid}/cdrom/{target}", s.hwCDROMMedia)
@@ -157,10 +160,10 @@ func (s *Server) Handler() http.Handler {
 	auth("PUT /api/tags/{name}/color", s.putTagColor)
 	auth("DELETE /api/tags/{name}/color", s.deleteTagColor)
 	auth("GET /api/nodes/{node}/firmware-caps", s.firmwareCaps)
-	auth("POST /api/nodes/{node}/import/inspect", s.importInspect)
-	auth("POST /api/nodes/{node}/import", s.importDisk)
-	auth("POST /api/nodes/{node}/vms/{uuid}/migrate/check", s.migrateCheck)
-	auth("POST /api/nodes/{node}/vms/{uuid}/migrate", s.migrate)
+	auth("POST /api/nodes/{node}/import/inspect", s.needs("writePools", s.importInspect))
+	auth("POST /api/nodes/{node}/import", s.needs("writePools", s.importDisk))
+	auth("POST /api/nodes/{node}/vms/{uuid}/migrate/check", s.needs("migration", s.migrateCheck))
+	auth("POST /api/nodes/{node}/vms/{uuid}/migrate", s.needs("migration", s.migrate))
 	auth("POST /api/nodes/{node}/vms/{uuid}/migrate/cancel", s.migrateCancel)
 	auth("GET /api/nodes/{node}/migration-tls", s.migTLSStatus)
 	auth("POST /api/nodes/{node}/migration-tls", s.migTLSSetup)
@@ -176,26 +179,26 @@ func (s *Server) Handler() http.Handler {
 	auth("GET /api/nodes/{node}/vms/{uuid}/backup-schedule", s.getBackupSchedule)
 	auth("PUT /api/nodes/{node}/vms/{uuid}/backup-schedule", s.putBackupSchedule)
 	auth("DELETE /api/nodes/{node}/vms/{uuid}/backup-schedule", s.deleteBackupSchedule)
-	auth("POST /api/nodes/{node}/vms/{uuid}/backup", s.vmBackup)
+	auth("POST /api/nodes/{node}/vms/{uuid}/backup", s.needs("backups", s.vmBackup))
 	auth("POST /api/nodes/{node}/vms/{uuid}/backup/cancel", s.vmBackupCancel)
 	auth("GET /api/backups", s.listBackupsHandler)
-	auth("POST /api/nodes/{node}/backups/import", s.importBackup)
-	auth("POST /api/nodes/{node}/backups/{pool}/{name}/restore", s.restoreBackup)
-	auth("GET /api/nodes/{node}/backups/{pool}/{name}/export", s.exportBackup)
-	auth("DELETE /api/nodes/{node}/backups/{pool}/{name}", s.deleteBackup)
+	auth("POST /api/nodes/{node}/backups/import", s.needs("backups", s.importBackup))
+	auth("POST /api/nodes/{node}/backups/{pool}/{name}/restore", s.needs("backups", s.restoreBackup))
+	auth("GET /api/nodes/{node}/backups/{pool}/{name}/export", s.needs("backups", s.exportBackup))
+	auth("DELETE /api/nodes/{node}/backups/{pool}/{name}", s.needs("backups", s.deleteBackup))
 
 	auth("GET /api/nodes/{node}/pools", s.listPools)
 	auth("POST /api/nodes/{node}/pools", s.createPool)
 	auth("POST /api/nodes/{node}/pools/{pool}/action", s.poolAction)
 	auth("GET /api/nodes/{node}/pools/{pool}/volumes", s.listVolumes)
 	auth("POST /api/nodes/{node}/pools/{pool}/volumes", s.createVolume)
-	auth("POST /api/nodes/{node}/pools/{pool}/volumes/download", s.downloadVolume)
+	auth("POST /api/nodes/{node}/pools/{pool}/volumes/download", s.needs("writePools", s.downloadVolume))
 	auth("PUT /api/nodes/{node}/pools/{pool}/volumes/{vol}", s.uploadVolume)
 	auth("POST /api/nodes/{node}/pools/{pool}/volumes/{vol}/action", s.volumeAction)
 	auth("DELETE /api/nodes/{node}/pools/{pool}/volumes/{vol}", s.deleteVolume)
 	auth("GET /api/images", s.listImages)
 	auth("GET /api/nodes/{node}/pools/{pool}/images", s.listPoolImages)
-	auth("POST /api/nodes/{node}/pools/{pool}/images", s.downloadImage)
+	auth("POST /api/nodes/{node}/pools/{pool}/images", s.needs("writePools", s.downloadImage))
 	auth("POST /api/nodes/{node}/pools/{pool}/images/cancel", s.cancelImage)
 
 	auth("GET /api/nodes/{node}/networks", s.listNetworks)
@@ -248,6 +251,8 @@ func fail(w http.ResponseWriter, err error) {
 		code = http.StatusNotFound
 	case errors.Is(err, cluster.ErrOffline):
 		code = http.StatusServiceUnavailable
+	case errors.Is(err, hostconn.ErrNoPrivilege):
+		code = http.StatusConflict
 	case errors.As(err, &br):
 		code = http.StatusBadRequest
 	case errors.As(err, &lv):

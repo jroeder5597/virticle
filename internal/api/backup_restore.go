@@ -48,8 +48,7 @@ type restorePlan struct {
 	media   []string          // CD-ROM / floppy images to eject
 	nvram   string            // where the UEFI variables go
 	old     *libvirt.Domain   // VM replaced by this restore
-	user    string
-	host    string
+	ep      migEndpoint       // how the source reaches the target node
 	warn    []string
 }
 
@@ -147,7 +146,7 @@ func (s *Server) planRestore(src *backupRef, req restoreReq) (*restorePlan, erro
 		if _, err := p.dst.StorageVolLookupByName(p.pool, v); err == nil {
 			return nil, badRequest("a volume named " + v + " already exists in " + req.Pool + " on " + p.dst.Name)
 		}
-		if _, err := p.dst.Run("test ! -e " + shq(p.pd.Dir+"/"+v)); err != nil {
+		if _, err := p.dst.RunRoot("test ! -e " + shq(p.pd.Dir+"/"+v)); err != nil {
 			return nil, badRequest("a file named " + v + " already exists in " + p.pd.Dir + " on " + p.dst.Name)
 		}
 	}
@@ -177,13 +176,13 @@ func (s *Server) planRestore(src *backupRef, req restoreReq) (*restorePlan, erro
 	if p.remote {
 		dn, _ := s.nodeStatus(p.dstID)
 		var c checkList
-		s.checkSSHTrust(src.h, p.dst, dn, &c)
+		s.checkSSHTrust(src.h, p.dst, dn.Node, &c)
 		for _, k := range c {
 			if !k.OK && k.Severity == "error" {
 				return nil, badRequest(k.Message)
 			}
 		}
-		if p.user, p.host, err = sshTarget(p.dst, dn); err != nil {
+		if p.ep, err = endpointFor(dn.Node); err != nil {
 			return nil, badRequest(err.Error())
 		}
 	}
@@ -245,7 +244,7 @@ func (p *restorePlan) checkReplaceFiles() error {
 	}
 	for _, v := range p.vols {
 		f := p.pd.Dir + "/" + v
-		if _, err := p.dst.Run("test ! -e " + shq(f)); err != nil && !mine[f] {
+		if _, err := p.dst.RunRoot("test ! -e " + shq(f)); err != nil && !mine[f] {
 			return badRequest("a file " + f + " exists on " + p.dst.Name + " that does not belong to the VM being replaced")
 		}
 	}
@@ -261,11 +260,11 @@ func (p *restorePlan) planNVRAM(md migDomain) error {
 	if !safePathRE.MatchString(p.nvram) {
 		return badRequest("unsupported characters in the NVRAM path " + p.nvram)
 	}
-	if _, err := p.dst.Run("test -d " + shq(path.Dir(p.nvram))); err != nil {
+	if _, err := p.dst.RunRoot("test -d " + shq(path.Dir(p.nvram))); err != nil {
 		return badRequest("the directory " + path.Dir(p.nvram) + " for the UEFI variables does not exist on " + p.dst.Name + " (is OVMF installed?)")
 	}
 	if p.old == nil {
-		if _, err := p.dst.Run("test ! -e " + shq(p.nvram)); err != nil {
+		if _, err := p.dst.RunRoot("test ! -e " + shq(p.nvram)); err != nil {
 			return badRequest("the UEFI variable file " + p.nvram + " already exists on " + p.dst.Name)
 		}
 	}
@@ -371,12 +370,12 @@ func (p *restorePlan) run(progress func(float64)) (uuid string, err error) {
 			}
 		}
 		for _, f := range moved {
-			if out, rerr := dst.Run("rm -f -- " + shq(f)); rerr != nil {
+			if out, rerr := dst.RunRoot("rm -f -- " + shq(f)); rerr != nil {
 				left = append(left, f+" ("+out+")")
 			}
 		}
 		if nvramPlaced {
-			if out, rerr := dst.Run("rm -f -- " + shq(p.nvram)); rerr != nil {
+			if out, rerr := dst.RunRoot("rm -f -- " + shq(p.nvram)); rerr != nil {
 				left = append(left, p.nvram+" ("+out+")")
 			}
 		}
@@ -415,8 +414,11 @@ func (p *restorePlan) run(progress func(float64)) (uuid string, err error) {
 		}
 		base, span := done, d.Bytes+1
 		if p.remote {
-			cmd := "scp -q -p -o BatchMode=yes -- " + shq(srcFile) + " " + shq(p.user+"@"+p.host+":"+stage)
-			if out, cerr := src.Run(cmd); cerr != nil {
+			cmd, cerr := nodeCopyCmd(dst, p.ep, srcFile, stage, "")
+			if cerr != nil {
+				return "", cerr
+			}
+			if out, cerr := src.RunRoot(cmd); cerr != nil {
 				return "", fmt.Errorf("copying %s to %s failed: %w: %s", d.File, dst.Name, cerr, impFirstLine(out))
 			}
 		} else if cerr := wd.convert(srcFile, "qcow2", stage, func(f float64) {
@@ -438,9 +440,12 @@ func (p *restorePlan) run(progress func(float64)) (uuid string, err error) {
 		var out string
 		var cerr error
 		if p.remote {
-			out, cerr = src.Run("scp -q -p -o BatchMode=yes -- " + shq(srcFile) + " " + shq(p.user+"@"+p.host+":"+nvramStage))
+			var cmd string
+			if cmd, cerr = nodeCopyCmd(dst, p.ep, srcFile, nvramStage, ""); cerr == nil {
+				out, cerr = src.RunRoot(cmd)
+			}
 		} else {
-			out, cerr = dst.Run("cp -- " + shq(srcFile) + " " + shq(nvramStage))
+			out, cerr = dst.RunRoot("cp -- " + shq(srcFile) + " " + shq(nvramStage))
 		}
 		if cerr != nil {
 			return "", fmt.Errorf("copying the UEFI variables: %s", impFirstLine(out))
@@ -463,13 +468,13 @@ func (p *restorePlan) run(progress func(float64)) (uuid string, err error) {
 	for _, d := range p.man.Disks {
 		f := p.pd.Dir + "/" + p.vols[d.Target]
 		moved = append(moved, f)
-		if out, merr := dst.Run("mv -n -- " + shq(staged[d.Target]) + " " + shq(f)); merr != nil {
+		if out, merr := dst.RunRoot("mv -n -- " + shq(staged[d.Target]) + " " + shq(f)); merr != nil {
 			return "", fmt.Errorf("moving %s into the pool: %s", f, impFirstLine(out))
 		}
 	}
 	if nvramStage != "" {
 		nvramPlaced = true
-		if out, cerr := dst.Run("cp -- " + shq(nvramStage) + " " + shq(p.nvram)); cerr != nil {
+		if out, cerr := dst.RunRoot("cp -- " + shq(nvramStage) + " " + shq(p.nvram)); cerr != nil {
 			return "", fmt.Errorf("placing the UEFI variables at %s: %s", p.nvram, impFirstLine(out))
 		}
 	}
@@ -515,7 +520,7 @@ func (p *restorePlan) removeOld() error {
 		}
 		if err != nil {
 			// Not a pool volume (or already gone): remove the plain file if it is one of ours.
-			if out, rerr := dst.Run("rm -f -- " + shq(f)); rerr != nil {
+			if out, rerr := dst.RunRoot("rm -f -- " + shq(f)); rerr != nil {
 				left = append(left, f+" ("+out+")")
 			}
 		}

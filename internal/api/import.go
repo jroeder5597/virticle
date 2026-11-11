@@ -114,7 +114,7 @@ func qemuInfo(h *hostconn.Host, file string) (importImgInfo, error) {
 	// -U: do not take locks, so an image that a VM uses can be inspected.
 	// No -f: the format is probed from the content, and no --backing-chain:
 	// a referenced file is reported, never opened.
-	out, err := h.Run("qemu-img info -U --output=json -- " + shQuote(file) + " 2>&1")
+	out, err := h.RunRoot("qemu-img info -U --output=json -- " + shQuote(file) + " 2>&1")
 	if err != nil {
 		return importImgInfo{}, badRequest("qemu-img could not read the image: " + impFirstLine(out))
 	}
@@ -188,12 +188,12 @@ func resolveSource(h *hostconn.Host, src importSource) (string, error) {
 		return "", badRequest("the node has no running directory-backed storage pool")
 	}
 	// The path must be inside a pool dir by name first, then by real path.
-	real, err := h.Run("p=$(realpath -e -- " + shQuote(file) + ") && [ -f \"$p\" ] && printf '%s' \"$p\"")
+	real, err := h.RunRoot("p=$(realpath -e -- " + shQuote(file) + ") && [ -f \"$p\" ] && printf '%s' \"$p\"")
 	if err != nil || real == "" || hasControl(real) {
 		return "", badRequest("no such regular file on the node: " + file)
 	}
 	for _, d := range dirs {
-		rd, err := h.Run("realpath -e -- " + shQuote(d.Dir))
+		rd, err := h.RunRoot("realpath -e -- " + shQuote(d.Dir))
 		if err == nil && strings.HasPrefix(real, strings.TrimRight(rd, "/")+"/") {
 			return real, nil
 		}
@@ -217,7 +217,7 @@ func destPool(h *hostconn.Host, name string) (libvirt.StoragePool, poolDir, erro
 }
 
 func freeBytes(h *hostconn.Host, dir string) (int64, error) {
-	out, err := h.Run("df -P -B1 -- " + shQuote(dir) + " | awk 'NR==2{print $4}'")
+	out, err := h.RunRoot("df -P -B1 -- " + shQuote(dir) + " | awk 'NR==2{print $4}'")
 	if err != nil {
 		return 0, err
 	}
@@ -280,7 +280,7 @@ func parseTarListing(out string) ([]tarEntry, error) {
 // listTar returns the vetted members of a tar file, or ok=false when the file
 // is not a tar archive at all.
 func listTar(h *hostconn.Host, file string) (entries []tarEntry, ok bool, err error) {
-	out, runErr := h.Run("LC_ALL=C TZ=UTC timeout 60 tar --quoting-style=escape -tvf " + shQuote(file) + " 2>/dev/null")
+	out, runErr := h.RunRoot("LC_ALL=C TZ=UTC timeout 60 tar --quoting-style=escape -tvf " + shQuote(file) + " 2>/dev/null")
 	if runErr != nil || strings.TrimSpace(out) == "" {
 		return nil, false, nil
 	}
@@ -498,7 +498,7 @@ type workDir struct {
 }
 
 func newWorkDir(h *hostconn.Host, poolDir string) (*workDir, error) {
-	out, err := h.Run("umask 077 && mktemp -d -- " + shQuote(poolDir+"/.virt-proj-import.XXXXXX"))
+	out, err := h.RunRoot("umask 077 && mktemp -d -- " + shQuote(poolDir+"/.virt-proj-import.XXXXXX"))
 	if err != nil || !strings.HasPrefix(out, poolDir+"/.virt-proj-import.") || hasControl(out) {
 		return nil, fmt.Errorf("cannot create a work directory in %s: %s", poolDir, impFirstLine(out))
 	}
@@ -511,7 +511,7 @@ func (w *workDir) file(n string) string { return w.path + "/" + n }
 // recorded, after checking the process really is qemu-img) and deletes the
 // directory.
 func (w *workDir) remove() error {
-	_, err := w.h.Run("p=$(cat " + shQuote(w.file("qpid")) + " 2>/dev/null); if [ -n \"$p\" ] && [ \"$(cat /proc/$p/comm 2>/dev/null)\" = qemu-img ]; then kill $p; sleep 1; fi; rm -rf -- " + shQuote(w.path))
+	_, err := w.h.RunRoot("p=$(cat " + shQuote(w.file("qpid")) + " 2>/dev/null); if [ -n \"$p\" ] && [ \"$(cat /proc/$p/comm 2>/dev/null)\" = qemu-img ]; then kill $p; sleep 1; fi; rm -rf -- " + shQuote(w.path))
 	return err
 }
 
@@ -521,11 +521,11 @@ func (w *workDir) remove() error {
 // needed; its PID and exit code are files in the work directory.
 func (w *workDir) convert(src, srcFmt, dest string, progress func(float64)) error {
 	for _, f := range []string{"rc", "qpid", "prog.log", "out.part"} {
-		w.h.Run("rm -f -- " + shQuote(w.file(f)))
+		w.h.RunRoot("rm -f -- " + shQuote(w.file(f)))
 	}
 	inner := fmt.Sprintf("qemu-img convert -p -U -f %s -O qcow2 -- %s %s >%s 2>&1 & p=$!; echo $p >%s; wait $p; echo $? >%s",
 		shQuote(srcFmt), shQuote(src), shQuote(w.file("out.part")), shQuote(w.file("prog.log")), shQuote(w.file("qpid")), shQuote(w.file("rc")))
-	if out, err := w.h.Run("umask 077; nohup sh -c " + shQuote(inner) + " >/dev/null 2>&1 </dev/null & echo started"); err != nil || out != "started" {
+	if out, err := w.h.RunRoot("umask 077; nohup sh -c " + shQuote(inner) + " >/dev/null 2>&1 </dev/null & echo started"); err != nil || out != "started" {
 		return fmt.Errorf("cannot start qemu-img: %s %v", out, err)
 	}
 	deadline := time.Now().Add(6 * time.Hour)
@@ -535,7 +535,7 @@ func (w *workDir) convert(src, srcFmt, dest string, progress func(float64)) erro
 		if w.stop != nil && w.stop() {
 			return errors.New("conversion cancelled")
 		}
-		out, err := w.h.Run("cat -- " + shQuote(w.file("rc")) + " 2>/dev/null; echo ---; tail -c 400 -- " + shQuote(w.file("prog.log")) + " 2>/dev/null | tr '\\r' '\\n'")
+		out, err := w.h.RunRoot("cat -- " + shQuote(w.file("rc")) + " 2>/dev/null; echo ---; tail -c 400 -- " + shQuote(w.file("prog.log")) + " 2>/dev/null | tr '\\r' '\\n'")
 		if err != nil {
 			if misses++; misses >= 15 {
 				return fmt.Errorf("lost contact with the node; qemu-img may still be running (work directory %s, nothing was deleted)", w.path)
@@ -559,7 +559,7 @@ func (w *workDir) convert(src, srcFmt, dest string, progress func(float64)) erro
 	}
 	// A second writer with this name would have been caught earlier; mv -n
 	// plus the existence test keeps a race from overwriting anything.
-	out, err := w.h.Run("if [ -e " + shQuote(dest) + " ]; then echo 'a file with this name appeared in the pool directory'; exit 1; fi; mv -n -- " + shQuote(w.file("out.part")) + " " + shQuote(dest))
+	out, err := w.h.RunRoot("if [ -e " + shQuote(dest) + " ]; then echo 'a file with this name appeared in the pool directory'; exit 1; fi; mv -n -- " + shQuote(w.file("out.part")) + " " + shQuote(dest))
 	if err != nil {
 		return fmt.Errorf("cannot move the result into the pool: %s", out)
 	}
@@ -733,7 +733,7 @@ func (s *Server) importOVA(r *http.Request, h *hostconn.Host, pool libvirt.Stora
 			for i, n := range names {
 				quoted[i] = shQuote(n)
 			}
-			out, err := h.Run("tar --no-same-owner --no-same-permissions -xf " + shQuote(file) + " -C " + shQuote(wd.path) + " -- " + strings.Join(quoted, " ") + " 2>&1")
+			out, err := h.RunRoot("tar --no-same-owner --no-same-permissions -xf " + shQuote(file) + " -C " + shQuote(wd.path) + " -- " + strings.Join(quoted, " ") + " 2>&1")
 			if err != nil {
 				return fmt.Errorf("extracting the archive: %s", impFirstLine(out))
 			}
@@ -742,7 +742,7 @@ func (s *Server) importOVA(r *http.Request, h *hostconn.Host, pool libvirt.Stora
 		if err := untar(ovfName); err != nil {
 			return err
 		}
-		raw, err := h.Run("head -c " + strconv.Itoa(importMaxOVFBytes) + " -- " + shQuote(wd.file(ovfName)))
+		raw, err := h.RunRoot("head -c " + strconv.Itoa(importMaxOVFBytes) + " -- " + shQuote(wd.file(ovfName)))
 		if err != nil {
 			return err
 		}
@@ -772,7 +772,7 @@ func (s *Server) importOVA(r *http.Request, h *hostconn.Host, pool libvirt.Stora
 		created := []string{}
 		undo := func() {
 			for _, v := range created {
-				h.Run("rm -f -- " + shQuote(pd.Dir+"/"+v))
+				h.RunRoot("rm -f -- " + shQuote(pd.Dir+"/"+v))
 			}
 		}
 		for i, d := range ovf.Disks {
@@ -788,7 +788,7 @@ func (s *Server) importOVA(r *http.Request, h *hostconn.Host, pool libvirt.Stora
 				return fmt.Errorf("disk %s: %w", d.File, err)
 			}
 			created = append(created, vols[i])
-			h.Run("rm -f -- " + shQuote(local)) // free the space before the next disk
+			h.RunRoot("rm -f -- " + shQuote(local)) // free the space before the next disk
 		}
 		if err := h.StoragePoolRefresh(pool, 0); err != nil {
 			return err

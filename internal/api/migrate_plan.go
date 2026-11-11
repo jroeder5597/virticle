@@ -232,6 +232,7 @@ type migFile struct {
 	// VM runs; they are created empty on the target instead of copied.
 	Active bool
 	Size   uint64 // bytes allocated on the source
+	Mode   string // permission bits on the source, octal; the copy gets the same
 	// Skip marks a file that is not ours and already exists on the target
 	// (a shared base image); it is assumed identical and not copied.
 	Skip bool
