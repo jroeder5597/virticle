@@ -9,6 +9,11 @@ import { P } from "../lib/env";
 
 const NAME = `${P}vis1`;
 const OUT = "test-results/visual";
+// Coloured tags on the screenshot VM: a very light and a very dark colour must both stay readable on both themes.
+const T_LIGHT = `${P}vis-light`;
+const T_DARK = `${P}vis-dark`;
+const T_LONG = `${P}vis-a-rather-long-tag-name`;
+const T_PLAIN = `${P}vis-plain`;
 
 /** Finds visible text whose colour is too close to the background it sits on. */
 async function lowContrast(page: Page): Promise<string[]> {
@@ -74,7 +79,7 @@ async function clipped(page: Page): Promise<string[]> {
     const out: string[] = [];
     const vw = window.innerWidth;
     for (const el of Array.from(document.querySelectorAll<HTMLElement>("body *"))) {
-      if (el.closest("pre, textarea, code, canvas, svg, .xterm, .console, select, input")) continue;
+      if (el.closest("pre, textarea, code, canvas, svg, .xterm, .console, select, input, .tgbox")) continue;
       const cs = getComputedStyle(el);
       if (cs.display === "none" || cs.visibility === "hidden") continue;
       const r = el.getBoundingClientRect();
@@ -107,7 +112,7 @@ async function ellipses(page: Page): Promise<string[]> {
     const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let n = w.nextNode(); n; n = w.nextNode()) {
       const t = (n.textContent ?? "").trim();
-      if (t && has(t) && !n.parentElement?.closest(".xterm, pre, code, textarea, script, style")) bad.add(t.slice(0, 60));
+      if (t && has(t) && !n.parentElement?.closest(".xterm, pre, code, textarea, script, style, .tmore")) bad.add(t.slice(0, 60));
     }
     for (const el of Array.from(document.querySelectorAll("[placeholder], [title], [aria-label]")))
       for (const a of ["placeholder", "title", "aria-label"]) {
@@ -130,10 +135,14 @@ test.describe.serial("visual pass", () => {
   test.beforeAll(async ({ api, n1 }) => {
     mkdirSync(OUT, { recursive: true });
     vm = await createCirros(api, n1, NAME, { start: true });
+    await api.put(`/nodes/${vm.node}/vms/${vm.uuid}/tags`, { tags: [T_LIGHT, T_DARK, T_PLAIN, T_LONG] });
+    await api.put(`/tags/${encodeURIComponent(T_LIGHT)}/color`, { color: "#fafafa" });
+    await api.put(`/tags/${encodeURIComponent(T_DARK)}/color`, { color: "#0a0f14" });
     await api.post("/cloudinit-profiles", { name: `${P}visprof`, description: "visual pass", user: "admin", password: "e2e-vis-pass-123", packages: ["qemu-guest-agent"], default: true });
   });
   test.afterAll(async ({ api }) => {
     await cleanVMs(api, NAME);
+    for (const t of [T_LIGHT, T_DARK]) await api.del(`/tags/${encodeURIComponent(t)}/color`).catch(() => {});
     for (const p of (await api.get("/cloudinit-profiles")).profiles) if (p.name === `${P}visprof`) await api.del(`/cloudinit-profiles/${p.id}`).catch(() => {});
   });
 
@@ -173,6 +182,19 @@ test.describe.serial("visual pass", () => {
 
       await page.goto(vmUrl);
       await shot("vm-overview", () => expect(page.locator("#utilization .st-val").first()).toContainText("%", { timeout: 30_000 }));
+      // the colour picker, the add-tag input with its suggestions, and the tree's list of all tags
+      await page.getByRole("button", { name: `Colour of tag ${T_LIGHT}` }).click();
+      await shot("vm-tag-picker", () => expect(page.getByRole("group", { name: /^Colour for tag/ })).toBeVisible(), { viewportOnly: true });
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "+ Add Tag", exact: true }).click();
+      await page.keyboard.type("e");
+      await shot("vm-tag-add", () => expect(page.getByRole("combobox", { name: "Tag name" })).toBeVisible(), { viewportOnly: true });
+      await page.keyboard.press("Escape");
+      if (m.viewport.width >= 900) {
+        await page.locator(`.trow[data-key="v:${vm.node}/${vm.uuid}"] .tgbox`).hover();
+        await shot("tree-tags-all", () => expect(page.locator(".tagpop")).toBeVisible(), { viewportOnly: true });
+        await page.mouse.move(700, 600);
+      }
       // the Actions menu with its Power submenu open, and a confirmation dialog
       await page.locator(".head").getByRole("button", { name: "Actions", exact: true }).click();
       await page.getByRole("menuitem", { name: "Power", exact: true }).click();
