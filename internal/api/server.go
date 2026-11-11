@@ -50,6 +50,7 @@ type Server struct {
 	routes  []route // every pattern registered by Handler, for the access-level test
 	limiter *limiter
 	shots   shotCache
+	cpuBase baselineState
 }
 
 type ctxKey struct{}
@@ -58,6 +59,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.startSnapshotScheduler()
 	s.startAlerts()
+	s.startCPUBaseline()
 	s.routes = nil
 	pub := func(pattern string, h http.HandlerFunc) {
 		s.routes = append(s.routes, route{pattern: pattern, public: true})
@@ -91,6 +93,7 @@ func (s *Server) Handler() http.Handler {
 	auth("GET /api/audit", s.auditLog)
 
 	auth("GET /api/nodes", s.listNodes)
+	auth("GET /api/cluster/cpu-baseline", s.cpuBaseline)
 	auth("POST /api/nodes", s.addNode)
 	auth("DELETE /api/nodes/{node}", s.deleteNode)
 	auth("PUT /api/nodes/{node}", s.editNode)

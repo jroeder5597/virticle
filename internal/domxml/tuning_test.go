@@ -226,3 +226,23 @@ func TestCPUSet(t *testing.T) {
 		}
 	}
 }
+
+func TestSetCPUDropsMigratableOutsidePassthrough(t *testing.T) {
+	src := "<domain type='kvm'>\n  <name>t</name>\n  <cpu mode='host-passthrough' check='none' migratable='on'/>\n  <devices/>\n</domain>"
+	out, err := SetCPU(src, CPUSpec{Mode: "custom", Model: "Haswell", Check: "partial", Fallback: "forbid", Vendor: "Intel", Features: []CPUFeature{{"require", "avx2"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "migratable") || strings.Contains(out, "check='none'") {
+		t.Errorf("stale attributes kept:\n%s", out)
+	}
+	for _, w := range []string{"<cpu mode='custom' match='exact' check='partial'>", "<model fallback='forbid'>Haswell</model>", "<vendor>Intel</vendor>", "<feature policy='require' name='avx2'/>"} {
+		if !strings.Contains(out, w) {
+			t.Errorf("missing %q:\n%s", w, out)
+		}
+	}
+	back, err := SetCPU(out, CPUSpec{Mode: "host-passthrough"})
+	if err != nil || strings.Contains(back, "<model") || strings.Contains(back, "<feature") {
+		t.Errorf("%v\n%s", err, back)
+	}
+}

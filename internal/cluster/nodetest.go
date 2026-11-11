@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/digitalocean/go-libvirt"
+
 	"virticle/internal/hostconn"
 	"virticle/internal/store"
 )
@@ -43,6 +45,9 @@ type TestResult struct {
 	ResolvedIPs    []string   `json:"resolvedIps,omitempty"`
 	OK             bool       `json:"ok"`
 	Steps          []TestStep `json:"steps"`
+	// DomCaps is the node's KVM domain capabilities document, for the CPU
+	// baseline check; empty when it could not be read.
+	DomCaps string `json:"-"`
 }
 
 // testPlan lists the step ids and titles in the order they run.
@@ -240,6 +245,9 @@ func (m *Manager) TestConnect(cfg store.Node, timeout time.Duration) (res TestRe
 	}
 	status, detail := migrationStep(h, cfg)
 	st.add("migration", status, detail)
+	if dc, err := h.ConnectGetDomainCapabilities(nil, libvirt.OptString{"x86_64"}, libvirt.OptString{"q35"}, libvirt.OptString{"kvm"}, 0); err == nil {
+		res.DomCaps = dc
+	}
 	return res, nil
 }
 

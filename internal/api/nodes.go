@@ -82,6 +82,7 @@ func (s *Server) deleteNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Nodes.Remove(id)
+	s.Nodes.Publish(cluster.Event{Type: "node", Node: id, Detail: "removed"})
 	writeJSON(w, map[string]bool{"ok": true})
 }
 

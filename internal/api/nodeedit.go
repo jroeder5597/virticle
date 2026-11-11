@@ -153,6 +153,7 @@ func (s *Server) testNodeConnection(w http.ResponseWriter, r *http.Request) {
 	out := nodeEditResult{Test: &res}
 	if err == nil {
 		out.Warnings = checkWarnings(cur, n, &res)
+		out.Warnings = append(out.Warnings, s.cpuBaselineStep(id, &res)...)
 	}
 	writeJSON(w, out)
 }
@@ -259,6 +260,7 @@ func (s *Server) editNode(w http.ResponseWriter, r *http.Request) {
 			n.HostUUID = res.HostUUID
 		}
 		out.Warnings = checkWarnings(cur, n, &res)
+		out.Warnings = append(out.Warnings, s.cpuBaselineStep(id, &res)...)
 		out.Test = &res
 	} else if detect {
 		n.Privilege = "" // detected on the first connection

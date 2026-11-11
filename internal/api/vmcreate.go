@@ -43,6 +43,9 @@ type createVMRequest struct {
 	// CloudInit, when set, attaches a NoCloud seed as a read-only SATA CD-ROM
 	// (volume "<name>-seed.iso" in Pool).
 	CloudInit *cloudInitRequest `json:"cloudInit"`
+	// CPU is baseline (the default: the best model every node can run),
+	// host-model or host-passthrough.
+	CPU string `json:"cpu"`
 
 	seedPath   string // set while creating, once the seed volume exists
 	diskFormat string // driver type of the disk; qcow2 unless an existing volume says otherwise
@@ -241,6 +244,12 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	cpuChoice, err := s.resolveNewVMCPU(nodeID(r), q.CPU)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+
 	var uuid string
 	err = s.task(r, "create", q.Name, h.Name, func(func(float64)) error {
 		volName := q.Name + ".qcow2"
@@ -299,7 +308,12 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 		}
-		dom, err := h.DomainDefineXMLFlags(q.domainXML(path), libvirt.DomainDefineValidate)
+		defXML, err := cpuChoice.apply(q.domainXML(path))
+		if err != nil {
+			rollback()
+			return err
+		}
+		dom, err := h.DomainDefineXMLFlags(defXML, libvirt.DomainDefineValidate)
 		if err != nil {
 			rollback()
 			return err

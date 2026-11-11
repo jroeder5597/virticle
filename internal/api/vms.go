@@ -37,6 +37,8 @@ type vmSummary struct {
 	Template bool     `json:"template"`
 	Sealed   string   `json:"sealed,omitempty"`
 	Tags     []string `json:"tags"`
+	// CPU is set when the VM's CPU came from the cluster baseline.
+	CPU *vmCPU `json:"cpu,omitempty"`
 }
 
 func summarize(node int64, h *hostconn.Host, d libvirt.Domain) (vmSummary, error) {
@@ -45,14 +47,15 @@ func summarize(node int64, h *hostconn.Host, d libvirt.Domain) (vmSummary, error
 		return vmSummary{}, err
 	}
 	auto, _ := h.DomainGetAutostart(d)
-	mark, tags, err := getAppMeta(h, d)
+	rawMeta, err := domainMeta(h, d)
 	if err != nil {
 		return vmSummary{}, err
 	}
+	mark, tags := parseAppMeta(rawMeta)
 	return vmSummary{
 		Node: node, NodeName: h.Name, UUID: cluster.FormatUUID(d.UUID), Name: d.Name,
 		State: stateName(state), VCPUs: vcpus, MemoryKiB: maxMem, Autostart: auto != 0,
-		Template: mark.Template, Sealed: mark.Sealed, Tags: tags,
+		Template: mark.Template, Sealed: mark.Sealed, Tags: tags, CPU: parseCPUMeta(rawMeta),
 	}, nil
 }
 
@@ -81,6 +84,7 @@ func (s *Server) collectVMs() []vmSummary {
 			}
 			for _, d := range doms {
 				if v, err := summarize(n.ID, h, d); err == nil { // a domain may vanish mid-listing
+					s.cpuRelationFor(v.CPU)
 					mu.Lock()
 					out = append(out, v)
 					mu.Unlock()
@@ -240,6 +244,7 @@ func (s *Server) vmDetail(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	s.cpuRelationFor(sum.CPU)
 	// Live XML when running (shows runtime detail such as the VNC port and
 	// agent state); the persistent definition otherwise.
 	raw, err := h.DomainGetXMLDesc(dom, 0)
