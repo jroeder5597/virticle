@@ -64,6 +64,10 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
+	if _, err := backupBeforeMigration(db, path, time.Now()); err != nil {
+		db.Close()
+		return nil, err
+	}
 	if _, err := db.Exec(schema); err != nil {
 		return nil, err
 	}
@@ -77,6 +81,9 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	if _, err := db.Exec(prefSchema); err != nil {
+		return nil, err
+	}
+	if err := setSchemaVersion(db); err != nil {
 		return nil, err
 	}
 	// Tasks still marked running belong to a previous process that is gone.

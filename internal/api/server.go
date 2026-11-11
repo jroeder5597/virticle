@@ -16,6 +16,7 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
+	"virticle/internal/buildinfo"
 	"virticle/internal/catalog"
 	"virticle/internal/cluster"
 	"virticle/internal/hostconn"
@@ -75,6 +76,7 @@ func (s *Server) Handler() http.Handler {
 	pub("POST /api/login", s.login)
 	pub("POST /api/logout", s.logout)
 
+	auth("GET /api/version", s.version)
 	auth("GET /api/events", s.events)
 	auth("GET /api/alerts", s.listAlerts)
 	auth("GET /api/tasks", s.tasks)
@@ -404,6 +406,10 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, map[string]any{"needsSetup": n == 0, "user": user, "role": role})
+}
+
+func (s *Server) version(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, buildinfo.Get())
 }
 
 func (s *Server) tasks(w http.ResponseWriter, r *http.Request) {

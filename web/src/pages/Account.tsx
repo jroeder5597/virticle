@@ -28,8 +28,20 @@ export default function Account() {
         )}
         <ConsolePrefCard />
       </div>
+      <VersionLine />
     </>
   );
+}
+
+type Version = { version: string; commit: string; date: string };
+
+function VersionLine() {
+  const [v, setV] = useState<Version | undefined>();
+  useEffect(() => {
+    get<Version>("/version").then(setV, () => {});
+  }, []);
+  if (!v) return null;
+  return <p className="muted">{`Virticle ${v.version}, commit ${v.commit}, built ${v.date}`}</p>;
 }
 
 function Password() {

@@ -1,0 +1,11 @@
+#!/bin/sh
+# RPM convention: a new install does not start or enable the service; the
+# administrator does that after reading /etc/virticle/virticle.env. An upgrade
+# restarts a running service.
+if [ -d /run/systemd/system ]; then
+	systemctl daemon-reload || true
+	if [ "$1" -ge 2 ]; then
+		systemctl try-restart virticle.service || true
+	fi
+fi
+exit 0

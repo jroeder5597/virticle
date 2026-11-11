@@ -1,0 +1,7 @@
+#!/bin/sh
+# Final removal only ($1 is 0); an upgrade ($1 is 1) leaves the service alone.
+if [ "$1" -eq 0 ] && [ -d /run/systemd/system ]; then
+	systemctl stop virticle.service || true
+	systemctl disable virticle.service || true
+fi
+exit 0

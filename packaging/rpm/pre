@@ -1,0 +1,6 @@
+#!/bin/sh
+# Create the service user and group. Runs on install and upgrade.
+getent group virticle >/dev/null || groupadd -r virticle
+getent passwd virticle >/dev/null || useradd -r -g virticle \
+	-d /var/lib/virticle -M -s /sbin/nologin -c "Virticle controller" virticle
+exit 0

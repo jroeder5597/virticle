@@ -1,0 +1,120 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# Release pipeline. Local dry run that publishes nothing:
+#   make package        (goreleaser release --snapshot --clean)
+# The real run is .github/workflows/release.yml on a v* tag.
+version: 2
+project_name: virticle
+
+before:
+  hooks:
+    - make web
+    - make man
+
+builds:
+  - id: virticle
+    main: ./cmd/virticle
+    binary: virticle
+    # Pure Go (modernc.org/sqlite): no C toolchain, static binaries.
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X virticle/internal/buildinfo.Version={{ .Version }}
+      - -X virticle/internal/buildinfo.Commit={{ .ShortCommit }}
+      - -X virticle/internal/buildinfo.Date={{ .Date }}
+
+archives:
+  - id: tarball
+    formats: [tar.gz]
+    name_template: "virticle_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+      - docs/*.md
+      - src: packaging/virticle.service
+        dst: packaging/virticle.service
+      - src: packaging/virticle.env
+        dst: packaging/virticle.env
+      - src: packaging/virticle.1
+        dst: packaging/virticle.1
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+# SBOM: not enabled. goreleaser's sbom step runs the external tool syft, which
+# the CI image does not have; the Go module list is embedded in each binary
+# (go version -m virticle). To enable it, install syft in release.yml and add
+# "sboms: [{artifacts: archive}]".
+
+nfpms:
+  - id: packages
+    package_name: virticle
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Virticle
+    maintainer: Virticle maintainers <root@localhost>
+    description: Web controller for KVM/libvirt hosts, managed over SSH.
+    homepage: https://example.invalid/virticle
+    license: Unlicensed (owner has not chosen a licence)
+    formats: [deb, rpm]
+    section: admin
+    contents:
+      - src: packaging/virticle.service
+        dst: /usr/lib/systemd/system/virticle.service
+        file_info: {mode: 0644}
+      - src: packaging/virticle.env
+        dst: /etc/virticle/virticle.env
+        type: config|noreplace
+        file_info: {mode: 0600, owner: root, group: root}
+      - src: packaging/virticle.1.gz
+        dst: /usr/share/man/man1/virticle.1.gz
+        file_info: {mode: 0644}
+      - src: README.md
+        dst: /usr/share/doc/virticle/README.md
+      - src: LICENSE
+        dst: /usr/share/doc/virticle/LICENSE
+      - src: docs/install.md
+        dst: /usr/share/doc/virticle/install.md
+    overrides:
+      deb:
+        scripts:
+          preinstall: packaging/deb/preinst
+          postinstall: packaging/deb/postinst
+          preremove: packaging/deb/prerm
+          postremove: packaging/deb/postrm
+      rpm:
+        scripts:
+          preinstall: packaging/rpm/pre
+          postinstall: packaging/rpm/post
+          preremove: packaging/rpm/preun
+          postremove: packaging/rpm/postun
+    rpm:
+      group: Applications/System
+    deb:
+      fields:
+        Bugs: https://example.invalid/virticle/issues
+
+# Container image from the prebuilt binaries (Dockerfile.release). The registry
+# below is a placeholder; the release workflow does not log in to one, so
+# nothing is pushed until the owner picks a registry and adds credentials.
+dockers_v2:
+  - id: image
+    ids: [virticle]
+    dockerfile: Dockerfile.release
+    images:
+      - ghcr.io/OWNER/virticle
+    tags:
+      - "{{ .Version }}"
+      - latest
+    platforms: [linux/amd64, linux/arm64]
+
+changelog:
+  disable: true
+
+release:
+  # Never creates a GitHub release on its own from a snapshot; for a tag run it
+  # creates a draft that the owner publishes by hand.
+  draft: true

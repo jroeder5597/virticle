@@ -12,6 +12,15 @@ sessions, API tokens, the node list, the task log and the audit log.
 
 `ROADMAP.md` lists what is done, what is untested and what is open.
 
+## Install
+
+Packages (`.deb`, `.rpm` with a systemd service), a container image and a
+plain binary are built by the release pipeline; no release has been published
+yet. See `docs/install.md` for installing, first-run setup, where data lives,
+upgrade and rollback, uninstall, and the table of supported platforms
+(controller tested on Linux amd64; managed nodes tested on Debian 13 and Rocky
+10). `virticle version` prints the version.
+
 ## Quick start
 
 Requirements to build: Go (see `go.mod`) and Node.js.
@@ -213,6 +222,8 @@ They are written to the audit log like other state-changing requests.
 - **The data directory** (`-data`):
   - `virticle.db`: SQLite database with users, password hashes, sessions, API
     token hashes, the node list, the task log and the audit log.
+  - `virticle.db.bak-<oldversion>-<timestamp>`: copies made before a schema
+    upgrade (newest 3 kept); see `docs/install.md` for rollback.
   - `id_ed25519`, `id_ed25519.pub`: the controller's SSH key.
   - `known_hosts`: trusted node host keys.
   - `tls-cert.pem`, `tls-key.pem`: only if a certificate was generated.

@@ -1,0 +1,10 @@
+.git
+.claude
+bin
+dist
+data
+data-e2e
+e2e
+lab
+web/node_modules
+web/dist
