@@ -215,7 +215,7 @@ export default function TasksDock() {
                   <th className="c-user">By</th>
                   <th className="c-when">Started</th>
                   <th className="c-dur">Duration</th>
-                  <th className="c-res">Progress</th>
+                  <th className="c-res">Result</th>
                 </tr>
               </thead>
               <tbody>

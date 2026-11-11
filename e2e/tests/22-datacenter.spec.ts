@@ -32,7 +32,7 @@ test.describe.serial("datacenter", () => {
     expect(tabs).toEqual(["Summary", "Virtual machines", "Storage", "Network", "Backups", "Nodes", "Tasks"]);
     await expect(page.locator(".dctile", { hasText: "Nodes online" })).toContainText(new RegExp(`${nodes.filter((n) => n.state === "online").length} of ${nodes.length}`));
     await expect(page.locator(".dctile", { hasText: "Virtual machines running" })).toContainText(/\d+ of \d+/);
-    await expect(page.locator(".dctile", { hasText: "Storage in use" })).toContainText("sum of pools");
+    await expect(page.locator(".dctile", { hasText: "Storage in use" })).toHaveAttribute("title", /counted as one filesystem/);
     await expect(page.locator(".dctile", { hasText: "Storage in use" })).toContainText(/[KMGT]iB of [\d.]+ [KMGT]iB/);
     await expect(page.locator(".dctile", { hasText: "vCPUs" })).toContainText(/\d+ of \d+/, { timeout: 30_000 });
     for (const n of nodes) await expect(row(page.locator(".dcnodes"), n.hostname ?? n.addr).first()).toBeVisible();

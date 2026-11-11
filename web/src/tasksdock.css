@@ -18,9 +18,9 @@
 .dock-table th, .dock-table td { padding: 3px 10px; white-space: nowrap; vertical-align: middle; }
 .dock-table th { position: sticky; top: 0; z-index: 1; background: var(--panel); border-bottom: 1px solid var(--line); }
 .dock-table tbody tr:hover { background: var(--hover); }
-.dock-table td.c-kind, .dock-table td.c-target, .dock-table td.c-node { white-space: normal; overflow-wrap: anywhere; }
+.dock-table td.c-target { white-space: normal; overflow-wrap: break-word; }
 .dock-table td.c-res { width: 100%; max-width: 0; }
-.dock-table td.c-user { max-width: 110px; white-space: normal; overflow-wrap: anywhere; }
+.dock-table td.c-target { min-width: 16ch; max-width: 26ch; }
 .tstatus { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; background: none; border: 0; }
 .dk-prog { display: flex; align-items: center; gap: 8px; }
 .dk-bar { flex: 0 1 160px; min-width: 60px; height: 6px; border-radius: 3px; background: var(--hover); border: 1px solid var(--line); overflow: hidden; }
@@ -32,7 +32,10 @@
 @media (max-width: 760px) {
   .dock-table .c-kind, .dock-table .c-node, .dock-table .c-user, .dock-table .c-when, .dock-table .c-dur { display: none; }
   .dock-table th, .dock-table td { padding: 3px 8px; }
-  .dock-table td.c-res { width: auto; max-width: none; }
-  .dock-table td.c-target { width: 100%; }
+  .dock-table { table-layout: fixed; }
+  .dock-table th:first-child { width: 84px; }
+  .dock-table th.c-res { width: 45%; }
+  .dock-table td.c-res { max-width: none; overflow: hidden; }
+  .dock-table td.c-target { min-width: 0; max-width: none; }
   .dk-bar { flex-basis: 70px; min-width: 40px; }
 }
