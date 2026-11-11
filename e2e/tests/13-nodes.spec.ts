@@ -12,7 +12,7 @@ test.describe.serial("nodes", () => {
     await cleanVMs(api, VM);
   });
 
-  test("the node list shows both nodes online with hardware and host updates", async ({ page }) => {
+  test("the node list shows both nodes online with hardware, and the table fits", async ({ page }) => {
     await page.goto("/nodes");
     await expect(page.getByRole("heading", { name: "Nodes" })).toBeVisible();
     for (const name of [env.node1, env.node2]) {
@@ -21,17 +21,10 @@ test.describe.serial("nodes", () => {
       await expect(r.locator(".badge", { hasText: "online" })).toBeVisible();
       await expect(r).toContainText(/\d+ ×/); // CPU count and model
       await expect(r).toContainText(/\d+(\.\d)? GiB total/);
-      // host updates: either "Up to date" or "N updates pending" (or a note that the system is not supported)
-      await expect(r.locator("td").nth(6)).toContainText(/Up to date|updates? pending|not checked|Updates:/, { timeout: 60_000 });
     }
-    const r = row(page, env.node1);
-    const btn = r.getByRole("button", { name: /Up to date|updates? pending/ });
-    if (await btn.count()) {
-      await btn.click();
-      await expect(r.locator(".updlist")).toBeVisible();
-      await btn.click();
-      await expect(r.locator(".updlist")).toHaveCount(0);
-    }
+    // updates and encrypted migration live on the node page, so the list fits the screen
+    const fits = await page.locator(".table-scroll").evaluate((e) => e.scrollWidth <= e.clientWidth + 1);
+    expect(fits, "nodes table fits without scrolling sideways").toBe(true);
   });
 
   test("maintenance toggles on and off and the evacuation dialog honours it", async ({ page, api, n1, n2 }) => {
