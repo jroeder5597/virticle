@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { bytes, get, Network, NodeStatus, Pool, post, VM, Volume } from "../api";
 import { useLive } from "../live";
 import CloudInitFields, { CloudInitValues, cloudInitPayload, cloudInitUsed, emptyCloudInit } from "./CloudInit";
-import { ErrorBox, Field, Modal, NodePicker, StateBadge, useAction, useConfirm } from "../ui";
+import { ErrorBox, Field, Modal, NodePicker, PageTitle, StateBadge, useAction, useConfirm } from "../ui";
 import { powerConfirm, powerLabel } from "../power";
 import { BulkBar } from "./Bulk";
 import { emptyFw, FirmwareFields, fwPayload, FwValues } from "./Firmware";
@@ -60,7 +60,7 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
   return (
     <>
       <div className="head">
-        {fixedNode === undefined ? <h1>Virtual machines</h1> : <h2>Virtual machines</h2>}
+        {fixedNode === undefined ? <PageTitle>Virtual machines</PageTitle> : <h2>Virtual machines</h2>}
         <button className="primary" disabled={online.length === 0} onClick={() => setCreating(true)}>
           New VM
         </button>
@@ -90,7 +90,7 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
       ) : vms.data && list.length === 0 ? (
         <div className="empty">{all.length ? "No VM matches the search or tag filter." : "No virtual machines on the connected nodes."}</div>
       ) : (
-        <table>
+        <table className="vmlist">
           <thead>
             <tr>
               <th className="sel">
@@ -117,7 +117,7 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
                 <td className="sel">
                   <input type="checkbox" aria-label={`Select ${vm.name}`} checked={selected.has(keyOf(vm))} onChange={() => toggle(vm)} />
                 </td>
-                <td>
+                <td className="vmname">
                   <Link to={`/vm/${vm.node}/${vm.uuid}`}>{vm.name}</Link>
                   {vm.template && <span className="badge s-template">Template</span>}
                   <TagChips tags={vm.tags} onPick={setTagFilter} />
@@ -125,7 +125,7 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
                 <td>
                   <StateBadge state={vm.state} />
                 </td>
-                {fixedNode === undefined && <td>{vm.nodeName}</td>}
+                {fixedNode === undefined && <td className="vmnode">{vm.nodeName}</td>}
                 <td className="num">{vm.vcpus}</td>
                 <td className="num">{bytes(vm.memoryKiB * 1024)}</td>
                 <UsageCells p={vm.state === "running" ? live?.vms[`${vm.node}/${vm.uuid}`] : undefined} />

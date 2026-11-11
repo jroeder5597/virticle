@@ -1,0 +1,14 @@
+.cb { position: relative; }
+.cb-btn { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 6px 10px; height: auto; font-weight: 400; }
+.cb-btn > svg { flex: none; color: var(--muted); }
+.cb-pop { position: fixed; z-index: 400; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-pop); padding: 4px; outline: none; }
+.cb-search { margin: 2px 2px 6px; width: calc(100% - 4px); }
+.cb-list { overflow: auto; min-height: 0; }
+.cb-opt { padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.cb-opt.active { background: var(--hover); }
+.cb-opt.sel { box-shadow: inset 3px 0 0 var(--accent); }
+.cb-opt.off { opacity: 0.6; cursor: not-allowed; }
+.cb-gh { padding: 8px 8px 2px; font-size: 12px; font-weight: 600; color: var(--muted); display: grid; gap: 2px; }
+.cb-gt { font-weight: 400; }
+.cb-empty { padding: 8px; color: var(--muted); max-width: 60ch; }
+.cb-foot { padding: 6px 8px 2px; border-top: 1px solid var(--line); margin-top: 4px; font-size: 13px; }

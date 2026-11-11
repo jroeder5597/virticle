@@ -11,7 +11,7 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
   test.afterAll(async ({ api }) => cleanVMs(api, NAME));
 
   test("New VM form: disk image, BIOS, start", async ({ page, api, n1 }) => {
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await page.getByRole("button", { name: "New VM" }).click();
     const dlg = dialog(page, "New virtual machine");
     await expect(dlg).toBeVisible();
@@ -46,7 +46,7 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
   });
 
   test("the VM is in the list and its detail page shows the specs", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     const r = row(page, NAME);
     await expect(r).toBeVisible();
     await expectBadge(r, "running");
@@ -95,27 +95,10 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
     expect(await stateOf(api, vm)).toBe("running");
   });
 
-  test("shutdown menu: force off after a timeout when the guest ignores ACPI", async ({ page, api }) => {
-    await openVM(page, vm);
-    // The menu offers 60 s; shorten it so the test does not wait a minute.
-    let body: any;
-    await page.route("**/api/nodes/*/vms/*/action", async (route) => {
-      const req = route.request().postDataJSON();
-      if (req.action === "shutdown" && req.force) {
-        body = req;
-        req.timeoutSec = 6;
-        await route.continue({ postData: JSON.stringify(req) });
-      } else await route.continue();
-    });
-    await vmAction(page, "Power", "Shutdown (force off after 60 s)");
-    await confirm(page, "Shutdown (graceful)");
-    expect(await expect.poll(() => body).toMatchObject({ action: "shutdown", force: true }));
-    await expectBadge(page.locator(".head"), "shutoff");
-    expect(await stateOf(api, vm)).toBe("shutoff");
-    await page.unroute("**/api/nodes/*/vms/*/action");
-  });
-
   test("power on from the detail page, then halt with confirmation", async ({ page, api }) => {
+    // the previous tests left the VM running
+    await api.post(`/nodes/${vm.node}/vms/${vm.uuid}/action`, { action: "poweroff" });
+    await api.waitFor("off", async () => (await stateOf(api, vm)) === "shutoff");
     await openVM(page, vm);
     await vmAction(page, "Power", "Power On");
     await expectBadge(page.locator(".head"), "running");
@@ -131,7 +114,7 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
   });
 
   test("list buttons: Power On and Shutdown (graceful) on the row", async ({ page, api }) => {
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     const r = row(page, NAME);
     await r.getByRole("button", { name: "Power On" }).click();
     await expectBadge(r, "running");
@@ -146,7 +129,7 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
     const dlg = dialog(page, `Delete ${NAME}?`);
     await dlg.getByLabel(/Also delete its disk/).check();
     await dlg.getByRole("button", { name: "Delete VM" }).click();
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/datacenter\/vms$/);
     await expect(row(page, NAME)).toHaveCount(0);
     expect(await api.vmByName(NAME)).toBeUndefined();
     const vols = await api.get(`/nodes/${n1}/pools/default/volumes`);

@@ -1,19 +1,14 @@
 import { Menu, User, LogOut } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
-import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import Tree from "./Tree";
 import "./shell.css";
 import { get, post, Role, setUnauthorizedHandler, Task } from "./api";
 import { startEvents, stopEvents, useEvents } from "./live";
 import { ErrorBox, Field, useAction } from "./ui";
-import VMs from "./pages/VMs";
+import Datacenter from "./pages/Datacenter";
 import VMDetailPage from "./pages/VMDetail";
-import Storage from "./pages/Storage";
-import { BackupsSection } from "./pages/Backups";
-import Networks from "./pages/Networks";
-import Nodes from "./pages/Nodes";
 import NodeDetail from "./pages/NodeDetail";
-import Tasks from "./pages/Tasks";
 import Users from "./pages/Users";
 import Audit from "./pages/Audit";
 import Account from "./pages/Account";
@@ -22,14 +17,22 @@ import ConsolePage from "./pages/ConsolePage";
 import { AlertBell } from "./pages/Alerts";
 import { RoleContext } from "./auth";
 import { ThemeToggle } from "./theme";
+import TasksDock, { useDockOpen } from "./TasksDock";
+import { bindPrefs, loadPrefs } from "./prefs";
 
 type Session = { needsSetup: boolean; user: string; role: Role };
 
 export default function App() {
   const [session, setSession] = useState<Session | undefined>();
   const [drawer, setDrawer] = useState(false);
+  bindPrefs(session?.user ?? ""); // before anything reads a preference, so the first paint uses the local copy
+  const dockOpen = useDockOpen();
+  const scroller = useRef<HTMLDivElement>(null);
   const loc = useLocation();
   useEffect(() => setDrawer(false), [loc.pathname, loc.search]);
+  useEffect(() => {
+    scroller.current?.scrollTo(0, 0);
+  }, [loc.pathname]);
   useEffect(() => {
     if (!drawer) return;
     const k = (e: KeyboardEvent) => e.key === "Escape" && setDrawer(false);
@@ -48,6 +51,9 @@ export default function App() {
     }
   }, [session?.user]);
 
+  useEffect(() => {
+    if (session?.user) void loadPrefs();
+  }, [session?.user]);
   if (!session) return null;
   if (!session.user) return <SignIn setup={session.needsSetup} onDone={refresh} />;
   if (loc.pathname.startsWith("/console/"))
@@ -60,21 +66,19 @@ export default function App() {
     );
   return (
     <RoleContext.Provider value={session.role}>
-    <div className={"app" + (drawer ? " drawer-open" : "")}>
+    <div className={"app" + (drawer ? " drawer-open" : "") + (dockOpen ? " dock-open" : "")}>
       <header className="topbar">
         <button className="menu-btn" aria-label="Open navigation" aria-expanded={drawer} onClick={() => setDrawer(!drawer)}>
           <Menu size={18} />
         </button>
         <div className="brand">Virticle</div>
         <div className="toplinks" role="navigation" aria-label="Main">
-        <NavLink to="/" end>
-          Virtual machines
-        </NavLink>
-        <NavLink to="/storage">Storage</NavLink>
-        <NavLink to="/networks">Networks</NavLink>
-        <NavLink to="/backups">Backups</NavLink>
-        <NavLink to="/nodes">Nodes</NavLink>
-        <NavLink to="/tasks">Tasks</NavLink>
+        <NavLink to="/datacenter/vms">Virtual machines</NavLink>
+        <NavLink to="/datacenter/storage">Storage</NavLink>
+        <NavLink to="/datacenter/network">Networks</NavLink>
+        <NavLink to="/datacenter/backups">Backups</NavLink>
+        <NavLink to="/datacenter/nodes">Nodes</NavLink>
+        <NavLink to="/datacenter/tasks">Tasks</NavLink>
         {session.role === "admin" && <NavLink to="/users">Users</NavLink>}
         {session.role === "admin" && <NavLink to="/audit">Audit</NavLink>}
         </div>
@@ -92,30 +96,32 @@ export default function App() {
       </header>
       <aside className="sidebar" aria-label="Resources">
         <div className="drawer-links" role="navigation" aria-label="Main menu">
-        <NavLink to="/" end>
-          Virtual machines
-        </NavLink>
-        <NavLink to="/storage">Storage</NavLink>
-        <NavLink to="/networks">Networks</NavLink>
-        <NavLink to="/backups">Backups</NavLink>
-        <NavLink to="/nodes">Nodes</NavLink>
-        <NavLink to="/tasks">Tasks</NavLink>
+        <NavLink to="/datacenter/vms">Virtual machines</NavLink>
+        <NavLink to="/datacenter/storage">Storage</NavLink>
+        <NavLink to="/datacenter/network">Networks</NavLink>
+        <NavLink to="/datacenter/backups">Backups</NavLink>
+        <NavLink to="/datacenter/nodes">Nodes</NavLink>
+        <NavLink to="/datacenter/tasks">Tasks</NavLink>
         {session.role === "admin" && <NavLink to="/users">Users</NavLink>}
         {session.role === "admin" && <NavLink to="/audit">Audit</NavLink>}
         </div>
         <Tree />
       </aside>
       {drawer && <div className="scrim" onClick={() => setDrawer(false)} />}
+      <div className="content">
+      <div className="content-scroll" ref={scroller}>
       <main className={session.role}>
         <Routes>
-          <Route path="/" element={<VMs />} />
+          <Route path="/datacenter/:tab?" element={<Datacenter />} />
+          {/* Old addresses keep working; query strings (?new=, ?pool=&catalogue=1) are kept. */}
+          <Route path="/" element={<Legacy to="/datacenter" whenQuery="new" otherwise="/datacenter/vms" />} />
+          <Route path="/storage" element={<Legacy to="/datacenter/storage" />} />
+          <Route path="/networks" element={<Legacy to="/datacenter/network" />} />
+          <Route path="/backups" element={<Legacy to="/datacenter/backups" />} />
+          <Route path="/nodes" element={<Legacy to="/datacenter/nodes" />} />
+          <Route path="/tasks" element={<Legacy to="/datacenter/tasks" />} />
           <Route path="/vm/:node/:uuid" element={<VMDetailPage />} />
           <Route path="/node/:id/:tab?" element={<NodeDetail />} />
-          <Route path="/storage" element={<Storage />} />
-          <Route path="/backups" element={<BackupsSection />} />
-          <Route path="/networks" element={<Networks />} />
-          <Route path="/nodes" element={<Nodes />} />
-          <Route path="/tasks" element={<Tasks />} />
           <Route path="/account" element={<Account />} />
           {session.role !== "viewer" && <Route path="/cloudinit-profiles" element={<CloudProfiles />} />}
           {session.role === "admin" && <Route path="/users" element={<Users />} />}
@@ -123,10 +129,20 @@ export default function App() {
           <Route path="*" element={<div className="empty">There is nothing at this address, or your role does not allow it.</div>} />
         </Routes>
       </main>
+      </div>
+      <TasksDock />
+      </div>
       <Toasts />
     </div>
     </RoleContext.Provider>
   );
+}
+
+/** Redirect from an old address. `/` goes to the summary, or to the VM list when it carries ?new= (Add VM). */
+function Legacy({ to, whenQuery, otherwise }: { to: string; whenQuery?: string; otherwise?: string }) {
+  const { search } = useLocation();
+  const dest = whenQuery && otherwise && new URLSearchParams(search).has(whenQuery) ? otherwise : to;
+  return <Navigate to={{ pathname: dest, search }} replace />;
 }
 
 function SignIn({ setup, onDone }: { setup: boolean; onDone: () => void }) {

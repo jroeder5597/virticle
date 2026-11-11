@@ -172,7 +172,7 @@ func (e nodeEnv) notes(dir string) []string {
 // certNames collects what the node's certificate must cover: the host name
 // libvirt reports (the name QEMU verifies), the FQDN, the address the
 // controller reaches the node at, and the node's own addresses.
-func certNames(hostname string, e nodeEnv, nodeAddr string) migpki.Names {
+func certNames(hostname string, e nodeEnv, nodeAddrs ...string) migpki.Names {
 	var n migpki.Names
 	addDNS := func(h string) {
 		if h != "" && hostRE.MatchString(h) {
@@ -181,13 +181,13 @@ func certNames(hostname string, e nodeEnv, nodeAddr string) migpki.Names {
 	}
 	addDNS(hostname)
 	addDNS(e.FQDN)
-	if h, _, err := net.SplitHostPort(nodeAddr); err == nil {
-		nodeAddr = h
-	}
-	if ip := net.ParseIP(nodeAddr); ip != nil {
-		n.IPs = append(n.IPs, ip)
-	} else {
-		addDNS(nodeAddr)
+	for _, a := range nodeAddrs {
+		a, _ = splitAddr(a)
+		if ip := net.ParseIP(a); ip != nil {
+			n.IPs = append(n.IPs, ip)
+		} else {
+			addDNS(a)
+		}
 	}
 	n.IPs = append(n.IPs, e.Addrs...)
 	return n

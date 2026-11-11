@@ -17,9 +17,9 @@ test.describe.serial("resource tree", () => {
   const vmRow = (page: Page) => tree(page).getByRole("treeitem", { name: new RegExp(`^${NAME}, `) });
 
   test("shows both nodes and the VM under its node", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await expect(tree(page)).toBeVisible();
-    for (const n of [env.node1, env.node2]) await expect(tree(page).getByRole("treeitem", { name: new RegExp(`^${n}, `) })).toBeVisible();
+    for (const n of [env.node1, env.node2]) await expect(tree(page).locator('[data-kind="node"]').filter({ hasText: n }).first()).toBeVisible(); // a VM may carry a node's name
     const row = vmRow(page);
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute("aria-level", "3");
@@ -30,7 +30,7 @@ test.describe.serial("resource tree", () => {
   });
 
   test("the quick action starts the VM and the state dot follows; force off from the context menu", async ({ page, api }) => {
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     const row = vmRow(page);
     await row.hover();
     await row.locator(`button[aria-label="Power On ${NAME}"]`).click();
@@ -48,7 +48,7 @@ test.describe.serial("resource tree", () => {
   });
 
   test("keyboard: the menu opens with Shift+F10, Escape closes it, Enter opens the VM", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     const row = vmRow(page);
     await row.focus();
     await page.keyboard.press("Shift+F10");
@@ -62,7 +62,7 @@ test.describe.serial("resource tree", () => {
   });
 
   test("the storage group loads its pools when opened", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     const g = tree(page).locator(`[data-key="s:${vm.node}"]`);
     await expect(g).toHaveAttribute("aria-expanded", "false");
     await g.locator(`button[aria-label="Expand"]`).click();
@@ -70,7 +70,7 @@ test.describe.serial("resource tree", () => {
   });
 
   test("the filter narrows the tree and keeps the node", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await page.getByLabel("Filter tree").fill(NAME);
     await expect(vmRow(page)).toBeVisible();
     await expect(tree(page).getByRole("treeitem", { name: new RegExp(`^${env.node1}, `) })).toBeVisible();
@@ -82,7 +82,7 @@ test.describe.serial("resource tree", () => {
   test("phone width: the sidebar is a drawer and nothing scrolls sideways", async ({ browser }) => {
     const ctx = await browser.newContext({ storageState: ".auth/admin.json", viewport: { width: 390, height: 800 } });
     const page = await ctx.newPage();
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await expect(page.getByRole("heading", { name: "Virtual machines" })).toBeVisible();
     await expect(page.getByRole("tree")).toBeHidden();
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);

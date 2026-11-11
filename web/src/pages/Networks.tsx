@@ -1,31 +1,56 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
+import Play from "lucide-react/icons/play";
+import Square from "lucide-react/icons/square";
+import Trash2 from "lucide-react/icons/trash-2";
+import Zap from "lucide-react/icons/zap";
+import ZapOff from "lucide-react/icons/zap-off";
 import { del, DhcpHost, get, Network, NodeStatus, post, put } from "../api";
 import { orEvents, useLive } from "../live";
+import { useLiveDebounced } from "../liveDebounced";
 import { useRole } from "../auth";
-import { ErrorBox, Field, Modal, NodePicker, StateBadge, useAction, useConfirm } from "../ui";
+import { netEvents, NodeErr, NodeErrors, NodeFilter, nodeEvents, nodeLabel, NodeNetwork } from "./dcShared";
+import { ErrorBox, Field, Modal, NodePicker, PageTitle, StateBadge, useAction, useConfirm } from "../ui";
 
 const modeNames: Record<string, string> = { nat: "NAT", route: "Routed", open: "Open", isolated: "Isolated", bridge: "Bridge" };
 const modeLabel = (n: Network) => (modeNames[n.forward] ?? n.forward) + (n.vlan ? ` · VLAN ${n.vlan}` : "");
 
-/** `fixedNode` pins the page to one node (node page tab): no node picker, no node auto-selection. */
-export default function Networks({ fixedNode }: { fixedNode?: number } = {}) {
-  const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes");
+/**
+ * `fixedNode` pins the page to one node (node page tab): no node picker, no node auto-selection.
+ * `allNodes` lists the networks of every node in one table (Datacenter tab), one request for all of them.
+ */
+export default function Networks({ fixedNode, allNodes, after }: { fixedNode?: number; allNodes?: boolean; after?: (nodes: NodeStatus[]) => ReactNode } = {}) {
+  const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes", nodeEvents);
   const [pickedNode, setNode] = useState(0);
   const node = fixedNode ?? pickedNode;
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useState<{ node: number; name: string } | undefined>();
   const [creating, setCreating] = useState(false);
+  const [filterNode, setFilterNode] = useState(0); // all-nodes mode: 0 is every node
+  const [text, setText] = useState("");
   const all = nodes.data?.nodes ?? [];
   useEffect(() => {
-    if (fixedNode === undefined && !all.some((n) => n.id === node && n.state === "online")) setNode(all.find((n) => n.state === "online")?.id ?? 0);
-  }, [all, node]);
-  const nets = useLive(() => (node ? get<Network[]>(`/nodes/${node}/networks`) : Promise.resolve([])), `nets/${node}`, orEvents("network"));
+    if (!allNodes && fixedNode === undefined && !all.some((n) => n.id === node && n.state === "online")) setNode(all.find((n) => n.state === "online")?.id ?? 0);
+  }, [all, node]); // eslint-disable-line react-hooks/exhaustive-deps
+  const single = useLive(() => (!allNodes && node ? get<Network[]>(`/nodes/${node}/networks`) : Promise.resolve([])), `nets/${allNodes ? "-" : node}`, orEvents("network"));
+  const every = useLiveDebounced(
+    () => (allNodes ? get<{ networks: NodeNetwork[]; errors: NodeErr[] }>("/networks") : Promise.resolve({ networks: [] as NodeNetwork[], errors: [] as NodeErr[] })),
+    `nets/all/${!!allNodes}`,
+    netEvents,
+  );
+  const nets = allNodes ? every : single;
   const act = useAction();
   const confirm = useConfirm();
-  const base = `/nodes/${node}/networks`;
-  const net = nets.data?.find((n) => n.name === selected) ?? nets.data?.[0];
-  const action = (n: Network, body: object) => act.run(() => post(`${base}/${encodeURIComponent(n.name)}/action`, body));
+  const nodeName = nodeLabel(all.find((n) => n.id === node) ?? { addr: String(node) });
+  const rows: NodeNetwork[] = allNodes ? every.data?.networks ?? [] : (single.data ?? []).map((n) => ({ ...n, node, nodeName }));
+  const needle = text.trim().toLowerCase();
+  const shown = rows.filter((n) => (!filterNode || n.node === filterNode) && (!needle || [n.name, n.nodeName, n.address ?? "", n.bridge ?? "", modeLabel(n)].some((s) => s.toLowerCase().includes(needle))));
+  const net = shown.find((n) => n.name === selected?.name && (!selected.node || selected.node === n.node)) ?? shown[0];
+  const online = all.filter((n) => n.state === "online");
+  const createNode = allNodes ? (online.some((n) => n.id === filterNode) ? filterNode : online[0]?.id ?? 0) : node;
+  const action = async (n: NodeNetwork, body: object) => {
+    if (await act.run(() => post(`/nodes/${n.node}/networks/${encodeURIComponent(n.name)}/action`, body))) nets.reload();
+  };
 
-  const stop = async (n: Network) => {
+  const stop = async (n: NodeNetwork) => {
     const running = [...new Set(n.interfaces.filter((i) => i.running).map((i) => i.vm))];
     const ok = await confirm.ask({
       title: `Stop network ${n.name}`,
@@ -37,7 +62,7 @@ export default function Networks({ fixedNode }: { fixedNode?: number } = {}) {
     });
     if (ok) return action(n, running.length ? { action: "stop", force: true } : { action: "stop" });
   };
-  const remove = async (n: Network) => {
+  const remove = async (n: NodeNetwork) => {
     const attached = [...new Set(n.interfaces.map((i) => i.vm))];
     const ok = await confirm.ask({
       title: `Delete network ${n.name}`,
@@ -51,61 +76,93 @@ export default function Networks({ fixedNode }: { fixedNode?: number } = {}) {
   return (
     <>
       <div className="head">
-        {fixedNode === undefined ? <h1>Networks</h1> : <h2>Virtual networks</h2>}
+        {fixedNode === undefined ? <PageTitle>Networks</PageTitle> : <h2>Virtual networks</h2>}
         <div className="actions">
-          {fixedNode === undefined && all.length > 0 && <NodePicker nodes={all} value={node} onChange={setNode} />}
-          <button className="primary" disabled={!node} onClick={() => setCreating(true)}>
+          {fixedNode === undefined && !allNodes && all.length > 0 && <NodePicker nodes={all} value={node} onChange={setNode} />}
+          <button className="primary" disabled={!createNode} onClick={() => setCreating(true)}>
             New network
           </button>
         </div>
       </div>
       <ErrorBox error={nets.error ?? act.error} />
-      {nets.data && nets.data.length === 0 ? (
-        <div className="empty">{node ? "No virtual networks on this node." : "No node is online."}</div>
+      <NodeErrors errors={every.data?.errors} />
+      {allNodes && <NodeFilter nodes={all} value={filterNode} onChange={setFilterNode} text={text} onText={setText} placeholder="Search networks by name, node or address" shown={shown.length} total={rows.length} />}
+      {nets.data && shown.length === 0 ? (
+        <div className="empty">{allNodes ? (rows.length ? "No network matches the filter." : "No virtual networks on the connected nodes.") : node ? "No virtual networks on this node." : "No node is online."}</div>
       ) : (
-        <table>
+        <table className={allNodes ? "dctable" : ""}>
           <thead>
             <tr>
               <th>Name</th>
+              {allNodes && <th>Node</th>}
               <th>State</th>
               <th>Mode</th>
-              <th>Bridge</th>
+              {!allNodes && <th>Bridge</th>}
               <th>Address</th>
               <th>DHCP</th>
               <th className="num">VM interfaces</th>
-              <th>Starts with host</th>
+              <th>{allNodes ? "Autostart" : "Starts with host"}</th>
               <th />
             </tr>
           </thead>
           <tbody>
-            {(nets.data ?? []).map((n) => (
-              <tr key={n.name} className={net?.name === n.name ? "selected" : ""} onClick={() => setSelected(n.name)}>
+            {shown.map((n) => (
+              <tr key={n.node + "/" + n.name} className={net?.node === n.node && net?.name === n.name ? "selected" : ""} onClick={() => setSelected({ node: allNodes ? n.node : 0, name: n.name })}>
                 <td>{n.name}</td>
+                {allNodes && <td>{n.nodeName}</td>}
                 <td>
                   <StateBadge state={n.active ? "active" : "inactive"} />
                 </td>
                 <td>{modeLabel(n)}</td>
-                <td className="mono">{n.bridge}</td>
+                {!allNodes && <td className="mono">{n.bridge}</td>}
                 <td className="mono">{n.address}</td>
                 <td>{n.dhcp ? `${n.hosts.length} reserved` : ""}</td>
                 <td className="num">{n.interfaces.length}</td>
                 <td>{n.autostart ? "Yes" : "No"}</td>
                 <td className="actions" onClick={(e) => e.stopPropagation()}>
-                  {n.active ? (
-                    <button disabled={act.busy} onClick={() => stop(n)}>
-                      Stop
-                    </button>
+                  {allNodes ? (
+                    <>
+                      {n.active ? (
+                        <button className="iconbtn" disabled={act.busy} onClick={() => stop(n)} aria-label="Stop" title="Stop">
+                          <Square size={15} aria-hidden="true" />
+                        </button>
+                      ) : (
+                        <button className="iconbtn" disabled={act.busy} onClick={() => action(n, { action: "start" })} aria-label="Start" title="Start">
+                          <Play size={15} aria-hidden="true" />
+                        </button>
+                      )}
+                      <button
+                        className="iconbtn"
+                        disabled={act.busy}
+                        onClick={() => action(n, { action: n.autostart ? "noautostart" : "autostart" })}
+                        aria-label={n.autostart ? "No autostart" : "Autostart"}
+                        title={n.autostart ? "No autostart" : "Autostart"}
+                      >
+                        {n.autostart ? <ZapOff size={15} aria-hidden="true" /> : <Zap size={15} aria-hidden="true" />}
+                      </button>
+                      <button className="iconbtn danger" disabled={act.busy} onClick={() => remove(n)} aria-label="Delete" title="Delete">
+                        <Trash2 size={15} aria-hidden="true" />
+                      </button>
+                    </>
                   ) : (
-                    <button disabled={act.busy} onClick={() => action(n, { action: "start" })}>
-                      Start
-                    </button>
+                    <>
+                      {n.active ? (
+                        <button disabled={act.busy} onClick={() => stop(n)}>
+                          Stop
+                        </button>
+                      ) : (
+                        <button disabled={act.busy} onClick={() => action(n, { action: "start" })}>
+                          Start
+                        </button>
+                      )}
+                      <button disabled={act.busy} onClick={() => action(n, { action: n.autostart ? "noautostart" : "autostart" })}>
+                        {n.autostart ? "No autostart" : "Autostart"}
+                      </button>
+                      <button className="danger" disabled={act.busy} onClick={() => remove(n)}>
+                        Delete
+                      </button>
+                    </>
                   )}
-                  <button disabled={act.busy} onClick={() => action(n, { action: n.autostart ? "noautostart" : "autostart" })}>
-                    {n.autostart ? "No autostart" : "Autostart"}
-                  </button>
-                  <button className="danger" disabled={act.busy} onClick={() => remove(n)}>
-                    Delete
-                  </button>
                 </td>
               </tr>
             ))}
@@ -113,8 +170,9 @@ export default function Networks({ fixedNode }: { fixedNode?: number } = {}) {
         </table>
       )}
       {confirm.dialog}
-      {net && <Detail key={node + "/" + net.name} base={base} name={net.name} />}
-      {creating && <CreateNetwork base={base} onClose={() => setCreating(false)} onDone={(name) => setSelected(name)} />}
+      {after?.(all)}
+      {net && <Detail key={net.node + "/" + net.name} base={`/nodes/${net.node}/networks`} name={net.name} />}
+      {creating && <CreateNetwork node={createNode} nodes={allNodes ? online : undefined} onClose={() => setCreating(false)} onDone={(n, name) => { setSelected({ node: allNodes ? n : 0, name }); nets.reload(); }} />}
     </>
   );
 }
@@ -124,9 +182,12 @@ function Detail({ base, name }: { base: string; name: string }) {
   const d = useLive(() => get<Network>(url), url, orEvents("network"));
   // Leases come and go without any libvirt event, so look again now and then.
   useEffect(() => {
-    const t = setInterval(() => document.visibilityState !== "hidden" && d.reload(), 10000);
+    // Only a running network with a DHCP server has leases to follow.
+    const t = setInterval(() => document.visibilityState !== "hidden" && dhcpRunning.current && d.reload(), 10000);
     return () => clearInterval(t);
   }, [d.reload]);
+  const dhcpRunning = useRef(false);
+  dhcpRunning.current = !!(d.data?.dhcp && d.data.active);
   const n = d.data;
   const viewer = useRole() === "viewer";
   return (
@@ -379,7 +440,9 @@ const modes: Record<string, string> = {
   xml: "Other (libvirt XML)",
 };
 
-function CreateNetwork({ base, onClose, onDone }: { base: string; onClose: () => void; onDone: (name: string) => void }) {
+function CreateNetwork({ node: initialNode, nodes, onClose, onDone }: { node: number; nodes?: NodeStatus[]; onClose: () => void; onDone: (node: number, name: string) => void }) {
+  const [node, setNode] = useState(initialNode);
+  const base = `/nodes/${node}/networks`;
   const [mode, setMode] = useState("nat");
   const [f, setF] = useState({ name: "", bridgeName: "", address: "", dhcp: true, dhcpStart: "", dhcpEnd: "", domain: "", ovs: false, vlan: "", xml: "" });
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
@@ -395,13 +458,18 @@ function CreateNetwork({ base, onClose, onDone }: { base: string; onClose: () =>
           : { name: f.name, mode, bridgeName: f.bridgeName, address: f.address, dhcp: f.dhcp && f.address !== "", dhcpStart: f.dhcpStart, dhcpEnd: f.dhcpEnd, domain: f.domain };
     let res: { name: string } = { name: "" };
     if (await act.run(async () => (res = await post(base, body)))) {
-      onDone(res.name);
+      onDone(node, res.name);
       onClose();
     }
   };
   return (
     <Modal title="New virtual network" onClose={onClose}>
       <form onSubmit={submit}>
+        {nodes && (
+          <Field label="Node">
+            <NodePicker nodes={nodes} value={node} onChange={setNode} />
+          </Field>
+        )}
         <Field label="Type">
           <select value={mode} onChange={(e) => setMode(e.target.value)}>
             {Object.entries(modes).map(([k, v]) => (

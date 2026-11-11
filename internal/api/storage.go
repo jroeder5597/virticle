@@ -40,10 +40,19 @@ func (s *Server) listPools(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	pools, _, err := h.ConnectListAllStoragePools(1, 0)
+	out, err := collectPools(h)
 	if err != nil {
 		fail(w, err)
 		return
+	}
+	writeJSON(w, out)
+}
+
+// collectPools lists the storage pools of one node, sorted by name.
+func collectPools(h *hostconn.Host) ([]poolInfo, error) {
+	pools, _, err := h.ConnectListAllStoragePools(1, 0)
+	if err != nil {
+		return nil, err
 	}
 	out := []poolInfo{}
 	for _, p := range pools {
@@ -72,7 +81,7 @@ func (s *Server) listPools(w http.ResponseWriter, r *http.Request) {
 		out = append(out, info)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	writeJSON(w, out)
+	return out, nil
 }
 
 type poolRequest struct {

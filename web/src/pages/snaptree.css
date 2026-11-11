@@ -1,0 +1,56 @@
+/* Snapshot tree: one fixed-height row per snapshot, connector lines in a gutter of fixed columns. Static. */
+.streewrap { container-type: inline-size; }
+.stree-scroll { max-height: 62dvh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+.stree { min-width: 0; margin: 0; padding: 0; }
+.srow { --rowh: 46px; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto; grid-template-areas: "gut node main meta act"; align-items: center; height: var(--rowh); padding: 0 10px 0 8px; gap: 0 10px; box-sizing: border-box; outline-offset: -2px; position: relative; }
+.srow + .srow { border-top: 1px solid color-mix(in srgb, var(--line) 45%, transparent); }
+.srow:hover { background: var(--hover); }
+.srow[data-sel="true"] { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.srow.now { color: var(--muted); }
+.srow.blocked { opacity: 0.7; }
+.srow:focus-visible { outline: 2px solid var(--accent); }
+
+.sgut { grid-area: gut; display: flex; align-self: stretch; }
+.gc { position: relative; width: 20px; flex: none; }
+.gc.t::before { content: ""; position: absolute; left: 9px; top: 0; bottom: 0; border-left: 2px solid var(--line); }
+.gc.e::before { content: ""; position: absolute; left: 9px; top: 0; height: 50%; width: 11px; border-left: 2px solid var(--line); border-bottom: 2px solid var(--line); border-bottom-left-radius: 7px; box-sizing: border-box; }
+.gc.e.more::after { content: ""; position: absolute; left: 9px; top: 50%; bottom: 0; border-left: 2px solid var(--line); }
+
+.snode { grid-area: node; display: inline-flex; align-items: center; gap: 8px; }
+.snode .dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--muted); background: var(--panel); box-sizing: border-box; flex: none; }
+.srow.cur .snode .dot { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
+.srow.now .snode .dot { border-style: dashed; border-color: var(--accent); background: none; }
+
+.smain { grid-area: main; min-width: 0; display: grid; gap: 1px; }
+.sline { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sdesc { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sline .badge, .sline svg { flex: none; }
+.sreason { color: var(--warn); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.smeta { grid-area: meta; display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sact { grid-area: act; display: flex; gap: 4px; justify-content: flex-end; min-width: 0; }
+.sact .iconbtn, .sact input[type="checkbox"] { flex: none; }
+.srow input[type="checkbox"] { margin: 0; }
+
+.stbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 8px; }
+.stbar .grow { flex: 1; }
+.stkey { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+
+/* Narrow: the metadata moves under the name; rows stay a fixed, taller height. */
+@container (max-width: 640px) {
+  .srow { --rowh: 66px; grid-template-columns: auto auto minmax(0, 1fr) auto; grid-template-areas: "gut node main act" "gut node meta act"; }
+  .smeta { gap: 8px; flex-wrap: nowrap; overflow: hidden; }
+  .smeta .when { display: none; }
+}
+@container (max-width: 400px) {
+  .gc { width: 14px; }
+  .gc.t::before, .gc.e::before, .gc.e.more::after { left: 6px; }
+  .gc.e::before { width: 8px; }
+}
+
+/* Dialogs: sentences keep their words, check boxes line up with the first line of their label. */
+.modal p { max-width: 68ch; text-wrap: pretty; }
+.modal label.check { flex-wrap: nowrap; align-items: flex-start; }
+.modal label.check > input[type="checkbox"] { flex: none; margin-top: 2px; }
+.nameval { overflow-wrap: anywhere; font-family: var(--mono, monospace); }

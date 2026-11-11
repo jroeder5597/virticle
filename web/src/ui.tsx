@@ -1,7 +1,9 @@
 // Small shared building blocks.
-import { ReactNode, useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { createContext, ReactNode, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { CircleHelp, X } from "lucide-react";
 import "./menu.css";
+import "./helptip.css";
 
 // Open modals, oldest first: Escape closes only the topmost (a confirmation opened from a dialog).
 const modalStack: object[] = [];
@@ -234,4 +236,82 @@ export function usePrompt() {
     </Modal>
   ) : null;
   return { ask, dialog };
+}
+
+/**
+ * A small circled question mark that explains something. The text appears on hover, keyboard focus and
+ * click, stays inside the viewport and closes on Escape (only the tip, not the dialog around it), on blur
+ * and when the pointer leaves.
+ */
+export function HelpTip(props: { label: string; children: ReactNode }) {
+  const id = useId();
+  const [hover, setHover] = useState(false);
+  const [focus, setFocus] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const open = hover || focus || pinned;
+  const btn = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; width: number; maxH: number }>();
+  useLayoutEffect(() => {
+    if (!open || !btn.current) return;
+    const r = btn.current.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const width = Math.min(380, vw - 16);
+    const left = Math.max(8, Math.min(r.left + r.width / 2 - width / 2, vw - width - 8));
+    const below = vh - r.bottom - 8;
+    const above = r.top - 8;
+    setPos(below >= above || below >= 260 ? { left, top: r.bottom, width, maxH: below } : { left, bottom: vh - r.top, width, maxH: above });
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setHover(false);
+      setFocus(false);
+      setPinned(false);
+    };
+    window.addEventListener("keydown", onEsc, true);
+    return () => window.removeEventListener("keydown", onEsc, true);
+  }, [open]);
+  return (
+    <span
+      className="helptip"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => {
+        setHover(false);
+        setPinned(false);
+      }}
+    >
+      <button
+        ref={btn}
+        type="button"
+        className="helptip-btn"
+        aria-label={props.label}
+        aria-describedby={open ? id : undefined}
+        aria-expanded={open}
+        onFocus={() => setFocus(true)}
+        onBlur={() => {
+          setFocus(false);
+          setPinned(false);
+        }}
+        onClick={() => setPinned((p) => !p)}
+      >
+        <CircleHelp size={15} aria-hidden="true" />
+      </button>
+      {open &&
+        createPortal(
+          <div id={id} role="tooltip" className="helptip-pop" style={pos ? { left: pos.left, top: pos.top, bottom: pos.bottom, width: pos.width, maxHeight: pos.maxH } : { visibility: "hidden" }}>
+            {props.children}
+          </div>,
+          document.body,
+        )}
+    </span>
+  );
+}
+
+/** True inside the Datacenter tabs, where the page itself owns the h1 and tab headings drop to h2. */
+export const EmbeddedContext = createContext(false);
+export function PageTitle({ children }: { children: ReactNode }) {
+  return useContext(EmbeddedContext) ? <h2>{children}</h2> : <h1>{children}</h1>;
 }

@@ -1,7 +1,7 @@
 // Move a disk to another storage pool: live (block copy) and offline (volume copy), through the UI.
 import { cleanVMs, createCirros, expect, openVM, test } from "../lib/fixtures";
 import { P } from "../lib/env";
-import { dialog, expectBadge, field, confirm, cancelConfirm } from "../lib/ui";
+import { dialog, expectBadge, field, confirm, cancelConfirm, pickPool } from "../lib/ui";
 
 const NAME = `${P}mv1`;
 const POOL = `${P}mvpool`;
@@ -31,7 +31,7 @@ test.describe.serial("disk move", () => {
     await expectBadge(page.locator(".head"), "running");
     await page.locator("section.card").filter({ has: page.getByRole("heading", { name: "Disks", exact: true }) }).getByRole("row", { name: /vda/ }).getByRole("button", { name: "Move", exact: true }).click();
     const dlg = dialog(page, /^Move vda/);
-    await field(dlg, "Target pool").selectOption(POOL);
+    await pickPool(dlg, "Target pool", POOL);
     await expect(dlg.getByText("Live: the VM keeps running")).toBeVisible();
     await expect(dlg.locator("ul.checks li.error")).toHaveCount(0);
     await dlg.getByRole("button", { name: "Move disk" }).click();
@@ -54,8 +54,8 @@ test.describe.serial("disk move", () => {
     await openVM(page, vm, "hardware");
     await page.locator("section.card").filter({ has: page.getByRole("heading", { name: "Disks", exact: true }) }).getByRole("row", { name: /vda/ }).getByRole("button", { name: "Move", exact: true }).click();
     const dlg = dialog(page, /^Move vda/);
-    await field(dlg, "Target pool").selectOption("default");
-    await dlg.getByLabel("Delete the old volume afterwards").uncheck();
+    await pickPool(dlg, "Target pool", "default");
+    await dlg.getByLabel("Delete the old volume").uncheck();
     await expect(dlg.getByText("Offline: the VM is shut off.")).toBeVisible();
     await dlg.getByRole("button", { name: "Move disk" }).click();
     await expect(dlg.getByText("Done.")).toBeVisible({ timeout: 120_000 });
@@ -68,7 +68,7 @@ test.describe.serial("disk move", () => {
     await openVM(page, vm, "hardware");
     await page.locator("section.card").filter({ has: page.getByRole("heading", { name: "Disks", exact: true }) }).getByRole("row", { name: /vda/ }).getByRole("button", { name: "Move", exact: true }).click();
     const dlg = dialog(page, /^Move vda/);
-    await field(dlg, "Target pool").selectOption(POOL);
+    await pickPool(dlg, "Target pool", POOL);
     await expect(dlg.locator("ul.checks li.error")).toContainText("already has a volume");
     await expect(dlg.getByRole("button", { name: "Move disk" })).toBeDisabled();
   });

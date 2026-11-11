@@ -1,0 +1,79 @@
+/* Hardware tab: a two-column grid whose rows share their height, full-width table cards, collapsed sections.
+   The grid follows the width of the page area (container query), not of the window, because the tree takes a part of it. */
+.hwwrap { container-type: inline-size; }
+.hw { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 12px; align-items: stretch; }
+.hw > * { min-width: 0; }
+@container (min-width: 760px) {
+  .hw { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hw > .full { grid-column: 1 / -1; }
+}
+.hw > .card, .hwcol > .card { display: flex; flex-direction: column; }
+/* Left stack of the top block: its cards end level with the Boot order card beside it. */
+.hwcol { display: flex; flex-direction: column; gap: 14px; }
+.hwcol > .card:last-child { flex: 1; }
+.hw > .hwcol { min-width: 0; }
+/* One column: the stack dissolves and the cards follow the order of use. */
+@container (max-width: 759px) {
+  .hwcol { display: contents; }
+  #hw-cpu { order: 1; } #hw-boot { order: 2; } #hw-disks { order: 3; } #hw-nics { order: 4; } #hw-cdrom { order: 5; } #hw-firmware { order: 6; }
+  .hw > .hwcol { display: contents; }
+  #hw-advanced, #hw-passthrough { order: 7; }
+}
+
+.chead { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 30px; }
+.chead:empty { display: none; }
+.chead h3 { margin: 0; }
+.chead-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.card > .chead { margin-bottom: 10px; }
+
+.hwdl { margin: 0; }
+.hwt { width: 100%; }
+.hwt th { text-align: left; padding: 4px 10px 6px 0; color: var(--muted); font-weight: 500; }
+.hwt td { padding: 6px 10px 6px 0; vertical-align: middle; }
+.hwt th.num, .hwt td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.hwt .fit { width: 1%; white-space: nowrap; }
+.hwt td.wrap { overflow-wrap: anywhere; word-break: break-word; }
+.hwt td.actions { text-align: right; white-space: nowrap; padding-right: 0; }
+.hwt td.actions > * { margin-left: 4px; }
+.hwt td.actions .iconbtn:first-child { margin-left: 0; }
+.hwt tbody tr + tr td { border-top: 1px solid var(--line); }
+.hwadd { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.hwfoot { margin-top: auto; padding-top: 12px; flex-wrap: wrap; }
+
+/* A section shown in a dialog: no frame of its own. */
+.hwbare { display: block; }
+.hwdlg { max-height: 70dvh; overflow: auto; padding-right: 2px; container-type: inline-size; }
+
+/* Collapsed-by-default sections. */
+.disc > summary, .disc-head { display: flex; align-items: center; gap: 10px; width: 100%; cursor: pointer; list-style: none; padding: 0; text-align: left; background: none; border: 0; color: var(--text); }
+.disc-head { font: inherit; min-height: 30px; }
+.disc-head svg { flex: none; color: var(--muted); }
+.disc-title { font-weight: 700; flex: none; }
+.disc-sum { color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
+.disc-body { margin-top: 12px; }
+.hw > .card.disc-card { display: block; }
+
+/* A compact note: one line, details on demand. */
+.oneline { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; margin: 0 0 8px; }
+.oneline details { flex: 1 1 100%; }
+.oneline summary { cursor: pointer; color: var(--accent); display: inline; }
+.oneline details > div { margin-top: 6px; }
+.hwbare .tgrid, .disc-body .tgrid { margin-top: 8px; }
+
+.field-help { display: flex; gap: 8px; align-items: flex-end; }
+.field-help > .field { flex: 1; min-width: 0; }
+.field-help > .helptip { margin-bottom: 14px; }
+
+/* Narrow: each table row becomes a short block, the long value (path, network) on its own line. */
+@container (max-width: 560px) {
+  .hwt-stack thead { display: none; }
+  .hwt-stack, .hwt-stack tbody { display: block; }
+  .hwt-stack tr { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; padding: 8px 0; }
+  .hwt-stack tbody tr + tr { border-top: 1px solid var(--line); }
+  .hwt-stack td, .hwt-stack td.fit { display: block; padding: 0; border: 0 !important; width: auto; white-space: normal; min-width: 0; }
+  .hwt-stack td.actions { white-space: nowrap; }
+  .hwt-stack td.wrap { flex: 1 1 100%; order: 9; }
+  .hwt-stack td.actions { margin-left: auto; order: 5; }
+}
+.disc-head { flex-wrap: wrap; white-space: normal; }
+.disc-sum { flex: 1 1 14em; }

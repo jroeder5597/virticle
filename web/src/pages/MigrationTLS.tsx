@@ -53,6 +53,8 @@ export default function MigrationTLS({ node, online, admin }: { node: number; on
       setDone(await del<MigTLS>(`/nodes/${node}/migration-tls`));
       await load();
     });
+  // The node's address changed and the certificate does not cover it: the files are ours and unmodified, so issuing again is safe and needs no repair.
+  const addressOnly = st.state === "mismatch" && (st.problems ?? []).length > 0 && (st.problems ?? []).every((p) => p.includes("does not cover"));
   const label = st.state === "ok" ? "encrypted" : st.state === "expiring" ? `expires in ${st.daysLeft} days` : st.state;
   return (
     <div className="migtls">
@@ -67,12 +69,12 @@ export default function MigrationTLS({ node, online, admin }: { node: number; on
           Set up encrypted migration
         </button>
       )}
-      {admin && (st.state === "ok" || st.state === "expiring" || st.state === "expired") && (
+      {admin && (st.state === "ok" || st.state === "expiring" || st.state === "expired" || addressOnly) && (
         <button disabled={act.busy} onClick={() => setup(false)}>
           Re-issue
         </button>
       )}
-      {admin && st.state === "mismatch" && (
+      {admin && st.state === "mismatch" && !addressOnly && (
         <button
           disabled={act.busy}
           onClick={async () => (await confirm.ask({ title: "Repair encrypted migration", message: `The certificate files in ${st.dir} on ${st.hostname} are replaced. Existing files that this server did not create are kept as *.virticle-orig.`, items: st.problems ?? [], confirm: "Replace certificates" })) && setup(true)}

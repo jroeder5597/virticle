@@ -104,6 +104,11 @@ type snapInfo struct {
 	Kind        string   `json:"kind"` // internal | external
 	Children    int      `json:"children"`
 	Files       []string `json:"files"` // overlay and memory files of an external snapshot
+	// Scheduled: made by the snapshot scheduler. Deletable is false when libvirt can never delete it on this
+	// node (Reason says why); whether a selection can be deleted is decided by the plan endpoint.
+	Scheduled bool   `json:"scheduled"`
+	Deletable bool   `json:"deletable"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 func snapInfoOf(x snapXML) snapInfo {
@@ -136,6 +141,7 @@ func (s *Server) listSnapshots(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	annotateSnapshots(out, nodeIsAppArmor(h))
 	writeJSON(w, out)
 }
 
@@ -476,16 +482,29 @@ func autoExternal(h *hostconn.Host, dom libvirt.Domain) bool {
 			}
 		}
 	}
+	if _, known := apparmorKnown(h); !known {
+		return false
+	}
+	return !nodeIsAppArmor(h)
+}
+
+func apparmorKnown(h *hostconn.Host) (bool, bool) {
 	if v, ok := apparmorNodes.Load(h.Name); ok {
-		return !v.(bool)
+		return v.(bool), true
 	}
 	caps, err := h.ConnectGetCapabilities()
 	if err != nil {
-		return false
+		return false, false
 	}
 	aa := secModelIsAppArmor(caps)
 	apparmorNodes.Store(h.Name, aa)
-	return !aa
+	return aa, true
+}
+
+// nodeIsAppArmor reports whether QEMU is confined by AppArmor on the node (false when that cannot be read).
+func nodeIsAppArmor(h *hostconn.Host) bool {
+	aa, _ := apparmorKnown(h)
+	return aa
 }
 
 func secModelIsAppArmor(caps string) bool {

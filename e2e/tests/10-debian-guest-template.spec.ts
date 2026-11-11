@@ -20,7 +20,7 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     const vols: any[] = await api.get(`/nodes/${n1}/pools/default/volumes`);
     const img = vols.find((v) => v.name === env.debian);
     expect(img, `${env.debian} must exist in pool default on node 1`).toBeTruthy();
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await page.getByRole("button", { name: "New VM" }).click();
     const dlg = dialog(page, "New virtual machine");
     await field(dlg, "Name").fill(NAME);
@@ -57,13 +57,23 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     // the guest's own host name, and addresses from the agent
     await expect(summary.locator("dd").nth(3)).not.toContainText("Not reported", { timeout: 60_000 });
     await expect(summary.locator("dd").nth(4)).toContainText(/\d+\.\d+\.\d+\.\d+/, { timeout: 60_000 });
-    await expect(summary).toContainText("From the guest agent");
+    await expect(summary.locator("dd[title='From the guest agent']")).toBeVisible();
+    await expect(summary).not.toContainText("From the guest agent");
     const util = page.locator("section#utilization");
     await expect(util.locator(".fsbar .mono", { hasText: /^\/$/ })).toBeVisible({ timeout: 60_000 });
     await expect(util).toContainText(/of \d+(\.\d)? GiB \(\d+%\)/);
-    // the Guest card keeps version, kernel and time zone, and no longer repeats host name and filesystems
-    const guest = page.locator("section.card").filter({ has: page.getByRole("heading", { name: "Guest", exact: true }) });
-    await expect(guest).toContainText(/Kernel/);
+    // the Guest details card shows what only the agent knows and does not repeat OS, host name or filesystems
+    const guest = page.locator("section#guest-details");
+    await expect(guest.getByRole("heading", { name: "Guest details", exact: true })).toBeVisible();
+    await expect(guest).toContainText(/Kernel/, { timeout: 60_000 });
+    await expect(guest).toContainText("Quiesced snapshots");
+    await expect(guest).toContainText("available");
+    await expect(guest).toContainText(/vCPUs online\s*1 of 1/);
+    await expect(guest).toContainText(/Time zone/);
+    await expect(guest.locator("dt", { hasText: /^(enp|ens|eth)/ }).first()).toBeVisible();
+    await expect(guest.locator("dd", { hasText: /\d+\.\d+\.\d+\.\d+\/\d+/ }).first()).toBeVisible();
+    await expect(guest).not.toContainText("Version");
+    await expect(guest).not.toContainText("Host name");
   });
 
   test("utilization shows CPU and memory with data and sparklines", async ({ page, api }) => {
@@ -148,7 +158,7 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     const dlg = dialog(page, `Delete ${CLONE}?`);
     await dlg.getByLabel(/Also delete its disk/).check();
     await dlg.getByRole("button", { name: "Delete VM" }).click();
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/datacenter\/vms$/);
     expect(await api.vmByName(CLONE)).toBeUndefined();
     await openVM(page, vm);
     await vmAction(page, "Template", "Convert back to a VM");
@@ -157,7 +167,7 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     const d2 = dialog(page, `Delete ${NAME}?`);
     await d2.getByLabel(/Also delete its disk/).check();
     await d2.getByRole("button", { name: "Delete VM" }).click();
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/datacenter\/vms$/);
     expect(await api.vmByName(NAME)).toBeUndefined();
   });
 });

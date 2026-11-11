@@ -104,7 +104,7 @@ func buildSeed(guest, cloneName string, c cloneCustomize) ([]byte, error) {
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 func hasVirtSysprep(h *hostconn.Host) bool {
-	_, err := h.Run("command -v virt-sysprep")
+	_, err := h.RunRoot("command -v virt-sysprep")
 	return err == nil
 }
 
@@ -338,7 +338,7 @@ func (s *Server) vmClone(w http.ResponseWriter, r *http.Request) {
 			for _, p := range newDisks {
 				cmd += " -a " + shellQuote(p)
 			}
-			if out, err := h.Run(cmd + " 2>&1"); err != nil {
+			if out, err := h.RunRoot(cmd + " 2>&1"); err != nil {
 				return rollback(fmt.Errorf("virt-sysprep failed: %v: %s", err, tail(out, 1500)))
 			}
 		}

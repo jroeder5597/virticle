@@ -1,0 +1,6 @@
+.bs { display: grid; gap: 4px; }
+.bs-face { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.bs-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.bs-name { font-weight: 600; overflow-wrap: anywhere; }
+.bs-sub { justify-content: flex-start; flex-wrap: wrap; gap: 2px 12px; color: var(--muted); font-size: 12px; }
+.bs-addr { overflow-wrap: anywhere; }

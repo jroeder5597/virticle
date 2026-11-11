@@ -106,14 +106,19 @@ func (s *Server) readMigTLS(h *hostconn.Host) (migTLSInfo, nodeEnv, nodeState, e
 	if u, err := env.qemuUser(); err == nil {
 		info.QemuUser = u
 	}
-	out, err = h.Run(stateScript(dir))
+	// The private keys are readable by QEMU's account and root only.
+	out, err = h.RunRoot(stateScript(dir))
 	if err != nil {
+		if errors.Is(err, hostconn.ErrNoPrivilege) {
+			return info, env, nodeState{}, badRequest(nodeCapabilities("none")["installTLS"].Reason)
+		}
 		return info, env, nodeState{}, fmt.Errorf("cannot read %s on %s: %w: %s", dir, h.Name, err, out)
 	}
 	st, err := parseState(out, dir, h.Name)
 	if err != nil {
 		return info, env, st, err
 	}
+	st.snap.Want = s.certAddrs(h)
 	for _, f := range migpki.Files {
 		if fs := st.snap.Files[f]; fs.Exists {
 			info.Files = append(info.Files, migTLSFileInfo{f, fs.Owner, fs.Mode})
@@ -149,6 +154,11 @@ func (s *Server) checkEncryption(srcID int64, src *hostconn.Host, dstID int64, d
 	}
 	use, chk := encryptionCheck(in)
 	plan.TLS, plan.TLSName = use, dst.Name
+	if n, ok := s.nodeStatus(dstID); ok {
+		if ep, err := endpointFor(n.Node); err == nil {
+			plan.TLSName = tlsDestination(dst.Name, ep.Host)
+		}
+	}
 	*c = append(*c, chk)
 }
 
@@ -240,8 +250,8 @@ func (s *Server) installMigTLS(id int64, h *hostconn.Host, req migTLSReq, progre
 	if err != nil {
 		return info, err
 	}
-	if env.UID != "0" {
-		return info, badRequest("setting up encrypted migration needs root on " + h.Name + " (the SSH user is not root)")
+	if !h.CanRoot() {
+		return info, badRequest(nodeCapabilities("none")["installTLS"].Reason)
 	}
 	if !hostRE.MatchString(h.Name) {
 		return info, badRequest("unsupported characters in the host name " + h.Name)
@@ -304,7 +314,7 @@ func (s *Server) installMigTLS(id int64, h *hostconn.Host, req migTLSReq, progre
 		backups = append(backups, [2]string{f, b})
 	}
 
-	certPEM, keyPEM, err := ca.Issue(certNames(h.Name, env, s.nodeAddr(id)), time.Now())
+	certPEM, keyPEM, err := ca.Issue(certNames(h.Name, env, s.certAddrs(h)...), time.Now())
 	if err != nil {
 		return info, err
 	}
@@ -326,7 +336,7 @@ func (s *Server) installMigTLS(id int64, h *hostconn.Host, req migTLSReq, progre
 			changes = append(changes, "created directory "+d)
 		}
 	}
-	if out, err := h.Run("umask 022; mkdir -p -- " + shq(dir)); err != nil {
+	if out, err := h.RunRoot("umask 022; mkdir -p -- " + shq(dir)); err != nil {
 		return info, fmt.Errorf("creating %s on %s: %w: %s", dir, h.Name, err, out)
 	}
 	cleanTmp := func() {
@@ -335,10 +345,10 @@ func (s *Server) installMigTLS(id int64, h *hostconn.Host, req migTLSReq, progre
 		for f := range content {
 			b.WriteString(" " + shq(path.Join(dir, f+tmpSuffix)))
 		}
-		h.Run(b.String())
+		h.RunRoot(b.String())
 		if !ours { // only remove directories this run created
 			for i := len(marker.CreatedDirs) - 1; i >= 0; i-- {
-				h.Run("rmdir -- " + shq(marker.CreatedDirs[i]) + " 2>/dev/null; true")
+				h.RunRoot("rmdir -- " + shq(marker.CreatedDirs[i]) + " 2>/dev/null; true")
 			}
 		}
 	}
@@ -349,7 +359,7 @@ func (s *Server) installMigTLS(id int64, h *hostconn.Host, req migTLSReq, progre
 		}
 		tmp := shq(path.Join(dir, f+tmpSuffix))
 		cmd := "umask 077; cat > " + tmp + " && chown " + shq(owner) + " " + tmp + " && chmod " + mode + " " + tmp
-		if out, err := h.RunInput(cmd, content[f]); err != nil {
+		if out, err := h.RunInputRoot(cmd, content[f]); err != nil {
 			cleanTmp()
 			return info, fmt.Errorf("writing %s on %s: %w: %s", f, h.Name, err, out)
 		}
@@ -375,7 +385,7 @@ func (s *Server) installMigTLS(id int64, h *hostconn.Host, req migTLSReq, progre
 		sh.WriteString("restorecon -R " + shq(dir) + " >/dev/null 2>&1 || true; ")
 	}
 	sh.WriteString("true")
-	if out, err := h.Run(sh.String()); err != nil {
+	if out, err := h.RunRoot(sh.String()); err != nil {
 		cleanTmp()
 		return info, fmt.Errorf("installing the certificates in %s on %s failed: %w: %s (the directory may be partly changed; run the setup again or remove it)", dir, h.Name, err, out)
 	}
@@ -405,11 +415,19 @@ func sha256hex(s string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (s *Server) nodeAddr(id int64) string {
-	if n, ok := s.nodeStatus(id); ok {
-		return n.Addr
+// certAddrs are the addresses a node's certificate must cover besides its
+// host names: the one the controller reaches it at and the one other nodes
+// use.
+func (s *Server) certAddrs(h *hostconn.Host) []string {
+	cfg, ok := s.Nodes.ConfigOfHost(h)
+	if !ok {
+		return nil
 	}
-	return ""
+	out := []string{cfg.Addr}
+	if cfg.MigrationAddr != "" {
+		out = append(out, cfg.MigrationAddr)
+	}
+	return out
 }
 
 func (s *Server) migTLSRemove(w http.ResponseWriter, r *http.Request) {
@@ -442,12 +460,12 @@ func (s *Server) migTLSRemove(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) removeMigTLS(h *hostconn.Host, req migTLSReq) (migTLSInfo, error) {
-	info, env, st, err := s.readMigTLS(h)
+	info, _, st, err := s.readMigTLS(h)
 	if err != nil {
 		return info, err
 	}
-	if env.UID != "0" {
-		return info, badRequest("removing the certificates needs root on " + h.Name)
+	if !h.CanRoot() {
+		return info, badRequest(nodeCapabilities("none")["installTLS"].Reason)
 	}
 	m := st.snap.Marker
 	if m == nil {
@@ -488,7 +506,7 @@ func (s *Server) removeMigTLS(h *hostconn.Host, req migTLSReq) (migTLSInfo, erro
 		}
 	}
 	sh.WriteString("true")
-	if out, err := h.Run(sh.String()); err != nil {
+	if out, err := h.RunRoot(sh.String()); err != nil {
 		return info, fmt.Errorf("removing the certificates on %s failed: %w: %s", h.Name, err, out)
 	}
 	for i := len(m.CreatedDirs) - 1; i >= 0; i-- {
@@ -496,7 +514,7 @@ func (s *Server) removeMigTLS(h *hostconn.Host, req migTLSReq) (migTLSInfo, erro
 		if !safePathRE.MatchString(d) {
 			continue
 		}
-		if _, err := h.Run("rmdir -- " + shq(d)); err != nil {
+		if _, err := h.RunRoot("rmdir -- " + shq(d)); err != nil {
 			kept = append(kept, "directory "+d+" (not empty)")
 			break
 		}

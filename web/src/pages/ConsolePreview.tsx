@@ -162,7 +162,7 @@ export function ConsolePrefCard() {
   return (
     <section className="card" aria-label="Console preview">
       <h2>Console preview</h2>
-      <p className="muted">What a click on the console preview of a VM does. Kept in this browser only.</p>
+      <p className="muted">What a click on the console preview of a VM does. Kept with your account, in every browser.</p>
       <div role="radiogroup" aria-label="Console preview opens">
         <strong>Console preview opens:</strong>
         {(Object.keys(CLICK_LABELS) as ClickMode[]).map((m) => (

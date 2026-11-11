@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Alert, bytes, get, NodeInfo, NodeStatus, post, put } from "../api";
 import { useLive } from "../live";
 import { useRole } from "../auth";
-import { ErrorBox, Field, Modal, StateBadge, useAction } from "../ui";
+import { ErrorBox, Field, Modal, PageTitle, StateBadge, useAction } from "../ui";
 import { HostLoad, useHostSeries } from "../charts";
 import { AlertMarks, useAlerts } from "./Alerts";
 import Evacuate from "./Evacuate";
@@ -18,7 +18,7 @@ export default function Nodes() {
   return (
     <>
       <div className="head">
-        <h1>Nodes</h1>
+        <PageTitle>Nodes</PageTitle>
         {admin && (
           <button className="primary" onClick={() => setAdding(true)}>
             Add node

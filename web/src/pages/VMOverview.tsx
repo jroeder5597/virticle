@@ -71,11 +71,12 @@ function SummaryCard({ d, g }: { d: VMDetail; g?: GuestInfo }) {
           <span className={"badge s-agent-" + d.agent}>{agentText}</span>
         </dd>
         <dt>DNS Name</dt>
-        <dd className="mono">{dns ?? (!running ? dash : !agent ? "Not reported: needs the guest agent" : !g ? "Asking the guest agent" : "Not reported by the guest")}</dd>
+        <dd className="mono" title={dns ? undefined : !running ? "The VM is not running" : !agent ? "Needs the guest agent" : "The guest does not report a name"}>
+          {dns ?? (!running ? dash : "Not reported")}
+        </dd>
         <dt>IP Addresses</dt>
-        <dd className="mono">
-          {ips.length ? ips.join("  ") : running ? "no address yet" : dash}
-          <div className="st-note muted">{!running ? "The VM is not running" : d.ipSource === "agent" ? "From the guest agent" : d.ipSource === "lease" ? "From the DHCP leases of the network (no guest agent)" : " "}</div>
+        <dd className="mono" title={!running ? "The VM is not running" : d.ipSource === "agent" ? "From the guest agent" : d.ipSource === "lease" ? "From the network's DHCP leases" : undefined}>
+          {ips.length ? ips.join("  ") : running ? "No address" : dash}
         </dd>
       </dl>
     </section>
@@ -150,7 +151,7 @@ function UtilCard({ d, s, g }: { d: VMDetail; s: Stats; g?: GuestInfo }) {
         ))}
         {fs.length === 0 && (
           <div className="st-row muted">
-            {!running ? "The VM is not running" : d.agent !== "connected" ? "Not reported: needs the guest agent" : !g ? "Asking the guest agent" : g.available ? "The guest reports no filesystems" : "The guest agent did not answer"}
+            <span title={!running ? "The VM is not running" : d.agent !== "connected" ? "Needs the guest agent" : undefined}>{!running ? "Not running" : d.agent !== "connected" ? "Not reported" : !g ? "Loading" : g.available ? "None" : "No answer"}</span>
           </div>
         )}
       </div>
@@ -158,8 +159,23 @@ function UtilCard({ d, s, g }: { d: VMDetail; s: Stats; g?: GuestInfo }) {
   );
 }
 
-export default function Overview({ d, base }: { d: VMDetail; base: string }) {
+export default function Overview({ d, base, onChanged }: { d: VMDetail; base: string; onChanged: () => void }) {
   const act = useAction();
+  // libvirt announces no event for an autostart change, so the box follows the click at once and the detail is reloaded.
+  const [auto, setAuto] = useState(d.autostart);
+  useEffect(() => setAuto(d.autostart), [d.autostart]);
+  const toggleAuto = (v: boolean) => {
+    setAuto(v);
+    act.run(async () => {
+      try {
+        await put(`${base}/autostart`, { autostart: v });
+      } catch (e) {
+        setAuto(!v);
+        throw e;
+      }
+      onChanged();
+    });
+  };
   const viewer = useRole() === "viewer";
   // One request each for the guest agent's report and the stats series, shared by the cards that show them.
   const g = usePoll<GuestInfo>(d.agent === "connected" && d.state === "running" ? `${base}/guest` : null, 20000);
@@ -196,15 +212,12 @@ export default function Overview({ d, base }: { d: VMDetail; base: string }) {
             <dd className="mono">{d.uuid}</dd>
             <dt>Start on host boot</dt>
             <dd>
-              <label className="check">
-                <input type="checkbox" checked={d.autostart} disabled={act.busy || viewer} onChange={(e) => act.run(() => put(`${base}/autostart`, { autostart: e.target.checked }))} />
-                {d.autostart ? "Yes" : "No"}
-              </label>
+              <input type="checkbox" checked={auto} disabled={act.busy || viewer} aria-label="Start on host boot" onChange={(e) => toggleAuto(e.target.checked)} />
             </dd>
           </dl>
           {d.passthroughDevices > 0 && (
             <p className="note">
-              {d.passthroughDevices} host device{d.passthroughDevices > 1 ? "s are" : " is"} passed through. This VM cannot be live migrated.
+              {d.passthroughDevices} host device{d.passthroughDevices > 1 ? "s" : ""} passed through: no live migration.
             </p>
           )}
           <ErrorBox error={act.error} />
@@ -257,7 +270,7 @@ export default function Overview({ d, base }: { d: VMDetail; base: string }) {
           </table>
         </section>
 
-        {d.agent === "connected" ? <GuestCard d={d} g={g} /> : <AgentCard d={d} base={base} />}
+        {d.agent === "connected" ? <GuestCard d={d} g={g} /> : <AgentCard d={d} base={base} onChanged={onChanged} />}
       </div>
     </div>
   );
@@ -272,7 +285,7 @@ const agentInstall: [string, string][] = [
 ];
 
 /** Guest agent status, with the steps to get it working when it is not. */
-function AgentCard({ d, base }: { d: VMDetail; base: string }) {
+function AgentCard({ d, base, onChanged }: { d: VMDetail; base: string; onChanged: () => void }) {
   const act = useAction();
   const [restart, setRestart] = useState(false);
   const [copied, setCopied] = useState("");
@@ -282,6 +295,7 @@ function AgentCard({ d, base }: { d: VMDetail; base: string }) {
     act.run(async () => {
       const r = await post<{ needsRestart: boolean }>(`${base}/agent-channel`);
       setRestart(r.needsRestart);
+      onChanged();
     });
 
   return (
@@ -289,25 +303,19 @@ function AgentCard({ d, base }: { d: VMDetail; base: string }) {
       <h3>
         Guest agent <span className={"badge s-agent-" + d.agent}>{d.agent === "connected" ? "connected" : d.agent === "absent" ? "not set up" : "not responding"}</span>
       </h3>
-      {d.agent === "connected" && <p className="muted">The guest reports its addresses and supports clean shutdown, filesystem freeze for snapshots and more.</p>}
       {d.agent === "absent" && (
         <>
-          <p>
-            This VM has no guest agent channel. The agent gives accurate IP addresses, consistent snapshots and reliable shutdown. Setting it up takes two steps: add the
-            channel device here, then install the agent inside the guest.
-          </p>
+          <p>No agent channel. Add it here, then install the agent in the guest.</p>
           <button className="primary" disabled={act.busy} onClick={addChannel}>
             Add agent channel
           </button>
         </>
       )}
       {d.agent !== "connected" && help?.os === "windows" && <VirtioWin d={d} base={base} help={help} />}
-      {restart && <p className="note">The channel was saved but could not be hot-plugged. It will appear after the VM is shut down and started again.</p>}
+      {restart && <p className="note">Saved; the channel appears after a restart.</p>}
       {d.agent === "disconnected" && (
         <>
-          <p>
-            The channel is in place but nothing answers inside the guest{d.state !== "running" ? " (the VM is not running)" : ""}. Install and start the agent in the guest:
-          </p>
+          <p>{d.state !== "running" ? "The VM is not running." : "Nothing answers in the guest."} Install and start the agent:</p>
           <div className="install">
             {agentInstall.filter(([os]) => !help?.os || (help.os === "windows") === (os === "Windows")).map(([os, cmd]) => (
               <div key={os}>
@@ -321,7 +329,6 @@ function AgentCard({ d, base }: { d: VMDetail; base: string }) {
               </div>
             ))}
           </div>
-          <p className="muted">This card updates by itself once the agent connects.</p>
         </>
       )}
       <ErrorBox error={act.error} />

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { Trash2 } from "lucide-react";
 import { api, del, get, VMDetail } from "../api";
 import { ErrorBox, Modal, useAction, useConfirm } from "../ui";
+import { OneLine, SectionFrame } from "./Disclosure";
 
 interface Dev {
   kind: "pci" | "usb";
@@ -34,7 +36,7 @@ interface Result {
 }
 
 /** Host PCI and USB devices of the node, and those passed through to this VM. */
-export default function PassthroughCard({ d, base, onChanged }: { d: VMDetail; base: string; onChanged: () => void }) {
+export default function PassthroughCard({ d, base, onChanged, bare }: { d: VMDetail; base: string; onChanged: () => void; bare?: boolean }) {
   const [l, setL] = useState<Listing | undefined>();
   const [err, setErr] = useState<string | undefined>();
   const [picking, setPicking] = useState(false);
@@ -55,16 +57,17 @@ export default function PassthroughCard({ d, base, onChanged }: { d: VMDetail; b
       onChanged();
     });
   };
+  const n = l?.attached.length ?? 0;
+  const summary = !l ? (err ? "Could not be read" : "Loading") : n === 0 ? "No host devices" : `${n} host device${n > 1 ? "s" : ""}: ${l.attached.map((a) => a.label).join(", ")}`;
   return (
-    <section className="card" id="hw-passthrough" style={{ gridColumn: "1 / -1" }}>
+    <SectionFrame id="hw-passthrough" title="Passthrough devices (PCI, GPU, USB)" summary={summary} bare={bare}>
       {confirm.dialog}
-      <h3>Passthrough devices (PCI, GPU, USB)</h3>
-      <div className="note">{l?.warning ?? "A VM with a passed-through device cannot be live-migrated and is tied to this node until the device is removed."}</div>
+      <OneLine tone="note" text="A VM with a passed-through device cannot be live-migrated." details={l?.warning ?? "It is tied to this node until the device is removed."} />
       <ErrorBox error={err ?? act.error} />
       {msg && <div className="muted">{msg}</div>}
-      {l && l.attached.length === 0 && <p className="muted">No host device is passed through to this VM.</p>}
+      {l && l.attached.length === 0 && <p className="muted">No host devices.</p>}
       {l && l.attached.length > 0 && (
-        <table className="compact">
+        <table className="compact hwt">
           <tbody>
             {l.attached.map((a) => (
               <tr key={a.key}>
@@ -72,8 +75,8 @@ export default function PassthroughCard({ d, base, onChanged }: { d: VMDetail; b
                 <td>{a.label}</td>
                 <td>{!a.present && <span className="badge s-offline">not on this node now</span>}</td>
                 <td className="actions">
-                  <button className="danger" disabled={act.busy} onClick={() => remove(a.key)}>
-                    Remove
+                  <button className="iconbtn" aria-label="Remove" title="Remove" disabled={act.busy} onClick={() => remove(a.key)}>
+                    <Trash2 size={15} aria-hidden="true" />
                   </button>
                 </td>
               </tr>
@@ -89,6 +92,7 @@ export default function PassthroughCard({ d, base, onChanged }: { d: VMDetail; b
           l={l}
           vm={l.vm}
           busy={act.busy}
+          running={d.state !== "shutoff"}
           onClose={() => setPicking(false)}
           onAttach={async (id) => {
             const ok = await act.run(async () => {
@@ -102,11 +106,11 @@ export default function PassthroughCard({ d, base, onChanged }: { d: VMDetail; b
           error={act.error}
         />
       )}
-    </section>
+    </SectionFrame>
   );
 }
 
-function Picker({ l, vm, busy, onClose, onAttach, error }: { l: Listing; vm: string; busy: boolean; onClose: () => void; onAttach: (id: string) => void; error?: string }) {
+function Picker({ l, vm, busy, running, onClose, onAttach, error }: { l: Listing; vm: string; busy: boolean; running: boolean; onClose: () => void; onAttach: (id: string) => void; error?: string }) {
   const [filter, setFilter] = useState("all");
   // Bridges are never passable and there are many; they go last.
   const rank = (x: Dev) => (x.category === "bridge" ? 2 : x.unsafe ? 1 : 0);
@@ -170,12 +174,13 @@ function Picker({ l, vm, busy, onClose, onAttach, error }: { l: Listing; vm: str
                   </td>
                   <td>
                     <span className={st.bad ? "rowerror" : st.ok ? "" : "muted"}>{st.text}</span>
+                    {running && x.category === "gpu" && st.ok && <small>Shut the VM down to attach a graphics card</small>}
                     {x.warnings?.map((w, i) => (
                       <small key={i}>{w}</small>
                     ))}
                   </td>
                   <td className="actions">
-                    <button disabled={busy || !st.ok} onClick={() => onAttach(x.id)}>
+                    <button disabled={busy || !st.ok || (running && x.category === "gpu")} title={running && x.category === "gpu" ? "Shut the VM down to attach a graphics card" : undefined} onClick={() => onAttach(x.id)}>
                       Attach
                     </button>
                   </td>

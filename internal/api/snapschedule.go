@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -239,13 +240,58 @@ func (s *Server) getSnapshotSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := map[string]any{"schedule": sch}
 	if sch != nil {
+		var last time.Time
 		if list, err := snapshotList(h, dom); err == nil {
-			if last := snapsched.Newest(toSnaps(list), sch.Prefix); !last.IsZero() {
+			if last = snapsched.Newest(toSnaps(list), sch.Prefix); !last.IsZero() {
 				resp["last"] = last.Unix()
 			}
 		}
+		nodeID, _, _ := s.host(r)
+		s.addNextRun(resp, nodeID, dom.Name, *sch, last)
+		if t := s.lastSchedulerTask(dom.Name); t != nil {
+			resp["lastRun"] = t
+		}
 	}
 	writeJSON(w, resp)
+}
+
+// addNextRun adds what the page needs to say when the next run is: the time the scheduler itself would compute
+// (nextRun, Unix seconds), and who runs schedules ("this" controller, "disabled" by -no-scheduler, or "other").
+func (s *Server) addNextRun(resp map[string]any, node int64, vm string, sch snapsched.Schedule, last time.Time) {
+	runner := "this"
+	if s.NoScheduler {
+		runner = "disabled"
+	}
+	for _, c := range s.currentConflicts() {
+		if c.Node == node && !s.NoScheduler {
+			for _, n := range c.VMs {
+				if n == vm {
+					runner = "other"
+					resp["otherController"] = c.Other
+				}
+			}
+		}
+	}
+	resp["runner"] = runner
+	if next, ok := sch.NextRun(time.Now(), last); ok {
+		resp["nextRun"] = next.Unix()
+	}
+	resp["tick"] = int(schedTick.Seconds())
+}
+
+// lastSchedulerTask is the newest snapshot task the scheduler ran for a VM in the past week (its result), or nil.
+func (s *Server) lastSchedulerTask(vm string) map[string]any {
+	tasks, err := s.Store.TasksBy("scheduler", time.Now().Add(-7*24*time.Hour).Unix())
+	if err != nil {
+		return nil
+	}
+	for i := len(tasks) - 1; i >= 0; i-- {
+		t := tasks[i]
+		if (t.Kind == "snapshot create" || t.Kind == "snapshot prune") && (t.Target == vm || strings.HasPrefix(t.Target, vm+"@")) && t.Status != "running" {
+			return map[string]any{"kind": t.Kind, "time": t.Finished, "ok": t.Status == "ok", "error": t.Error}
+		}
+	}
+	return nil
 }
 
 func (s *Server) putSnapshotSchedule(w http.ResponseWriter, r *http.Request) {

@@ -13,6 +13,13 @@ export function field(scope: Locator | Page, label: string): Locator {
     .first();
 }
 
+/** Chooses a pool in a PoolSelect (the themed pool picker) by name. */
+export async function pickPool(scope: Locator | Page, label: string, pool: string) {
+  const page = "page" in scope && typeof scope.page === "function" ? (scope as Locator).page() : (scope as Page);
+  await scope.getByRole("combobox", { name: label }).click();
+  await page.getByRole("listbox").getByRole("option", { name: new RegExp("^" + pool.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(\\s|$)") }).click();
+}
+
 /** Accept every confirm/prompt/alert; returns the messages seen so far. */
 export function autoDialogs(page: Page, promptAnswer?: string) {
   const seen: string[] = [];

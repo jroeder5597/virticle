@@ -8,6 +8,7 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
+	"virticle/internal/cluster"
 	"virticle/internal/hostconn"
 )
 
@@ -132,5 +133,6 @@ func (s *Server) vmTags(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	s.Nodes.Publish(cluster.Event{Type: "tags"})
 	writeJSON(w, map[string]any{"ok": true, "tags": tags})
 }

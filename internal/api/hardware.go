@@ -764,10 +764,15 @@ func (s *Server) hwCDROMAdd(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
+		// A Windows install needs three at once: installer, virtio-win drivers, answer file.
+		cds := 0
 		for _, k := range cfg.Devices("disk") {
 			if k.Attrs["device"] == "cdrom" {
-				return badRequest("the VM already has a CD-ROM drive: " + k.Child("target").Attrs["dev"])
+				cds++
 			}
+		}
+		if cds >= 4 {
+			return badRequest("the VM already has 4 CD-ROM drives")
 		}
 		target := domxml.NextTarget("sd", usedTargets(live, cfg))
 		applied, err := c.attach(fmt.Sprintf("<disk type='file' device='cdrom'><driver name='qemu' type='raw'/><target dev='%s' bus='sata'/><readonly/></disk>", target))
@@ -890,7 +895,11 @@ func (c hwCtx) checkAttachment(network, bridge string) error {
 	if !bridgeRE.MatchString(bridge) {
 		return badRequest("invalid bridge name")
 	}
-	return nil
+	nics, err := hostNICList(c.h)
+	if err != nil {
+		return err
+	}
+	return checkBridge(nics, bridge)
 }
 
 func (s *Server) hwNICAdd(w http.ResponseWriter, r *http.Request) {

@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"virticle/internal/hostconn"
 )
 
 // Network interfaces of a node, read-only. One fixed command prints `ip -j -d
@@ -15,10 +17,13 @@ import (
 const nicsCommand = `ip -j -d addr show; for i in $(ls /sys/class/net); do echo "SPEED $i $(cat /sys/class/net/$i/speed 2>/dev/null)"; done`
 
 type hostNIC struct {
-	Name      string   `json:"name"`
-	MAC       string   `json:"mac,omitempty"`
-	State     string   `json:"state"` // up | down | unknown
-	Type      string   `json:"type"`  // physical | bridge | bond | vlan | tap | other
+	Name  string `json:"name"`
+	MAC   string `json:"mac,omitempty"`
+	State string `json:"state"` // up | down | unknown
+	Type  string `json:"type"`  // physical | bridge | bond | vlan | tap | other
+	// Kind is the kernel's link kind as ip reports it ("bridge", "openvswitch", "veth", ...); empty for physical
+	// devices. An Open vSwitch bridge has type "other" and kind "openvswitch".
+	Kind      string   `json:"kind,omitempty"`
 	Master    string   `json:"master,omitempty"`
 	MTU       int      `json:"mtu"`
 	SpeedMbps int      `json:"speedMbps,omitempty"`
@@ -85,6 +90,7 @@ func parseHostNICs(out string) ([]hostNIC, error) {
 		if l.LinkInfo != nil {
 			kind = l.LinkInfo.Kind
 		}
+		n.Kind = kind
 		switch kind {
 		case "":
 			n.Type = "physical"
@@ -103,21 +109,42 @@ func parseHostNICs(out string) ([]hostNIC, error) {
 	return res, nil
 }
 
+func hostNICList(h *hostconn.Host) ([]hostNIC, error) {
+	out, err := h.Run(nicsCommand)
+	if err != nil {
+		return nil, fmt.Errorf("listing interfaces: %w: %s", err, out)
+	}
+	return parseHostNICs(out)
+}
+
 func (s *Server) nodeInterfaces(w http.ResponseWriter, r *http.Request) {
 	_, h, err := s.host(r)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	out, err := h.Run(nicsCommand)
-	if err != nil {
-		fail(w, fmt.Errorf("listing interfaces: %w: %s", err, out))
-		return
-	}
-	nics, err := parseHostNICs(out)
+	nics, err := hostNICList(h)
 	if err != nil {
 		fail(w, err)
 		return
 	}
 	writeJSON(w, map[string]any{"interfaces": nics})
+}
+
+// isBridgeDevice is true for a Linux bridge and for an Open vSwitch bridge.
+func isBridgeDevice(n hostNIC) bool { return n.Type == "bridge" || n.Kind == "openvswitch" }
+
+// checkBridge says why a name cannot be used as the host bridge of a VM interface: it is not a device of the node,
+// or it is a device that is not a bridge. nics is the node's interface list.
+func checkBridge(nics []hostNIC, name string) error {
+	for _, n := range nics {
+		if n.Name != name {
+			continue
+		}
+		if !isBridgeDevice(n) {
+			return badRequest(fmt.Sprintf("%s is a %s interface of this node, not a bridge", name, n.Type))
+		}
+		return nil
+	}
+	return badRequest(fmt.Sprintf("this node has no interface named %s", name))
 }

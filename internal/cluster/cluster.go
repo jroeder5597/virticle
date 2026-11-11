@@ -35,6 +35,17 @@ type NodeStatus struct {
 	State    string `json:"state"` // connecting | online | offline
 	Error    string `json:"error,omitempty"`
 	Hostname string `json:"hostname,omitempty"`
+	// What the node itself reported on the last connection: how its login
+	// user gets root (privilege.go), in words, and the privilege that was
+	// detected, which can differ from the configured one.
+	DetectedPrivilege string `json:"detectedPrivilege,omitempty"`
+	PrivilegeNote     string `json:"privilegeNote,omitempty"`
+}
+
+// Persister stores what a connection learns about a node.
+type Persister interface {
+	SetNodePrivilege(id int64, p string) error
+	SetNodeHostUUID(id int64, u string) error
 }
 
 type node struct {
@@ -46,9 +57,15 @@ type node struct {
 	state    string
 	err      string
 	hostname string
+	detected string
+	privNote string
 }
 
 type Manager struct {
+	// Persist, when set, receives the privilege and host UUID found on the
+	// first connection of a node.
+	Persist Persister
+
 	keyFile, knownHosts   string
 	wdInterval, wdTimeout time.Duration // connection watchdog, see watchdog.go
 
@@ -84,6 +101,60 @@ func (m *Manager) Add(cfg store.Node) {
 	m.nodes[cfg.ID] = n
 	m.mu.Unlock()
 	go m.run(ctx, n)
+}
+
+// Replace swaps a node's configuration: the old connection is torn down and a
+// new one is made from cfg. The node keeps its id, so everything keyed to it
+// stays.
+func (m *Manager) Replace(cfg store.Node) {
+	ctx, cancel := context.WithCancel(context.Background())
+	n := &node{cfg: cfg, cancel: cancel, state: "connecting"}
+	m.mu.Lock()
+	old := m.nodes[cfg.ID]
+	m.nodes[cfg.ID] = n
+	m.mu.Unlock()
+	if old != nil {
+		old.cancel()
+	}
+	go m.run(ctx, n)
+	m.Publish(Event{Type: "node", Node: cfg.ID, Detail: "connecting"})
+}
+
+// Config returns the configuration the manager currently runs a node with.
+func (m *Manager) Config(id int64) (store.Node, bool) {
+	m.mu.Lock()
+	n := m.nodes[id]
+	m.mu.Unlock()
+	if n == nil {
+		return store.Node{}, false
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.cfg, true
+}
+
+// ConfigOfHost finds the configuration of the node a live connection belongs to.
+func (m *Manager) ConfigOfHost(h *hostconn.Host) (store.Node, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, n := range m.nodes {
+		n.mu.Lock()
+		same := n.host == h
+		cfg := n.cfg
+		n.mu.Unlock()
+		if same {
+			return cfg, true
+		}
+	}
+	return store.Node{}, false
+}
+
+// Reconnect drops a node's connection and makes a new one with the same
+// configuration.
+func (m *Manager) Reconnect(id int64) {
+	if cfg, ok := m.Config(id); ok {
+		m.Replace(cfg)
+	}
 }
 
 func (m *Manager) Remove(id int64) {
@@ -155,6 +226,40 @@ func (m *Manager) session(ctx context.Context, n *node) error {
 	defer h.Close()
 	if name, err := h.ConnectGetHostname(); err == nil {
 		h.Name = name
+	}
+	n.mu.Lock()
+	cfg := n.cfg
+	n.mu.Unlock()
+	priv := hostconn.Privilege(cfg.Privilege)
+	if det, note, err := h.DetectPrivilege(); err == nil {
+		n.mu.Lock()
+		n.detected, n.privNote = string(det), note
+		n.mu.Unlock()
+		if !priv.Valid() {
+			priv = det
+			n.mu.Lock()
+			n.cfg.Privilege = string(det)
+			n.mu.Unlock()
+			if m.Persist != nil {
+				if err := m.Persist.SetNodePrivilege(cfg.ID, string(det)); err != nil {
+					log.Printf("node %s: storing the detected privilege: %v", cfg.Addr, err)
+				}
+			}
+		}
+	}
+	if !priv.Valid() {
+		priv = hostconn.PrivNone
+	}
+	h.SetPrivilege(priv)
+	if u, err := h.HostUUID(); err == nil && u != cfg.HostUUID {
+		n.mu.Lock()
+		n.cfg.HostUUID = u
+		n.mu.Unlock()
+		if m.Persist != nil {
+			if err := m.Persist.SetNodeHostUUID(cfg.ID, u); err != nil {
+				log.Printf("node %s: storing the host uuid: %v", cfg.Addr, err)
+			}
+		}
 	}
 	evctx, stop := context.WithCancel(ctx)
 	defer stop()
@@ -231,7 +336,7 @@ func (m *Manager) Status() []NodeStatus {
 	out := make([]NodeStatus, 0, len(m.nodes))
 	for _, n := range m.nodes {
 		n.mu.Lock()
-		out = append(out, NodeStatus{Node: n.cfg, State: n.state, Error: n.err, Hostname: n.hostname})
+		out = append(out, NodeStatus{Node: n.cfg, State: n.state, Error: n.err, Hostname: n.hostname, DetectedPrivilege: n.detected, PrivilegeNote: n.privNote})
 		n.mu.Unlock()
 	}
 	for i := 1; i < len(out); i++ {

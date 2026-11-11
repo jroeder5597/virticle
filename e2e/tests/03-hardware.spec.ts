@@ -17,7 +17,7 @@ test.describe.serial("hardware editing", () => {
 
   test("upload an ISO-named file on the Storage page", async ({ page, api, n1 }) => {
     vm = await createCirros(api, n1, NAME);
-    await page.goto("/storage");
+    await page.goto(`/node/${n1}/storage`); // the node's own storage tab: the unified page lists every node's "default"
     await row(page, /^default/).first().click();
     await expect(page.getByRole("heading", { name: "Volumes in default" })).toBeVisible();
     await page.locator('input[type="file"]').setInputFiles({ name: ISO, mimeType: "application/octet-stream", buffer: Buffer.alloc(64 * 1024, 1) });
@@ -36,7 +36,7 @@ test.describe.serial("hardware editing", () => {
     await field(c, "Memory now (MiB)").fill("192");
     await c.getByRole("button", { name: "Apply" }).click();
     await expect(c.getByRole("button", { name: "Edit" })).toBeVisible();
-    await expect(page.getByText("Saved to the VM's definition.")).toBeVisible();
+    await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
     const d = await api.vmDetail(vm.node, vm.uuid);
     expect([d.vcpus, d.maxVcpus, d.currentMemoryKiB, d.memoryKiB]).toEqual([2, 2, 192 * 1024, 256 * 1024]);
     await expect(c).toContainText("192 MiB");
@@ -85,7 +85,7 @@ test.describe.serial("hardware editing", () => {
     await field(dlg, "Size (GiB)").fill("1");
     await dlg.getByRole("button", { name: "Add disk" }).click();
     await expect(dlg).toBeHidden();
-    await expect(page.getByText("Applied to the running VM and saved to its definition.")).toBeVisible();
+    await expect(page.getByText("Applied and saved.", { exact: true })).toBeVisible();
     const r = row(c, `${NAME}-data.qcow2`);
     await expect(r).toBeVisible();
     const target = (await r.locator("td.mono").first().innerText()).trim();

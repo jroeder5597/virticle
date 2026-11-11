@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"os"
 	"testing"
+	"time"
 )
 
 func TestIsVirtioWinISO(t *testing.T) {
@@ -87,5 +89,66 @@ func TestParseAgentInterfaces(t *testing.T) {
 	 {"name":"eth0","hardware-address":"52:54:00:AA:BB:CC","ip-addresses":[{"ip-address":"192.168.1.5"},{"ip-address":"fe80::1"}]}]`))
 	if err != nil || len(m) != 1 || len(m["52:54:00:aa:bb:cc"]) != 1 || m["52:54:00:aa:bb:cc"][0] != "192.168.1.5" {
 		t.Errorf("got %v, %v", m, err)
+	}
+}
+
+// agentReply loads a reply captured from a Debian 13 guest (qemu-guest-agent 10.0.13) and returns its "return" value.
+func agentReply(t *testing.T, cmd string) json.RawMessage {
+	t.Helper()
+	b, err := os.ReadFile("testdata/agent-debian13/" + cmd + ".json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var r struct {
+		Return json.RawMessage `json:"return"`
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		t.Fatal(err)
+	}
+	return r.Return
+}
+
+func TestGuestDetailsParsing(t *testing.T) {
+	v, q, err := parseAgentInfo(agentReply(t, "guest-info"))
+	if err != nil || v != "10.0.13" || !q {
+		t.Errorf("guest-info: %q %v %v", v, q, err)
+	}
+	// An agent whose freeze commands are disabled (as on a Windows guest without VSS) is not quiesce capable.
+	if _, q, _ := parseAgentInfo(json.RawMessage(`{"version":"9","supported_commands":[{"enabled":false,"name":"guest-fsfreeze-freeze"}]}`)); q {
+		t.Error("a disabled freeze command counts as available")
+	}
+	// The captured clock reading, compared with a host clock 10 s later and 1 s later.
+	guest := time.Unix(0, 1794381231999910000)
+	if off, err := parseGuestTime(agentReply(t, "guest-get-time"), guest.Add(10*time.Second)); err != nil || off > -9*time.Second || off < -11*time.Second {
+		t.Errorf("clock offset: %v %v", off, err)
+	}
+	if off, _ := parseGuestTime(agentReply(t, "guest-get-time"), guest.Add(time.Second)); off > guestClockSkew || off < -guestClockSkew {
+		t.Errorf("1 s apart is within the tolerance, got %v", off)
+	}
+	on, total, err := parseGuestVCPUs(agentReply(t, "guest-get-vcpus"))
+	if err != nil || on != 1 || total != 1 {
+		t.Errorf("vcpus: %d of %d %v", on, total, err)
+	}
+	users, err := parseGuestUsers(agentReply(t, "guest-get-users"))
+	if err != nil || len(users) != 0 {
+		t.Errorf("no user logged in: %v %v", users, err)
+	}
+	users, err = parseGuestUsers(json.RawMessage(`[{"user":"e2e","login-time":1794381000.25}]`))
+	if err != nil || len(users) != 1 || users[0].User != "e2e" || users[0].LoginTime != 1794381000.25 {
+		t.Errorf("users: %v %v", users, err)
+	}
+	nics, err := parseGuestNICs(agentReply(t, "guest-network-get-interfaces"))
+	if err != nil || len(nics) != 1 {
+		t.Fatalf("nics: %v %v", nics, err)
+	}
+	// Loopback is left out; every address of the interface is kept, IPv4 before IPv6, with its prefix.
+	n := nics[0]
+	if n.Name != "enp1s0" || n.MAC != "52:54:00:cb:87:63" || len(n.Addresses) != 2 || n.Addresses[0] != "192.168.122.105/24" || n.Addresses[1] != "fe80::5054:ff:fecb:8763/64" {
+		t.Errorf("nic: %+v", n)
+	}
+	for _, bad := range []string{`"x"`, `{}`, `null`} {
+		if _, err := parseGuestNICs(json.RawMessage(bad)); err == nil && bad != `null` {
+			t.Errorf("%s should not parse", bad)
+		}
 	}
 }

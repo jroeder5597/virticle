@@ -69,8 +69,7 @@ type bkRun struct {
 	srcDir   string   // pool directory the disks' work happens in on src
 	dstDir   string   // target pool directory
 	dstPool  string
-	user     string
-	host     string
+	ep       migEndpoint // how the source reaches the target node
 	remote   bool
 	progress func(float64)
 
@@ -89,7 +88,7 @@ var errBackupCancelled = errors.New("backup cancelled")
 
 func newWork(h *hostconn.Host, dir, tag string) (*workDir, error) {
 	prefix := dir + "/.virticle-" + tag + "."
-	out, err := h.Run("umask 077 && mktemp -d -- " + shq(prefix+"XXXXXX"))
+	out, err := h.RunRoot("umask 077 && mktemp -d -- " + shq(prefix+"XXXXXX"))
 	if err != nil || !strings.HasPrefix(out, prefix) || hasControl(out) {
 		return nil, fmt.Errorf("cannot create a work directory in %s on %s: %s", dir, h.Name, impFirstLine(out))
 	}
@@ -98,7 +97,7 @@ func newWork(h *hostconn.Host, dir, tag string) (*workDir, error) {
 
 // readLimited returns a node file's content; larger files are refused.
 func readLimited(h *hostconn.Host, file string, max int) ([]byte, error) {
-	out, err := h.Run("head -c " + strconv.Itoa(max+1) + " -- " + shq(file))
+	out, err := h.RunRoot("head -c " + strconv.Itoa(max+1) + " -- " + shq(file))
 	if err != nil {
 		return nil, fmt.Errorf("cannot read %s: %s", file, impFirstLine(out))
 	}
@@ -109,7 +108,7 @@ func readLimited(h *hostconn.Host, file string, max int) ([]byte, error) {
 }
 
 func writeNodeFile(h *hostconn.Host, file string, data []byte) error {
-	return h.Pipe(context.Background(), "umask 077; cat > "+shq(file), bytes.NewReader(data), nil)
+	return h.PipeRoot(context.Background(), "umask 077; cat > "+shq(file), bytes.NewReader(data), nil)
 }
 
 // chainActual is the number of bytes a `qemu-img info --backing-chain` JSON
@@ -147,7 +146,7 @@ func (s *Server) planBackup(srcID int64, src *hostconn.Host, dom libvirt.Domain,
 	if m.md, err = parseMigDomain(m.domXML); err != nil {
 		return nil, badRequest("cannot read the domain definition: " + err.Error())
 	}
-	if out, err := src.Run(`for t in qemu-img tar; do command -v "$t" >/dev/null 2>&1 || echo "$t"; done`); err != nil || out != "" {
+	if out, err := src.RunRoot(`for t in qemu-img tar; do command -v "$t" >/dev/null 2>&1 || echo "$t"; done`); err != nil || out != "" {
 		return nil, badRequest("missing on " + src.Name + ": " + strings.Join(strings.Fields(out), ", "))
 	}
 
@@ -163,7 +162,7 @@ func (s *Server) planBackup(srcID int64, src *hostconn.Host, dom libvirt.Domain,
 		case d.Shareable:
 			return nil, badRequest("disk " + d.Target + " is shareable; a shared disk is not backed up with one VM")
 		}
-		out, err := src.Run("qemu-img info -U --backing-chain --output=json -- " + shq(d.Path) + " 2>&1")
+		out, err := src.RunRoot("qemu-img info -U --backing-chain --output=json -- " + shq(d.Path) + " 2>&1")
 		if err != nil {
 			return nil, badRequest("qemu-img could not inspect " + d.Path + ": " + impFirstLine(out))
 		}
@@ -228,7 +227,7 @@ func (s *Server) planBackup(srcID int64, src *hostconn.Host, dom libvirt.Domain,
 		}
 		dn, _ := s.nodeStatus(dstID)
 		var c checkList
-		s.checkSSHTrust(src, m.dst, dn, &c)
+		s.checkSSHTrust(src, m.dst, dn.Node, &c)
 		if c.blocked() {
 			for _, k := range c {
 				if !k.OK && k.Severity == "error" {
@@ -236,7 +235,7 @@ func (s *Server) planBackup(srcID int64, src *hostconn.Host, dom libvirt.Domain,
 				}
 			}
 		}
-		if m.user, m.host, err = sshTarget(m.dst, dn); err != nil {
+		if m.ep, err = endpointFor(dn.Node); err != nil {
 			return nil, badRequest(err.Error())
 		}
 	}
@@ -356,7 +355,7 @@ func (m *bkRun) run() (err error) {
 	stamp := time.Now().UTC()
 	finalName := backupDirName(m.name, stamp)
 	final := m.dstDir + "/" + finalName
-	if out, err := m.dst.Run("test ! -e " + shq(final)); err != nil {
+	if out, err := m.dst.RunRoot("test ! -e " + shq(final)); err != nil {
 		return fmt.Errorf("%s already exists: %s", final, out)
 	}
 
@@ -394,7 +393,7 @@ func (m *bkRun) run() (err error) {
 	}
 	if m.live {
 		// QEMU's user must be able to enter the directory it writes into.
-		if out, err := m.src.Run("chmod 711 -- " + shq(srcWork.path)); err != nil {
+		if out, err := m.src.RunRoot("chmod 711 -- " + shq(srcWork.path)); err != nil {
 			return fmt.Errorf("chmod: %s", out)
 		}
 		if err = m.liveBackup(srcWork, 0.02, copyHi); err != nil {
@@ -415,7 +414,7 @@ func (m *bkRun) run() (err error) {
 		if !safePathRE.MatchString(m.md.NVRAM) {
 			return fmt.Errorf("unsupported characters in the NVRAM path %s", m.md.NVRAM)
 		}
-		if out, err := m.src.Run("cp -- " + shq(m.md.NVRAM) + " " + shq(srcWork.file(backupNVRAMFile))); err != nil {
+		if out, err := m.src.RunRoot("cp -- " + shq(m.md.NVRAM) + " " + shq(srcWork.file(backupNVRAMFile))); err != nil {
 			return fmt.Errorf("saving the UEFI variables %s: %s", m.md.NVRAM, impFirstLine(out))
 		}
 		man.NVRAM = backupNVRAMFile
@@ -448,8 +447,8 @@ func (m *bkRun) run() (err error) {
 		return fmt.Errorf("writing manifest.json: %w", err)
 	}
 	// The conversion helper's bookkeeping files must not end up in the backup.
-	m.dst.Run("rm -f -- " + shq(dstWork.file("rc")) + " " + shq(dstWork.file("qpid")) + " " + shq(dstWork.file("prog.log")) + " " + shq(dstWork.file("out.part")))
-	if out, err2 := m.dst.Run("chmod 700 -- " + shq(dstWork.path) + " && mv -T -- " + shq(dstWork.path) + " " + shq(final)); err2 != nil {
+	m.dst.RunRoot("rm -f -- " + shq(dstWork.file("rc")) + " " + shq(dstWork.file("qpid")) + " " + shq(dstWork.file("prog.log")) + " " + shq(dstWork.file("out.part")))
+	if out, err2 := m.dst.RunRoot("chmod 700 -- " + shq(dstWork.path) + " && mv -T -- " + shq(dstWork.path) + " " + shq(final)); err2 != nil {
 		err = fmt.Errorf("moving the backup into place: %s", impFirstLine(out))
 		return err
 	}
@@ -568,7 +567,7 @@ func (m *bkRun) offlineBackup(wd *workDir, lo, hi float64) error {
 // qemuTop returns the format of the active image of a disk (the backing
 // chain is followed by qemu-img itself when converting).
 func qemuTop(h *hostconn.Host, file string) (string, error) {
-	out, err := h.Run("qemu-img info -U --output=json -- " + shq(file) + " 2>&1")
+	out, err := h.RunRoot("qemu-img info -U --output=json -- " + shq(file) + " 2>&1")
 	if err != nil {
 		return "", errors.New(impFirstLine(out))
 	}
@@ -595,7 +594,7 @@ func (m *bkRun) measure(wd *workDir) error {
 			return fmt.Errorf("backup image of %s has format %s", d.Target, info.Format)
 		}
 		d.Virt = uint64(info.VirtualSize)
-		out, err := m.src.Run("stat -c %s -- " + shq(f))
+		out, err := m.src.RunRoot("stat -c %s -- " + shq(f))
 		if err != nil {
 			return fmt.Errorf("stat %s: %s", f, out)
 		}
@@ -610,7 +609,7 @@ func (m *bkRun) measure(wd *workDir) error {
 }
 
 func sha256Of(h *hostconn.Host, file string) (string, error) {
-	out, err := h.Run("sha256sum -- " + shq(file))
+	out, err := h.RunRoot("sha256sum -- " + shq(file))
 	f := strings.Fields(out)
 	if err != nil || len(f) < 1 || !sha256RE.MatchString(f[0]) {
 		return "", fmt.Errorf("sha256sum %s: %s", file, impFirstLine(out))
@@ -643,8 +642,11 @@ func (m *bkRun) copyOver(from, to *workDir, man *backupManifest, lo, hi float64)
 		if err := m.checkCancel(); err != nil {
 			return err
 		}
-		cmd := "scp -q -p -o BatchMode=yes -- " + shq(from.file(n)) + " " + shq(m.user+"@"+m.host+":"+to.file(n))
-		if out, err := m.src.Run(cmd); err != nil {
+		cmd, err := nodeCopyCmd(m.dst, m.ep, from.file(n), to.file(n), "")
+		if err != nil {
+			return err
+		}
+		if out, err := m.src.RunRoot(cmd); err != nil {
 			return fmt.Errorf("copying %s to %s failed: %w: %s", n, m.dst.Name, err, impFirstLine(out))
 		}
 		done += sizes[n]
@@ -694,7 +696,7 @@ func removeBackupDir(h *hostconn.Host, poolDir, name string) error {
 		return badRequest("not a backup name")
 	}
 	dir := poolDir + "/" + name
-	out, err := h.Run("[ -f " + shq(dir+"/manifest.json") + " ] && [ ! -L " + shq(dir) + " ] && rm -rf -- " + shq(dir))
+	out, err := h.RunRoot("[ -f " + shq(dir+"/manifest.json") + " ] && [ ! -L " + shq(dir) + " ] && rm -rf -- " + shq(dir))
 	if err != nil {
 		return fmt.Errorf("cannot delete %s on %s: %s", dir, h.Name, impFirstLine(out))
 	}
@@ -719,7 +721,7 @@ type backupEntry struct {
 // scanPool lists the backups in one pool directory (one find on the node).
 func scanPool(h *hostconn.Host, pd poolDir) ([]scanned, error) {
 	marker := newScanMarker()
-	out, _ := h.Run(scanScript(pd.Dir, marker)) // find exits non-zero for unreadable entries; the output is what counts
+	out, _ := h.RunRoot(scanScript(pd.Dir, marker)) // find exits non-zero for unreadable entries; the output is what counts
 	var res []scanned
 	for _, it := range parseScan(out, marker, pd.Dir) {
 		sc := scanned{Dir: path.Base(it.Dir), Size: it.Size}
@@ -869,7 +871,7 @@ func (b *backupRef) load() (*backupManifest, error) {
 		script.WriteString(" " + shq(f))
 	}
 	script.WriteString(`; do if [ -f "$f" ] && [ ! -L "$f" ]; then stat -c %s -- "$f"; else echo MISSING; fi; done`)
-	out, err := b.h.Run(script.String())
+	out, err := b.h.RunRoot(script.String())
 	if err != nil {
 		return nil, badRequest("cannot read the backup directory: " + impFirstLine(out))
 	}

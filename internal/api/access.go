@@ -41,10 +41,13 @@ var routeLevels = map[string]string{
 	"GET /api/tasks":  viewer,
 	"GET /api/alerts": viewer,
 
-	"GET /api/nodes":           viewer,
-	"POST /api/nodes":          admin,
-	"DELETE /api/nodes/{node}": admin,
-	"GET /api/nodes/{node}":    viewer,
+	"GET /api/nodes":                         viewer,
+	"POST /api/nodes":                        admin,
+	"DELETE /api/nodes/{node}":               admin,
+	"PUT /api/nodes/{node}":                  admin,
+	"POST /api/nodes/{node}/test-connection": admin,
+	"POST /api/nodes/{node}/forget-host-key": admin,
+	"GET /api/nodes/{node}":                  viewer,
 
 	"POST /api/nodes/{node}/evacuate/check":  operator,
 	"POST /api/nodes/{node}/evacuate":        admin,
@@ -66,6 +69,10 @@ var routeLevels = map[string]string{
 	"POST /api/account/tokens":        viewer,
 	"DELETE /api/account/tokens/{id}": viewer,
 
+	// Own UI preferences: every role, session only.
+	"GET /api/me/prefs": viewer,
+	"PUT /api/me/prefs": viewer,
+
 	// Profiles hold password hashes and keys: even reading them needs operator.
 	"GET /api/cloudinit-profiles":         operator,
 	"POST /api/cloudinit-profiles":        operator,
@@ -73,6 +80,8 @@ var routeLevels = map[string]string{
 	"DELETE /api/cloudinit-profiles/{id}": operator,
 
 	"GET /api/vms":                                    viewer,
+	"GET /api/pools":                                  viewer,
+	"GET /api/networks":                               viewer,
 	"POST /api/nodes/{node}/vms":                      operator,
 	"GET /api/nodes/{node}/vms/{uuid}":                viewer,
 	"POST /api/nodes/{node}/vms/{uuid}/action":        operator,
@@ -87,6 +96,7 @@ var routeLevels = map[string]string{
 	"GET /api/nodes/{node}/vms/{uuid}/vnc":            operator,
 	"GET /api/nodes/{node}/vms/{uuid}/serial":         operator,
 	"GET /api/nodes/{node}/vms/{uuid}/screenshot":     operator,
+	"POST /api/nodes/{node}/vms/{uuid}/sendkey":       operator,
 
 	"PUT /api/nodes/{node}/vms/{uuid}/cpu":                         operator,
 	"PUT /api/nodes/{node}/vms/{uuid}/memory":                      operator,
@@ -121,6 +131,8 @@ var routeLevels = map[string]string{
 	"POST /api/nodes/{node}/vms/{uuid}/snapshots":               operator,
 	"POST /api/nodes/{node}/vms/{uuid}/snapshots/{name}/revert": operator,
 	"DELETE /api/nodes/{node}/vms/{uuid}/snapshots/{name}":      operator,
+	"POST /api/nodes/{node}/vms/{uuid}/snapshots/delete":        operator,
+	"POST /api/nodes/{node}/vms/{uuid}/snapshots/delete-plan":   operator,
 	"GET /api/nodes/{node}/vms/{uuid}/snapshot-schedule":        viewer,
 	"PUT /api/nodes/{node}/vms/{uuid}/snapshot-schedule":        operator,
 	"DELETE /api/nodes/{node}/vms/{uuid}/snapshot-schedule":     operator,
@@ -150,6 +162,9 @@ var routeLevels = map[string]string{
 	"POST /api/nodes/{node}/pools/{pool}/images/cancel":        operator,
 	"GET /api/nodes/{node}/networks":                           viewer,
 	"PUT /api/nodes/{node}/vms/{uuid}/tpm":                     operator,
+	"GET /api/tags":                                            viewer,
+	"PUT /api/tags/{name}/color":                               operator,
+	"DELETE /api/tags/{name}/color":                            operator,
 	"PUT /api/nodes/{node}/vms/{uuid}/tags":                    operator,
 	"GET /api/nodes/{node}/firmware-caps":                      viewer,
 	"POST /api/nodes/{node}/import/inspect":                    operator,

@@ -1,15 +1,16 @@
 import { get, Task } from "../api";
 import { useLive } from "../live";
-import { ErrorBox, StateBadge } from "../ui";
-
-const time = (unix: number) => new Date(unix * 1000).toLocaleString();
+import { useInventory } from "../inventory";
+import { absTime, TaskNode, TaskTarget } from "../taskView";
+import { ErrorBox, PageTitle, StateBadge } from "../ui";
 
 export default function Tasks() {
+  const inv = useInventory();
   const tasks = useLive(() => get<Task[]>("/tasks"), "tasks", (e) => e.type === "task" || e.detail === "resync");
   return (
     <>
       <div className="head">
-        <h1>Tasks</h1>
+        <PageTitle>Tasks</PageTitle>
       </div>
       <ErrorBox error={tasks.error} />
       {tasks.data && tasks.data.length === 0 ? (
@@ -29,10 +30,14 @@ export default function Tasks() {
           <tbody>
             {(tasks.data ?? []).map((t) => (
               <tr key={t.id}>
-                <td>{time(t.started)}</td>
+                <td>{absTime(t.started)}</td>
                 <td>{t.kind}</td>
-                <td>{t.target}</td>
-                <td>{t.node}</td>
+                <td>
+                  <TaskTarget task={t} inv={inv} />
+                </td>
+                <td>
+                  <TaskNode task={t} inv={inv} />
+                </td>
                 <td>{t.user}</td>
                 <td>
                   <StateBadge state={t.status} />

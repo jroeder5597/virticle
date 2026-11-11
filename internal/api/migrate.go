@@ -207,7 +207,7 @@ func buildPlan(src *hostconn.Host, dom libvirt.Domain, mode string, c *checkList
 	}
 
 	// Tools used on the source node.
-	if out, err := src.Run(`for t in qemu-img scp ssh; do command -v "$t" >/dev/null 2>&1 || echo "$t"; done`); err != nil || out != "" {
+	if out, err := src.RunRoot(`for t in qemu-img scp ssh; do command -v "$t" >/dev/null 2>&1 || echo "$t"; done`); err != nil || out != "" {
 		c.bad("Tools on source", "missing on the source node: "+strings.Join(strings.Fields(out), ", ")+" (qemu-img, scp and ssh are required)")
 		return nil
 	}
@@ -255,7 +255,7 @@ func buildPlan(src *hostconn.Host, dom libvirt.Domain, mode string, c *checkList
 			c.bad(label, "has device type "+d.Device+" which cannot be moved")
 			failed = true
 		default:
-			out, err := src.Run("qemu-img info -U --backing-chain --output=json -- " + shq(d.Path))
+			out, err := src.RunRoot("qemu-img info -U --backing-chain --output=json -- " + shq(d.Path))
 			if err != nil {
 				c.bad(label, "qemu-img could not inspect "+d.Path+": "+out)
 				failed = true
@@ -324,8 +324,8 @@ func buildPlan(src *hostconn.Host, dom libvirt.Domain, mode string, c *checkList
 	for _, f := range all {
 		script.WriteString(" " + shq(f.Path))
 	}
-	script.WriteString(`; do stat -L -c '%b %B' -- "$f" 2>/dev/null || echo MISSING; done`)
-	out, err := src.Run(script.String())
+	script.WriteString(`; do stat -L -c '%b %B %a' -- "$f" 2>/dev/null || echo MISSING; done`)
+	out, err := src.RunRoot(script.String())
 	if err != nil {
 		c.bad("Source files", "cannot inspect files on the source node: "+out)
 		return nil
@@ -337,7 +337,8 @@ func buildPlan(src *hostconn.Host, dom libvirt.Domain, mode string, c *checkList
 	}
 	for i, f := range all {
 		var blocks, bsize uint64
-		if _, err := fmt.Sscanf(lines[i], "%d %d", &blocks, &bsize); err != nil {
+		var mode string
+		if _, err := fmt.Sscanf(lines[i], "%d %d %s", &blocks, &bsize, &mode); err != nil {
 			if critical[f.Path] || f == p.NVRAM {
 				c.bad("Source files", f.Path+" does not exist on the source node")
 				failed = true
@@ -349,7 +350,7 @@ func buildPlan(src *hostconn.Host, dom libvirt.Domain, mode string, c *checkList
 			}
 			continue
 		}
-		f.Size = blocks * bsize
+		f.Size, f.Mode = blocks*bsize, mode
 	}
 	if failed {
 		return nil
@@ -556,7 +557,7 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 	for _, m := range plan.Media {
 		if !safePathRE.MatchString(m) {
 			c.bad("Media "+m, "unsupported characters in path")
-		} else if _, err := dst.Run("test -e " + shq(m)); err != nil {
+		} else if _, err := dst.RunRoot("test -e " + shq(m)); err != nil {
 			c.bad("Media "+m, "the image does not exist on "+dst.Name+"; copy it to the same path or eject it from the VM first")
 		} else {
 			c.pass("Media "+m, "exists on "+dst.Name)
@@ -566,7 +567,7 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 	s.checkTargetFiles(dst, plan, &c)
 
 	// Node to node SSH.
-	s.checkSSHTrust(src, dst, dstNode, &c)
+	s.checkSSHTrust(src, dst, dstNode.Node, &c)
 
 	// Encryption of the migration streams.
 	s.checkEncryption(srcID, src, req.Target, dst, plan, req, &c)
@@ -630,7 +631,7 @@ func (s *Server) checkTargetFiles(dst *hostconn.Host, plan *migPlan, c *checkLis
 		script.WriteString(" " + shq(f.Path))
 	}
 	script.WriteString(`; do [ -e "$f" ] && echo "$f"; done; true`)
-	out, err := dst.Run(script.String())
+	out, err := dst.RunRoot(script.String())
 	if err != nil {
 		c.bad("Files on target", "cannot inspect the target: "+out)
 		return
@@ -687,48 +688,10 @@ func (s *Server) checkTargetFiles(dst *hostconn.Host, plan *migPlan, c *checkLis
 		}
 	}
 	if plan.NVRAM != nil && !exists[path.Dir(plan.NVRAM.Path)] {
-		if _, err := dst.Run("test -d " + shq(path.Dir(plan.NVRAM.Path))); err != nil {
+		if _, err := dst.RunRoot("test -d " + shq(path.Dir(plan.NVRAM.Path))); err != nil {
 			c.bad("NVRAM", "the directory "+path.Dir(plan.NVRAM.Path)+" does not exist on "+dst.Name)
 		}
 	}
-}
-
-// sshTarget is how the source reaches the target: the target's host name as
-// libvirt reports it (it has to resolve from the source) and the SSH user
-// configured for the node.
-func sshTarget(dst *hostconn.Host, n cluster.NodeStatus) (user, host string, err error) {
-	user, host = n.User, dst.Name
-	if user == "" {
-		user = "root"
-	}
-	if !userRE.MatchString(user) || !hostRE.MatchString(host) {
-		return "", "", fmt.Errorf("unsupported characters in user %q or host name %q", user, host)
-	}
-	return user, host, nil
-}
-
-func (s *Server) checkSSHTrust(src, dst *hostconn.Host, n cluster.NodeStatus, c *checkList) {
-	user, host, err := sshTarget(dst, n)
-	if err != nil {
-		c.bad("SSH between nodes", err.Error())
-		return
-	}
-	out, err := src.Run("ssh -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR " + shq(user+"@"+host) + " hostname")
-	if err != nil {
-		c.bad("SSH between nodes", fmt.Sprintf(
-			"%s cannot log in to %s@%s without a password (%s). Live migration and file copies run over this connection. "+
-				"Fix: as root on %s create a key (ssh-keygen -t ed25519), install it with ssh-copy-id %s@%s, and run ssh %s@%s true once to accept the host key. "+
-				"The name %s must also resolve from %s.",
-			src.Name, user, host, firstLine(out), src.Name, user, host, user, host, host, src.Name))
-		return
-	}
-	// Compare the short names: one side may report an FQDN.
-	short := func(n string) string { h, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(n)), "."); return h }
-	if short(out) != short(host) {
-		c.bad("SSH between nodes", fmt.Sprintf("%s reaches a machine named %q when connecting to %s, expected %s", src.Name, firstLine(out), host, host))
-		return
-	}
-	c.pass("SSH between nodes", fmt.Sprintf("%s can log in to %s@%s without a password", src.Name, user, host))
 }
 
 func firstLine(s string) string {
@@ -853,11 +816,11 @@ func (s *Server) launchMigration(r *http.Request, srcID int64, h *hostconn.Host,
 		return nil, pre, err
 	}
 	dstNode, _ := s.nodeStatus(req.Target)
-	user, host, err := sshTarget(dst, dstNode)
+	ep, err := endpointFor(dstNode.Node)
 	if err != nil {
 		return nil, pre, badRequest(err.Error())
 	}
-	m := &migRun{s: s, src: h, dst: dst, dom: dom, plan: plan, req: req, uri: "qemu+ssh://" + user + "@" + host + "/system", user: user, host: host}
+	m := &migRun{s: s, src: h, dst: dst, dom: dom, plan: plan, req: req, uri: ep.URI(), ep: ep}
 	migRuns.Lock()
 	if _, busy := migRuns.m[plan.UUID]; busy {
 		migRuns.Unlock()
@@ -958,8 +921,7 @@ type migRun struct {
 	plan     *migPlan
 	req      migReq
 	uri      string
-	user     string
-	host     string
+	ep       migEndpoint // how the source reaches the target
 	progress func(float64)
 
 	cancelled atomic.Bool
@@ -1014,8 +976,11 @@ func (m *migRun) copyFiles(lo, hi float64) error {
 			return err
 		}
 		m.created = append(m.created, f.Path) // recorded first: a half-written file must be removed too
-		cmd := "scp -q -p -o BatchMode=yes -- " + shq(f.Path) + " " + shq(m.user+"@"+m.host+":"+f.Path)
-		if out, err := m.src.Run(cmd); err != nil {
+		cmd, err := nodeCopyCmd(m.dst, m.ep, f.Path, f.Path, f.Mode)
+		if err != nil {
+			return err
+		}
+		if out, err := m.src.RunRoot(cmd); err != nil {
 			return fmt.Errorf("copying %s to %s failed: %w: %s", f.Path, m.dst.Name, err, out)
 		}
 		done += f.Size
@@ -1074,7 +1039,7 @@ func (m *migRun) rollbackDst() string {
 				continue
 			}
 		}
-		if out, err := m.dst.Run("rm -f -- " + shq(p)); err != nil {
+		if out, err := m.dst.RunRoot("rm -f -- " + shq(p)); err != nil {
 			left = append(left, p+" ("+out+")")
 		}
 	}
@@ -1221,6 +1186,10 @@ func (m *migRun) perform(flags libvirt.DomainMigrateFlags, lo, hi float64) error
 	if m.req.BandwidthMiB > 0 {
 		params = append(params, libvirt.TypedParam{Field: libvirt.MigrateParamBandwidth, Value: *libvirt.NewTypedParamValueUllong(m.req.BandwidthMiB)})
 	}
+	// Name the destination explicitly so that nothing depends on the source
+	// resolving the host name the destination's libvirtd reports: the memory
+	// stream and the NBD disk copy both go to the address stored for the node.
+	params = append(params, migrateAddrParams(m.ep.Host)...)
 	if m.plan.TLS {
 		params = append(params, libvirt.TypedParam{Field: libvirt.MigrateParamTLSDestination, Value: *libvirt.NewTypedParamValueString(m.plan.TLSName)})
 	}
@@ -1340,7 +1309,7 @@ func (m *migRun) cleanSource() error {
 	// A live migration recreates the UEFI variable store on the target, but
 	// undefining the source leaves its file behind.
 	if nv := path.Clean(m.plan.Dom.NVRAM); m.plan.active() && strings.HasPrefix(nv, "/var/lib/libvirt/qemu/nvram/") && safePathRE.MatchString(nv) {
-		if out, err := m.src.Run("rm -f -- " + shq(nv)); err != nil {
+		if out, err := m.src.RunRoot("rm -f -- " + shq(nv)); err != nil {
 			log.Printf("migrate %s: could not remove %s on %s: %v %s", m.plan.Name, nv, m.src.Name, err, out)
 		}
 	}

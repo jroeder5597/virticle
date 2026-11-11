@@ -146,7 +146,7 @@ func (r *imageRun) runTracked(script string) (string, error) {
 	if r.isCancelled() {
 		return "", errImageCancelled
 	}
-	out, err := r.h.Run(script)
+	out, err := r.h.RunRoot(script)
 	if r.isCancelled() {
 		return out, errImageCancelled
 	}
@@ -162,7 +162,7 @@ func (r *imageRun) cancel() {
 	pf := r.pidFile
 	r.mu.Unlock()
 	for i := 0; i < 8; i++ {
-		if _, err := r.h.Run("kill $(cat -- " + shQuote(pf) + ") 2>/dev/null"); err == nil {
+		if _, err := r.h.RunRoot("kill $(cat -- " + shQuote(pf) + ") 2>/dev/null"); err == nil {
 			return
 		}
 		time.Sleep(250 * time.Millisecond)
@@ -241,7 +241,7 @@ func (s *Server) downloadImage(w http.ResponseWriter, r *http.Request) {
 	part := dir + "/." + name + ".part"
 
 	// A leftover or foreign file with either name stops us before anything is written.
-	if out, err := h.Run(fmt.Sprintf("if [ -e %[1]s ] || [ -e %[2]s ]; then echo 'a file named %[3]s (or .%[3]s.part) already exists in the pool directory'; exit 1; fi", shQuote(dest), shQuote(part), name)); err != nil {
+	if out, err := h.RunRoot(fmt.Sprintf("if [ -e %[1]s ] || [ -e %[2]s ]; then echo 'a file named %[3]s (or .%[3]s.part) already exists in the pool directory'; exit 1; fi", shQuote(dest), shQuote(part), name)); err != nil {
 		imageRuns.remove(key)
 		if out == "" {
 			out = err.Error()
@@ -275,10 +275,10 @@ func (s *Server) downloadImage(w http.ResponseWriter, r *http.Request) {
 // .part file is gone afterwards unless it was moved.
 func (s *Server) fetchImage(run *imageRun, img catalog.Image, pool, part, dest string, progress func(float64)) (err error) {
 	defer func() {
-		if _, rmErr := run.h.Run("rm -f -- " + shQuote(part)); rmErr != nil && err != nil {
+		if _, rmErr := run.h.RunRoot("rm -f -- " + shQuote(part)); rmErr != nil && err != nil {
 			err = fmt.Errorf("%w (and the partial file %s could not be removed: %v)", err, part, rmErr)
 		}
-		run.h.Run("rm -f -- " + shQuote(run.pidFile))
+		run.h.RunRoot("rm -f -- " + shQuote(run.pidFile))
 	}()
 
 	want := strings.ToLower(img.Checksum)
@@ -326,7 +326,7 @@ func (s *Server) fetchImage(run *imageRun, img catalog.Image, pool, part, dest s
 	}
 	// mv -n never overwrites; if the name appeared meanwhile it exits 0 and
 	// leaves the source behind, which is what the check after it detects.
-	if out, err := run.h.Run(fmt.Sprintf("mv -n -- %[1]s %[2]s && if [ -e %[1]s ]; then echo 'a file with this name appeared in the pool directory; nothing was overwritten'; exit 1; fi", shQuote(part), shQuote(dest))); err != nil {
+	if out, err := run.h.RunRoot(fmt.Sprintf("mv -n -- %[1]s %[2]s && if [ -e %[1]s ]; then echo 'a file with this name appeared in the pool directory; nothing was overwritten'; exit 1; fi", shQuote(part), shQuote(dest))); err != nil {
 		return fmt.Errorf("could not move the image into place: %s", orErr(out, err))
 	}
 	return nil

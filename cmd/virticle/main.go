@@ -89,6 +89,7 @@ func main() {
 	defer st.Close()
 
 	mgr := cluster.NewManager(keyFile, filepath.Join(*data, "known_hosts"))
+	mgr.Persist = st
 	nodes, err := st.Nodes()
 	if err != nil {
 		log.Fatal(err)

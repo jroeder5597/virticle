@@ -255,15 +255,23 @@ func (s *Server) listNetworks(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	nets, _, err := h.ConnectListAllNetworks(1, 0)
+	out, err := collectNetworks(h)
 	if err != nil {
 		fail(w, err)
 		return
 	}
+	writeJSON(w, out)
+}
+
+// collectNetworks lists the virtual networks of one node, sorted by name.
+func collectNetworks(h *hostconn.Host) ([]networkInfo, error) {
+	nets, _, err := h.ConnectListAllNetworks(1, 0)
+	if err != nil {
+		return nil, err
+	}
 	ifaces, err := netIfaces(h)
 	if err != nil {
-		fail(w, err)
-		return
+		return nil, err
 	}
 	out := []networkInfo{}
 	for _, n := range nets {
@@ -274,7 +282,7 @@ func (s *Server) listNetworks(w http.ResponseWriter, r *http.Request) {
 		out = append(out, info)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	writeJSON(w, out)
+	return out, nil
 }
 
 func (s *Server) network(r *http.Request) (*hostconn.Host, libvirt.Network, error) {

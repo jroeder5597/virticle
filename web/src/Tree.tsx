@@ -13,6 +13,8 @@ import { get, NodeStatus, Network as Net, Pool, post, put, ServerEvent, VM } fro
 import { atLeast, useRole } from "./auth";
 import { useEvents } from "./live";
 import { getPref } from "./storage";
+import { publishInventory } from "./inventory";
+import { TreeTags } from "./TreeTags";
 import "./shell.css";
 
 interface NIC {
@@ -141,6 +143,9 @@ export default function Tree() {
     [],
   );
 
+  useEffect(() => {
+    publishInventory(nodes, vms);
+  }, [nodes, vms]);
   const firstLoad = useRef(0);
   useEffect(() => {
     firstLoad.current = Date.now();
@@ -217,7 +222,7 @@ export default function Tree() {
     if ((m = p.match(/^\/node\/(\d+)\/storage/))) return { key: `s:${m[1]}`, anc: ["dc", `n:${m[1]}`] };
     if ((m = p.match(/^\/node\/(\d+)\/network/))) return { key: `w:${m[1]}`, anc: ["dc", `n:${m[1]}`] };
     if ((m = p.match(/^\/node\/(\d+)/))) return { key: `n:${m[1]}`, anc: ["dc"] };
-    if (p === "/nodes") return { key: "dc", anc: [] as string[] };
+    if (p === "/datacenter" || p.startsWith("/datacenter/")) return { key: "dc", anc: [] as string[] };
     return { key: "", anc: [] as string[] };
   }, [loc.pathname]);
   useEffect(() => {
@@ -277,7 +282,7 @@ export default function Tree() {
       if (nodeOpen) out.push(...list);
     }
     wanted.current = { storage: wantS, network: wantN };
-    return [{ key: "dc", kind: "dc" as Kind, level: 1, label: "Datacenter", href: "/nodes", open: isOpen("dc") } as RowModel, ...(isOpen("dc") ? out : [])];
+    return [{ key: "dc", kind: "dc" as Kind, level: 1, label: "Datacenter", href: "/datacenter", open: isOpen("dc") } as RowModel, ...(isOpen("dc") ? out : [])];
   }, [nodes, byNode, data, isOpen, needle]);
 
   // Fetch what became visible: opened groups only.
@@ -357,13 +362,13 @@ export default function Tree() {
       if (v.state === "shutoff" && !v.template) items.push({ label: powerLabel.start, icon: Play, run: () => power(v, "start") });
       if (v.state === "paused") items.push({ label: powerLabel.resume, icon: Play, run: () => power(v, "resume") });
       if (v.state === "running") {
-        items.push({ label: powerLabel.shutdown, icon: Power, run: () => power(v, "shutdown") });
         items.push({ label: powerLabel.reboot, icon: RotateCw, run: () => power(v, "reboot") });
+        items.push({ label: powerLabel.shutdown, icon: Power, run: () => power(v, "shutdown") });
         items.push({ label: powerLabel.pause, icon: Pause, run: () => power(v, "pause") });
       }
       if (on) {
-        items.push({ label: powerLabel.reset, icon: RotateCw, danger: true, run: () => power(v, "reset") });
         items.push({ label: powerLabel.poweroff, icon: Power, danger: true, run: () => power(v, "poweroff") });
+        items.push({ label: powerLabel.reset, icon: RotateCw, danger: true, run: () => power(v, "reset") });
         items.push({ label: "Console", icon: Terminal, run: () => page("console") });
       }
       items.push("sep", { label: "Snapshots", icon: Camera, run: () => page("snapshots") }, { label: "Migrate", icon: ArrowRightLeft, run: () => page() }, { label: "Clone", icon: Copy, run: () => page() });
@@ -503,12 +508,12 @@ const TreeRow = memo(
     const maint = r.kind === "node" && (r.data as NodeStatus).maintenance;
     return (
       <div
-        className={"trow" + (selected ? " sel" : "") + (r.muted ? " dim" : "") + (vm?.template ? " tpl" : "")}
+        className={"trow" + (selected ? " sel" : "") + (r.muted ? " dim" : "") + (vm?.template ? " tpl" : "") + (vm?.tags?.length ? " has-tags" : "")}
         role="treeitem"
         aria-level={r.level}
         aria-selected={selected}
         aria-expanded={r.open}
-        aria-label={vm ? `${r.label}, ${vm.template ? "template, " : ""}${vm.state}` : r.kind === "node" ? `${r.label}, ${st}${maint ? ", maintenance" : ""}` : r.label}
+        aria-label={vm ? `${r.label}, ${vm.template ? "template, " : ""}${vm.state}${vm.tags?.length ? ", tags: " + vm.tags.join(", ") : ""}` : r.kind === "node" ? `${r.label}, ${st}${maint ? ", maintenance" : ""}` : r.label}
         data-key={r.key}
         data-kind={r.kind}
         data-state={st || undefined}
@@ -532,6 +537,7 @@ const TreeRow = memo(
         <Link to={r.href} tabIndex={-1} className="lbl" title={r.label}>
           {r.label}
         </Link>
+        {vm?.tags?.length ? <TreeTags tags={vm.tags} /> : null}
         {maint && <Wrench size={12} className="maint" aria-label="In maintenance" />}
         {r.kind === "pool" && r.extra && r.extra !== "inactive" && <PoolBar p={r.data as Pool} text={r.extra} />}
         {r.kind !== "pool" && r.extra && !vm && r.kind !== "node" && <span className="x">{r.extra}</span>}

@@ -241,3 +241,19 @@ func TestGPUBehindRootPortIsAllowed(t *testing.T) {
 		t.Error("a device sharing its group with an ISA bridge must stay refused")
 	}
 }
+
+func TestGPUUsers(t *testing.T) {
+	users, ok := parseGPUUsers("gnome-shell\nXwayland\ngnome-shell\nok\n")
+	if !ok || !reflect.DeepEqual(users, []string{"Xwayland", "gnome-shell"}) {
+		t.Errorf("%v %v", users, ok)
+	}
+	if users, ok := parseGPUUsers("ok\n"); !ok || len(users) != 0 {
+		t.Errorf("idle card: %v %v", users, ok)
+	}
+	if _, ok := parseGPUUsers("sudo: a password is required\n"); ok {
+		t.Error("an incomplete run must not count as checked")
+	}
+	if c := gpuUsersCommand("0000:01:00.0"); !strings.Contains(c, "'0000:01:00.0'") {
+		t.Errorf("address not quoted: %s", c)
+	}
+}

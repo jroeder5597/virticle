@@ -52,7 +52,7 @@ export default function VMDetailPage() {
   if (!d) {
     return (
       <>
-        <Link to="/" className="backlink"><ArrowLeft size={14} aria-hidden="true" /> Virtual machines</Link>
+        <Link to="/datacenter/vms" className="backlink"><ArrowLeft size={14} aria-hidden="true" /> Virtual machines</Link>
         <ErrorBox error={vm.error} />
       </>
     );
@@ -72,18 +72,20 @@ export default function VMDetailPage() {
 
   return (
     <>
-      <Link to="/" className="backlink"><ArrowLeft size={14} aria-hidden="true" /> Virtual machines</Link>
+      <Link to="/datacenter/vms" className="backlink"><ArrowLeft size={14} aria-hidden="true" /> Virtual machines</Link>
       <div className="head">
-        <h1>
-          {d.name} <StateBadge state={d.state} />
-          {d.template && <span className="badge s-template">Template</span>}
-        </h1>
+        <div className="titleline">
+          <h1>
+            {d.name} <StateBadge state={d.state} />
+            {d.template && <span className="badge s-template">Template</span>}
+          </h1>
+          <TagEditor tags={d.tags ?? []} base={base} vmName={d.name} onChanged={vm.reload} />
+        </div>
         <div className="actions">
           <VMActions d={d} base={base} goto={goto} onChanged={vm.reload} run={act.run} busy={act.busy} />
         </div>
       </div>
       <ErrorBox error={act.error ?? vm.error} />
-      <TagEditor tags={d.tags ?? []} base={base} onChanged={vm.reload} />
       <div className="tabs">
         {tabs.map(([id, label]) => (
           <button key={id} className={tab === id ? "on" : ""} onClick={() => setParams(id === "overview" ? {} : { tab: id })}>
@@ -91,7 +93,7 @@ export default function VMDetailPage() {
           </button>
         ))}
       </div>
-      {tab === "overview" && <Overview d={d} base={base} />}
+      {tab === "overview" && <Overview d={d} base={base} onChanged={vm.reload} />}
       {tab === "hardware" && <Hardware d={d} base={base} onChanged={vm.reload} />}
       {tab === "console" && <ConsoleTab d={d} />}
       {tab === "snapshots" && <SnapshotsTab d={d} base={base} />}

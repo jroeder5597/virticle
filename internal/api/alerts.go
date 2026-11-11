@@ -206,7 +206,9 @@ func (s *Server) listAlerts(w http.ResponseWriter, r *http.Request) {
 	alertHub.Lock()
 	out := append([]Alert{}, alertHub.list...)
 	alertHub.Unlock()
-	writeJSON(w, map[string]any{"alerts": out})
+	// The pool-usage thresholds travel along so pickers can colour pools by the same limits.
+	c := alertConfig{PoolWarn: s.Alerts.PoolWarn, PoolCrit: s.Alerts.PoolCrit}.withDefaults()
+	writeJSON(w, map[string]any{"alerts": out, "poolWarn": c.PoolWarn, "poolCritical": c.PoolCrit})
 }
 
 // --- webhook ---

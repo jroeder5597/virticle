@@ -58,6 +58,10 @@ func summarize(node int64, h *hostconn.Host, d libvirt.Domain) (vmSummary, error
 
 // listVMs aggregates the domains of every online node, querying nodes in parallel.
 func (s *Server) listVMs(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, s.collectVMs())
+}
+
+func (s *Server) collectVMs() []vmSummary {
 	var (
 		mu  sync.Mutex
 		wg  sync.WaitGroup
@@ -85,7 +89,7 @@ func (s *Server) listVMs(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 	wg.Wait()
-	writeJSON(w, out)
+	return out
 }
 
 // domainXML is a read-only view of the parts of a domain definition the UI
@@ -412,6 +416,10 @@ func (s *Server) vmAction(w http.ResponseWriter, r *http.Request) {
 	if req.Action == "start" {
 		if mark, err := getMark(h, dom); err == nil && mark.Template {
 			fail(w, badRequest(dom.Name+" is a template and is never started. Clone it, or convert it back to a VM first"))
+			return
+		}
+		if err := startGuard(h, dom); err != nil {
+			fail(w, err)
 			return
 		}
 	}

@@ -54,16 +54,16 @@ test.describe.serial("XML editor, tasks, alerts", () => {
     await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
     // the second create fails: the toast shows up wherever the user is, and the table keeps the error
     await api.call("POST", `/nodes/${n1}/pools/default/volumes`, body, [400, 409, 422, 500]);
-    const failed = row(page, `default/${P}dupvol.qcow2`).filter({ hasText: "failed" });
+    const failed = row(page.locator("main"), `default/${P}dupvol.qcow2`).filter({ hasText: "failed" });
     await expect(failed.first()).toBeVisible();
     await expect(failed.first().locator(".rowerror")).not.toBeEmpty();
     await expect(page.locator(".toast", { hasText: "failed" }).first()).toBeVisible();
-    const ok = row(page, `default/${P}dupvol.qcow2`).filter({ hasText: "ok" });
+    const ok = row(page.locator("main"), `default/${P}dupvol.qcow2`).filter({ hasText: "ok" });
     await expect(ok.first()).toBeVisible();
   });
 
   test("Alerts panel opens, lists or says nothing needs attention, closes with Escape", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await page.getByRole("button", { name: /^Alerts/ }).click();
     const panel = page.getByRole("dialog", { name: "Alerts" });
     await expect(panel).toBeVisible();

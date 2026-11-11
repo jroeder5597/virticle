@@ -203,7 +203,12 @@ func (s *Server) vmHostdevAttach(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		_ = d
+		if d.Category == "gpu" {
+			// Never hot-plug a graphics card: see hostdevguard.go.
+			if st, _, _, _, _, err := c.h.DomainGetInfo(c.dom); err != nil || stateName(st) != "shutoff" {
+				return badRequest("Shut the VM down before attaching a graphics card. Hot-plugging one while the node still uses it can hang the node")
+			}
+		}
 		applied, err := c.attach(xmlText)
 		if err != nil {
 			return err
