@@ -8,6 +8,7 @@ import { ErrorBox, Field, Modal, useAction } from "../ui";
 import FirmwareCard from "./Firmware";
 import AdvancedCard from "./Advanced";
 import PassthroughCard from "./Passthrough";
+import DiskMoveDialog from "./DiskMove";
 
 interface HwResult {
   applied: "live+config" | "live" | "config";
@@ -52,7 +53,7 @@ export default function Hardware({ d, base, onChanged }: { d: VMDetail; base: st
       <div className="cards" style={{ marginTop: 12, alignItems: "start" }}>
         <CpuMemory d={d} send={send} run={run} busy={act.busy} />
         <Boot d={d} send={send} run={run} busy={act.busy} />
-        <Disks d={d} disks={disks} send={send} run={run} busy={act.busy} />
+        <Disks d={d} disks={disks} send={send} run={run} busy={act.busy} onChanged={onChanged} />
         <NICs d={d} send={send} run={run} busy={act.busy} />
         <CDROMs d={d} cdroms={cdroms} send={send} run={run} busy={act.busy} />
         <FirmwareCard d={d} base={base} onChanged={onChanged} />
@@ -140,10 +141,11 @@ function CpuMemory({ d, send, run, busy }: CardProps) {
 
 // --- disks ---
 
-function Disks({ d, disks, send, run, busy }: CardProps & { disks: DiskT[] }) {
+function Disks({ d, disks, send, run, busy, onChanged }: CardProps & { disks: DiskT[]; onChanged: () => void }) {
   const [adding, setAdding] = useState(false);
   const [resizing, setResizing] = useState<DiskT>();
   const [detaching, setDetaching] = useState<DiskT>();
+  const [moving, setMoving] = useState<DiskT>();
   return (
     <section className="card span">
       <h3>Disks</h3>
@@ -168,6 +170,9 @@ function Disks({ d, disks, send, run, busy }: CardProps & { disks: DiskT[] }) {
                 <button className="link" disabled={busy} onClick={() => setResizing(k)}>
                   Resize
                 </button>
+                <button className="link" disabled={busy || !k.source || k.source.startsWith("/dev/")} onClick={() => setMoving(k)}>
+                  Move
+                </button>
                 <button className="link" disabled={busy} onClick={() => setDetaching(k)}>
                   Detach
                 </button>
@@ -185,6 +190,7 @@ function Disks({ d, disks, send, run, busy }: CardProps & { disks: DiskT[] }) {
         <button onClick={() => setAdding(true)}>Add disk</button>
       </footer>
       {adding && <AddDisk d={d} send={send} onClose={() => setAdding(false)} />}
+      {moving && <DiskMoveDialog d={d} disk={moving} onClose={() => setMoving(undefined)} onDone={onChanged} />}
       {resizing && <ResizeDisk disk={resizing} send={send} onClose={() => setResizing(undefined)} />}
       {detaching && (
         <Modal title={`Detach ${detaching.target}?`} onClose={() => setDetaching(undefined)}>

@@ -200,6 +200,10 @@ test.describe.serial("visual pass", () => {
       await page.getByRole("button", { name: "Add disk" }).click();
       await shot("add-disk-dialog", () => expect(page.getByRole("dialog")).toBeVisible());
       await page.keyboard.press("Escape");
+      await page.goto(vmUrl + "?tab=hardware");
+      await page.locator("section.card").filter({ has: page.getByRole("heading", { name: "Disks", exact: true }) }).getByRole("row", { name: /vda/ }).getByRole("button", { name: "Move", exact: true }).click();
+      await shot("disk-move-dialog", () => expect(page.getByRole("dialog").locator("ul.checks li").first()).toBeVisible({ timeout: 60_000 }));
+      await page.keyboard.press("Escape");
       await page.goto(vmUrl);
       await page.locator(".head").getByRole("button", { name: "Migrate" }).click();
       await shot("migrate-dialog", () => expect(page.getByRole("dialog").locator("ul.checks li").first()).toBeVisible({ timeout: 60_000 }));
