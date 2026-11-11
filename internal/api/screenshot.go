@@ -64,8 +64,10 @@ func (c *shotCache) slot(key string) *shotSlot {
 
 // screenshotCmd is the node-side command: virsh writes the image to a
 // temporary file, which is printed as one line of base64 and removed.
+// The URI is explicit: for a node user other than root, plain virsh would talk
+// to that user's own session and not find the VM.
 func screenshotCmd(uuid string) string {
-	return "f=$(mktemp) && timeout 20 virsh screenshot " + shellQuote(uuid) + ` "$f" >/dev/null; rc=$?; ` +
+	return "f=$(mktemp) && timeout 20 virsh -c qemu:///system screenshot " + shellQuote(uuid) + ` "$f" >/dev/null; rc=$?; ` +
 		`[ $rc -eq 0 ] && base64 -w0 "$f"; rm -f "$f"; exit $rc`
 }
 
