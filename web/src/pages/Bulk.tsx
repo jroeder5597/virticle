@@ -7,6 +7,8 @@ import { del, get, post, put, VM, VMDetail } from "../api";
 import { ErrorBox, Field, Modal, useAction, useConfirm } from "../ui";
 import { powerConfirm, powerLabel } from "../power";
 import { MAX_TAGS, TAG_RE } from "./Tags";
+import { TagChip } from "../TagChip";
+import { fetchTags, TagInfo } from "../tagStore";
 
 const CONCURRENCY = 3;
 
@@ -161,6 +163,11 @@ function TagDialog({ onClose, onApply }: { onClose: () => void; onApply: (mode: 
   const [mode, setMode] = useState<"add" | "remove">("add");
   const [tag, setTag] = useState("");
   const ok = TAG_RE.test(tag.trim());
+  const [known, setKnown] = useState<TagInfo[]>([]);
+  useEffect(() => {
+    fetchTags().then(setKnown, () => {});
+  }, []);
+  const near = known.filter((k) => !tag.trim() || k.name.toLowerCase().includes(tag.trim().toLowerCase())).slice(0, 12);
   return (
     <Modal title="Tags on the selected VMs" onClose={onClose}>
       <div className="segmented">
@@ -174,6 +181,15 @@ function TagDialog({ onClose, onApply }: { onClose: () => void; onApply: (mode: 
       <Field label="Tag" hint={`Up to ${MAX_TAGS} tags per VM; letters, digits, space and . _ : -`}>
         <input value={tag} onChange={(e) => setTag(e.target.value)} autoFocus maxLength={31} />
       </Field>
+      {near.length > 0 && (
+        <div className="tags bulk-known" role="group" aria-label="Existing tags">
+          {near.map((k) => (
+            <button key={k.name} type="button" className="tagpick" onClick={() => setTag(k.name)}>
+              <TagChip name={k.name} color={k.color} />
+            </button>
+          ))}
+        </div>
+      )}
       <footer>
         <button onClick={onClose}>Cancel</button>
         <button className="primary" disabled={!ok} onClick={() => onApply(mode, tag.trim())}>

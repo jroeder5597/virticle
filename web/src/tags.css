@@ -1,0 +1,70 @@
+/* Tag chips, the editor in the VM header, the colour picker, the tree's tag strip. No animation. */
+.tags { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 8px; vertical-align: middle; }
+.tag { display: inline-flex; align-items: center; box-sizing: border-box; max-width: 100%; height: 20px; font-size: 11.5px; font-weight: 500; line-height: 1; padding: 0 8px; border-radius: 4px; white-space: nowrap; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--link); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+/* a coloured chip: background and text come inline; the outline keeps a very light or very dark chip visible on either theme */
+.tag.colored { border-color: color-mix(in srgb, var(--text) 35%, transparent); }
+.tag.pick { cursor: pointer; }
+.tag.small { height: 16px; padding: 0 6px; font-size: 11px; }
+
+/* VM header: tags on the name's line, wrapping to the next line only when the window is too narrow */
+.titleline { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; min-width: min(100%, 260px); flex: 1 1 0; }
+.tagedit { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.tagedit .tags { margin-left: 0; }
+.tagedit .error { flex-basis: 100%; margin: 0; }
+.tag.editable { padding: 0; }
+.tag.editable button { border: 0; background: none; color: inherit; font: inherit; line-height: 1; border-radius: 3px; padding: 0; cursor: pointer; height: 100%; display: inline-flex; align-items: center; }
+.tag.editable button:hover:not(:disabled) { background: color-mix(in srgb, currentColor 18%, transparent); }
+.tag.editable button:focus-visible { outline-offset: -2px; }
+.tag.editable .tagname { padding: 0 3px 0 8px; }
+/* the x keeps its width so a chip does not change size when it shows */
+.tag.editable .tagx { width: 18px; justify-content: center; margin-right: 2px; visibility: hidden; }
+.tag.editable:hover .tagx, .tag.editable:focus-within .tagx { visibility: visible; }
+@media (hover: none) { .tag.editable .tagx { visibility: visible; } }
+.tag.editable.open { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.tagaddbtn { height: 20px; display: inline-flex; align-items: center; padding: 0 10px; font-size: 11.5px; line-height: 1; border-radius: 4px; border: 1px dashed var(--muted); background: none; color: var(--muted); }
+button.tagaddbtn:hover:not(:disabled) { color: var(--text); background: var(--hover); }
+.tagadd { position: relative; display: inline-flex; }
+.tagadd input { width: 150px; height: 22px; padding: 0 8px; font-size: 12.5px; border-radius: 4px; }
+.tagsuggest { position: absolute; z-index: 200; left: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none; width: max-content; min-width: 100%; max-width: min(280px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-pop); }
+.tagsuggest li { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 3px 6px; border-radius: 5px; cursor: pointer; }
+.tagsuggest li.on, .tagsuggest li:hover { background: var(--hover); }
+.tagsuggest li.more { cursor: default; font-size: 12px; }
+.tagsuggest li.more:hover { background: none; }
+@media (max-width: 760px) { .tagadd { flex: 1 1 100%; } .tagadd input { width: 100%; } }
+
+/* colour picker popover */
+.cpick { position: fixed; z-index: 200; left: 0; top: 0; width: 208px; max-width: calc(100vw - 8px); box-sizing: border-box; padding: 10px; display: grid; gap: 10px; justify-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-pop); color: var(--text); }
+.cpick .cp-head { justify-self: start; max-width: 100%; }
+.cw { position: relative; touch-action: none; }
+.cw-ring { position: absolute; inset: 0; border-radius: 50%; cursor: pointer; background: conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); -webkit-mask: radial-gradient(circle closest-side, transparent calc(100% - 20px), #000 calc(100% - 19px)); mask: radial-gradient(circle closest-side, transparent calc(100% - 20px), #000 calc(100% - 19px)); }
+.cw-sv { position: absolute; cursor: crosshair; border-radius: 3px; border: 1px solid var(--line); box-sizing: border-box; }
+.cw-ring:focus-visible, .cw-sv:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cw-thumb { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #000; pointer-events: none; box-sizing: border-box; }
+.cp-presets { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; width: 100%; }
+.cpick .cp-sw { width: 100%; aspect-ratio: 1; min-width: 0; padding: 0; border-radius: 5px; border: 1px solid color-mix(in srgb, var(--text) 40%, transparent); }
+.cpick .cp-sw[aria-pressed="true"] { outline: 2px solid var(--text); outline-offset: 1px; }
+.cp-hex { display: flex; gap: 6px; width: 100%; }
+.cp-hex input { flex: 1; min-width: 0; padding: 4px 8px; }
+.cp-hex button { padding: 4px 10px; }
+.cpick .error { margin: 0; width: 100%; box-sizing: border-box; font-size: 12.5px; }
+.cp-foot { display: flex; justify-content: space-between; gap: 6px; width: 100%; }
+.cp-foot button { padding: 4px 10px; }
+
+/* tree: tag strip after the VM name */
+.trow.has-tags .lbl { flex: 0 1 auto; }
+.tgbox { flex: 1 1 0; min-width: 14px; display: flex; align-items: center; gap: 2px; overflow: hidden; height: 100%; }
+.tgstrip { position: relative; display: flex; gap: 3px; flex: 0 1 auto; min-width: 0; overflow: hidden; }
+.tgstrip .tag { flex: none; }
+.tmore { display: none; flex: none; color: var(--muted); font-size: 12px; line-height: 1; }
+.tgbox[data-over] .tmore { display: inline; }
+/* the row's actions take room only while they show, so the chips get the full width otherwise */
+.trow.has-tags .acts { display: none; }
+.trow.has-tags:hover .acts, .trow.has-tags:focus-within .acts, .trow.has-tags.sel .acts { display: inline-flex; }
+@media (max-width: 899px), (hover: none) { .trow.has-tags .acts { display: inline-flex; } }
+.tagpop { position: fixed; z-index: 200; left: 0; top: 0; display: flex; flex-wrap: wrap; gap: 4px; width: max-content; max-width: min(320px, calc(100vw - 8px)); padding: 6px; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-pop); }
+.bulk-known { margin: 0 0 12px; }
+button.tagpick { padding: 0; border: 0; background: none; border-radius: 4px; }
+button.tagpick:hover:not(:disabled) { background: none; filter: brightness(1.15); }
+/* the tag filter lists every tag, however long: it shrinks instead of widening the page */
+.filters { flex-wrap: wrap; }
+.filters select { min-width: 0; max-width: 100%; }
