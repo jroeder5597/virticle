@@ -264,6 +264,18 @@ test.describe.serial("VM page polish", () => {
     await page.keyboard.press("Escape");
   });
 
+  test("Add CD-ROM drive stays available up to four drives", async ({ page, api }) => {
+    for (let i = 0; i < 2; i++) await api.post(`${"/nodes/" + vm.node}/vms/${vm.uuid}/cdrom`);
+    await openVM(page, vm, "hardware");
+    const c = card(page, "CD-ROM");
+    await expect(c.locator("tbody tr")).toHaveCount(2);
+    await c.getByRole("button", { name: "Add CD-ROM drive" }).click();
+    await expect(c.locator("tbody tr")).toHaveCount(3);
+    await c.getByRole("button", { name: "Add CD-ROM drive" }).click();
+    await expect(c.locator("tbody tr")).toHaveCount(4);
+    await expect(c.getByRole("button", { name: "Add CD-ROM drive" })).toHaveCount(0);
+  });
+
   test("snapshot help tip opens on hover and on focus and names all three types", async ({ page, api }) => {
     await api.post(`/nodes/${vm.node}/vms/${vm.uuid}/action`, { action: "start" });
     await openVM(page, vm);
@@ -298,5 +310,25 @@ test.describe.serial("VM page polish", () => {
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await expect(dialog(page)).toHaveCount(0);
+  });
+
+  test("a graphics card cannot be attached while the VM runs, and the reason is shown", async ({ page }) => {
+    // the VM is running (the previous test started it); the node has no GPU, so the listing is made up
+    await page.route(/\/hostdevs$/, async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      const dev = (id: string, category: string) => ({ kind: "pci", id, nodedev: "pci_" + id, category, vendor: "Vendor", product: category, vendorId: "10de", productId: "1234", iommuGroup: 1, usedBy: [], unsafe: false });
+      await route.fulfill({ json: { devices: [dev("0000:0a:00.0", "gpu"), dev("0000:0b:00.0", "storage")], attached: [], iommu: true, factsKnown: true, vm: vm.uuid, warning: "" } });
+    });
+    await openVM(page, vm, "hardware");
+    await page.getByRole("button", { name: /^Passthrough devices/ }).click();
+    await page.getByRole("button", { name: "Add host device" }).click();
+    const dlg = dialog(page, "Host devices of this node");
+    const gpu = dlg.locator("tr", { hasText: "0000:0a:00.0" });
+    await expect(gpu.getByRole("button", { name: "Attach" })).toBeDisabled();
+    await expect(gpu).toContainText("Shut the VM down to attach a graphics card");
+    await expect(gpu.getByRole("button", { name: "Attach" })).toHaveAttribute("title", "Shut the VM down to attach a graphics card");
+    await expect(dlg.locator("tr", { hasText: "0000:0b:00.0" }).getByRole("button", { name: "Attach" })).toBeEnabled();
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => localStorage.removeItem("vp.hw.open.hw-passthrough"));
   });
 });
