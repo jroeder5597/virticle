@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Lock } from "lucide-react";
 import { del, get, post } from "../api";
 import { useAction } from "../ui";
 
@@ -56,7 +57,7 @@ export default function MigrationTLS({ node, online, admin }: { node: number; on
     <div className="migtls">
       <button className="link" onClick={() => setOpen(!open)} aria-expanded={open} title="TLS for the memory and disk streams of live migrations">
         <span className={`badge ${badgeClass[st.state]}`}>
-          <span aria-hidden="true">{st.state === "ok" || st.state === "expiring" ? "🔒 " : ""}</span>
+          {(st.state === "ok" || st.state === "expiring") && <Lock size={12} aria-hidden="true" />}{" "}
           {label}
         </span>
       </button>
