@@ -37,23 +37,23 @@ interface RowProps {
 
 const Row = memo(function Row({ t, inv, now, expanded, toggle }: RowProps) {
   return (
-    <tr data-status={t.status}>
-      <td>
+    <div className="dk-row" role="row" data-status={t.status}>
+      <div className="dk-cell" role="cell">
         <TaskStatus status={t.status} />
-      </td>
-      <td className="c-kind">{t.kind}</td>
-      <td className="c-target">
+      </div>
+      <div role="cell" className="dk-cell c-kind">{t.kind}</div>
+      <div role="cell" className="dk-cell c-target">
         <TaskTarget task={t} inv={inv} />
-      </td>
-      <td className="c-node">
+      </div>
+      <div role="cell" className="dk-cell c-node">
         <TaskNode task={t} inv={inv} />
-      </td>
-      <td className="c-user">{t.user}</td>
-      <td className="c-when num" title={absTime(t.started)}>
+      </div>
+      <div role="cell" className="dk-cell c-user">{t.user}</div>
+      <div role="cell" className="dk-cell c-when num" title={absTime(t.started)}>
         {relTime(t.started, now)}
-      </td>
-      <td className="c-dur num">{duration(t, now)}</td>
-      <td className="c-res">
+      </div>
+      <div role="cell" className="dk-cell c-dur num">{duration(t, now)}</div>
+      <div role="cell" className="dk-cell c-res">
         {t.status === "running" ? (
           <span className="dk-prog" title={t.progress > 0 ? `${(t.progress * 100).toFixed(0)}%` : "no progress reported"}>
             <span className="dk-bar">
@@ -66,8 +66,8 @@ const Row = memo(function Row({ t, inv, now, expanded, toggle }: RowProps) {
             {t.error}
           </button>
         ) : null}
-      </td>
-    </tr>
+      </div>
+    </div>
   );
 });
 
@@ -205,25 +205,25 @@ export default function TasksDock() {
           ) : rows.length === 0 ? (
             <div className="dock-note">Nothing has been done yet.</div>
           ) : (
-            <table className="dock-table">
-              <thead>
-                <tr>
-                  <th>Status</th>
-                  <th className="c-kind">Action</th>
-                  <th className="c-target">Target</th>
-                  <th className="c-node">Node</th>
-                  <th className="c-user">By</th>
-                  <th className="c-when">Started</th>
-                  <th className="c-dur">Duration</th>
-                  <th className="c-res">Result</th>
-                </tr>
-              </thead>
-              <tbody>
+            <div className="dock-table" role="table" aria-label="Recent tasks">
+              <div className="dk-head" role="rowgroup">
+                <div className="dk-row" role="row">
+                  <div role="columnheader" className="dk-cell c-status">Status</div>
+                  <div role="columnheader" className="dk-cell c-kind">Action</div>
+                  <div role="columnheader" className="dk-cell c-target">Target</div>
+                  <div role="columnheader" className="dk-cell c-node">Node</div>
+                  <div role="columnheader" className="dk-cell c-user">By</div>
+                  <div role="columnheader" className="dk-cell c-when">Started</div>
+                  <div role="columnheader" className="dk-cell c-dur">Duration</div>
+                  <div role="columnheader" className="dk-cell c-res">Result</div>
+                </div>
+              </div>
+              <div className="dk-rows" role="rowgroup">
                 {rows.map((t) => (
                   <Row key={t.id} t={t} inv={inv} now={now} expanded={expanded.has(t.id)} toggle={toggle} />
                 ))}
-              </tbody>
-            </table>
+              </div>
+            </div>
           )}
         </div>
       )}

@@ -142,7 +142,9 @@ export default function Tree() {
     [],
   );
 
-  useEffect(() => publishInventory(nodes, vms), [nodes, vms]);
+  useEffect(() => {
+    publishInventory(nodes, vms);
+  }, [nodes, vms]);
   const firstLoad = useRef(0);
   useEffect(() => {
     firstLoad.current = Date.now();

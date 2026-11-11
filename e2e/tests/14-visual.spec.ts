@@ -183,7 +183,7 @@ test.describe.serial("visual pass", () => {
       expect(await page.evaluate(() => document.documentElement.getAttribute("data-theme"))).toBe(m.scheme);
       await shot("list", () => expect(page.locator("tbody tr", { hasText: NAME })).toBeVisible());
       await dock(page, true);
-      await shot("dock-open", () => expect(page.locator(".dock-table tbody tr").first()).toBeVisible({ timeout: 30_000 }), { viewportOnly: true });
+      await shot("dock-open", () => expect(page.locator(".dk-rows .dk-row").first()).toBeVisible({ timeout: 30_000 }), { viewportOnly: true });
       await dock(page, false);
       await shot("dock-collapsed", () => expect(page.locator(".dock-table")).toHaveCount(0), { viewportOnly: true });
       await dock(page, true);

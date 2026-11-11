@@ -30,7 +30,9 @@ export default function App() {
   const scroller = useRef<HTMLDivElement>(null);
   const loc = useLocation();
   useEffect(() => setDrawer(false), [loc.pathname, loc.search]);
-  useEffect(() => scroller.current?.scrollTo(0, 0), [loc.pathname]);
+  useEffect(() => {
+    scroller.current?.scrollTo(0, 0);
+  }, [loc.pathname]);
   useEffect(() => {
     if (!drawer) return;
     const k = (e: KeyboardEvent) => e.key === "Escape" && setDrawer(false);

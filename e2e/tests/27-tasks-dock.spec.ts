@@ -82,7 +82,7 @@ test.describe.serial("tasks dock", () => {
     const dock = page.locator(DOCK);
     await expect(dock.locator(".dock-table, .dock-note").first()).toBeVisible();
     await api.post(`/nodes/${vm.node}/vms/${vm.uuid}/action`, { action: "start" });
-    const started = dock.locator("tbody tr", { hasText: VM }).filter({ hasText: /start/ });
+    const started = dock.locator(".dk-row", { hasText: VM }).filter({ hasText: /start/ });
     await expect(started.first()).toBeVisible();
     await expect(started.first()).toContainText("ok");
     // the target is a link to the VM
@@ -91,7 +91,7 @@ test.describe.serial("tasks dock", () => {
 
     // a long download: running with a progress bar, then cancelled, which fails with a message
     await api.post(`/nodes/${n1}/pools/default/images`, { id: "debian-13", name: BIG });
-    const big = dock.locator("tbody tr", { hasText: BIG });
+    const big = dock.locator(".dk-row", { hasText: BIG });
     await expect(big.first()).toContainText("running", { timeout: 30_000 });
     await expect(big.first().locator(".dk-bar")).toBeVisible();
     await expect(dock.locator(".dock-count")).toContainText(/[1-9]\d* running/);
@@ -122,7 +122,7 @@ test.describe.serial("tasks dock", () => {
     });
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto("/datacenter");
-    await expect(page.locator(DOCK).locator("tbody tr", { hasText: BIG }).first()).toContainText("running", { timeout: 30_000 });
+    await expect(page.locator(DOCK).locator(".dk-row", { hasText: BIG }).first()).toContainText("running", { timeout: 30_000 });
     await page.waitForTimeout(30_000);
     expect(n, "GET /api/tasks requests in 30 s").toBe(1);
     await api.post(`/nodes/${n1}/pools/default/images/cancel`, { name: BIG }).catch(() => {});
@@ -176,10 +176,10 @@ test.describe.serial("tasks dock", () => {
     await expect(dock.locator(".dock-bar")).toBeVisible();
     await expect(dock).toHaveClass(/closed/);
     await page.getByRole("button", { name: "Show tasks" }).click();
-    await expect(dock.locator(".dock-table th").filter({ hasText: /^Status$/ })).toBeVisible();
-    await expect(dock.locator(".dock-table th").filter({ hasText: /^Target$/ })).toBeVisible();
-    await expect(dock.locator(".dock-table th").filter({ hasText: /^Result$/ })).toBeVisible();
-    for (const h of ["Action", "Node", "By", "Started", "Duration"]) await expect(dock.locator(".dock-table th").filter({ hasText: new RegExp(`^${h}$`) })).toBeHidden();
+    await expect(dock.locator(".dk-head .dk-cell").filter({ hasText: /^Status$/ })).toBeVisible();
+    await expect(dock.locator(".dk-head .dk-cell").filter({ hasText: /^Target$/ })).toBeVisible();
+    await expect(dock.locator(".dk-head .dk-cell").filter({ hasText: /^Result$/ })).toBeVisible();
+    for (const h of ["Action", "Node", "By", "Started", "Duration"]) await expect(dock.locator(".dk-head .dk-cell").filter({ hasText: new RegExp(`^${h}$`) })).toBeHidden();
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
     expect(await page.evaluate(() => document.documentElement.scrollHeight - innerHeight)).toBeLessThanOrEqual(0);
     // put it back for the next run of this user
