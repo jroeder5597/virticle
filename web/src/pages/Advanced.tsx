@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { bytes, get, put, VMDetail } from "../api";
 import { ErrorBox, Field, useAction, useConfirm } from "../ui";
 import { OneLine, SectionFrame } from "./Disclosure";
-import { CheckList } from "../Checks";
+import { CheckList, StatusLine } from "../Checks";
+import { baselineLabel, relationText, useCpuBaseline } from "../cpu";
 
 interface Tuning {
   state: string;
@@ -31,6 +32,8 @@ interface Tuning {
   };
   warning: string;
   warnings: string[];
+  /** Set when the CPU came from the cluster baseline. */
+  cpuPolicy?: { policy: string; model: string; relation?: string };
 }
 interface Result {
   note?: string;
@@ -106,7 +109,7 @@ export default function AdvancedCard({ d, base, onChanged, bare }: { d: VMDetail
 
       <div className="tgrid">
         <HostTopology t={t} />
-        <CpuShape key={JSON.stringify([s.cpuMode, s.cpuModel, s.topology])} t={t} busy={act.busy} save={save} />
+        <CpuShape key={JSON.stringify([s.cpuMode, s.cpuModel, s.topology, t.cpuPolicy])} t={t} busy={act.busy} save={save} />
         <Pinning key={JSON.stringify([s.pins, s.emulatorPin])} t={t} busy={act.busy} save={save} />
         <Hugepages key={String(s.hugepageKiB) + s.hugepages} t={t} busy={act.busy} save={save} />
         <Numa key={`${s.numaMode}/${s.numaNodeset}`} t={t} busy={act.busy} save={save} />
@@ -160,25 +163,40 @@ function HostTopology({ t }: { t: Tuning }) {
 
 function CpuShape({ t, busy, save }: P) {
   const s = t.saved;
-  const [mode, setMode] = useState(s.cpuMode);
+  const baseline = useCpuBaseline();
+  const pol = t.cpuPolicy;
+  const [mode, setMode] = useState(pol ? "baseline" : s.cpuMode);
   const [model, setModel] = useState(s.cpuModel || t.host.cpuModels.find((m) => m === "qemu64") || t.host.cpuModels[0] || "");
   const [tp, setTp] = useState(s.topology ?? { sockets: 1, cores: t.maxVcpus, threads: 1 });
   const [none, setNone] = useState(!s.topology);
   return (
     <div>
       <h4>CPU model and topology</h4>
-      <Field label="CPU mode" hint={mode === "host-passthrough" ? "Needs an identical CPU on a migration target." : mode === "host-model" ? "Closest named model." : undefined}>
+      <Field
+        label="CPU mode"
+        hint={
+          mode === "host-passthrough"
+            ? "Needs an identical CPU on a migration target."
+            : mode === "host-model"
+              ? "Closest named model."
+              : mode === "baseline"
+                ? "The best CPU every online node can run."
+                : undefined
+        }
+      >
         <Select
           label="CPU mode"
           value={mode}
           onChange={setMode}
           options={[
+            { value: "baseline", label: baselineLabel(baseline) },
             { value: "host-model", label: "host-model" },
             { value: "host-passthrough", label: "host-passthrough" },
             { value: "custom", label: "custom model" },
           ]}
         />
       </Field>
+      {pol && mode === "baseline" && relationText(pol.relation) && <StatusLine status={pol.relation === "newer" ? "warning" : "info"}>{relationText(pol.relation)}</StatusLine>}
       {mode === "custom" && (
         <Field label="Model">
           <Select label="Model" value={model} onChange={setModel} options={t.host.cpuModels.map((m) => ({ value: m, label: m }))} />
@@ -206,9 +224,21 @@ function CpuShape({ t, busy, save }: P) {
         </>
       )}
       <footer style={{ justifyContent: "flex-start" }}>
-        <button disabled={busy} onClick={() => save("cpu", { mode, model: mode === "custom" ? model : "", noTopology: none, sockets: none ? 0 : tp.sockets, cores: none ? 0 : tp.cores, threads: none ? 0 : tp.threads })}>
+        {/* A baseline VM that keeps the baseline is saved as its own model, so a topology change does not re-resolve the CPU. */}
+        <button
+          disabled={busy}
+          onClick={() => {
+            const keep = mode === "baseline" && !!pol;
+            save("cpu", { mode: keep ? "custom" : mode, model: keep ? pol!.model : mode === "custom" ? model : "", noTopology: none, sockets: none ? 0 : tp.sockets, cores: none ? 0 : tp.cores, threads: none ? 0 : tp.threads });
+          }}
+        >
           Save CPU
         </button>
+        {pol && pol.relation && pol.relation !== "same" && (
+          <button disabled={busy} onClick={() => save("cpu", { mode: "baseline", model: "", noTopology: none, sockets: none ? 0 : tp.sockets, cores: none ? 0 : tp.cores, threads: none ? 0 : tp.threads })}>
+            Use current baseline
+          </button>
+        )}
       </footer>
     </div>
   );

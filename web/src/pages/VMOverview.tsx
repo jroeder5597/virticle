@@ -8,6 +8,7 @@ import { ConsoleCard } from "./ConsolePreview";
 import { GuestCard, useAgentHelp, VirtioWin } from "./Guest";
 import "./status.css";
 import { StatusLine } from "../Checks";
+import { relationText } from "../cpu";
 
 const last = <T,>(a: T[]): T | undefined => a[a.length - 1];
 const dash = "–";
@@ -250,6 +251,12 @@ export default function Overview({ d, base, onChanged }: { d: VMDetail; base: st
             <dd>{bytes(d.memoryKiB * 1024)}</dd>
             <dt>Firmware</dt>
             <dd>{d.firmware.toUpperCase()}</dd>
+            {d.cpu && (
+              <>
+                <dt>CPU</dt>
+                <dd>Cluster baseline ({d.cpu.model})</dd>
+              </>
+            )}
             <dt>Machine</dt>
             <dd>
               {d.machine} ({d.arch})
@@ -263,6 +270,7 @@ export default function Overview({ d, base, onChanged }: { d: VMDetail; base: st
               <input type="checkbox" checked={auto} disabled={act.busy || viewer} aria-label="Start on host boot" onChange={(e) => toggleAuto(e.target.checked)} />
             </dd>
           </dl>
+          {d.cpu && relationText(d.cpu.relation) && <StatusLine status={d.cpu.relation === "newer" ? "warning" : "info"}>{relationText(d.cpu.relation)}</StatusLine>}
           {d.passthroughDevices > 0 && (
             <StatusLine status="warning">Passthrough devices: no live migration.</StatusLine>
           )}

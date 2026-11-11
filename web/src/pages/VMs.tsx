@@ -12,6 +12,7 @@ import { BulkBar } from "./Bulk";
 import { emptyFw, FirmwareFields, fwPayload, FwValues } from "./Firmware";
 import { TagChips } from "./Tags";
 import { Meter, pct, useAllStats, VMPoint } from "../charts";
+import { baselineLabel, useCpuBaseline } from "../cpu";
 
 /** `fixedNode` limits the list to one node (node page tab): the node column goes and New VM preselects it. */
 export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
@@ -180,6 +181,12 @@ function UsageCells({ p }: { p?: VMPoint }) {
   );
 }
 
+const CPU_HINT: Record<string, string> = {
+  baseline: "The best CPU every online node can run. Live migration works between them.",
+  "host-model": "The closest named model of this node. Migration needs a target that can run it.",
+  "host-passthrough": "The exact host CPU. Migration needs an identical CPU on the target.",
+};
+
 function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { pool: string; image: string }; onClose: () => void }) {
   const nav = useNavigate();
   const act = useAction();
@@ -188,6 +195,8 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
   const [vcpus, setVcpus] = useState(2);
   const [memoryMiB, setMemory] = useState(2048);
   const [fw, setFw] = useState<FwValues>(emptyFw);
+  const [cpu, setCpu] = useState("baseline");
+  const baseline = useCpuBaseline();
   const [source, setSource] = useState<"iso" | "image" | "empty" | "existing">(preset ? "image" : "iso");
   const [pool, setPool] = useState(preset?.pool ?? "");
   const presetImage = useRef(preset?.image); // used once, for the first load of the node's volumes
@@ -238,6 +247,7 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
         vcpus,
         memoryMiB,
         ...fwPayload(fw),
+        cpu,
         pool,
         diskGiB,
         network,
@@ -328,6 +338,18 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
             <Select label="Network" value={network} onChange={setNetwork} options={[{ value: "", label: "None" }, ...networks.map((n) => ({ value: n.name, label: `${n.name} (${n.forward})` }))]} />
           </Field>
         </div>
+        <Field label="CPU type" hint={CPU_HINT[cpu]}>
+          <Select
+            label="CPU type"
+            value={cpu}
+            onChange={setCpu}
+            options={[
+              { value: "baseline", label: baselineLabel(baseline) },
+              { value: "host-model", label: "Host model (this node)" },
+              { value: "host-passthrough", label: "Host passthrough (no live migration to different CPUs)" },
+            ]}
+          />
+        </Field>
         <FirmwareFields node={node} value={fw} onChange={setFw} />
         {source === "image" && <CloudInitFields vmName={name} value={ci} onChange={setCi} canSave preselect />}
         <label className="check">

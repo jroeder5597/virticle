@@ -97,6 +97,8 @@ export interface VM {
   template: boolean;
   sealed?: "linux" | "windows";
   tags: string[];
+  /** Set when the VM's CPU came from the cluster baseline. */
+  cpu?: { policy: "cluster-baseline"; model: string; relation?: "same" | "newer" | "older" | "differs" };
 }
 export interface VMDetail extends VM {
   title?: string;
@@ -175,7 +177,7 @@ export interface Task {
   finished?: number;
 }
 export interface ServerEvent {
-  type: "node" | "domain" | "network" | "pool" | "task" | "alert" | "tags";
+  type: "node" | "domain" | "network" | "pool" | "task" | "alert" | "tags" | "cpubaseline";
   node?: number;
   name?: string;
   uuid?: string;

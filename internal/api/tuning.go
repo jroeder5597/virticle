@@ -31,6 +31,8 @@ type tuningView struct {
 	Host           tuningHost    `json:"host"`
 	Warning        string        `json:"warning"`
 	Warnings       []string      `json:"warnings"`
+	// CPUPolicy is set when the CPU came from the cluster baseline.
+	CPUPolicy *vmCPU `json:"cpuPolicy,omitempty"`
 }
 
 type tuningHost struct {
@@ -102,6 +104,10 @@ func (s *Server) vmTuning(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if meta, err := domainMeta(c.h, c.dom); err == nil {
+		v.CPUPolicy = parseCPUMeta(meta)
+		s.cpuRelationFor(v.CPUPolicy)
+	}
 	topo, err := nodeTopology(c.h)
 	if err != nil {
 		v.Warnings = append(v.Warnings, "The node's topology could not be read: "+err.Error())
@@ -146,6 +152,12 @@ func hugepageShortage(sizeKiB, memKiB uint64, t hostTopo) []string {
 // tuningEdit applies a change to the saved definition by editing its XML
 // and redefining the domain. edit returns the new XML and an optional note.
 func (s *Server) tuningEdit(w http.ResponseWriter, r *http.Request, kind string, edit func(c hwCtx, raw string, topo hostTopo) (string, string, error)) {
+	s.tuningEditThen(w, r, kind, edit, nil)
+}
+
+// tuningEditThen is tuningEdit with a step that runs once the new definition
+// is stored (a metadata change that belongs to the edit).
+func (s *Server) tuningEditThen(w http.ResponseWriter, r *http.Request, kind string, edit func(c hwCtx, raw string, topo hostTopo) (string, string, error), then func(c hwCtx) error) {
 	c, err := s.hwContext(r)
 	if err != nil {
 		fail(w, err)
@@ -167,6 +179,11 @@ func (s *Server) tuningEdit(w http.ResponseWriter, r *http.Request, kind string,
 		}
 		if edited != raw {
 			if _, err := c.h.DomainDefineXMLFlags(edited, libvirt.DomainDefineValidate); err != nil {
+				return err
+			}
+		}
+		if then != nil {
+			if err := then(c); err != nil {
 				return err
 			}
 		}
@@ -319,13 +336,32 @@ func (s *Server) tuningCPU(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	s.tuningEdit(w, r, "set CPU model", func(c hwCtx, raw string, _ hostTopo) (string, string, error) {
+	var base *cpuDef // set when the request asks for the cluster baseline
+	s.tuningEditThen(w, r, "set CPU model", func(c hwCtx, raw string, _ hostTopo) (string, string, error) {
 		spec := domxml.CPUSpec{Mode: req.Mode, Model: req.Model, ClearTopology: req.NoTopology}
+		if spec.Mode == "baseline" {
+			b := s.clusterCPUBaseline()
+			if !b.includes(nodeID(r)) {
+				b = s.refreshBaseline()
+			}
+			if b.Error != "" || b.Model == "" || !b.includes(nodeID(r)) {
+				return "", "", badRequest("there is no cluster CPU baseline for this node: " + b.Error)
+			}
+			d := b.def()
+			base = &d
+			spec = cpuSpecFromDef(d)
+			spec.ClearTopology = req.NoTopology
+		}
 		if spec.Mode != "custom" {
 			spec.Model = ""
 		}
-		if spec.Mode == "custom" {
+		if spec.Mode == "custom" && base == nil {
 			models := cpuModelsFor(c.h, raw)
+			// The model the VM already has stays valid (a baseline model is
+			// usable through host-model features, not listed as usable).
+			if cur, err := domxml.ReadTuning(raw); err == nil && cur.CPUMode == "custom" && cur.CPUModel == spec.Model {
+				models = nil
+			}
 			if len(models) > 0 && !contains(models, spec.Model) {
 				return "", "", badRequest(fmt.Sprintf("this node's hypervisor has no CPU model %q", spec.Model))
 			}
@@ -361,6 +397,16 @@ func (s *Server) tuningCPU(w http.ResponseWriter, r *http.Request) {
 			note = "host-passthrough exposes the exact CPU of this node; live migration then needs an identical CPU on the target."
 		}
 		return out, note, nil
+	}, func(c hwCtx) error {
+		if base == nil && req.Mode == "custom" {
+			// Saving the same model again (a topology change) keeps the marker.
+			if raw, err := domainMeta(c.h, c.dom); err == nil {
+				if m := parseCPUMeta(raw); m != nil && m.Model == req.Model {
+					return nil
+				}
+			}
+		}
+		return setCPUMeta(c.h, c.dom, base) // nil clears the marker of an earlier baseline
 	})
 }
 

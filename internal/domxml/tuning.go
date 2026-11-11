@@ -230,6 +230,20 @@ type CPUSpec struct {
 	Model         string // custom only
 	Topology      *CPUTopology
 	ClearTopology bool
+	// A named model with its own vendor and feature list (the cluster
+	// baseline). Features non-nil replaces the old feature list; Fallback is
+	// the <model fallback> attribute (default allow), Check the <cpu check>
+	// attribute (omitted when empty).
+	Vendor   string
+	Features []CPUFeature
+	Fallback string
+	Check    string
+}
+
+// CPUFeature is one <feature policy= name=> of a custom CPU.
+type CPUFeature struct {
+	Policy string
+	Name   string
 }
 
 var modelRE = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
@@ -270,7 +284,7 @@ func SetCPU(src string, spec CPUSpec) (string, error) {
 		if m := old.Child("model"); m != nil {
 			oldModel = strings.TrimSpace(d.Text(m))
 		}
-		keepFeatures = oldMode == spec.Mode && (spec.Mode != "custom" || oldModel == spec.Model)
+		keepFeatures = oldMode == spec.Mode && (spec.Mode != "custom" || oldModel == spec.Model) && spec.Features == nil && spec.Vendor == ""
 		for _, c := range old.Children {
 			switch c.Name {
 			case "model":
@@ -292,7 +306,7 @@ func SetCPU(src string, spec CPUSpec) (string, error) {
 		}
 		sort.Strings(names)
 		for _, k := range names {
-			if k == "mode" || k == "match" || k == "check" {
+			if k == "mode" || k == "match" || k == "check" || (k == "migratable" && spec.Mode != "host-passthrough") {
 				continue
 			}
 			attrs = append(attrs, " "+k+"='"+Esc(old.Attrs[k])+"'")
@@ -302,6 +316,9 @@ func SetCPU(src string, spec CPUSpec) (string, error) {
 	b.WriteString("<cpu mode='" + spec.Mode + "'")
 	if spec.Mode == "custom" {
 		b.WriteString(" match='exact'")
+		if spec.Check != "" {
+			b.WriteString(" check='" + Esc(spec.Check) + "'")
+		}
 	}
 	b.WriteString(strings.Join(attrs, "") + ">")
 	indent := "    "
@@ -314,7 +331,14 @@ func SetCPU(src string, spec CPUSpec) (string, error) {
 		indent = closeIndent + "  "
 	}
 	if spec.Mode == "custom" {
-		b.WriteString("\n" + indent + "<model fallback='allow'>" + spec.Model + "</model>")
+		fb := spec.Fallback
+		if fb == "" {
+			fb = "allow"
+		}
+		b.WriteString("\n" + indent + "<model fallback='" + Esc(fb) + "'>" + spec.Model + "</model>")
+		if spec.Vendor != "" {
+			b.WriteString("\n" + indent + "<vendor>" + Esc(spec.Vendor) + "</vendor>")
+		}
 	}
 	if topo != nil {
 		b.WriteString("\n" + indent + "<topology")
@@ -331,6 +355,11 @@ func SetCPU(src string, spec CPUSpec) (string, error) {
 	}
 	for _, k := range keep {
 		b.WriteString("\n" + indent + strings.TrimSpace(k))
+	}
+	if spec.Mode == "custom" {
+		for _, f := range spec.Features {
+			b.WriteString("\n" + indent + "<feature policy='" + Esc(f.Policy) + "' name='" + Esc(f.Name) + "'/>")
+		}
 	}
 	b.WriteString("\n" + closeIndent + "</cpu>")
 	if old != nil {
