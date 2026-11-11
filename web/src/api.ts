@@ -228,6 +228,15 @@ export interface GuestInfo {
   hostname?: string;
   timezone?: string;
   filesystems: { mountpoint: string; type?: string; device?: string; usedBytes: number; totalBytes: number }[];
+  // Guest details card; each is absent when the agent lacks the command.
+  agentVersion?: string;
+  quiesce?: boolean;
+  timezoneOffset?: number;
+  clockOffsetSec?: number;
+  users?: { user: string; domain?: string; loginTime: number }[];
+  vcpusOnline?: number;
+  vcpusTotal?: number;
+  interfaces?: { name: string; mac?: string; addresses: string[] }[];
 }
 export interface AgentHelp {
   os?: "windows" | "linux";

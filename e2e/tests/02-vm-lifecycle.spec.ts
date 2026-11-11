@@ -95,27 +95,10 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
     expect(await stateOf(api, vm)).toBe("running");
   });
 
-  test("shutdown menu: force off after a timeout when the guest ignores ACPI", async ({ page, api }) => {
-    await openVM(page, vm);
-    // The menu offers 60 s; shorten it so the test does not wait a minute.
-    let body: any;
-    await page.route("**/api/nodes/*/vms/*/action", async (route) => {
-      const req = route.request().postDataJSON();
-      if (req.action === "shutdown" && req.force) {
-        body = req;
-        req.timeoutSec = 6;
-        await route.continue({ postData: JSON.stringify(req) });
-      } else await route.continue();
-    });
-    await vmAction(page, "Power", "Shutdown (force off after 60 s)");
-    await confirm(page, "Shutdown (graceful)");
-    expect(await expect.poll(() => body).toMatchObject({ action: "shutdown", force: true }));
-    await expectBadge(page.locator(".head"), "shutoff");
-    expect(await stateOf(api, vm)).toBe("shutoff");
-    await page.unroute("**/api/nodes/*/vms/*/action");
-  });
-
   test("power on from the detail page, then halt with confirmation", async ({ page, api }) => {
+    // the previous tests left the VM running
+    await api.post(`/nodes/${vm.node}/vms/${vm.uuid}/action`, { action: "poweroff" });
+    await api.waitFor("off", async () => (await stateOf(api, vm)) === "shutoff");
     await openVM(page, vm);
     await vmAction(page, "Power", "Power On");
     await expectBadge(page.locator(".head"), "running");

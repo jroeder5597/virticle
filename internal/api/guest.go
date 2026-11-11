@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"net/http"
 	"os"
 	"path"
@@ -10,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/digitalocean/go-libvirt"
 
@@ -19,6 +21,16 @@ import (
 // guestAgentWait bounds every agent call made for a page view. A guest whose
 // agent is stopped or wedged costs one such wait, not the usual 15 s.
 const guestAgentWait = 3
+
+// guestOptionalWait bounds each of the optional agent commands of the Guest
+// details card, and guestBudget the whole request: a guest that stops
+// answering midway costs one wait, then the rest is skipped.
+const (
+	guestOptionalWait = 2
+	guestBudget       = 8 * time.Second
+	// guestClockSkew is the offset between guest and host clock that is worth showing.
+	guestClockSkew = 2 * time.Second
+)
 
 type guestFS struct {
 	Mountpoint string `json:"mountpoint"`
@@ -44,6 +56,129 @@ type guestInfo struct {
 	Hostname    string    `json:"hostname,omitempty"`
 	Timezone    string    `json:"timezone,omitempty"`
 	Filesystems []guestFS `json:"filesystems"`
+
+	// Guest details card; every field is omitted when the agent lacks the command.
+	AgentVersion   string      `json:"agentVersion,omitempty"`
+	Quiesce        *bool       `json:"quiesce,omitempty"` // the agent supports filesystem freeze
+	TimezoneOffset *int        `json:"timezoneOffset,omitempty"`
+	ClockOffsetSec *float64    `json:"clockOffsetSec,omitempty"` // guest minus host, only when it is above guestClockSkew
+	Users          []guestUser `json:"users,omitempty"`
+	VCPUsOnline    *int        `json:"vcpusOnline,omitempty"`
+	VCPUsTotal     *int        `json:"vcpusTotal,omitempty"`
+	Interfaces     []guestNIC  `json:"interfaces,omitempty"`
+}
+
+type guestUser struct {
+	User      string  `json:"user"`
+	Domain    string  `json:"domain,omitempty"`
+	LoginTime float64 `json:"loginTime"` // Unix seconds
+}
+
+type guestNIC struct {
+	Name      string   `json:"name"`
+	MAC       string   `json:"mac,omitempty"`
+	Addresses []string `json:"addresses"` // CIDR form, IPv4 and IPv6, link-local included
+}
+
+// parseAgentInfo reads guest-info: the agent version and whether it can
+// freeze filesystems (what quiesced snapshots need).
+func parseAgentInfo(raw json.RawMessage) (version string, quiesce bool, err error) {
+	var in struct {
+		Version  string `json:"version"`
+		Commands []struct {
+			Name    string `json:"name"`
+			Enabled bool   `json:"enabled"`
+		} `json:"supported_commands"`
+	}
+	if err = json.Unmarshal(raw, &in); err != nil {
+		return "", false, err
+	}
+	for _, c := range in.Commands {
+		if c.Name == "guest-fsfreeze-freeze" && c.Enabled {
+			quiesce = true
+		}
+	}
+	return in.Version, quiesce, nil
+}
+
+// parseGuestTime reads guest-get-time (nanoseconds since the epoch) and
+// returns the guest clock minus ref.
+func parseGuestTime(raw json.RawMessage, ref time.Time) (time.Duration, error) {
+	var ns int64
+	if err := json.Unmarshal(raw, &ns); err != nil {
+		return 0, err
+	}
+	return time.Unix(0, ns).Sub(ref), nil
+}
+
+func parseGuestUsers(raw json.RawMessage) ([]guestUser, error) {
+	var in []struct {
+		User      string  `json:"user"`
+		Domain    string  `json:"domain"`
+		LoginTime float64 `json:"login-time"`
+	}
+	if err := json.Unmarshal(raw, &in); err != nil {
+		return nil, err
+	}
+	out := []guestUser{}
+	for _, u := range in {
+		out = append(out, guestUser{User: u.User, Domain: u.Domain, LoginTime: u.LoginTime})
+	}
+	return out, nil
+}
+
+func parseGuestVCPUs(raw json.RawMessage) (online, total int, err error) {
+	var in []struct {
+		Online bool `json:"online"`
+	}
+	if err = json.Unmarshal(raw, &in); err != nil {
+		return 0, 0, err
+	}
+	for _, c := range in {
+		if c.Online {
+			online++
+		}
+	}
+	return online, len(in), nil
+}
+
+// parseGuestNICs lists every interface the agent reports with all its
+// addresses, IPv4 first. The loopback interface is left out.
+func parseGuestNICs(raw json.RawMessage) ([]guestNIC, error) {
+	var in []struct {
+		Name  string `json:"name"`
+		MAC   string `json:"hardware-address"`
+		Addrs []struct {
+			IP     string `json:"ip-address"`
+			Type   string `json:"ip-address-type"`
+			Prefix int    `json:"prefix"`
+		} `json:"ip-addresses"`
+	}
+	if err := json.Unmarshal(raw, &in); err != nil {
+		return nil, err
+	}
+	out := []guestNIC{}
+	for _, i := range in {
+		if i.Name == "lo" || i.Name == "" {
+			continue
+		}
+		n := guestNIC{Name: i.Name, MAC: strings.ToLower(i.MAC), Addresses: []string{}}
+		var v6 []string
+		for _, a := range i.Addrs {
+			s := a.IP
+			if a.Prefix > 0 {
+				s = fmt.Sprintf("%s/%d", a.IP, a.Prefix)
+			}
+			if a.Type == "ipv6" || strings.Contains(a.IP, ":") {
+				v6 = append(v6, s)
+			} else {
+				n.Addresses = append(n.Addresses, s)
+			}
+		}
+		n.Addresses = append(n.Addresses, v6...)
+		out = append(out, n)
+	}
+	return out, nil
 }
 
 func parseOSInfo(raw json.RawMessage) (*guestOS, error) {
@@ -136,7 +271,52 @@ func (s *Server) vmGuest(w http.ResponseWriter, r *http.Request) {
 			g.Filesystems = fs
 		}
 	}
+	s.guestDetails(h, dom, &g)
 	writeJSON(w, g)
+}
+
+// guestDetails adds the optional rows of the Guest details card. Every
+// command is read-only, optional and bounded; none of them runs anything in
+// the guest.
+func (s *Server) guestDetails(h *hostconn.Host, dom libvirt.Domain, g *guestInfo) {
+	deadline := time.Now().Add(guestBudget)
+	// try runs one command unless the time budget is used up.
+	try := func(cmd string, use func(json.RawMessage)) {
+		if time.Now().After(deadline) {
+			return
+		}
+		if raw, err := agentCmdT(h, dom, cmd, nil, guestOptionalWait); err == nil {
+			use(raw)
+		}
+	}
+	try("guest-info", func(raw json.RawMessage) {
+		if v, q, err := parseAgentInfo(raw); err == nil {
+			g.AgentVersion, g.Quiesce = v, &q
+		}
+	})
+	asked := time.Now()
+	try("guest-get-time", func(raw json.RawMessage) {
+		// Half the round trip is the best estimate of when the guest read its clock.
+		if off, err := parseGuestTime(raw, asked.Add(time.Since(asked)/2)); err == nil && (off > guestClockSkew || off < -guestClockSkew) {
+			sec := off.Seconds()
+			g.ClockOffsetSec = &sec
+		}
+	})
+	try("guest-get-users", func(raw json.RawMessage) {
+		if u, err := parseGuestUsers(raw); err == nil {
+			g.Users = u
+		}
+	})
+	try("guest-get-vcpus", func(raw json.RawMessage) {
+		if on, total, err := parseGuestVCPUs(raw); err == nil {
+			g.VCPUsOnline, g.VCPUsTotal = &on, &total
+		}
+	})
+	try("guest-network-get-interfaces", func(raw json.RawMessage) {
+		if n, err := parseGuestNICs(raw); err == nil {
+			g.Interfaces = n
+		}
+	})
 }
 
 // --- guest agent prompt: OS detection and the virtio-win ISO ---

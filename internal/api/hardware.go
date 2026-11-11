@@ -895,7 +895,11 @@ func (c hwCtx) checkAttachment(network, bridge string) error {
 	if !bridgeRE.MatchString(bridge) {
 		return badRequest("invalid bridge name")
 	}
-	return nil
+	nics, err := hostNICList(c.h)
+	if err != nil {
+		return err
+	}
+	return checkBridge(nics, bridge)
 }
 
 func (s *Server) hwNICAdd(w http.ResponseWriter, r *http.Request) {

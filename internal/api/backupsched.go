@@ -249,6 +249,7 @@ func (s *Server) getBackupSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := map[string]any{"schedule": bs}
 	if bs != nil {
+		var lastT time.Time
 		srcID, _, _ := s.host(r)
 		dstID := bs.TargetNode
 		if dstID == 0 {
@@ -260,7 +261,17 @@ func (s *Server) getBackupSchedule(w http.ResponseWriter, r *http.Request) {
 			resp["lastError"] = err.Error()
 		} else if !last.IsZero() {
 			resp["last"] = last.Unix()
+			lastT = last
 		}
+		// Backups run for shut-off VMs too; the timing is the same snapsched code the scheduler decides with.
+		resp["runner"] = "this"
+		if s.NoScheduler {
+			resp["runner"] = "disabled"
+		}
+		if next, ok := bs.timing().NextRun(time.Now(), lastT); ok {
+			resp["nextRun"] = next.Unix()
+		}
+		resp["tick"] = int(schedTick.Seconds())
 	}
 	writeJSON(w, resp)
 }

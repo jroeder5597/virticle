@@ -1,3 +1,4 @@
+import { NextRunLine, ScheduleTimeHelper } from "../ScheduleTime";
 import { useEffect, useState } from "react";
 import { ApiError, bytes, del, get, NodeStatus, Pool, post, put, Task, VMDetail } from "../api";
 import { useRole } from "../auth";
@@ -336,7 +337,7 @@ interface BackupSched {
 function SchedulePanel({ d }: { d: VMDetail }) {
   const path = `/nodes/${d.node}/vms/${d.uuid}/backup-schedule`;
   const role = useRole();
-  const cur = useLive(() => get<{ schedule: BackupSched | null; last?: number; lastError?: string }>(path), path, (e) => e.type === "node" || (e.type === "task" && e.task?.status !== "running"));
+  const cur = useLive(() => get<{ schedule: BackupSched | null; last?: number; lastError?: string; nextRun?: number; runner?: "this" | "disabled" | "other"; tick?: number }>(path), path, (e) => e.type === "node" || (e.type === "task" && e.task?.status !== "running"));
   const nodes = useNodes();
   const act = useAction();
   const confirm = useConfirm();
@@ -377,6 +378,7 @@ function SchedulePanel({ d }: { d: VMDetail }) {
           ) : (
             <p className="muted">No schedule. Runs for running and shut-off VMs; a failed run shows up in the task log and as an alert.</p>
           )}
+          {sch && <NextRunLine nextRun={cur.data?.nextRun} runner={cur.data?.runner} enabled={sch.enabled} tick={cur.data?.tick} onElapsed={cur.reload} />}
           {canEdit && (
             <div className="actions">
               <button onClick={edit}>{sch ? "Edit schedule" : "Set up schedule"}</button>
@@ -411,6 +413,7 @@ function SchedulePanel({ d }: { d: VMDetail }) {
               <input type="number" min={1} max={1000} value={form.keepLast} onChange={(e) => setForm({ ...form, keepLast: Number(e.target.value) })} />
             </Field>
           </div>
+          {form.mode === "daily" && <ScheduleTimeHelper at={form.at ?? "03:00"} onSet={(at) => setForm({ ...form, at })} />}
           <Target node={form.targetNode} pool={form.pool} setNode={(n) => setForm((f) => f && { ...f, targetNode: n })} setPool={(p) => setForm((f) => f && { ...f, pool: p })} />
           <label className="check" style={{ marginBottom: 8 }}>
             <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />

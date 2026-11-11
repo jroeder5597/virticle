@@ -4,6 +4,8 @@ import { P } from "../lib/env";
 import { autoDialogs, dialog, expectBadge, field, row, confirm } from "../lib/ui";
 
 const NAME = `${P}snap1`;
+/** A snapshot's row in the tree. */
+const node = (page: any, name: string) => page.getByRole("treeitem", { name: new RegExp(`^${name}(,|$)`) });
 
 test.describe.serial("snapshots", () => {
   let vm: { node: number; uuid: string; name: string };
@@ -22,7 +24,7 @@ test.describe.serial("snapshots", () => {
     await field(dlg, "Description").fill("before the change");
     await dlg.getByRole("button", { name: "Take snapshot" }).click();
     await expect(dlg).toBeHidden({ timeout: 60_000 });
-    const r = row(page, "first");
+    const r = node(page, "first");
     await expect(r).toBeVisible();
     await expect(r).toContainText("with memory");
     await expect(r).toContainText("before the change");
@@ -39,35 +41,37 @@ test.describe.serial("snapshots", () => {
     await field(dlg, "Name").fill("second");
     await field(dlg, "Name").press("Enter"); // Enter submits dialogs that are not forms too
     await expect(dlg).toBeHidden({ timeout: 60_000 });
-    const child = row(page, "second");
+    const child = node(page, "second");
     await expect(child).toBeVisible();
-    await expect(child.locator("td").first().locator("svg")).toBeVisible(); // the child marker
-    await expect(row(page, "first").locator(".badge", { hasText: "current" })).toHaveCount(0);
+    await expect(child).toHaveAttribute("aria-level", "2"); // one level below its parent
+    await expect(node(page, "first")).toHaveAttribute("aria-level", "1");
+    await expect(node(page, "first").locator(".badge", { hasText: "current" })).toHaveCount(0);
+    await expect(page.getByRole("treeitem", { name: /You are here/ })).toHaveAttribute("aria-level", "3");
     const list = await snaps(api);
     expect(list.find((s) => s.name === "second").parent).toBe("first");
   });
 
   test("revert to the first snapshot", async ({ page, api }) => {
     await openVM(page, vm, "snapshots");
-    await row(page, "first").getByRole("button", { name: "Revert" }).click();
+    await node(page, "first").getByRole("button", { name: "Revert to first" }).click();
     const dlg = dialog(page, "Revert to first");
     await dlg.getByRole("button", { name: "Revert" }).click();
     await expect(dlg).toBeHidden({ timeout: 60_000 });
-    await expect(row(page, "first").locator(".badge", { hasText: "current" })).toBeVisible();
+    await expect(node(page, "first").locator(".badge", { hasText: "current" })).toBeVisible();
     expect((await snaps(api)).find((s) => s.name === "first").isCurrent).toBe(true);
     await expectBadge(page.locator(".head"), "running");
   });
 
   test("delete the child and then the parent", async ({ page, api }) => {
     await openVM(page, vm, "snapshots");
-    await row(page, "second").getByRole("button", { name: "Delete" }).click();
+    await node(page, "second").getByRole("button", { name: "Delete second" }).click();
     const d1 = dialog(page, "Delete second");
-    await d1.getByRole("button", { name: "Delete" }).click();
+    await d1.getByRole("button", { name: "Delete 1 snapshot" }).click();
     await expect(d1).toBeHidden({ timeout: 60_000 });
-    await expect(row(page, "second")).toHaveCount(0);
-    await row(page, "first").getByRole("button", { name: "Delete" }).click();
+    await expect(node(page, "second")).toHaveCount(0);
+    await node(page, "first").getByRole("button", { name: "Delete first" }).click();
     const d2 = dialog(page, "Delete first");
-    await d2.getByRole("button", { name: "Delete" }).click();
+    await d2.getByRole("button", { name: "Delete 1 snapshot" }).click();
     await expect(d2).toBeHidden({ timeout: 60_000 });
     await expect(page.getByText("No snapshots yet.")).toBeVisible();
     expect(await snaps(api)).toHaveLength(0);

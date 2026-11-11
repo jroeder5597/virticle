@@ -93,7 +93,7 @@ export default function VMDetailPage() {
           </button>
         ))}
       </div>
-      {tab === "overview" && <Overview d={d} base={base} />}
+      {tab === "overview" && <Overview d={d} base={base} onChanged={vm.reload} />}
       {tab === "hardware" && <Hardware d={d} base={base} onChanged={vm.reload} />}
       {tab === "console" && <ConsoleTab d={d} />}
       {tab === "snapshots" && <SnapshotsTab d={d} base={base} />}

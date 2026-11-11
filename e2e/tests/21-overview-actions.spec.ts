@@ -10,7 +10,7 @@ const VIEWER = `${P}ovviewer`;
 const PASS = "e2e-user-pass-123";
 
 const SUBMENUS: Record<string, string[]> = {
-  Power: ["Power On", "Shutdown (graceful)", "Shutdown (force off after 60 s)", "Halt (Force Shutdown)", "Reboot (Graceful)", "Reset (Hard Reboot)", "Pause", "Resume"],
+  Power: ["Power On", "Reboot (Graceful)", "Shutdown (graceful)", "Pause", "Resume", "Halt (Force Shutdown)", "Reset (Hard Reboot)"],
   "Edit Settings": ["CPU and memory", "Disks", "Network interfaces", "CD-ROM", "Boot order", "Firmware and TPM", "Advanced", "Passthrough devices"],
   Snapshots: ["Take snapshot", "Manage snapshots", "Schedule"],
   Clone: ["Clone this VM", "Linked clone (from a template)"],
@@ -54,11 +54,13 @@ test.describe.serial("overview and actions", () => {
     const labels = await sum.locator("dt").allTextContents();
     expect(labels).toEqual(["Power State", "Guest OS", "QEMU Guest Agent", "DNS Name", "IP Addresses"]);
     // a cirros guest has no agent: the fallback text says so plainly
-    await expect(sum.locator("dd").nth(3)).toContainText("Not reported: needs the guest agent");
+    await expect(sum.locator("dd").nth(3)).toHaveText("Not reported");
+    await expect(sum.locator("dd").nth(3)).toHaveAttribute("title", "Needs the guest agent");
     await expect(sum.locator("dd").nth(1)).toContainText("Not reported");
     // the DHCP lease gives an address
     await expect(sum.locator("dd").nth(4)).toContainText(/\d+\.\d+\.\d+\.\d+/, { timeout: 90_000 });
-    await expect(sum).toContainText("DHCP leases");
+    await expect(sum.locator("dd[title*='DHCP leases']")).toHaveCount(1); // the source is in the tooltip, not in the cell
+    await expect(sum).not.toContainText("DHCP");
 
     const util = page.locator("section#utilization");
     await expect(util.locator(".st-val").nth(0)).toContainText(/\d%/, { timeout: 30_000 });
@@ -71,7 +73,7 @@ test.describe.serial("overview and actions", () => {
     const disk = util.locator(".fsbar").first();
     await expect(disk).toContainText("vda");
     await expect(disk).toContainText(/of 1\.0 GiB/);
-    await expect(util).toContainText("Not reported: needs the guest agent"); // guest filesystems
+    await expect(util.locator("span[title='Needs the guest agent']")).toHaveText("Not reported"); // guest filesystems
     // the old four-chart card is gone, and the console is a small preview in the same band
     await expect(page.locator(".charts")).toHaveCount(0);
     const band = await page.locator(".ov-band").boundingBox();
@@ -120,15 +122,18 @@ test.describe.serial("overview and actions", () => {
     await expect(page.getByRole("menu")).toHaveCount(0);
   });
 
-  test("Edit Settings entries open the Hardware tab at that card; Snapshots entries open the tab", async ({ page }) => {
+  test("Edit Settings entries open a dialog on the current tab; Snapshots entries open the tab", async ({ page }) => {
     await openVM(page, vm);
     await actions(page).click();
     await item(page, "Edit Settings").click();
     await item(page, "Disks").click();
-    await expect(page).toHaveURL(/tab=hardware/);
-    await expect(page.locator("#hw-disks")).toBeInViewport();
+    await expect(dialog(page, "Disks")).toBeVisible();
+    await expect(page).not.toHaveURL(/tab=/);
+    await page.keyboard.press("Escape");
     await vmActionOnPage(page, "Edit Settings", "Boot order");
-    await expect(page.locator("#hw-boot")).toBeInViewport();
+    await expect(dialog(page, "Boot order")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog(page)).toHaveCount(0);
     await vmActionOnPage(page, "Snapshots", "Schedule");
     await expect(page).toHaveURL(/tab=snapshots/);
     await expect(page.locator("#snap-schedule")).toBeInViewport();
@@ -155,9 +160,9 @@ test.describe.serial("overview and actions", () => {
     await page.keyboard.press("ArrowRight");
     await expect(item(page, "Power")).toHaveAttribute("aria-expanded", "true");
     // Power On is disabled on a running VM: focus lands on the first entry that can be used
-    await expect(item(page, "Shutdown (graceful)")).toBeFocused();
+    await expect(item(page, "Reboot (Graceful)")).toBeFocused();
     await page.keyboard.press("ArrowDown");
-    await expect(item(page, "Shutdown (force off after 60 s)")).toBeFocused();
+    await expect(item(page, "Shutdown (graceful)")).toBeFocused();
     await page.keyboard.press("ArrowLeft");
     await expect(item(page, "Power")).toBeFocused();
     await expect(item(page, "Power")).toHaveAttribute("aria-expanded", "false");

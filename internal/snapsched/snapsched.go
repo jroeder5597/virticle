@@ -87,6 +87,44 @@ func (s Schedule) Due(now, last time.Time) bool {
 	return false
 }
 
+// NextRun is when the scheduler will next find a run due, given the creation
+// time of the newest run (zero if there is none). It uses Due, the function the
+// scheduler decides with, so the two cannot disagree: when a run is due now the
+// answer is now, otherwise the first moment Due turns true. ok is false for a
+// disabled or incomplete schedule.
+func (s Schedule) NextRun(now, last time.Time) (next time.Time, ok bool) {
+	if !s.Enabled || s.timingErr() != nil {
+		return time.Time{}, false
+	}
+	if s.Due(now, last) {
+		return now, true
+	}
+	switch s.Mode {
+	case "interval":
+		return last.Add(time.Duration(s.EveryMinutes) * time.Minute), true
+	default: // daily: Due is false, so last is at or after the latest slot; the next slot is a day later
+		h, _ := strconv.Atoi(s.At[:2])
+		m, _ := strconv.Atoi(s.At[3:])
+		n := now.UTC()
+		slot := time.Date(n.Year(), n.Month(), n.Day(), h, m, 0, 0, time.UTC)
+		if slot.After(n) {
+			slot = slot.AddDate(0, 0, -1)
+		}
+		return slot.AddDate(0, 0, 1), true
+	}
+}
+
+// timingErr checks only what NextRun relies on (mode and its parameter), not the prefix and retention.
+func (s Schedule) timingErr() error {
+	switch {
+	case s.Mode == "interval" && s.EveryMinutes >= 1:
+		return nil
+	case s.Mode == "daily" && atRE.MatchString(s.At):
+		return nil
+	}
+	return fmt.Errorf("incomplete schedule")
+}
+
 // Snap is the part of a snapshot the pruning logic needs.
 type Snap struct {
 	Name        string
