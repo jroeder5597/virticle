@@ -25,7 +25,7 @@ async function signInAs(browser: Browser, user: string, pass: string) {
   await page.getByLabel("Username").fill(user);
   await page.getByLabel("Password").fill(pass);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { name: "Virtual machines" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Datacenter", level: 1 })).toBeVisible();
   return { ctx, page };
 }
 
@@ -124,6 +124,7 @@ test.describe.serial("users and roles", () => {
     await expect(nav.getByRole("link", { name: "Storage" })).toBeVisible();
     await expect(nav.getByRole("link", { name: "Users" })).toHaveCount(0);
     await expect(nav.getByRole("link", { name: "Audit" })).toHaveCount(0);
+    await nav.getByRole("link", { name: "Virtual machines" }).click();
     await expect(page.getByRole("button", { name: "New VM" })).toBeVisible();
     await row(page, VM).getByRole("button", { name: "Power On" }).click();
     await expect(row(page, VM).locator(".badge", { hasText: "running" })).toBeVisible();

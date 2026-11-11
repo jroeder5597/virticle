@@ -1,12 +1,12 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { bytes, get, NodeStatus, VM } from "../api";
-import { useLive } from "../live";
+import { orEvents, useLive } from "../live";
 import { useLiveDebounced } from "../liveDebounced";
 import { Meter, pct, useAllStats } from "../charts";
 import { EmbeddedContext, ErrorBox, StateBadge } from "../ui";
 import { AlertMarks, useAlerts } from "./Alerts";
 import { BackupsSection } from "./Backups";
-import { NodeErr, NodeErrors, nodeLabel, NodePool } from "./dcShared";
+import { NodeErr, NodeErrors, nodeEvents, nodeLabel, NodePool, poolEvents } from "./dcShared";
 import HostInterfaces from "./HostNics";
 import Networks from "./Networks";
 import Nodes from "./Nodes";
@@ -46,21 +46,11 @@ export default function Datacenter() {
       {tab === "summary" && <Summary />}
       {tab === "vms" && <VMs />}
       {tab === "storage" && <Storage allNodes />}
-      {tab === "network" && <NetworkTab />}
+      {tab === "network" && <Networks allNodes after={(nodes) => nodes.length > 0 && <HostInterfaces nodes={nodes} />} />}
       {tab === "backups" && <BackupsSection />}
       {tab === "nodes" && <Nodes />}
       {tab === "tasks" && <Tasks />}
     </EmbeddedContext.Provider>
-  );
-}
-
-function NetworkTab() {
-  const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes");
-  return (
-    <>
-      <Networks allNodes />
-      {nodes.data && nodes.data.nodes.length > 0 && <HostInterfaces nodes={nodes.data.nodes} />}
-    </>
   );
 }
 
@@ -77,9 +67,9 @@ function Tile(props: { label: string; value: string; note?: string; meter?: { va
 
 /** One request per data source: nodes, VMs, pools, stats and alerts, however many nodes there are. */
 function Summary() {
-  const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes");
-  const vms = useLive(() => get<VM[]>("/vms"), "vms");
-  const pools = useLiveDebounced(() => get<{ pools: NodePool[]; errors: NodeErr[] }>("/pools"), "pools/all/true", (e) => e.type === "pool" || e.type === "node");
+  const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes", nodeEvents);
+  const vms = useLiveDebounced(() => get<VM[]>("/vms"), "vms", orEvents(), 1500);
+  const pools = useLiveDebounced(() => get<{ pools: NodePool[]; errors: NodeErr[] }>("/pools"), "pools/all/true", poolEvents);
   const stats = useAllStats();
   const alerts = useAlerts();
   const all = nodes.data?.nodes ?? [];

@@ -10,7 +10,7 @@ import DownloadVolume from "./DownloadVolume";
 import ImageCatalogue from "./ImageCatalogue";
 import { AlertMarks, useAlerts } from "./Alerts";
 import ImportDialog from "./Import";
-import { NodeErr, NodeErrors, NodeFilter, nodeLabel, NodePool } from "./dcShared";
+import { NodeErr, NodeErrors, NodeFilter, nodeEvents, nodeLabel, NodePool, poolEvents } from "./dcShared";
 import { ErrorBox, Field, Modal, NodePicker, PageTitle, StateBadge, UsageBar, useAction, useConfirm, usePrompt } from "../ui";
 
 /**
@@ -18,7 +18,7 @@ import { ErrorBox, Field, Modal, NodePicker, PageTitle, StateBadge, UsageBar, us
  * `allNodes` lists the pools of every node in one table (Datacenter tab), one request for all of them.
  */
 export default function Storage({ fixedNode, allNodes }: { fixedNode?: number; allNodes?: boolean } = {}) {
-  const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes");
+  const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes", nodeEvents);
   const [pickedNode, setNode] = useState(0);
   const node = fixedNode ?? pickedNode;
   // ?pool=NAME&catalogue=1 (a link from the New VM dialog) selects a pool and opens the image catalogue.
@@ -39,7 +39,7 @@ export default function Storage({ fixedNode, allNodes }: { fixedNode?: number; a
   const every = useLiveDebounced(
     () => (allNodes ? get<{ pools: NodePool[]; errors: NodeErr[] }>("/pools") : Promise.resolve({ pools: [] as NodePool[], errors: [] as NodeErr[] })),
     `pools/all/${!!allNodes}`,
-    orEvents("pool"),
+    poolEvents,
   );
   const loaded = allNodes ? every.data : single.data;
   const reload = allNodes ? every.reload : single.reload;
@@ -177,7 +177,7 @@ export default function Storage({ fixedNode, allNodes }: { fixedNode?: number; a
 
 function Volumes({ node, nodeName, showNode, pool, openCatalogue }: { node: number; nodeName?: string; showNode?: boolean; pool: Pool; openCatalogue?: boolean }) {
   const base = `/nodes/${node}/pools/${encodeURIComponent(pool.name)}/volumes`;
-  const vols = useLive(() => get<Volume[]>(base), base);
+  const vols = useLive(() => get<Volume[]>(base), base, poolEvents);
   const act = useAction();
   const confirm = useConfirm();
   const prompt = usePrompt();

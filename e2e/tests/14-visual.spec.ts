@@ -159,7 +159,7 @@ test.describe.serial("visual pass", () => {
       const vmUrl = `/vm/${vm.node}/${vm.uuid}`;
       const heading = (n: string | RegExp) => page.getByRole("heading", { name: n }).first();
 
-      await page.goto("/");
+      await page.goto("/datacenter/vms");
       expect(await page.evaluate(() => document.documentElement.getAttribute("data-theme"))).toBe(m.scheme);
       await shot("list", () => expect(page.locator("tbody tr", { hasText: NAME })).toBeVisible());
       await page.getByRole("button", { name: "New VM" }).click();

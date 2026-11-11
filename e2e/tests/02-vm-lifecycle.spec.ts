@@ -11,7 +11,7 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
   test.afterAll(async ({ api }) => cleanVMs(api, NAME));
 
   test("New VM form: disk image, BIOS, start", async ({ page, api, n1 }) => {
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await page.getByRole("button", { name: "New VM" }).click();
     const dlg = dialog(page, "New virtual machine");
     await expect(dlg).toBeVisible();
@@ -46,7 +46,7 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
   });
 
   test("the VM is in the list and its detail page shows the specs", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     const r = row(page, NAME);
     await expect(r).toBeVisible();
     await expectBadge(r, "running");
@@ -131,7 +131,7 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
   });
 
   test("list buttons: Power On and Shutdown (graceful) on the row", async ({ page, api }) => {
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     const r = row(page, NAME);
     await r.getByRole("button", { name: "Power On" }).click();
     await expectBadge(r, "running");
@@ -146,7 +146,7 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
     const dlg = dialog(page, `Delete ${NAME}?`);
     await dlg.getByLabel(/Also delete its disk/).check();
     await dlg.getByRole("button", { name: "Delete VM" }).click();
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/datacenter\/vms$/);
     await expect(row(page, NAME)).toHaveCount(0);
     expect(await api.vmByName(NAME)).toBeUndefined();
     const vols = await api.get(`/nodes/${n1}/pools/default/volumes`);

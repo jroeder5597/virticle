@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import Play from "lucide-react/icons/play";
 import Square from "lucide-react/icons/square";
 import Trash2 from "lucide-react/icons/trash-2";
@@ -8,7 +8,7 @@ import { del, DhcpHost, get, Network, NodeStatus, post, put } from "../api";
 import { orEvents, useLive } from "../live";
 import { useLiveDebounced } from "../liveDebounced";
 import { useRole } from "../auth";
-import { NodeErr, NodeErrors, NodeFilter, nodeLabel, NodeNetwork } from "./dcShared";
+import { netEvents, NodeErr, NodeErrors, NodeFilter, nodeEvents, nodeLabel, NodeNetwork } from "./dcShared";
 import { ErrorBox, Field, Modal, NodePicker, PageTitle, StateBadge, useAction, useConfirm } from "../ui";
 
 const modeNames: Record<string, string> = { nat: "NAT", route: "Routed", open: "Open", isolated: "Isolated", bridge: "Bridge" };
@@ -18,8 +18,8 @@ const modeLabel = (n: Network) => (modeNames[n.forward] ?? n.forward) + (n.vlan 
  * `fixedNode` pins the page to one node (node page tab): no node picker, no node auto-selection.
  * `allNodes` lists the networks of every node in one table (Datacenter tab), one request for all of them.
  */
-export default function Networks({ fixedNode, allNodes }: { fixedNode?: number; allNodes?: boolean } = {}) {
-  const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes");
+export default function Networks({ fixedNode, allNodes, after }: { fixedNode?: number; allNodes?: boolean; after?: (nodes: NodeStatus[]) => ReactNode } = {}) {
+  const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes", nodeEvents);
   const [pickedNode, setNode] = useState(0);
   const node = fixedNode ?? pickedNode;
   const [selected, setSelected] = useState<{ node: number; name: string } | undefined>();
@@ -34,7 +34,7 @@ export default function Networks({ fixedNode, allNodes }: { fixedNode?: number; 
   const every = useLiveDebounced(
     () => (allNodes ? get<{ networks: NodeNetwork[]; errors: NodeErr[] }>("/networks") : Promise.resolve({ networks: [] as NodeNetwork[], errors: [] as NodeErr[] })),
     `nets/all/${!!allNodes}`,
-    orEvents("network"),
+    netEvents,
   );
   const nets = allNodes ? every : single;
   const act = useAction();
@@ -170,6 +170,7 @@ export default function Networks({ fixedNode, allNodes }: { fixedNode?: number; 
         </table>
       )}
       {confirm.dialog}
+      {after?.(all)}
       {net && <Detail key={net.node + "/" + net.name} base={`/nodes/${net.node}/networks`} name={net.name} />}
       {creating && <CreateNetwork node={createNode} nodes={allNodes ? online : undefined} onClose={() => setCreating(false)} onDone={(n, name) => { setSelected({ node: allNodes ? n : 0, name }); nets.reload(); }} />}
     </>

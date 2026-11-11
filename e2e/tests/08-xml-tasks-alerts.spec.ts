@@ -63,7 +63,7 @@ test.describe.serial("XML editor, tasks, alerts", () => {
   });
 
   test("Alerts panel opens, lists or says nothing needs attention, closes with Escape", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await page.getByRole("button", { name: /^Alerts/ }).click();
     const panel = page.getByRole("dialog", { name: "Alerts" });
     await expect(panel).toBeVisible();

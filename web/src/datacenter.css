@@ -23,3 +23,9 @@
   .dctiles { grid-template-columns: 1fr 1fr; }
   .dccards { grid-template-columns: 1fr; }
 }
+
+/* Filter rows (VM list tag filter with long tag names, unified tables) wrap instead of widening the page. */
+.filters { flex-wrap: wrap; }
+.filters select { min-width: 0; max-width: 100%; }
+.nicnodes { grid-template-columns: minmax(0, 1fr); }
+.nicnode { min-width: 0; }
