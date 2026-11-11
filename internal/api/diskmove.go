@@ -738,9 +738,9 @@ func (m *moveRun) runLive() error {
 	m.created = nil // the guest uses it now
 	var notes []string
 	if err := m.ensureSaved(newPath); err != nil {
-		notes = append(notes, err.Error())
-	}
-	if err := m.deleteOld(); err != nil {
+		// The saved definition may still name the old file: keep it, or the VM would not start again.
+		notes = append(notes, err.Error(), "The old volume was kept.")
+	} else if err := m.deleteOld(); err != nil {
 		notes = append(notes, err.Error())
 	}
 	if len(notes) > 0 {
