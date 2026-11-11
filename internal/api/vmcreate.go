@@ -9,8 +9,8 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/cloudinit"
 	"virt-proj/internal/cluster"
+	"virt-proj/internal/store"
 )
 
 type createVMRequest struct {
@@ -56,6 +56,9 @@ type cloudInitRequest struct {
 	SSHKeys     []string `json:"sshKeys"`
 	Packages    []string `json:"packages"`
 	RawUserData string   `json:"rawUserData"`
+	// Profile is a saved cloud-init profile that the fields above override
+	// or extend; see mergeProfile.
+	Profile int64 `json:"profile"`
 }
 
 // seedVolumeName is also how vmDelete recognises the seed of a VM.
@@ -195,12 +198,15 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 	}
 	var seed []byte
 	if ci := q.CloudInit; ci != nil && err == nil {
-		cfg := cloudinit.Config{Hostname: ci.Hostname, User: ci.User, Password: ci.Password, SSHKeys: ci.SSHKeys, Packages: ci.Packages, RawUserData: ci.RawUserData}
-		if cfg.Hostname == "" && cfg.RawUserData == "" {
-			cfg.Hostname = q.Name
-		}
-		if seed, err = cfg.Seed(); err != nil {
-			err = badRequest("cloud-init: " + err.Error())
+		var prof *store.CloudProfile
+		if prof, err = s.resolveProfile(ci.Profile); err == nil {
+			cfg := mergeProfile(prof, ciInput{ci.Hostname, ci.User, ci.Password, ci.SSHKeys, ci.Packages, ci.RawUserData})
+			if cfg.Hostname == "" && cfg.RawUserData == "" {
+				cfg.Hostname = q.Name
+			}
+			if seed, err = cfg.Seed(); err != nil {
+				err = badRequest("cloud-init: " + err.Error())
+			}
 		}
 	}
 	if err != nil {

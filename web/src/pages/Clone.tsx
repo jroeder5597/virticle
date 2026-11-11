@@ -43,7 +43,8 @@ function CloneDialog({ d, base, onClose }: { d: VMDetail; base: string; onClose:
   }, [base]);
 
   const windows = info?.guest === "windows";
-  const customize = cloudInitUsed(ci);
+  // Profiles are Linux-only; for Windows the select is not offered.
+  const customize = cloudInitUsed(windows ? { ...ci, profile: 0 } : ci);
   const submit = async () => {
     let uuid = "";
     let note = "";
@@ -54,7 +55,7 @@ function CloneDialog({ d, base, onClose }: { d: VMDetail; base: string; onClose:
         linked,
         start,
         sysprep,
-        customize: customize ? { hostname: p.hostname, user: p.user, password: p.password, sshKeys: p.sshKeys, packages: p.packages, rawUserData: p.rawUserData } : undefined,
+        customize: customize ? { hostname: p.hostname, user: p.user, password: p.password, sshKeys: p.sshKeys, packages: p.packages, rawUserData: p.rawUserData, profile: windows ? undefined : p.profile } : undefined,
       };
       const r = await post<{ uuid: string; sysprep: string; startError?: string }>(`${base}/clone`, body);
       uuid = r.uuid;
@@ -105,7 +106,7 @@ function CloneDialog({ d, base, onClose }: { d: VMDetail; base: string; onClose:
         {!info && !infoError && <small>Checking what the node supports...</small>}
         {infoError && <small>{infoError}</small>}
       </div>
-      <CloudInitFields vmName={name} value={ci} onChange={setCi} />
+      <CloudInitFields vmName={name} value={ci} onChange={setCi} profiles={!!info && !windows} />
       <p className="hint muted">
         {windows
           ? "Credentials are injected through an unattend.xml on a small ISO (computer name, local administrator and password; no SSH keys or packages). Needs a generalized (sealed) Windows guest."
