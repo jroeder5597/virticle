@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { X } from "lucide-react";
 import { put } from "../api";
 import { useRole } from "../auth";
 import { ErrorBox, useAction } from "../ui";
@@ -45,7 +46,7 @@ export function TagEditor({ tags, base, onChanged }: { tags: string[]; base: str
           <span key={t} className="tag">
             {t}
             <button className="ghost" aria-label={`Remove tag ${t}`} disabled={act.busy} onClick={() => save(tags.filter((x) => x !== t))}>
-              ✕
+              <X size={12} aria-hidden="true" />
             </button>
           </span>
         ))}

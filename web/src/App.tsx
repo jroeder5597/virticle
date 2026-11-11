@@ -16,6 +16,7 @@ import Audit from "./pages/Audit";
 import Account from "./pages/Account";
 import { AlertBell } from "./pages/Alerts";
 import { RoleContext } from "./auth";
+import { ThemeToggle } from "./theme";
 
 type Session = { needsSetup: boolean; user: string; role: Role };
 
@@ -55,6 +56,7 @@ export default function App() {
           <NavLink to="/account" title={`Signed in as ${session.role}`}>
             {session.user}
           </NavLink>
+          <ThemeToggle />
           <button className="link" onClick={() => post("/logout").then(refresh)}>
             Sign out
           </button>

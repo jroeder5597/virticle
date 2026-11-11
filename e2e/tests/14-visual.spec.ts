@@ -1,4 +1,5 @@
-// One visual pass: dark colour scheme and a narrow phone-width viewport over every page and tab.
+// One visual pass: both themes (dark is the default; light is chosen through the app's own theme
+// setting, not the OS preference) at desktop and phone width over every page and tab.
 // Screenshots go to test-results/visual/ for a human to look at; the automatic checks catch
 // unreadable text (contrast) and pages that scroll sideways.
 import { Page } from "@playwright/test";
@@ -69,6 +70,7 @@ async function sideways(page: Page): Promise<number> {
 
 const modes = [
   { name: "dark", scheme: "dark" as const, viewport: { width: 1360, height: 860 } },
+  { name: "light", scheme: "light" as const, viewport: { width: 1360, height: 860 } },
   { name: "narrow", scheme: "light" as const, viewport: { width: 420, height: 860 } },
   { name: "narrow-dark", scheme: "dark" as const, viewport: { width: 420, height: 860 } },
 ];
@@ -84,14 +86,16 @@ test.describe.serial("visual pass", () => {
   for (const m of modes) {
     test(`every page and tab: ${m.name}`, async ({ browser }) => {
       test.setTimeout(240_000);
-      const ctx = await browser.newContext({ storageState: ".auth/admin.json", colorScheme: m.scheme, viewport: m.viewport });
+      const ctx = await browser.newContext({ storageState: ".auth/admin.json", viewport: m.viewport });
+      // The theme no longer follows the OS: pick it the way the toggle does (localStorage, read before first paint).
+      await ctx.addInitScript((t) => localStorage.setItem("vp-theme", t), m.scheme);
       const page = await ctx.newPage();
       const problems: string[] = [];
       const shot = async (name: string, ready: () => Promise<unknown>, opts: { contrast?: boolean; wide?: boolean } = {}) => {
         await ready();
         await page.waitForTimeout(400);
         await page.screenshot({ path: `${OUT}/${m.name}-${name}.png`, fullPage: true });
-        const issues = m.scheme === "dark" ? await lowContrast(page) : [];
+        const issues = await lowContrast(page);
         for (const i of issues) problems.push(`${m.name}/${name}: low contrast: ${i}`);
         const over = await sideways(page);
         if (over > 1 && !opts.wide) problems.push(`${m.name}/${name}: page scrolls sideways by ${over}px`);
@@ -100,6 +104,7 @@ test.describe.serial("visual pass", () => {
       const heading = (n: string | RegExp) => page.getByRole("heading", { name: n }).first();
 
       await page.goto("/");
+      expect(await page.evaluate(() => document.documentElement.getAttribute("data-theme"))).toBe(m.scheme);
       await shot("list", () => expect(page.locator("tbody tr", { hasText: NAME })).toBeVisible());
       await page.getByRole("button", { name: "New VM" }).click();
       await shot("new-vm-dialog", () => expect(page.getByRole("dialog")).toBeVisible());

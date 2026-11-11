@@ -1,5 +1,6 @@
 // Small shared building blocks.
 import { ReactNode, useEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
 
 export function Modal(props: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   const box = useRef<HTMLDivElement>(null);
@@ -30,7 +31,7 @@ export function Modal(props: { title: string; onClose: () => void; children: Rea
         <header>
           <h2>{props.title}</h2>
           <button className="ghost" onClick={props.onClose} aria-label="Close dialog">
-            ✕
+            <X size={16} aria-hidden="true" />
           </button>
         </header>
         {props.children}

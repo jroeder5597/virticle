@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { bytes, del, get, post, put, VMDetail } from "../api";
 import { useLive } from "../live";
@@ -40,7 +41,7 @@ export default function VMDetailPage() {
   if (!d) {
     return (
       <>
-        <Link to="/">← Virtual machines</Link>
+        <Link to="/" className="backlink"><ArrowLeft size={14} aria-hidden="true" /> Virtual machines</Link>
         <ErrorBox error={vm.error} />
       </>
     );
@@ -59,7 +60,7 @@ export default function VMDetailPage() {
 
   return (
     <>
-      <Link to="/">← Virtual machines</Link>
+      <Link to="/" className="backlink"><ArrowLeft size={14} aria-hidden="true" /> Virtual machines</Link>
       <div className="head">
         <h1>
           {d.name} <StateBadge state={d.state} />

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Check, Lock, TriangleAlert, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { bytes, get, NodeStatus, post, Task, VMDetail } from "../api";
 import { ErrorBox, Field, Modal, useAction } from "../ui";
@@ -139,7 +140,7 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
                   <strong>{modeText[preview.mode]}.</strong>{" "}
                   {preview.mode !== "offline" && (
                     <span className={`badge ${preview.encrypt ? "s-ok" : "s-paused"}`} title={preview.encrypt ? "Memory and disk data are TLS-encrypted on the wire" : "Memory and disk data cross the network unencrypted"}>
-                      {preview.encrypt ? "🔒 encrypted" : "unencrypted"}
+                      {preview.encrypt ? <><Lock size={12} aria-hidden="true" /> encrypted</> : "unencrypted"}
                     </span>
                   )}{" "}
                   {preview.copyBytes > 0 && <>Files to copy: {bytes(preview.copyBytes)}. </>}
@@ -151,7 +152,7 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
                   .sort((a, b) => rank(a) - rank(b))
                   .map((c, i) => (
                     <li key={i} className={c.ok ? "ok" : c.severity}>
-                      <span className="mark">{c.ok ? "✓" : c.severity === "error" ? "✗" : "!"}</span>
+                      <span className="mark">{c.ok ? <Check size={14} aria-label="ok" /> : c.severity === "error" ? <X size={14} aria-label="error" /> : <TriangleAlert size={14} aria-label="warning" />}</span>
                       <span>
                         <strong>{c.check}</strong>: {c.message}
                       </span>
