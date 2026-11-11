@@ -170,3 +170,56 @@ func TestValidate(t *testing.T) {
 		}
 	}
 }
+
+func TestNextRun(t *testing.T) {
+	at := func(v string) time.Time {
+		x, err := time.Parse("2006-01-02 15:04:05", v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return x
+	}
+	hourly := Schedule{Enabled: true, Mode: "interval", EveryMinutes: 60, Keep: 3, Prefix: "p"}
+	daily := Schedule{Enabled: true, Mode: "daily", At: "03:00", Keep: 3, Prefix: "p"}
+	midnight := Schedule{Enabled: true, Mode: "daily", At: "00:00", Keep: 3, Prefix: "p"}
+	cases := []struct {
+		name      string
+		s         Schedule
+		now, last string
+		want      string // "" = ok false
+	}{
+		{"hourly, last 20 min ago", hourly, "2026-03-01 10:20:00", "2026-03-01 10:00:00", "2026-03-01 11:00:00"},
+		{"hourly, overdue is due now", hourly, "2026-03-01 12:30:00", "2026-03-01 10:00:00", "2026-03-01 12:30:00"},
+		{"hourly, never taken is due now", hourly, "2026-03-01 12:30:00", "", "2026-03-01 12:30:00"},
+		{"daily, taken at today's slot", daily, "2026-03-01 03:00:40", "2026-03-01 03:00:10", "2026-03-02 03:00:00"},
+		{"daily, before today's slot, yesterday's taken", daily, "2026-03-01 02:00:00", "2026-02-28 03:00:10", "2026-03-01 03:00:00"},
+		{"daily, slot passed and not taken", daily, "2026-03-01 09:00:00", "2026-02-28 03:00:10", "2026-03-01 09:00:00"},
+		{"daily around midnight, just before", midnight, "2026-03-01 23:59:30", "2026-03-01 00:00:05", "2026-03-02 00:00:00"},
+		{"daily around midnight, just after", midnight, "2026-03-02 00:00:10", "2026-03-02 00:00:05", "2026-03-03 00:00:00"},
+		{"daily over the end of a month", daily, "2026-02-28 12:00:00", "2026-02-28 03:00:10", "2026-03-01 03:00:00"},
+		{"disabled", Schedule{Mode: "daily", At: "03:00", Keep: 3, Prefix: "p"}, "2026-03-01 12:00:00", "", ""},
+		{"incomplete", Schedule{Enabled: true, Mode: "daily", Keep: 3, Prefix: "p"}, "2026-03-01 12:00:00", "", ""},
+	}
+	for _, c := range cases {
+		var last time.Time
+		if c.last != "" {
+			last = at(c.last)
+		}
+		got, ok := c.s.NextRun(at(c.now), last)
+		if c.want == "" {
+			if ok {
+				t.Errorf("%s: want no next run, got %v", c.name, got)
+			}
+			continue
+		}
+		if !ok || !got.Equal(at(c.want)) {
+			t.Errorf("%s: got %v %v, want %s", c.name, got, ok, c.want)
+		}
+		// The scheduler and the answer agree: nothing is due before the answer, and at the answer it is due.
+		if got.After(at(c.now)) {
+			if c.s.Due(got.Add(-time.Second), last) || !c.s.Due(got, last) {
+				t.Errorf("%s: Due disagrees with NextRun at %v", c.name, got)
+			}
+		}
+	}
+}

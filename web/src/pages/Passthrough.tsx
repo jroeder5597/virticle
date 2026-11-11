@@ -65,7 +65,7 @@ export default function PassthroughCard({ d, base, onChanged, bare }: { d: VMDet
       <OneLine tone="note" text="A VM with a passed-through device cannot be live-migrated." details={l?.warning ?? "It is tied to this node until the device is removed."} />
       <ErrorBox error={err ?? act.error} />
       {msg && <div className="muted">{msg}</div>}
-      {l && l.attached.length === 0 && <p className="muted">No host device is passed through to this VM.</p>}
+      {l && l.attached.length === 0 && <p className="muted">No host devices.</p>}
       {l && l.attached.length > 0 && (
         <table className="compact hwt">
           <tbody>

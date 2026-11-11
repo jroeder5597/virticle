@@ -127,13 +127,26 @@ const modes = [
 
 test.describe.serial("visual pass", () => {
   let vm: { node: number; uuid: string; name: string };
+  let snapVm: { node: number; uuid: string; name: string };
   test.beforeAll(async ({ api, n1 }) => {
     mkdirSync(OUT, { recursive: true });
-    vm = await createCirros(api, n1, NAME, { start: true });
+    vm = await createCirros(api, n1, NAME);
+    // a shut-off VM with a branched snapshot tree: a -> b -> c, back to a, then d
+    snapVm = await createCirros(api, n1, `${P}vsnap1`);
+    const sb = `/nodes/${n1}/vms/${snapVm.uuid}`;
+    for (const n of ["a", "b", "c"]) await api.post(`${sb}/snapshots`, { name: n, description: `snapshot ${n}` });
+    await api.post(`${sb}/snapshots/a/revert`, {});
+    await api.post(`${sb}/snapshots`, { name: "scheduled-2026-11-11T03-00-00Z-daily", description: "A long description to see how long user text is treated in the tree and in the dialog" });
+    // two disks and two NICs, so the Hardware tab is shown with its tables filled
+    await api.post(`/nodes/${n1}/vms/${vm.uuid}/disks`, { pool: "default", bus: "virtio", newVolume: { name: `${NAME}-data.qcow2`, sizeGiB: 1, format: "qcow2" } });
+    await api.post(`/nodes/${n1}/vms/${vm.uuid}/nics`, { network: "default", model: "virtio" });
+    // both are added while the VM is off (a running guest has no free PCI slot for the second), then it starts
+    await api.post(`/nodes/${n1}/vms/${vm.uuid}/action`, { action: "start" });
     await api.post("/cloudinit-profiles", { name: `${P}visprof`, description: "visual pass", user: "admin", password: "e2e-vis-pass-123", packages: ["qemu-guest-agent"], default: true });
   });
-  test.afterAll(async ({ api }) => {
-    await cleanVMs(api, NAME);
+  test.afterAll(async ({ api, n1 }) => {
+    await cleanVMs(api, NAME, `${P}vsnap1`);
+    await api.del(`/nodes/${n1}/pools/default/volumes/${NAME}-data.qcow2`).catch(() => {});
     for (const p of (await api.get("/cloudinit-profiles")).profiles) if (p.name === `${P}visprof`) await api.del(`/cloudinit-profiles/${p.id}`).catch(() => {});
   });
 
@@ -244,6 +257,45 @@ test.describe.serial("visual pass", () => {
       await page.goto(vmUrl + "?tab=hardware");
       await page.getByRole("button", { name: "Add disk" }).click();
       await shot("add-disk-dialog", () => expect(page.getByRole("dialog")).toBeVisible());
+      await page.getByRole("combobox", { name: "Storage pool" }).click();
+      await shot("add-disk-pool-picker", () => expect(page.getByRole("listbox").getByRole("option").first()).toBeVisible(), { viewportOnly: true });
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
+      // the Hardware tab with its collapsed sections opened, and an Edit Settings dialog
+      // snapshot tree, delete dialog, schedule form with the time zone helper
+      await page.goto(`/vm/${snapVm.node}/${snapVm.uuid}?tab=snapshots`);
+      await shot("snapshot-tree", () => expect(page.getByRole("treeitem", { name: /^scheduled-2026/ })).toBeVisible({ timeout: 30_000 }));
+      await page.getByRole("button", { name: "Delete b", exact: true }).click();
+      await shot("snapshot-delete-dialog", () => expect(page.getByRole("dialog", { name: "Delete b" }).getByRole("treeitem").first()).toBeVisible());
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Set up schedule" }).click();
+      await shot("snapshot-schedule-form", () => expect(page.getByRole("status", { name: "Time zone conversion" })).toBeVisible());
+      // the bridge picker
+      await page.goto(vmUrl + "?tab=hardware");
+      await page.getByRole("button", { name: "Add interface" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "Host bridge" }).click();
+      await page.getByRole("combobox", { name: "Bridge device" }).click();
+      await shot("bridge-picker", () => expect(page.getByRole("listbox").getByRole("option").first()).toBeVisible({ timeout: 30_000 }), { viewportOnly: true });
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
+      await page.goto(vmUrl + "?tab=hardware");
+      await page.getByRole("button", { name: /^Advanced: CPU placement/ }).click();
+      await page.getByRole("button", { name: /^Passthrough devices/ }).click();
+      await shot("vm-hardware-sections-open", () => expect(page.locator("#hw-advanced-body")).toBeVisible({ timeout: 30_000 }));
+      await page.evaluate(() => localStorage.removeItem("vp.hw.open.hw-advanced"));
+      await page.evaluate(() => localStorage.removeItem("vp.hw.open.hw-passthrough"));
+      await page.goto(vmUrl);
+      await page.locator(".head").getByRole("button", { name: "Actions", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Edit Settings", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Network interfaces", exact: true }).click();
+      await shot("edit-settings-dialog", () => expect(page.getByRole("dialog", { name: "Network interfaces" }).locator("tbody tr").nth(1)).toBeVisible(), { viewportOnly: true });
+      await page.keyboard.press("Escape");
+      await page.locator(".head").getByRole("button", { name: "Actions", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Snapshots", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Take snapshot", exact: true }).click();
+      await page.getByRole("button", { name: "About snapshot types" }).hover();
+      await shot("snapshot-help-tip", () => expect(page.getByRole("tooltip")).toContainText("External"), { viewportOnly: true });
+      await page.keyboard.press("Escape");
       await page.keyboard.press("Escape");
       await page.goto(vmUrl + "?tab=hardware");
       await page.locator("section.card").filter({ has: page.getByRole("heading", { name: "Disks", exact: true }) }).getByRole("row", { name: /vda/ }).getByRole("button", { name: "Move", exact: true }).click();

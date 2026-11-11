@@ -163,6 +163,8 @@ func (s *Server) Handler() http.Handler {
 	auth("POST /api/nodes/{node}/vms/{uuid}/snapshots", s.createSnapshotHandler)
 	auth("POST /api/nodes/{node}/vms/{uuid}/snapshots/{name}/revert", s.revertSnapshot)
 	auth("DELETE /api/nodes/{node}/vms/{uuid}/snapshots/{name}", s.deleteSnapshot)
+	auth("POST /api/nodes/{node}/vms/{uuid}/snapshots/delete", s.deleteSnapshotsHandler)
+	auth("POST /api/nodes/{node}/vms/{uuid}/snapshots/delete-plan", s.planSnapshotsHandler)
 	auth("GET /api/nodes/{node}/vms/{uuid}/snapshot-schedule", s.getSnapshotSchedule)
 	auth("PUT /api/nodes/{node}/vms/{uuid}/snapshot-schedule", s.putSnapshotSchedule)
 	auth("DELETE /api/nodes/{node}/vms/{uuid}/snapshot-schedule", s.deleteSnapshotSchedule)

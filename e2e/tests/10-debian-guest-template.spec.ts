@@ -57,7 +57,8 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     // the guest's own host name, and addresses from the agent
     await expect(summary.locator("dd").nth(3)).not.toContainText("Not reported", { timeout: 60_000 });
     await expect(summary.locator("dd").nth(4)).toContainText(/\d+\.\d+\.\d+\.\d+/, { timeout: 60_000 });
-    await expect(summary).toContainText("From the guest agent");
+    await expect(summary.locator("dd[title='From the guest agent']")).toBeVisible();
+    await expect(summary).not.toContainText("From the guest agent");
     const util = page.locator("section#utilization");
     await expect(util.locator(".fsbar .mono", { hasText: /^\/$/ })).toBeVisible({ timeout: 60_000 });
     await expect(util).toContainText(/of \d+(\.\d)? GiB \(\d+%\)/);

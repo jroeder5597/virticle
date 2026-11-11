@@ -1,5 +1,6 @@
 // Small shared building blocks.
 import { ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { CircleHelp, X } from "lucide-react";
 import "./menu.css";
 import "./helptip.css";
@@ -298,11 +299,13 @@ export function HelpTip(props: { label: string; children: ReactNode }) {
       >
         <CircleHelp size={15} aria-hidden="true" />
       </button>
-      {open && (
-        <div id={id} role="tooltip" className="helptip-pop" style={pos ? { left: pos.left, top: pos.top, bottom: pos.bottom, width: pos.width, maxHeight: pos.maxH } : { visibility: "hidden" }}>
-          {props.children}
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div id={id} role="tooltip" className="helptip-pop" style={pos ? { left: pos.left, top: pos.top, bottom: pos.bottom, width: pos.width, maxHeight: pos.maxH } : { visibility: "hidden" }}>
+            {props.children}
+          </div>,
+          document.body,
+        )}
     </span>
   );
 }

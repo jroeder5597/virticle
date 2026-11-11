@@ -11,6 +11,7 @@ import AdvancedCard from "./Advanced";
 import PassthroughCard from "./Passthrough";
 import DiskMoveDialog from "./DiskMove";
 import PoolSelect from "../PoolSelect";
+import BridgeSelect from "../BridgeSelect";
 import "./hw.css";
 
 interface HwResult {
@@ -27,9 +28,9 @@ type NicT = VMDetail["nics"][number];
 
 function summary(r: HwResult, running: boolean): string {
   let s: string;
-  if (r.needsRestart) s = "Saved to the VM's definition. It takes effect after the VM is shut down and started again.";
-  else if (r.applied === "config" && !running) s = "Saved to the VM's definition.";
-  else s = "Applied to the running VM and saved to its definition.";
+  if (r.needsRestart) s = "Saved. Takes effect after a restart.";
+  else if (r.applied === "config" && !running) s = "Saved.";
+  else s = "Applied and saved.";
   return r.note ? `${s} ${r.note}` : s;
 }
 
@@ -203,13 +204,13 @@ function CpuMemory({ d, send, run, busy, bare }: CardProps) {
             <Field label="vCPUs now">
               <input type="number" min={1} value={vcpus} onChange={num(setVcpus)} />
             </Field>
-            <Field label="Maximum vCPUs" hint={d.state !== "shutoff" ? "A new maximum applies after a restart." : undefined}>
+            <Field label="Maximum vCPUs" hint={d.state !== "shutoff" ? "Applies after a restart." : undefined}>
               <input type="number" min={1} value={maxV} onChange={num(setMaxV)} />
             </Field>
-            <Field label="Memory now (MiB)" hint={d.state !== "shutoff" ? "Changed live by ballooning, within the running maximum." : undefined}>
+            <Field label="Memory now (MiB)" hint={d.state !== "shutoff" ? "Live, up to the running maximum." : undefined}>
               <input type="number" min={64} value={mem} onChange={num(setMem)} />
             </Field>
-            <Field label="Maximum memory (MiB)" hint={d.state !== "shutoff" ? "A new maximum applies after a restart." : undefined}>
+            <Field label="Maximum memory (MiB)" hint={d.state !== "shutoff" ? "Applies after a restart." : undefined}>
               <input type="number" min={64} value={maxMem} onChange={num(setMaxMem)} />
             </Field>
           </div>
@@ -285,7 +286,7 @@ function DetachBody({ disk, d, send, onClose }: { disk: DiskT; d: VMDetail; send
   return (
     <>
       <p>
-        <span className="mono">{disk.source}</span> is removed from the VM{d.state !== "shutoff" ? " while it runs. The guest should unmount it first" : ""}.
+        <span className="mono">{disk.source}</span> is removed from the VM{d.state !== "shutoff" ? " while it runs; unmount it in the guest first" : ""}.
       </p>
       {!disk.readOnly && (
         <label className="check">
@@ -316,7 +317,7 @@ function ResizeDisk({ disk, send, onClose }: { disk: DiskT; send: Send; onClose:
   const act = useAction();
   return (
     <Modal title={`Resize ${disk.target}`} onClose={onClose}>
-      <Field label="New size (GiB)" hint={`Currently ${disk.capacity ? bytes(disk.capacity) : "unknown"}. Disks can only grow; the guest must then extend its partition and filesystem.`}>
+      <Field label="New size (GiB)" hint={`Now ${disk.capacity ? bytes(disk.capacity) : "unknown"}. Disks only grow.`}>
         <input type="number" min={cur + 1} value={size} onChange={(e) => setSize(Number(e.target.value))} />
       </Field>
       <ErrorBox error={act.error} />
@@ -424,7 +425,7 @@ function AddDisk({ d, send, onClose }: { d: VMDetail; send: Send; onClose: () =>
         </Field>
       )}
       <div className="grid2">
-        <Field label="Bus" hint={d.state !== "shutoff" && bus !== "virtio" ? "This bus cannot be hot-plugged; the disk appears after a restart." : undefined}>
+        <Field label="Bus" hint={d.state !== "shutoff" && bus !== "virtio" ? "Appears after a restart." : undefined}>
           <select value={bus} onChange={(e) => setBus(e.target.value)}>
             <option value="virtio">virtio</option>
             <option value="scsi">scsi</option>
@@ -490,7 +491,7 @@ function CDROMs({ d, cdroms, send, run, busy, bare }: CardProps & { cdroms: Disk
           <button disabled={busy} onClick={() => run(() => send("POST", "/cdrom"))}>
             Add CD-ROM drive
           </button>
-          {d.state !== "shutoff" && <span className="muted">A SATA drive cannot be hot-plugged; it appears after a restart.</span>}
+          {d.state !== "shutoff" && <span className="muted">Appears after a restart.</span>}
         </div>
       )}
       {picking && <PickISO d={d} drive={picking} send={send} onClose={() => setPicking(undefined)} />}
@@ -519,7 +520,7 @@ function PickISO({ d, drive, send, onClose }: { d: VMDetail; drive: DiskT; send:
   return (
     <Modal title={`Media for ${drive.target}`} onClose={onClose}>
       {isos && isos.length === 0 ? (
-        <p className="muted">No .iso volumes found in the node's storage pools. Upload one on the Storage page first.</p>
+        <p className="muted">No ISO volumes in this node's pools. Upload one on the Storage page.</p>
       ) : (
         <Field label="ISO image" hint={drive.source ? `Replaces ${drive.source}.` : undefined}>
           <select value={choice} onChange={(e) => setChoice(e.target.value)}>
@@ -668,8 +669,8 @@ function NICForm({ d, nic, send, onClose }: { d: VMDetail; nic?: NicT; send: Sen
           </select>
         </Field>
       ) : (
-        <Field label="Bridge device" hint="For example br0 or virbr0.">
-          <input value={bridge} onChange={(e) => setBridge(e.target.value)} />
+        <Field label="Bridge device" group>
+          <BridgeSelect node={d.node} value={bridge} onChange={setBridge} networks={nets} />
         </Field>
       )}
       {!nic && (
@@ -755,7 +756,7 @@ function Boot({ d, send, run, busy, bare }: CardProps) {
   const rest = all.filter((x) => !order.includes(x.id));
   return (
     <Card id="hw-boot" title="Boot order" bare={bare}>
-      {legacy && <p className="muted">This VM uses the older class-based boot list ({d.boot.join(", ")}). Saving switches it to a per-device order.</p>}
+      {legacy && <p className="muted">Class-based list ({d.boot.join(", ")}); saving makes it per device.</p>}
       <div className="table-scroll">
       <table className="compact hwt">
         <tbody>
@@ -779,7 +780,7 @@ function Boot({ d, send, run, busy, bare }: CardProps) {
           ))}
           {order.length === 0 && (
             <tr>
-              <td className="muted">No boot order set; the firmware decides.</td>
+              <td className="muted">None set; the firmware decides.</td>
             </tr>
           )}
           {rest.map((x) => (
@@ -803,7 +804,7 @@ function Boot({ d, send, run, busy, bare }: CardProps) {
       </table>
       </div>
       <footer className="hwfoot">
-        {d.state !== "shutoff" && <span className="muted">Takes effect at the next start.</span>}
+        {d.state !== "shutoff" && <span className="muted">Applies at the next start.</span>}
         <button
           disabled={!dirty}
           onClick={() => {

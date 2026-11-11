@@ -96,8 +96,8 @@ export function CloneDialog({ d, base, linked: linkedFirst, onClose }: { d: VMDe
       <CloudInitFields vmName={name} value={ci} onChange={setCi} profiles={!!info && !windows} />
       <p className="hint muted">
         {windows
-          ? "Credentials are injected through an unattend.xml on a small ISO (computer name, local administrator and password; no SSH keys or packages). Needs a generalized (sealed) Windows guest."
-          : "Credentials are injected with a fresh cloud-init seed, so the guest must have cloud-init installed. Without credentials the clone gets no seed disk."}
+          ? "Credentials go into an unattend.xml on a small ISO. Needs a sealed Windows guest."
+          : "Credentials go into a fresh cloud-init seed. Needs cloud-init in the guest."}
       </p>
       <ErrorBox error={act.error} />
       {result && <p className="note">{result}</p>}
@@ -116,14 +116,13 @@ export function SealDialog({ d, base, onClose, onDone }: { d: VMDetail; base: st
   return (
     <Modal title={`Seal ${d.name}`} onClose={onClose}>
       <p>
-        This runs a script inside the guest through the guest agent, shuts the guest down and marks the VM as a template. Clones of it then get a new identity on their
-        first boot.
+        Runs a script in the guest through the agent, shuts it down and marks the VM as a template. Clones get a new identity on first boot.
       </p>
       <ul>
         <li>Linux: clears the machine-id, deletes the SSH host keys, runs <code>cloud-init clean</code> if present, removes DHCP leases, logs and shell history.</li>
         <li>Windows: runs <code>sysprep /generalize /oobe /shutdown</code>, which takes minutes and cannot be undone for this installation.</li>
       </ul>
-      <p className="note">The guest is no longer usable as a normal machine afterwards. Seal a copy if you want to keep this one.</p>
+      <p className="note">Not reversible for this guest. Seal a copy to keep it usable.</p>
       <ErrorBox error={act.error} />
       <footer>
         <button onClick={onClose}>Cancel</button>

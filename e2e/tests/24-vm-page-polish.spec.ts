@@ -76,7 +76,7 @@ test.describe.serial("VM page polish", () => {
     await field(dlg, "Maximum memory (MiB)").fill("256");
     await field(dlg, "Memory now (MiB)").fill("192");
     await dlg.getByRole("button", { name: "Apply" }).click();
-    await expect(dlg).toContainText("Saved to the VM's definition.");
+    await expect(dlg).toContainText("Saved.");
     await expect(card(page, "CPU and memory")).toContainText("192 MiB"); // the tab, behind the dialog, without a reload
     await page.keyboard.press("Escape");
     expect((await api.vmDetail(vm.node, vm.uuid)).currentMemoryKiB).toBe(192 * 1024);
@@ -260,7 +260,7 @@ test.describe.serial("VM page polish", () => {
     await expect(dialog(page, "Advanced")).toContainText("vCPU pinning");
     await page.keyboard.press("Escape");
     await edit(page, "Passthrough devices");
-    await expect(dialog(page, "Passthrough devices")).toContainText("No host device is passed through");
+    await expect(dialog(page, "Passthrough devices")).toContainText("No host devices");
     await page.keyboard.press("Escape");
   });
 

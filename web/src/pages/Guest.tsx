@@ -27,17 +27,17 @@ export function GuestCard({ d, g }: { d: VMDetail; g?: GuestInfo }) {
   const row = (label: string, value: React.ReactNode, mono = false) => (
     <>
       <dt>{label}</dt>
-      <dd className={mono ? "mono wrap" : undefined}>{value}</dd>
+      <dd className={mono ? "mono" : undefined} style={mono ? { overflowWrap: "break-word" } : undefined}>{value}</dd>
     </>
   );
   return (
     <section className="card" id="guest-details" aria-label="Guest details">
       <h3>Guest details</h3>
-      {!g && <p className="muted">Asking the guest agent</p>}
-      {g && !g.available && <p className="muted">The guest agent did not answer: {g.error}</p>}
+      {!g && <p className="muted">Loading</p>}
+      {g && !g.available && <p className="muted">No answer: {g.error}</p>}
       {g?.available && (
         <dl>
-          {g.os?.kernel && row("Kernel", `${g.os.kernel}${g.os.machine ? ` (${g.os.machine})` : ""}`, true)}
+          {g.os?.kernel && row("Kernel", <>{g.os.kernel} <span className="muted">{g.os.machine}</span></>, true)}
           {g.timezone && row("Time zone", `${g.timezone}${g.timezoneOffset !== undefined ? ` (${utc(g.timezoneOffset)})` : ""}`)}
           {g.clockOffsetSec !== undefined && row("Clock", `${span(g.clockOffsetSec)} ${g.clockOffsetSec > 0 ? "ahead of" : "behind"} the host`)}
           {g.users !== undefined &&

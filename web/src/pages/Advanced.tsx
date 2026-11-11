@@ -94,7 +94,7 @@ export default function AdvancedCard({ d, base, onChanged, bare }: { d: VMDetail
       <div className="advanced">
       <OneLine
         tone="note"
-        text={`Saved to the VM's definition; takes effect at its next start${d.state !== "shutoff" ? " (the running VM keeps its current settings until then)" : ""}.${t.pendingRestart ? " The running VM does not have the saved placement settings yet." : ""}`}
+        text={`Applies at the next start.${t.pendingRestart ? " Not active in the running VM yet." : ""}`}
         details={t.warning}
         summary="Why this matters"
       />
@@ -167,7 +167,7 @@ function CpuShape({ t, busy, save }: P) {
   return (
     <div>
       <h4>CPU model and topology</h4>
-      <Field label="CPU mode" hint={mode === "host-passthrough" ? "Exposes this node's exact CPU; live migration then needs an identical CPU on the target." : mode === "host-model" ? "Closest named model of this node's CPU." : "A named model from the list below."}>
+      <Field label="CPU mode" hint={mode === "host-passthrough" ? "Needs an identical CPU on a migration target." : mode === "host-model" ? "Closest named model." : undefined}>
         <select value={mode} onChange={(e) => setMode(e.target.value)}>
           <option value="host-model">host-model</option>
           <option value="host-passthrough">host-passthrough</option>
@@ -227,7 +227,7 @@ function Pinning({ t, busy, save }: P) {
   return (
     <div>
       <h4>vCPU pinning</h4>
-      <small>Host CPUs on this node: {hostList}. Leave a field empty for no pin. Syntax: 0-3,6 (a ^ excludes, as in virsh).</small>
+      <small>Host CPUs {hostList}. Empty: no pin. Syntax 0-3,6 or ^1.</small>
       <table className="compact">
         <tbody>
           {pins.map((v, i) => (
@@ -267,7 +267,7 @@ function Hugepages({ t, busy, save }: P) {
   return (
     <div>
       <h4>Huge pages</h4>
-      <Field label="Back guest memory with" hint="Needs pages reserved on the node beforehand (vm.nr_hugepages); the VM will not start without enough.">
+      <Field label="Back guest memory with" hint="Reserve pages on the node first (vm.nr_hugepages).">
         <select value={size} onChange={(e) => setSize(Number(e.target.value))}>
           <option value={0}>ordinary pages</option>
           {t.host.hugepageSizesKiB.map((k) => (
@@ -280,8 +280,8 @@ function Hugepages({ t, busy, save }: P) {
       </Field>
       {size > 0 && (
         <div className={free(size) < need ? "error" : "muted"}>
-          The VM's {bytes(t.memoryKiB * 1024)} need {need} pages; the node has {free(size)} free.
-          {free(size) < need && " Not enough: the VM would not start."}
+          Needs {need} pages; {free(size)} free on the node.
+          {free(size) < need && " The VM would not start."}
         </div>
       )}
       <footer style={{ justifyContent: "flex-start" }}>
@@ -315,7 +315,7 @@ function Numa({ t, busy, save }: P) {
           </Field>
         )}
       </div>
-      {t.host.cells.length === 1 && <small>This node has a single NUMA node, so a policy changes nothing here. It still matters when the VM moves to a larger node.</small>}
+      {t.host.cells.length === 1 && <small>Single NUMA node here; a policy matters after a move to a larger node.</small>}
       <footer style={{ justifyContent: "flex-start" }}>
         <button disabled={busy} onClick={() => save("numa", { mode, nodeset: mode ? nodeset : "" })}>
           Save NUMA policy

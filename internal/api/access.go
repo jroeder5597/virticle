@@ -121,6 +121,8 @@ var routeLevels = map[string]string{
 	"POST /api/nodes/{node}/vms/{uuid}/snapshots":               operator,
 	"POST /api/nodes/{node}/vms/{uuid}/snapshots/{name}/revert": operator,
 	"DELETE /api/nodes/{node}/vms/{uuid}/snapshots/{name}":      operator,
+	"POST /api/nodes/{node}/vms/{uuid}/snapshots/delete":        operator,
+	"POST /api/nodes/{node}/vms/{uuid}/snapshots/delete-plan":   operator,
 	"GET /api/nodes/{node}/vms/{uuid}/snapshot-schedule":        viewer,
 	"PUT /api/nodes/{node}/vms/{uuid}/snapshot-schedule":        operator,
 	"DELETE /api/nodes/{node}/vms/{uuid}/snapshot-schedule":     operator,

@@ -96,6 +96,9 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
   });
 
   test("power on from the detail page, then halt with confirmation", async ({ page, api }) => {
+    // the previous tests left the VM running
+    await api.post(`/nodes/${vm.node}/vms/${vm.uuid}/action`, { action: "poweroff" });
+    await api.waitFor("off", async () => (await stateOf(api, vm)) === "shutoff");
     await openVM(page, vm);
     await vmAction(page, "Power", "Power On");
     await expectBadge(page.locator(".head"), "running");

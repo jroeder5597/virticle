@@ -3,6 +3,7 @@ import { Check, TriangleAlert, X } from "lucide-react";
 import { bytes, get, Pool, post, Task, VMDetail } from "../api";
 import { useEvents } from "../live";
 import { ErrorBox, Field, Modal, useAction, useConfirm } from "../ui";
+import PoolSelect from "../PoolSelect";
 
 interface CheckT {
   check: string;
@@ -112,15 +113,8 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
             {disk.capacity ? ` · ${bytes(disk.capacity)}` : ""}
           </p>
           <div className="row">
-            <Field label="Target pool">
-              <select value={pool} onChange={(e) => setPool(e.target.value)} aria-label="Target pool">
-                {pools.length === 0 && <option value="">no pool</option>}
-                {pools.map((p) => (
-                  <option key={p.name} value={p.name}>
-                    {p.name} ({p.type}, {bytes(p.available)} free)
-                  </option>
-                ))}
-              </select>
+            <Field label="Target pool" group>
+              <PoolSelect pools={pools} value={pool} onChange={setPool} label="Target pool" needBytes={disk.capacity} />
             </Field>
             <Field label="Volume name">
               <input value={name} onChange={(e) => setName(e.target.value.trim())} aria-label="Volume name" />
@@ -143,12 +137,12 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
           {plan?.backing && (
             <label className="check">
               <input type="checkbox" checked={flatten} onChange={(e) => setFlatten(e.target.checked)} />
-              Copy as one standalone image (this disk is a linked clone and will no longer share its base)
+              Copy as a standalone image (breaks the link to the base)
             </label>
           )}
           <label className="check">
             <input type="checkbox" checked={deleteOld} onChange={(e) => setDeleteOld(e.target.checked)} />
-            Delete the old volume afterwards
+            Delete the old volume
           </label>
           <h3>Pre-flight checks</h3>
           {checking && <p className="muted">Checking</p>}
@@ -156,7 +150,7 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
             <>
               {plan.mode && (
                 <p>
-                  <strong>{live ? "Live: the VM keeps running while the disk is copied." : "Offline: the VM is shut off."}</strong>
+                  <strong>{live ? "Live: the VM keeps running." : "Offline: the VM is shut off."}</strong>
                   {plan.newPath && (
                     <>
                       {" "}
@@ -197,7 +191,7 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
             <div className={task?.status === "failed" ? "full" : ""} style={{ width: pct + "%" }} />
           </div>
           <p className="muted">{task?.status === "ok" ? "Done." : task?.status === "failed" ? (task.error?.includes("cancelled") ? "Cancelled." : "Failed.") : `${pct}%`}</p>
-          {!live && busy && <p className="muted">A copy of a shut-off VM's volume cannot be interrupted part-way: a cancel is honoured when the copy returns, and the new volume is then removed.</p>}
+          {!live && busy && <p className="muted">Cancel takes effect when the copy returns; the new volume is then removed.</p>}
           <ErrorBox error={task?.status === "failed" ? task.error : cancel.error} />
           <footer>
             {busy ? (
