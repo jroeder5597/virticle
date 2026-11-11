@@ -80,7 +80,19 @@ async function clipped(page: Page): Promise<string[]> {
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue;
       const id = `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 40)} "${(el.textContent ?? "").trim().slice(0, 30)}"`;
-      if (r.right > vw + 1) out.push(`ends ${Math.round(r.right - vw)}px past the window: ${id}`);
+      // cut off by an ancestor that hides or scrolls its overflow (a table with rounded corners, a card)
+      let cut = "";
+      for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+        if (getComputedStyle(a).overflowX === "visible") continue;
+        const ar = a.getBoundingClientRect();
+        if (r.right > ar.right + 1 && r.width > 0) cut = `${a.tagName.toLowerCase()}.${String(a.className).slice(0, 30)}`;
+        break;
+      }
+      // spilling out of its card or dialog onto whatever is next to it
+      const box = el.closest(".modal") ?? (el.closest(".backdrop") ? null : el.closest(".card")); // dialogs render inside the card that opened them
+      if (!cut && box && box !== el && r.right > box.getBoundingClientRect().right + 1) cut = "its card";
+      if (cut && cs.textOverflow !== "ellipsis") out.push(`cut off by ${cut}: ${id}`);
+      else if (r.right > vw + 1) out.push(`ends ${Math.round(r.right - vw)}px past the window: ${id}`);
       else if (el.scrollWidth > el.clientWidth + 1 && cs.overflowX !== "visible" && cs.textOverflow !== "ellipsis") out.push(`content ${el.scrollWidth - el.clientWidth}px wider than its box: ${id}`);
     }
     return [...new Set(out)].slice(0, 8);

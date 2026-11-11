@@ -78,7 +78,7 @@ function NodeRow({ n, canRemove, alerts, onEvacuate, onMaintenance }: { n: NodeS
         <AlertMarks alerts={alerts} match={(a) => a.node === n.id && a.kind !== "pool-usage" && a.kind !== "vm-state"} />
         <div className="mono muted nodeaddr">
           {n.user}@{n.addr}
-          {n.jump ? ` via ${n.jump}` : ""}
+          {n.jump && <div>via {n.jump}</div>}
         </div>
       </td>
       <td>

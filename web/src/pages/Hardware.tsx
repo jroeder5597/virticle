@@ -53,8 +53,8 @@ export default function Hardware({ d, base, onChanged }: { d: VMDetail; base: st
         <CpuMemory d={d} send={send} run={run} busy={act.busy} />
         <Boot d={d} send={send} run={run} busy={act.busy} />
         <Disks d={d} disks={disks} send={send} run={run} busy={act.busy} />
-        <CDROMs d={d} cdroms={cdroms} send={send} run={run} busy={act.busy} />
         <NICs d={d} send={send} run={run} busy={act.busy} />
+        <CDROMs d={d} cdroms={cdroms} send={send} run={run} busy={act.busy} />
         <FirmwareCard d={d} base={base} onChanged={onChanged} />
         <AdvancedCard d={d} base={base} onChanged={onChanged} />
         <PassthroughCard d={d} base={base} onChanged={onChanged} />
@@ -145,7 +145,7 @@ function Disks({ d, disks, send, run, busy }: CardProps & { disks: DiskT[] }) {
   const [resizing, setResizing] = useState<DiskT>();
   const [detaching, setDetaching] = useState<DiskT>();
   return (
-    <section className="card">
+    <section className="card span">
       <h3>Disks</h3>
       <table className="compact">
         <thead>
@@ -478,7 +478,7 @@ function NICs({ d, send, run, busy }: CardProps) {
   const [form, setForm] = useState<{ nic?: NicT } | null>(null);
   const [removing, setRemoving] = useState<NicT>();
   return (
-    <section className="card">
+    <section className="card span">
       <h3>Network interfaces</h3>
       <table className="compact">
         <thead>

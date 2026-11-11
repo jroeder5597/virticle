@@ -41,7 +41,7 @@ test.describe.serial("snapshots", () => {
     await expect(dlg).toBeHidden({ timeout: 60_000 });
     const child = row(page, "second");
     await expect(child).toBeVisible();
-    await expect(child.locator("td").first()).toContainText("└");
+    await expect(child.locator("td").first().locator("svg")).toBeVisible(); // the child marker
     await expect(row(page, "first").locator(".badge", { hasText: "current" })).toHaveCount(0);
     const list = await snaps(api);
     expect(list.find((s) => s.name === "second").parent).toBe("first");
