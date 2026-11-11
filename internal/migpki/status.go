@@ -2,6 +2,7 @@ package migpki
 
 import (
 	"bytes"
+	"crypto/x509"
 	"fmt"
 	"sort"
 	"strings"
@@ -51,6 +52,11 @@ type Snapshot struct {
 	Server    []byte  // content of server-cert.pem
 	Client    []byte  // content of client-cert.pem
 	Hostname  string  // the node's name as libvirt reports it
+	// Want lists the further names and addresses the certificate must cover:
+	// the address the controller uses and the address other nodes migrate to.
+	// Editing a node's addresses makes the installed certificate fall short,
+	// which shows as a mismatch with a reissue as the remedy.
+	Want []string
 }
 
 // Status states.
@@ -122,6 +128,7 @@ func (ca *CA) Evaluate(sn Snapshot, now time.Time) Status {
 			if err := ca.Verify(crt, sn.Hostname, now); err != nil {
 				problems = append(problems, FileServerCert+": "+err.Error())
 			}
+			problems = append(problems, missingNames(crt, sn.Want)...)
 			left := in.NotAfter.Sub(now)
 			days = int(left.Hours() / 24)
 			expired, expiring = left <= 0, left < RenewLeft
@@ -160,4 +167,20 @@ func short(fp string) string {
 		return fp[:12]
 	}
 	return fp
+}
+
+// missingNames reports the wanted names the certificate does not cover.
+func missingNames(c *x509.Certificate, want []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, w := range want {
+		if w == "" || seen[w] {
+			continue
+		}
+		seen[w] = true
+		if err := c.VerifyHostname(w); err != nil {
+			out = append(out, FileServerCert+" does not cover "+w+" (the node's address changed); issue the certificate again")
+		}
+	}
+	return out
 }

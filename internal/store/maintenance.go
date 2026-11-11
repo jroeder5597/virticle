@@ -26,9 +26,11 @@ func migrateNodes(tx *sql.Tx) error {
 		return err
 	}
 	if len(have) > 0 && !have["maintenance"] {
-		_, err = tx.Exec(`ALTER TABLE nodes ADD COLUMN maintenance INTEGER NOT NULL DEFAULT 0`)
+		if _, err = tx.Exec(`ALTER TABLE nodes ADD COLUMN maintenance INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
 	}
-	return err
+	return migrateNodeConnection(tx, have)
 }
 
 // SetMaintenance marks or unmarks a node as being in maintenance.

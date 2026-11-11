@@ -788,7 +788,7 @@ func (m *moveRun) runOffline() error {
 					return
 				case <-t.C:
 				}
-				out, err := h.Run("stat -c '%b %B' " + shq(p))
+				out, err := h.RunRoot("stat -c '%b %B' " + shq(p))
 				var blocks, size float64
 				if err == nil {
 					if _, e := fmt.Sscanf(out, "%f %f", &blocks, &size); e == nil {
