@@ -1,0 +1,18 @@
+.ps { position: relative; }
+.ps-btn { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 6px 10px; height: auto; font-weight: 400; }
+.ps-btn > svg { flex: none; color: var(--muted); }
+.ps-face { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.ps-row { display: flex; justify-content: space-between; gap: 10px; min-width: 0; }
+.ps-name { font-weight: 600; overflow-wrap: anywhere; }
+.ps-sub { color: var(--muted); font-size: 12px; flex-wrap: wrap; }
+.ps .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ps-bar { display: block; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--muted) 30%, transparent); overflow: hidden; margin-top: 2px; }
+.ps-fill { display: block; height: 100%; background: var(--ok); }
+.ps-fill.warn { background: var(--warn); }
+.ps-fill.crit { background: var(--danger); }
+.ps-warn { color: var(--warn); }
+.ps-list { position: fixed; z-index: 400; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-pop); padding: 4px; outline: none; }
+.ps-opt { padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.ps-opt.active { background: var(--hover); }
+.ps-opt.sel { box-shadow: inset 3px 0 0 var(--accent); }
+.ps-opt.off { opacity: 0.6; cursor: not-allowed; }

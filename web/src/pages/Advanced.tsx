@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { bytes, get, put, VMDetail } from "../api";
 import { ErrorBox, Field, useAction, useConfirm } from "../ui";
+import { OneLine, SectionFrame } from "./Disclosure";
 
 interface Tuning {
   state: string;
@@ -46,7 +47,18 @@ function cpuList(cpus: number[]): string {
 }
 
 /** CPU pinning, CPU model and topology, huge pages and NUMA policy of one VM. */
-export default function AdvancedCard({ d, base, onChanged }: { d: VMDetail; base: string; onChanged: () => void }) {
+/** One line for the collapsed header: what is set now. */
+function tuningSummary(t: Tuning): string {
+  const s = t.saved;
+  const pinned = s.pins.length + (s.emulatorPin ? 1 : 0);
+  return [
+    pinned ? `${pinned} CPU pin${pinned > 1 ? "s" : ""}` : "No pinning",
+    s.hugepages ? (s.hugepageKiB ? `${bytes(s.hugepageKiB * 1024)} huge pages` : "huge pages") : "ordinary pages",
+    s.numaMode ? `NUMA ${s.numaMode} on node ${s.numaNodeset ?? "?"}` : "default NUMA policy",
+  ].join(", ");
+}
+
+export default function AdvancedCard({ d, base, onChanged, bare }: { d: VMDetail; base: string; onChanged: () => void; bare?: boolean }) {
   const [t, setT] = useState<Tuning | undefined>();
   const [loadErr, setLoadErr] = useState<string | undefined>();
   const [msg, setMsg] = useState<string | undefined>();
@@ -63,17 +75,29 @@ export default function AdvancedCard({ d, base, onChanged }: { d: VMDetail; base
       onChanged();
     });
 
-  if (loadErr) return <section className="card" id="hw-advanced"><h3>Advanced</h3><ErrorBox error={loadErr} /></section>;
-  if (!t) return <section className="card" id="hw-advanced"><h3>Advanced</h3><div className="muted">Loading</div></section>;
+  const title = "Advanced: CPU placement, huge pages, NUMA";
+  if (loadErr)
+    return (
+      <SectionFrame id="hw-advanced" title={title} summary="Could not be read" bare={bare}>
+        <ErrorBox error={loadErr} />
+      </SectionFrame>
+    );
+  if (!t)
+    return (
+      <SectionFrame id="hw-advanced" title={title} summary="Loading" bare={bare}>
+        <div className="muted">Loading</div>
+      </SectionFrame>
+    );
   const s = t.saved;
   return (
-    <section className="card advanced" id="hw-advanced" style={{ gridColumn: "1 / -1" }}>
-      <h3>Advanced: CPU placement, huge pages, NUMA</h3>
-      <div className="note">{t.warning}</div>
-      <p className="muted">
-        These settings are saved to the VM's definition and take effect at its next start{d.state !== "shutoff" ? "; the VM keeps running with the current ones until then" : ""}.
-        {t.pendingRestart && <strong> The running VM does not have the saved placement settings yet.</strong>}
-      </p>
+    <SectionFrame id="hw-advanced" title={title} summary={tuningSummary(t)} bare={bare}>
+      <div className="advanced">
+      <OneLine
+        tone="note"
+        text={`Saved to the VM's definition; takes effect at its next start${d.state !== "shutoff" ? " (the running VM keeps its current settings until then)" : ""}.${t.pendingRestart ? " The running VM does not have the saved placement settings yet." : ""}`}
+        details={t.warning}
+        summary="Why this matters"
+      />
       {t.warnings.map((w, i) => (
         <div key={i} className="error">{w}</div>
       ))}
@@ -87,7 +111,8 @@ export default function AdvancedCard({ d, base, onChanged }: { d: VMDetail; base
         <Hugepages key={String(s.hugepageKiB) + s.hugepages} t={t} busy={act.busy} save={save} />
         <Numa key={`${s.numaMode}/${s.numaNodeset}`} t={t} busy={act.busy} save={save} />
       </div>
-    </section>
+      </div>
+    </SectionFrame>
   );
 }
 

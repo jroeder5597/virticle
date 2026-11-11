@@ -10,7 +10,7 @@ const VIEWER = `${P}ovviewer`;
 const PASS = "e2e-user-pass-123";
 
 const SUBMENUS: Record<string, string[]> = {
-  Power: ["Power On", "Shutdown (graceful)", "Shutdown (force off after 60 s)", "Halt (Force Shutdown)", "Reboot (Graceful)", "Reset (Hard Reboot)", "Pause", "Resume"],
+  Power: ["Power On", "Reboot (Graceful)", "Shutdown (graceful)", "Pause", "Resume", "Halt (Force Shutdown)", "Reset (Hard Reboot)"],
   "Edit Settings": ["CPU and memory", "Disks", "Network interfaces", "CD-ROM", "Boot order", "Firmware and TPM", "Advanced", "Passthrough devices"],
   Snapshots: ["Take snapshot", "Manage snapshots", "Schedule"],
   Clone: ["Clone this VM", "Linked clone (from a template)"],
@@ -120,15 +120,18 @@ test.describe.serial("overview and actions", () => {
     await expect(page.getByRole("menu")).toHaveCount(0);
   });
 
-  test("Edit Settings entries open the Hardware tab at that card; Snapshots entries open the tab", async ({ page }) => {
+  test("Edit Settings entries open a dialog on the current tab; Snapshots entries open the tab", async ({ page }) => {
     await openVM(page, vm);
     await actions(page).click();
     await item(page, "Edit Settings").click();
     await item(page, "Disks").click();
-    await expect(page).toHaveURL(/tab=hardware/);
-    await expect(page.locator("#hw-disks")).toBeInViewport();
+    await expect(dialog(page, "Disks")).toBeVisible();
+    await expect(page).not.toHaveURL(/tab=/);
+    await page.keyboard.press("Escape");
     await vmActionOnPage(page, "Edit Settings", "Boot order");
-    await expect(page.locator("#hw-boot")).toBeInViewport();
+    await expect(dialog(page, "Boot order")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog(page)).toHaveCount(0);
     await vmActionOnPage(page, "Snapshots", "Schedule");
     await expect(page).toHaveURL(/tab=snapshots/);
     await expect(page.locator("#snap-schedule")).toBeInViewport();
@@ -155,9 +158,9 @@ test.describe.serial("overview and actions", () => {
     await page.keyboard.press("ArrowRight");
     await expect(item(page, "Power")).toHaveAttribute("aria-expanded", "true");
     // Power On is disabled on a running VM: focus lands on the first entry that can be used
-    await expect(item(page, "Shutdown (graceful)")).toBeFocused();
+    await expect(item(page, "Reboot (Graceful)")).toBeFocused();
     await page.keyboard.press("ArrowDown");
-    await expect(item(page, "Shutdown (force off after 60 s)")).toBeFocused();
+    await expect(item(page, "Shutdown (graceful)")).toBeFocused();
     await page.keyboard.press("ArrowLeft");
     await expect(item(page, "Power")).toBeFocused();
     await expect(item(page, "Power")).toHaveAttribute("aria-expanded", "false");

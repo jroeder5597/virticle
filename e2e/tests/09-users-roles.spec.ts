@@ -89,7 +89,7 @@ test.describe.serial("users and roles", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByPlaceholder("add tag")).toHaveCount(0);
     await expect(page.locator(".tabs").getByRole("button", { name: "Console" })).toHaveCount(0);
-    await expect(page.getByRole("checkbox", { name: /^No$|^Yes$/ })).toBeDisabled();
+    await expect(page.getByRole("checkbox", { name: "Start on host boot" })).toBeDisabled();
 
     // Hardware: every input and select is disabled, no action button is shown
     await page.locator(".tabs").getByRole("button", { name: "Hardware" }).click();

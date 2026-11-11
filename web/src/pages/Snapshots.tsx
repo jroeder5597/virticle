@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CornerDownRight } from "lucide-react";
 import { del, get, post, put, VMDetail } from "../api";
 import { useLive } from "../live";
-import { ErrorBox, Field, Modal, StateBadge, useAction, useConfirm } from "../ui";
+import { ErrorBox, Field, HelpTip, Modal, StateBadge, useAction, useConfirm } from "../ui";
 
 interface Snap {
   name: string;
@@ -157,16 +157,23 @@ export function TakeSnapshot(props: { d: VMDetail; base: string; onClose: () => 
             Include memory (reverting resumes the running guest exactly where it was)
           </label>
           {memory && (
-            <Field
-              label="Storage"
-              hint="External snapshots keep the guest running, add files next to the disk and survive live migration. Internal ones live inside the disk image; the guest is paused while memory is written and they block live migration. Automatic picks external, except on hosts that confine QEMU with AppArmor (where deleting external snapshots fails) or when the current snapshot is internal."
-            >
-              <select value={mode} onChange={(e) => setMode(e.target.value)}>
-                <option value="">Automatic</option>
-                <option value="internal">Internal</option>
-                <option value="external">External</option>
-              </select>
-            </Field>
+            <div className="field-help">
+              <Field label="Snapshot type">
+                <select value={mode} onChange={(e) => setMode(e.target.value)}>
+                  <option value="">Automatic</option>
+                  <option value="internal">Internal</option>
+                  <option value="external">External</option>
+                </select>
+              </Field>
+              <HelpTip label="About snapshot types">
+                <h4>Automatic</h4>
+                <p>The controller chooses for you. It picks external, except on nodes that confine QEMU with AppArmor (Debian and Ubuntu), where libvirt cannot delete external snapshots, and when the VM's current snapshot is already internal. Then it picks internal.</p>
+                <h4>Internal</h4>
+                <p>The data lives inside the disk image (qcow2 only). The guest is paused while its memory is written, and a VM with an internal snapshot cannot be live migrated. Deleting it only edits the image.</p>
+                <h4>External</h4>
+                <p>The guest keeps running. The snapshot is a file next to the disk and new writes go to an overlay file, so the VM can be live migrated. Deleting it merges the overlay back into the disk, which takes a while on a big disk and needs a node where libvirt is allowed to do that.</p>
+              </HelpTip>
+            </div>
           )}
           <label className="check" style={{ marginTop: 8 }}>
             <input type="checkbox" checked={quiesce} disabled={!agentOK || memory} onChange={(e) => setQuiesce(e.target.checked)} />

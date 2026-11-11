@@ -158,8 +158,23 @@ function UtilCard({ d, s, g }: { d: VMDetail; s: Stats; g?: GuestInfo }) {
   );
 }
 
-export default function Overview({ d, base }: { d: VMDetail; base: string }) {
+export default function Overview({ d, base, onChanged }: { d: VMDetail; base: string; onChanged: () => void }) {
   const act = useAction();
+  // libvirt announces no event for an autostart change, so the box follows the click at once and the detail is reloaded.
+  const [auto, setAuto] = useState(d.autostart);
+  useEffect(() => setAuto(d.autostart), [d.autostart]);
+  const toggleAuto = (v: boolean) => {
+    setAuto(v);
+    act.run(async () => {
+      try {
+        await put(`${base}/autostart`, { autostart: v });
+      } catch (e) {
+        setAuto(!v);
+        throw e;
+      }
+      onChanged();
+    });
+  };
   const viewer = useRole() === "viewer";
   // One request each for the guest agent's report and the stats series, shared by the cards that show them.
   const g = usePoll<GuestInfo>(d.agent === "connected" && d.state === "running" ? `${base}/guest` : null, 20000);
@@ -196,10 +211,7 @@ export default function Overview({ d, base }: { d: VMDetail; base: string }) {
             <dd className="mono">{d.uuid}</dd>
             <dt>Start on host boot</dt>
             <dd>
-              <label className="check">
-                <input type="checkbox" checked={d.autostart} disabled={act.busy || viewer} onChange={(e) => act.run(() => put(`${base}/autostart`, { autostart: e.target.checked }))} />
-                {d.autostart ? "Yes" : "No"}
-              </label>
+              <input type="checkbox" checked={auto} disabled={act.busy || viewer} aria-label="Start on host boot" onChange={(e) => toggleAuto(e.target.checked)} />
             </dd>
           </dl>
           {d.passthroughDevices > 0 && (
@@ -257,7 +269,7 @@ export default function Overview({ d, base }: { d: VMDetail; base: string }) {
           </table>
         </section>
 
-        {d.agent === "connected" ? <GuestCard d={d} g={g} /> : <AgentCard d={d} base={base} />}
+        {d.agent === "connected" ? <GuestCard d={d} g={g} /> : <AgentCard d={d} base={base} onChanged={onChanged} />}
       </div>
     </div>
   );
@@ -272,7 +284,7 @@ const agentInstall: [string, string][] = [
 ];
 
 /** Guest agent status, with the steps to get it working when it is not. */
-function AgentCard({ d, base }: { d: VMDetail; base: string }) {
+function AgentCard({ d, base, onChanged }: { d: VMDetail; base: string; onChanged: () => void }) {
   const act = useAction();
   const [restart, setRestart] = useState(false);
   const [copied, setCopied] = useState("");
@@ -282,6 +294,7 @@ function AgentCard({ d, base }: { d: VMDetail; base: string }) {
     act.run(async () => {
       const r = await post<{ needsRestart: boolean }>(`${base}/agent-channel`);
       setRestart(r.needsRestart);
+      onChanged();
     });
 
   return (

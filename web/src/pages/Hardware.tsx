@@ -2,6 +2,7 @@
 // Every change is sent to the server, which applies it to the running VM and
 // the saved definition where libvirt allows and says which one happened.
 import { useEffect, useState } from "react";
+import { type LucideIcon, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpFromLine, Disc3, Link2, Link2Off, Maximize2, Network as NetIcon, Trash2, X } from "lucide-react";
 import { api, bytes, get, Network, Pool, Volume, VMDetail } from "../api";
 import { useRole } from "../auth";
 import { ErrorBox, Field, Modal, useAction } from "../ui";
@@ -9,6 +10,8 @@ import FirmwareCard from "./Firmware";
 import AdvancedCard from "./Advanced";
 import PassthroughCard from "./Passthrough";
 import DiskMoveDialog from "./DiskMove";
+import PoolSelect from "../PoolSelect";
+import "./hw.css";
 
 interface HwResult {
   applied: "live+config" | "live" | "config";
@@ -30,9 +33,9 @@ function summary(r: HwResult, running: boolean): string {
   return r.note ? `${s} ${r.note}` : s;
 }
 
-export default function Hardware({ d, base, onChanged }: { d: VMDetail; base: string; onChanged: () => void }) {
+/** Send/run/outcome for one set of hardware cards: the Hardware tab has one, each Edit Settings dialog has its own. */
+function useHw(d: VMDetail, base: string, onChanged: () => void) {
   const act = useAction();
-  const viewer = useRole() === "viewer";
   const [outcome, setOutcome] = useState<{ text: string; restart: boolean }>();
   const running = d.state !== "shutoff";
   const send: Send = async (method, path, body) => {
@@ -42,23 +45,86 @@ export default function Hardware({ d, base, onChanged }: { d: VMDetail; base: st
     return r;
   };
   const run = (fn: () => Promise<unknown>) => act.run(fn);
-  const disks = d.disks.filter((k) => k.device === "disk");
-  const cdroms = d.disks.filter((k) => k.device === "cdrom");
+  return { send, run, busy: act.busy, error: act.error, outcome };
+}
 
+export type HwArea = "cpu" | "disks" | "nics" | "cdrom" | "boot" | "firmware" | "advanced" | "passthrough";
+
+function Outcome({ hw }: { hw: ReturnType<typeof useHw> }) {
+  return (
+    <>
+      {hw.outcome && <div className={hw.outcome.restart ? "note" : "muted"}>{hw.outcome.text}</div>}
+      <ErrorBox error={hw.error} />
+    </>
+  );
+}
+
+/** One hardware section; `bare` renders it for a dialog (no card frame, no element ids). */
+function Section({ area, d, base, onChanged, hw, bare }: { area: HwArea; d: VMDetail; base: string; onChanged: () => void; hw: ReturnType<typeof useHw>; bare?: boolean }) {
+  const p = { d, send: hw.send, run: hw.run, busy: hw.busy, bare };
+  switch (area) {
+    case "cpu":
+      return <CpuMemory {...p} />;
+    case "boot":
+      return <Boot {...p} />;
+    case "disks":
+      return <Disks {...p} disks={d.disks.filter((k) => k.device === "disk")} onChanged={onChanged} />;
+    case "nics":
+      return <NICs {...p} />;
+    case "cdrom":
+      return <CDROMs {...p} cdroms={d.disks.filter((k) => k.device === "cdrom")} />;
+    case "firmware":
+      return <FirmwareCard d={d} base={base} onChanged={onChanged} bare={bare} />;
+    case "advanced":
+      return <AdvancedCard d={d} base={base} onChanged={onChanged} bare={bare} />;
+    case "passthrough":
+      return <PassthroughCard d={d} base={base} onChanged={onChanged} bare={bare} />;
+  }
+}
+
+/** Dialog sizes: tables and forms with many columns get the wide one. */
+const wideAreas: HwArea[] = ["disks", "nics", "cdrom", "boot", "advanced", "passthrough"];
+
+/**
+ * The same section as on the Hardware tab, in a themed dialog (Actions, Edit Settings). It reads the same VM detail
+ * and reports changes through the same `onChanged`, so the tab and the dialog always agree.
+ */
+export function HardwareDialog({ area, title, d, base, onChanged, onClose }: { area: HwArea; title: string; d: VMDetail; base: string; onChanged: () => void; onClose: () => void }) {
+  const hw = useHw(d, base, onChanged);
+  const viewer = useRole() === "viewer";
+  return (
+    <Modal title={title} onClose={onClose} wide={wideAreas.includes(area)}>
+      <div className="hwdlg">
+        <fieldset className="plain" disabled={viewer}>
+          <Outcome hw={hw} />
+          <Section area={area} d={d} base={base} onChanged={onChanged} hw={hw} bare />
+        </fieldset>
+      </div>
+    </Modal>
+  );
+}
+
+export default function Hardware({ d, base, onChanged }: { d: VMDetail; base: string; onChanged: () => void }) {
+  const viewer = useRole() === "viewer";
+  const hw = useHw(d, base, onChanged);
+  const S = (area: HwArea) => <Section area={area} d={d} base={base} onChanged={onChanged} hw={hw} />;
   return (
     // A viewer sees the hardware but every control is disabled, not just its buttons hidden.
-    <fieldset className="plain" disabled={viewer}>
-      {outcome && <div className={outcome.restart ? "note" : "muted"}>{outcome.text}</div>}
-      <ErrorBox error={act.error} />
-      <div className="cards" style={{ marginTop: 12, alignItems: "start" }}>
-        <CpuMemory d={d} send={send} run={run} busy={act.busy} />
-        <Boot d={d} send={send} run={run} busy={act.busy} />
-        <Disks d={d} disks={disks} send={send} run={run} busy={act.busy} onChanged={onChanged} />
-        <NICs d={d} send={send} run={run} busy={act.busy} />
-        <CDROMs d={d} cdroms={cdroms} send={send} run={run} busy={act.busy} />
-        <FirmwareCard d={d} base={base} onChanged={onChanged} />
-        <AdvancedCard d={d} base={base} onChanged={onChanged} />
-        <PassthroughCard d={d} base={base} onChanged={onChanged} />
+    <fieldset className="plain hwwrap" disabled={viewer}>
+      <Outcome hw={hw} />
+      <div className="hw">
+        <div className="hwcol">
+          {S("cpu")}
+          {S("firmware")}
+        </div>
+        <div className="hwcol">
+          {S("boot")}
+          {S("cdrom")}
+        </div>
+        {S("disks")}
+        {S("nics")}
+        {S("advanced")}
+        {S("passthrough")}
       </div>
     </fieldset>
   );
@@ -69,10 +135,34 @@ interface CardProps {
   send: Send;
   run: (fn: () => Promise<unknown>) => Promise<boolean>;
   busy: boolean;
+  /** Shown in a dialog: no card frame, no element ids (the tab may be showing the same card). */
+  bare?: boolean;
 }
 
-function CpuMemory({ d, send, run, busy }: CardProps) {
-  const [editing, setEditing] = useState(false);
+/** Card frame with a title row: title left, actions right. In a dialog the dialog's own title replaces the heading. */
+function Card({ id, title, bare, actions, className, children }: { id: string; title: string; bare?: boolean; actions?: React.ReactNode; className?: string; children: React.ReactNode }) {
+  return (
+    <section className={(bare ? "hwbare" : "card") + (className ? " " + className : "")} id={bare ? undefined : id} aria-label={bare ? title : undefined}>
+      <div className="chead">
+        {!bare && <h3>{title}</h3>}
+        {actions && <div className="chead-actions">{actions}</div>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** A labelled icon button for a table row. */
+function RowBtn({ label, icon: Icon, ...rest }: { label: string; icon: LucideIcon } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button className="iconbtn" aria-label={label} title={label} {...rest}>
+      <Icon size={15} aria-hidden="true" />
+    </button>
+  );
+}
+
+function CpuMemory({ d, send, run, busy, bare }: CardProps) {
+  const [editing, setEditing] = useState(!!bare);
   const [vcpus, setVcpus] = useState(d.vcpus);
   const [maxV, setMaxV] = useState(d.maxVcpus);
   const [mem, setMem] = useState(Math.round(d.currentMemoryKiB / 1024));
@@ -89,15 +179,14 @@ function CpuMemory({ d, send, run, busy }: CardProps) {
       if (vcpus !== d.vcpus || maxV !== d.maxVcpus) await send("PUT", "/cpu", { vcpus, maxVcpus: maxV });
       if (mem !== Math.round(d.currentMemoryKiB / 1024) || maxMem !== Math.round(d.memoryKiB / 1024)) await send("PUT", "/memory", { memoryMiB: mem, maxMemoryMiB: maxMem });
     });
-    if (ok) setEditing(false);
+    if (ok && !bare) setEditing(false);
   };
   const num = (set: (n: number) => void) => (e: React.ChangeEvent<HTMLInputElement>) => set(Number(e.target.value));
   return (
-    <section className="card" id="hw-cpu">
-      <h3>CPU and memory</h3>
+    <Card id="hw-cpu" title="CPU and memory" bare={bare} actions={!editing && <button onClick={start}>Edit</button>}>
       {!editing ? (
         <>
-          <dl>
+          <dl className="hwdl">
             <dt>vCPUs</dt>
             <dd>
               {d.vcpus} <span className="muted">(up to {d.maxVcpus})</span>
@@ -107,9 +196,6 @@ function CpuMemory({ d, send, run, busy }: CardProps) {
               {bytes(d.currentMemoryKiB * 1024)} <span className="muted">(up to {bytes(d.memoryKiB * 1024)})</span>
             </dd>
           </dl>
-          <footer style={{ justifyContent: "flex-start" }}>
-            <button onClick={start}>Edit</button>
-          </footer>
         </>
       ) : (
         <>
@@ -135,47 +221,41 @@ function CpuMemory({ d, send, run, busy }: CardProps) {
           </footer>
         </>
       )}
-    </section>
+    </Card>
   );
 }
 
 // --- disks ---
 
-function Disks({ d, disks, send, run, busy, onChanged }: CardProps & { disks: DiskT[]; onChanged: () => void }) {
+function Disks({ d, disks, send, run, busy, onChanged, bare }: CardProps & { disks: DiskT[]; onChanged: () => void }) {
   const [adding, setAdding] = useState(false);
   const [resizing, setResizing] = useState<DiskT>();
   const [detaching, setDetaching] = useState<DiskT>();
   const [moving, setMoving] = useState<DiskT>();
   return (
-    <section className="card span" id="hw-disks">
-      <h3>Disks</h3>
-      <table className="compact">
+    <Card id="hw-disks" title="Disks" bare={bare} className="full" actions={<button onClick={() => setAdding(true)}>Add disk</button>}>
+      <div className="table-scroll">
+      <table className="compact hwt hwt-stack">
         <thead>
           <tr>
-            <th>Target</th>
-            <th>Bus</th>
+            <th className="fit">Target</th>
+            <th className="fit">Bus</th>
             <th>Source</th>
-            <th className="num">Size</th>
-            <th />
+            <th className="num fit">Size</th>
+            <th className="fit" />
           </tr>
         </thead>
         <tbody>
           {disks.map((k) => (
             <tr key={k.target}>
-              <td className="mono">{k.target}</td>
-              <td>{[k.bus, k.format, k.readOnly ? "read-only" : ""].filter(Boolean).join(" · ")}</td>
+              <td className="mono fit">{k.target}</td>
+              <td className="fit">{[k.bus, k.format, k.readOnly ? "read-only" : ""].filter(Boolean).join(" · ")}</td>
               <td className="mono wrap">{k.source}</td>
-              <td className="num">{k.capacity ? bytes(k.capacity) : ""}</td>
-              <td className="actions">
-                <button className="link" disabled={busy} onClick={() => setResizing(k)}>
-                  Resize
-                </button>
-                <button className="link" disabled={busy || !k.source || k.source.startsWith("/dev/")} onClick={() => setMoving(k)}>
-                  Move
-                </button>
-                <button className="link" disabled={busy} onClick={() => setDetaching(k)}>
-                  Detach
-                </button>
+              <td className="num fit">{k.capacity ? bytes(k.capacity) : ""}</td>
+              <td className="actions fit">
+                <RowBtn label="Resize" icon={Maximize2} disabled={busy} onClick={() => setResizing(k)} />
+                <RowBtn label="Move" icon={ArrowLeftRight} disabled={busy || !k.source || k.source.startsWith("/dev/")} onClick={() => setMoving(k)} />
+                <RowBtn label="Detach" icon={Trash2} disabled={busy} onClick={() => setDetaching(k)} />
               </td>
             </tr>
           ))}
@@ -186,9 +266,7 @@ function Disks({ d, disks, send, run, busy, onChanged }: CardProps & { disks: Di
           )}
         </tbody>
       </table>
-      <footer style={{ justifyContent: "flex-start" }}>
-        <button onClick={() => setAdding(true)}>Add disk</button>
-      </footer>
+      </div>
       {adding && <AddDisk d={d} send={send} onClose={() => setAdding(false)} />}
       {moving && <DiskMoveDialog d={d} disk={moving} onClose={() => setMoving(undefined)} onDone={onChanged} />}
       {resizing && <ResizeDisk disk={resizing} send={send} onClose={() => setResizing(undefined)} />}
@@ -197,7 +275,7 @@ function Disks({ d, disks, send, run, busy, onChanged }: CardProps & { disks: Di
           <DetachBody disk={detaching} d={d} send={send} run={run} onClose={() => setDetaching(undefined)} />
         </Modal>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -258,16 +336,17 @@ function ResizeDisk({ disk, send, onClose }: { disk: DiskT; send: Send; onClose:
   );
 }
 
-function usePools(node: number) {
+/** The node's storage pools; inactive ones only when `all` (a picker that lists them as unavailable). */
+function usePools(node: number, all = false) {
   const [pools, setPools] = useState<Pool[]>([]);
   useEffect(() => {
-    get<Pool[]>(`/nodes/${node}/pools`).then((p) => setPools(p.filter((x) => x.state === "running")), () => {});
-  }, [node]);
+    get<Pool[]>(`/nodes/${node}/pools`).then((p) => setPools(all ? p : p.filter((x) => x.state === "running")), () => {});
+  }, [node, all]);
   return pools;
 }
 
 function AddDisk({ d, send, onClose }: { d: VMDetail; send: Send; onClose: () => void }) {
-  const pools = usePools(d.node);
+  const pools = usePools(d.node, true);
   const [mode, setMode] = useState<"new" | "existing">("new");
   const [pool, setPool] = useState("");
   const [vols, setVols] = useState<Volume[]>([]);
@@ -280,7 +359,8 @@ function AddDisk({ d, send, onClose }: { d: VMDetail; send: Send; onClose: () =>
   const [readonly, setReadonly] = useState(false);
   const act = useAction();
   useEffect(() => {
-    if (!pool && pools.length) setPool(pools.find((p) => p.name === "default")?.name ?? pools[0].name);
+    const live = pools.filter((p) => p.state === "running");
+    if (!pool && live.length) setPool(live.find((p) => p.name === "default")?.name ?? live[0].name);
   }, [pools, pool]);
   useEffect(() => {
     if (!pool) return;
@@ -314,12 +394,8 @@ function AddDisk({ d, send, onClose }: { d: VMDetail; send: Send; onClose: () =>
           Existing volume
         </button>
       </div>
-      <Field label="Storage pool">
-        <select value={pool} onChange={(e) => setPool(e.target.value)}>
-          {pools.map((p) => (
-            <option key={p.name}>{p.name}</option>
-          ))}
-        </select>
+      <Field label="Storage pool" group>
+        <PoolSelect pools={pools} value={pool} onChange={setPool} label="Storage pool" needBytes={mode === "new" ? size * 2 ** 30 : undefined} />
       </Field>
       {mode === "new" ? (
         <div className="grid2">
@@ -383,27 +459,21 @@ function AddDisk({ d, send, onClose }: { d: VMDetail; send: Send; onClose: () =>
 
 // --- CD-ROM ---
 
-function CDROMs({ d, cdroms, send, run, busy }: CardProps & { cdroms: DiskT[] }) {
+function CDROMs({ d, cdroms, send, run, busy, bare }: CardProps & { cdroms: DiskT[] }) {
   const [picking, setPicking] = useState<DiskT>();
   return (
-    <section className="card" id="hw-cdrom">
-      <h3>CD-ROM</h3>
-      <table className="compact">
+    <Card id="hw-cdrom" title="CD-ROM" bare={bare}>
+      <div className="table-scroll">
+      <table className="compact hwt hwt-stack">
         <tbody>
           {cdroms.map((k) => (
             <tr key={k.target}>
-              <td className="mono">{k.target}</td>
-              <td>{k.bus}</td>
+              <td className="mono fit">{k.target}</td>
+              <td className="fit">{k.bus}</td>
               <td className="mono wrap">{k.source || <span className="muted">(no media)</span>}</td>
-              <td className="actions">
-                <button className="link" disabled={busy} onClick={() => setPicking(k)}>
-                  {k.source ? "Change media" : "Insert media"}
-                </button>
-                {k.source && (
-                  <button className="link" disabled={busy} onClick={() => run(() => send("PUT", `/cdrom/${k.target}`, null))}>
-                    Eject
-                  </button>
-                )}
+              <td className="actions fit">
+                <RowBtn label={k.source ? "Change media" : "Insert media"} icon={Disc3} disabled={busy} onClick={() => setPicking(k)} />
+                {k.source && <RowBtn label="Eject" icon={ArrowUpFromLine} disabled={busy} onClick={() => run(() => send("PUT", `/cdrom/${k.target}`, null))} />}
               </td>
             </tr>
           ))}
@@ -414,16 +484,17 @@ function CDROMs({ d, cdroms, send, run, busy }: CardProps & { cdroms: DiskT[] })
           )}
         </tbody>
       </table>
+      </div>
       {cdroms.length === 0 && (
-        <footer style={{ justifyContent: "flex-start" }}>
+        <div className="hwadd">
           <button disabled={busy} onClick={() => run(() => send("POST", "/cdrom"))}>
             Add CD-ROM drive
           </button>
           {d.state !== "shutoff" && <span className="muted">A SATA drive cannot be hot-plugged; it appears after a restart.</span>}
-        </footer>
+        </div>
       )}
       {picking && <PickISO d={d} drive={picking} send={send} onClose={() => setPicking(undefined)} />}
-    </section>
+    </Card>
   );
 }
 
@@ -480,41 +551,40 @@ function PickISO({ d, drive, send, onClose }: { d: VMDetail; drive: DiskT; send:
 
 // --- network interfaces ---
 
-function NICs({ d, send, run, busy }: CardProps) {
+function NICs({ d, send, run, busy, bare }: CardProps) {
   const [form, setForm] = useState<{ nic?: NicT } | null>(null);
   const [removing, setRemoving] = useState<NicT>();
   return (
-    <section className="card span" id="hw-nics">
-      <h3>Network interfaces</h3>
-      <table className="compact">
+    <Card id="hw-nics" title="Network interfaces" bare={bare} className="full" actions={<button onClick={() => setForm({})}>Add interface</button>}>
+      <div className="table-scroll">
+      <table className="compact hwt hwt-stack">
         <thead>
           <tr>
-            <th>MAC</th>
+            <th className="fit">MAC</th>
             <th>Network</th>
-            <th>Model</th>
-            <th>Link</th>
-            <th />
+            <th className="fit">Model</th>
+            <th className="fit">Link</th>
+            <th className="fit" />
           </tr>
         </thead>
         <tbody>
           {d.nics.map((n) => (
             <tr key={n.mac}>
-              <td className="mono">{n.mac}</td>
-              <td>
+              <td className="mono fit">{n.mac}</td>
+              <td className="wrap">
                 {n.source} <span className="muted">({n.type})</span>
               </td>
-              <td>{n.model}</td>
-              <td>{n.linkState}</td>
-              <td className="actions">
-                <button className="link" disabled={busy} onClick={() => setForm({ nic: n })}>
-                  Change network
-                </button>
-                <button className="link" disabled={busy} onClick={() => run(() => send("PUT", `/nics/${n.mac}`, { linkState: n.linkState === "down" ? "up" : "down" }))}>
-                  Link {n.linkState === "down" ? "up" : "down"}
-                </button>
-                <button className="link" disabled={busy} onClick={() => setRemoving(n)}>
-                  Remove
-                </button>
+              <td className="fit">{n.model}</td>
+              <td className="fit">{n.linkState}</td>
+              <td className="actions fit">
+                <RowBtn label="Change network" icon={NetIcon} disabled={busy} onClick={() => setForm({ nic: n })} />
+                <RowBtn
+                  label={`Link ${n.linkState === "down" ? "up" : "down"}`}
+                  icon={n.linkState === "down" ? Link2 : Link2Off}
+                  disabled={busy}
+                  onClick={() => run(() => send("PUT", `/nics/${n.mac}`, { linkState: n.linkState === "down" ? "up" : "down" }))}
+                />
+                <RowBtn label="Remove" icon={Trash2} disabled={busy} onClick={() => setRemoving(n)} />
               </td>
             </tr>
           ))}
@@ -525,9 +595,7 @@ function NICs({ d, send, run, busy }: CardProps) {
           )}
         </tbody>
       </table>
-      <footer style={{ justifyContent: "flex-start" }}>
-        <button onClick={() => setForm({})}>Add interface</button>
-      </footer>
+      </div>
       {form && <NICForm d={d} nic={form.nic} send={send} onClose={() => setForm(null)} />}
       {removing && (
         <Modal title={`Remove ${removing.mac}?`} onClose={() => setRemoving(undefined)}>
@@ -535,7 +603,7 @@ function NICs({ d, send, run, busy }: CardProps) {
           <RemoveNIC nic={removing} send={send} onClose={() => setRemoving(undefined)} />
         </Modal>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -669,7 +737,7 @@ function bootDevices(d: VMDetail): { all: BootDev[]; order: string[]; legacy: bo
   return { all, order: order.filter((x, i) => order.indexOf(x) === i), legacy: true };
 }
 
-function Boot({ d, send, run, busy }: CardProps) {
+function Boot({ d, send, run, busy, bare }: CardProps) {
   const { all, order: current, legacy } = bootDevices(d);
   const key = current.join(",");
   const [order, setOrder] = useState(current);
@@ -686,32 +754,26 @@ function Boot({ d, send, run, busy }: CardProps) {
   };
   const rest = all.filter((x) => !order.includes(x.id));
   return (
-    <section className="card" id="hw-boot">
-      <h3>Boot order</h3>
+    <Card id="hw-boot" title="Boot order" bare={bare}>
       {legacy && <p className="muted">This VM uses the older class-based boot list ({d.boot.join(", ")}). Saving switches it to a per-device order.</p>}
-      <table className="compact">
+      <div className="table-scroll">
+      <table className="compact hwt">
         <tbody>
           {order.map((id, i) => (
             <tr key={id}>
-              <td className="num">{i + 1}.</td>
-              <td>{label(id)}</td>
-              <td className="actions">
-                <button className="ghost" disabled={i === 0} onClick={() => move(i, -1)} aria-label="Move up">
-                  ↑
-                </button>
-                <button className="ghost" disabled={i === order.length - 1} onClick={() => move(i, 1)} aria-label="Move down">
-                  ↓
-                </button>
-                <button
-                  className="ghost"
+              <td className="num fit">{i + 1}.</td>
+              <td className="wrap">{label(id)}</td>
+              <td className="actions fit">
+                <RowBtn label="Move up" icon={ArrowUp} disabled={i === 0} onClick={() => move(i, -1)} />
+                <RowBtn label="Move down" icon={ArrowDown} disabled={i === order.length - 1} onClick={() => move(i, 1)} />
+                <RowBtn
+                  label="Remove from boot order"
+                  icon={X}
                   onClick={() => {
                     setOrder(order.filter((x) => x !== id));
                     setDirty(true);
                   }}
-                  aria-label="Remove from boot order"
-                >
-                  ✕
-                </button>
+                />
               </td>
             </tr>
           ))}
@@ -722,9 +784,9 @@ function Boot({ d, send, run, busy }: CardProps) {
           )}
           {rest.map((x) => (
             <tr key={x.id}>
-              <td />
-              <td className="muted">{x.label}</td>
-              <td className="actions">
+              <td className="fit" />
+              <td className="muted wrap">{x.label}</td>
+              <td className="actions fit">
                 <button
                   className="link"
                   onClick={() => {
@@ -739,7 +801,8 @@ function Boot({ d, send, run, busy }: CardProps) {
           ))}
         </tbody>
       </table>
-      <footer>
+      </div>
+      <footer className="hwfoot">
         {d.state !== "shutoff" && <span className="muted">Takes effect at the next start.</span>}
         <button
           disabled={!dirty}
@@ -760,6 +823,6 @@ function Boot({ d, send, run, busy }: CardProps) {
           Save boot order
         </button>
       </footer>
-    </section>
+    </Card>
   );
 }

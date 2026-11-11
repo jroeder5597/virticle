@@ -61,9 +61,18 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     const util = page.locator("section#utilization");
     await expect(util.locator(".fsbar .mono", { hasText: /^\/$/ })).toBeVisible({ timeout: 60_000 });
     await expect(util).toContainText(/of \d+(\.\d)? GiB \(\d+%\)/);
-    // the Guest card keeps version, kernel and time zone, and no longer repeats host name and filesystems
-    const guest = page.locator("section.card").filter({ has: page.getByRole("heading", { name: "Guest", exact: true }) });
-    await expect(guest).toContainText(/Kernel/);
+    // the Guest details card shows what only the agent knows and does not repeat OS, host name or filesystems
+    const guest = page.locator("section#guest-details");
+    await expect(guest.getByRole("heading", { name: "Guest details", exact: true })).toBeVisible();
+    await expect(guest).toContainText(/Kernel/, { timeout: 60_000 });
+    await expect(guest).toContainText("Quiesced snapshots");
+    await expect(guest).toContainText("available");
+    await expect(guest).toContainText(/vCPUs online\s*1 of 1/);
+    await expect(guest).toContainText(/Time zone/);
+    await expect(guest.locator("dt", { hasText: /^(enp|ens|eth)/ }).first()).toBeVisible();
+    await expect(guest.locator("dd", { hasText: /\d+\.\d+\.\d+\.\d+\/\d+/ }).first()).toBeVisible();
+    await expect(guest).not.toContainText("Version");
+    await expect(guest).not.toContainText("Host name");
   });
 
   test("utilization shows CPU and memory with data and sparklines", async ({ page, api }) => {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { get, put, VMDetail } from "../api";
 import { ErrorBox, Field, useAction, useConfirm } from "../ui";
+import { OneLine } from "./Disclosure";
 
 export interface FwCaps {
   uefi: boolean;
@@ -101,7 +102,7 @@ export function FirmwareFields({ node, value, onChange }: { node: number; value:
 }
 
 /** Firmware, Secure Boot and TPM of an existing VM (Hardware tab). */
-export default function FirmwareCard({ d, base, onChanged }: { d: VMDetail; base: string; onChanged: () => void }) {
+export default function FirmwareCard({ d, base, onChanged, bare }: { d: VMDetail; base: string; onChanged: () => void; bare?: boolean }) {
   const act = useAction();
   const confirm = useConfirm();
   const [caps, setCaps] = useState<FwCaps | undefined>();
@@ -119,10 +120,14 @@ export default function FirmwareCard({ d, base, onChanged }: { d: VMDetail; base
       onChanged();
     });
   return (
-    <section className="card" id="hw-firmware">
+    <section className={bare ? "hwbare" : "card"} id={bare ? undefined : "hw-firmware"} aria-label={bare ? "Firmware and TPM" : undefined}>
       {confirm.dialog}
-      <h3>Firmware and TPM</h3>
-      <dl>
+      {!bare && (
+        <div className="chead">
+          <h3>Firmware and TPM</h3>
+        </div>
+      )}
+      <dl className="hwdl">
         <dt>Firmware</dt>
         <dd>{fw?.firmware === "uefi" ? "UEFI" : "BIOS"}</dd>
         <dt>Secure Boot</dt>
@@ -147,9 +152,11 @@ export default function FirmwareCard({ d, base, onChanged }: { d: VMDetail; base
           </button>
         )}
       </div>
-      <p className="muted" style={{ marginBottom: 0 }}>
-        Switching between BIOS and UEFI is not offered for an existing VM: the guest's boot setup depends on it. Create a new VM with the other firmware and attach the disk instead.
-      </p>
+      <OneLine
+        text="Firmware cannot be switched on an existing VM."
+        summary="Why not"
+        details="The guest's boot setup depends on it. Create a new VM with the other firmware and attach the disk instead."
+      />
       {outcome && <p className="muted">{outcome}</p>}
       <ErrorBox error={act.error} />
     </section>

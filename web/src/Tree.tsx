@@ -356,13 +356,13 @@ export default function Tree() {
       if (v.state === "shutoff" && !v.template) items.push({ label: powerLabel.start, icon: Play, run: () => power(v, "start") });
       if (v.state === "paused") items.push({ label: powerLabel.resume, icon: Play, run: () => power(v, "resume") });
       if (v.state === "running") {
-        items.push({ label: powerLabel.shutdown, icon: Power, run: () => power(v, "shutdown") });
         items.push({ label: powerLabel.reboot, icon: RotateCw, run: () => power(v, "reboot") });
+        items.push({ label: powerLabel.shutdown, icon: Power, run: () => power(v, "shutdown") });
         items.push({ label: powerLabel.pause, icon: Pause, run: () => power(v, "pause") });
       }
       if (on) {
-        items.push({ label: powerLabel.reset, icon: RotateCw, danger: true, run: () => power(v, "reset") });
         items.push({ label: powerLabel.poweroff, icon: Power, danger: true, run: () => power(v, "poweroff") });
+        items.push({ label: powerLabel.reset, icon: RotateCw, danger: true, run: () => power(v, "reset") });
         items.push({ label: "Console", icon: Terminal, run: () => page("console") });
       }
       items.push("sep", { label: "Snapshots", icon: Camera, run: () => page("snapshots") }, { label: "Migrate", icon: ArrowRightLeft, run: () => page() }, { label: "Clone", icon: Copy, run: () => page() });

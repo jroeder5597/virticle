@@ -6,40 +6,60 @@ import { AgentHelp, get, GuestInfo, post, put, VMDetail } from "../api";
 import { useLive } from "../live";
 import { ErrorBox, useAction, useConfirm } from "../ui";
 
-/** OS, hostname and filesystem usage as the guest agent reports them. */
+const utc = (off: number) => {
+  const m = Math.abs(off) / 60;
+  return `UTC${off < 0 ? "-" : "+"}${Math.floor(m / 60)}${m % 60 ? ":" + String(m % 60).padStart(2, "0") : ""}`;
+};
+
+/** Seconds as a short span: "5 s", "3 min", "2.5 h". */
+function span(sec: number): string {
+  const a = Math.abs(sec);
+  return a < 120 ? `${Math.round(a)} s` : a < 7200 ? `${Math.round(a / 60)} min` : `${(a / 3600).toFixed(1)} h`;
+}
+
+/**
+ * What only the guest agent can tell and the rest of the overview does not show: kernel, clock, users,
+ * agent, vCPUs and every network interface with all its addresses. OS, host name and file systems are
+ * on the Summary and Resource utilization cards.
+ */
 export function GuestCard({ d, g }: { d: VMDetail; g?: GuestInfo }) {
   if (d.agent !== "connected" || d.state !== "running") return null;
+  const row = (label: string, value: React.ReactNode, mono = false) => (
+    <>
+      <dt>{label}</dt>
+      <dd className={mono ? "mono wrap" : undefined}>{value}</dd>
+    </>
+  );
   return (
-    <section className="card">
-      <h3>Guest</h3>
+    <section className="card" id="guest-details" aria-label="Guest details">
+      <h3>Guest details</h3>
       {!g && <p className="muted">Asking the guest agent</p>}
       {g && !g.available && <p className="muted">The guest agent did not answer: {g.error}</p>}
       {g?.available && (
-        <>
-          <dl>
-            {g.os?.version && (
-              <>
-                <dt>Version</dt>
-                <dd>{g.os.version}</dd>
-              </>
+        <dl>
+          {g.os?.kernel && row("Kernel", `${g.os.kernel}${g.os.machine ? ` (${g.os.machine})` : ""}`, true)}
+          {g.timezone && row("Time zone", `${g.timezone}${g.timezoneOffset !== undefined ? ` (${utc(g.timezoneOffset)})` : ""}`)}
+          {g.clockOffsetSec !== undefined && row("Clock", `${span(g.clockOffsetSec)} ${g.clockOffsetSec > 0 ? "ahead of" : "behind"} the host`)}
+          {g.users !== undefined &&
+            row(
+              "Logged-in users",
+              g.users.length === 0 ? (
+                "none"
+              ) : (
+                <>
+                  {g.users.map((u, i) => (
+                    <div key={i}>
+                      {u.user} <span className="muted">since {new Date(u.loginTime * 1000).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </>
+              ),
             )}
-            {g.os?.kernel && (
-              <>
-                <dt>Kernel</dt>
-                <dd className="mono">
-                  {g.os.kernel}
-                  {g.os.machine ? ` (${g.os.machine})` : ""}
-                </dd>
-              </>
-            )}
-            {g.timezone && (
-              <>
-                <dt>Time zone</dt>
-                <dd>{g.timezone}</dd>
-              </>
-            )}
-          </dl>
-        </>
+          {g.vcpusOnline !== undefined && row("vCPUs online", `${g.vcpusOnline} of ${g.vcpusTotal}`)}
+          {g.agentVersion && row("Guest agent", `version ${g.agentVersion}`)}
+          {g.quiesce !== undefined && row("Quiesced snapshots", g.quiesce ? "available" : "not available")}
+          {g.interfaces?.map((n) => row(n.name, n.addresses.length ? n.addresses.map((a) => <div key={a}>{a}</div>) : <span className="muted">no address</span>, true))}
+        </dl>
       )}
     </section>
   );

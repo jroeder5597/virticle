@@ -10,18 +10,19 @@ import { powerConfirm, powerLabel } from "../power";
 import { ErrorBox, Modal, useAction, useConfirm } from "../ui";
 import { CloneDialog, SealDialog } from "./Clone";
 import MigrateDialog from "./Migrate";
+import { HardwareDialog, HwArea } from "./Hardware";
 import { TakeSnapshot } from "./Snapshots";
 
-/** Hardware areas, in the order of the Hardware tab; `id` is the card's element id. */
-export const hardwareAreas: [string, string][] = [
-  ["CPU and memory", "hw-cpu"],
-  ["Disks", "hw-disks"],
-  ["Network interfaces", "hw-nics"],
-  ["CD-ROM", "hw-cdrom"],
-  ["Boot order", "hw-boot"],
-  ["Firmware and TPM", "hw-firmware"],
-  ["Advanced", "hw-advanced"],
-  ["Passthrough devices", "hw-passthrough"],
+/** Hardware areas of Edit Settings: menu label and the section its dialog shows. */
+export const hardwareAreas: [string, HwArea][] = [
+  ["CPU and memory", "cpu"],
+  ["Disks", "disks"],
+  ["Network interfaces", "nics"],
+  ["CD-ROM", "cdrom"],
+  ["Boot order", "boot"],
+  ["Firmware and TPM", "firmware"],
+  ["Advanced", "advanced"],
+  ["Passthrough devices", "passthrough"],
 ];
 
 export default function VMActions(props: {
@@ -43,14 +44,14 @@ export default function VMActions(props: {
   const [taking, setTaking] = useState(false);
   const [migrating, setMigrating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editing, setEditing] = useState<[string, HwArea]>();
 
   const off = d.state === "shutoff";
   const running = d.state === "running";
   const paused = d.state === "paused";
   const need = op ? undefined : "Needs the operator role";
-  const act = async (a: string, body: { action: string; timeoutSec?: number; force?: boolean } = { action: a }) => {
-    let spec = powerConfirm(a, [d.name]);
-    if (spec && body.timeoutSec) spec = { ...spec, message: `${spec.message} If it has not powered off after ${body.timeoutSec} s, it is forced off and unsaved data is lost.` };
+  const act = async (a: string, body: { action: string } = { action: a }) => {
+    const spec = powerConfirm(a, [d.name]);
     if (spec && !(await confirm.ask(spec))) return;
     run(() => post(`${base}/action`, body));
   };
@@ -59,16 +60,16 @@ export default function VMActions(props: {
 
   const power: MenuEntry[] = [
     { label: powerLabel.start, run: () => act("start"), ...when(off && !d.template, d.template ? "A template cannot be started" : "The VM is already on") },
-    { label: powerLabel.shutdown, run: () => act("shutdown"), ...when(running, stateNow) },
-    { label: "Shutdown (force off after 60 s)", run: () => act("shutdown", { action: "shutdown", timeoutSec: 60, force: true }), ...when(running, stateNow) },
-    { label: powerLabel.poweroff, danger: true, run: () => act("poweroff"), ...when(!off, stateNow) },
     { label: powerLabel.reboot, run: () => act("reboot"), ...when(running, stateNow) },
-    { label: powerLabel.reset, danger: true, run: () => act("reset"), ...when(!off, stateNow) },
+    { label: powerLabel.shutdown, run: () => act("shutdown"), ...when(running, stateNow) },
     "sep",
     { label: powerLabel.pause, run: () => act("pause"), ...when(running, stateNow) },
     { label: powerLabel.resume, run: () => act("resume"), ...when(paused, "The VM is not paused") },
+    "sep",
+    { label: powerLabel.poweroff, danger: true, run: () => act("poweroff"), ...when(!off, stateNow) },
+    { label: powerLabel.reset, danger: true, run: () => act("reset"), ...when(!off, stateNow) },
   ];
-  const settings: MenuEntry[] = hardwareAreas.map(([label, id]) => ({ label, run: () => goto("hardware", id) }));
+  const settings: MenuEntry[] = hardwareAreas.map(([label, area]) => ({ label, run: () => setEditing([label, area]) }));
   const snapshots: MenuEntry[] = [
     { label: "Take snapshot", run: () => setTaking(true), disabled: !op, title: need },
     { label: "Manage snapshots", run: () => goto("snapshots") },
@@ -116,6 +117,7 @@ export default function VMActions(props: {
     <>
       <DropdownMenu label="Actions" items={items} className="primary" />
       {confirm.dialog}
+      {editing && <HardwareDialog area={editing[1]} title={editing[0]} d={d} base={base} onChanged={props.onChanged} onClose={() => setEditing(undefined)} />}
       {cloning && <CloneDialog d={d} base={base} linked={cloning.linked} onClose={() => setCloning(undefined)} />}
       {sealing && <SealDialog d={d} base={base} onClose={() => setSealing(false)} onDone={props.onChanged} />}
       {taking && <TakeSnapshot d={d} base={base} onClose={() => setTaking(false)} onDone={props.onChanged} />}
