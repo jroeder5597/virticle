@@ -1,0 +1,38 @@
+# Controller: trusted proxy address 127.0.0.1, public URL https://vm.example.org
+# --- static configuration (traefik.yml) ---
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+    transport:
+      respondingTimeouts:
+        readTimeout: 0s    # uploads and consoles stay open
+        writeTimeout: 0s
+        idleTimeout: 1h
+providers:
+  file:
+    filename: /etc/traefik/virticle.yml
+
+# --- dynamic configuration (/etc/traefik/virticle.yml) ---
+http:
+  routers:
+    virticle:
+      rule: "Host(`vm.example.org`)"
+      entryPoints: [websecure]
+      service: virticle
+      tls: {}              # add certResolver: <name> to use ACME
+  services:
+    virticle:
+      loadBalancer:
+        passHostHeader: true
+        responseForwarding:
+          flushInterval: 1ms
+        servers:
+          - url: "http://127.0.0.1:8080"

@@ -37,6 +37,15 @@ const (
 // control); operator manages VMs, storage and networks; admin also manages
 // nodes, users and the audit log.
 var routeLevels = map[string]string{
+	"GET /api/web":               admin,
+	"POST /api/web/check":        admin,
+	"PUT /api/web":               admin,
+	"POST /api/web/confirm":      admin,
+	"POST /api/web/revert":       admin,
+	"POST /api/web/snippets":     admin,
+	"POST /api/web/renew":        admin,
+	"POST /api/web/acme/request": admin,
+
 	"GET /api/events": viewer,
 	"GET /api/tasks":  viewer,
 	"GET /api/alerts": viewer,
@@ -300,7 +309,7 @@ func securityHeaders(w http.ResponseWriter, r *http.Request) {
 	h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "+
 		"img-src 'self' data: blob:; font-src 'self' data:; connect-src "+connect+"; worker-src 'self' blob:; "+
 		"object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
-	if viewOf(r).HTTPS {
+	if v.HTTPS && v.HSTS {
 		h.Set("Strict-Transport-Security", "max-age=31536000")
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/") {
@@ -320,7 +329,8 @@ func crossSite(r *http.Request) bool {
 	}
 	if o := r.Header.Get("Origin"); o != "" {
 		u, err := url.Parse(o)
-		if err != nil || u.Host == "" || !strings.EqualFold(u.Host, viewOf(r).Host) {
+		v := viewOf(r)
+		if err != nil || u.Host == "" || !(strings.EqualFold(u.Host, v.Host) || (v.Public != "" && strings.EqualFold(u.Host, v.Public))) {
 			return true
 		}
 	}

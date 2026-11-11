@@ -47,6 +47,8 @@ type reqView struct {
 	Host      string // host the browser used (Origin must match it)
 	HTTPS     bool   // the browser talks HTTPS
 	Forwarded bool   // taken from a trusted proxy's headers
+	Public    string // host of the configured public URL; Origin may name it too
+	HSTS      bool   // send Strict-Transport-Security on HTTPS
 }
 
 type viewKey struct{}
@@ -80,15 +82,17 @@ func inRanges(ranges []netip.Prefix, a netip.Addr) bool {
 
 func (s *Server) computeView(r *http.Request) reqView {
 	v := directView(r)
-	if len(s.TrustedProxies) == 0 {
+	v.Public, v.HSTS = s.webExtras()
+	trusted := s.trustedProxies()
+	if len(trusted) == 0 {
 		return v
 	}
 	peer, err := netip.ParseAddr(v.IP)
-	if err != nil || !inRanges(s.TrustedProxies, peer) {
+	if err != nil || !inRanges(trusted, peer) {
 		return v
 	}
 	v.Forwarded = true
-	v.IP = forwardedClient(s.TrustedProxies, r.Header.Values("X-Forwarded-For"), peer.Unmap())
+	v.IP = forwardedClient(trusted, r.Header.Values("X-Forwarded-For"), peer.Unmap())
 	switch strings.ToLower(lastToken(r.Header.Values("X-Forwarded-Proto"))) {
 	case "https":
 		v.HTTPS = true
@@ -97,6 +101,8 @@ func (s *Server) computeView(r *http.Request) reqView {
 	}
 	if h := lastToken(r.Header.Values("X-Forwarded-Host")); h != "" && hostRe.MatchString(h) {
 		v.Host = h
+	} else if v.Public != "" {
+		v.Host = v.Public // the proxy did not pass the host it was asked for
 	}
 	return v
 }
@@ -153,6 +159,9 @@ func wsOptions(r *http.Request, subprotocols ...string) *websocket.AcceptOptions
 	opts := &websocket.AcceptOptions{Subprotocols: subprotocols}
 	if v := viewOf(r); v.Forwarded && !strings.EqualFold(v.Host, r.Host) {
 		opts.OriginPatterns = []string{globEscape(v.Host)}
+	}
+	if v := viewOf(r); v.Public != "" && !strings.EqualFold(v.Public, r.Host) {
+		opts.OriginPatterns = append(opts.OriginPatterns, globEscape(v.Public))
 	}
 	return opts
 }

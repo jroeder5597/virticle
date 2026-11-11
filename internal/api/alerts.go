@@ -120,8 +120,12 @@ func (s *Server) gatherAlertInput(now time.Time) alertInput {
 	} else {
 		log.Printf("alerts: reading scheduler tasks: %v", err)
 	}
-	if s.Alerts.CertFile != "" {
-		if t, err := tlscert.NotAfter(s.Alerts.CertFile); err == nil {
+	certFile := s.Alerts.CertFile
+	if s.Web != nil {
+		certFile = s.Web.CertFile()
+	}
+	if certFile != "" {
+		if t, err := tlscert.NotAfter(certFile); err == nil {
 			in.CertExpiry = t
 		}
 	}

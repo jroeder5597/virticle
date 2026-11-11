@@ -1,0 +1,15 @@
+# Controller: trusted proxy address 127.0.0.1, public URL https://vm.example.org
+vm.example.org {
+    reverse_proxy 127.0.0.1:8080 {
+        # X-Forwarded-For/-Proto/-Host and WebSocket upgrades are handled by default.
+        # Stream requests and responses; do not buffer uploads or console data.
+        flush_interval -1
+        transport http {
+            read_timeout  1h
+            write_timeout 1h
+        }
+    }
+    request_body {
+        max_size 0
+    }
+}

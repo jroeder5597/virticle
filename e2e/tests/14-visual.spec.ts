@@ -219,6 +219,16 @@ test.describe.serial("visual pass", () => {
       await shot("alerts", () => expect(page.getByRole("dialog", { name: "Alerts" })).toBeVisible());
       await page.keyboard.press("Escape");
 
+      // Settings > Web access: the form, and the proxy mode with its five configuration snippets
+      await page.goto("/web-access");
+      await shot("web-access", () => expect(page.getByRole("heading", { name: "Web access" })).toBeVisible());
+      await page.getByRole("combobox", { name: "Mode", exact: true }).click();
+      await page.getByRole("option", { name: "Behind a reverse proxy" }).click();
+      await shot("web-access-proxy", () => expect(page.getByRole("heading", { name: "HAProxy" })).toBeVisible());
+      await page.getByRole("combobox", { name: "Mode", exact: true }).click();
+      await page.getByRole("option", { name: "ACME (Let's Encrypt)" }).click();
+      await shot("web-access-acme", () => expect(page.getByLabel("Domain names")).toBeVisible());
+
       await page.goto(vmUrl);
       await shot("vm-overview", () => expect(page.locator("#utilization .st-val").first()).toContainText("%", { timeout: 30_000 }));
       // the colour picker, the add-tag input with its suggestions, and the tree's list of all tags

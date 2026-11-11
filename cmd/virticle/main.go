@@ -5,23 +5,19 @@ package main
 import (
 	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/tls"
 	"encoding/hex"
 	"encoding/pem"
 	"flag"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"golang.org/x/crypto/ssh"
 
 	"virticle/internal/api"
 	"virticle/internal/cluster"
 	"virticle/internal/store"
-	"virticle/internal/tlscert"
 	"virticle/web"
 )
 
@@ -35,12 +31,15 @@ func renameEnv(old, name string) {
 }
 
 func main() {
-	listen := flag.String("listen", "127.0.0.1:8080", "address to serve the web UI and API on")
+	if len(os.Args) > 1 && os.Args[1] == "web" {
+		os.Exit(webCommand(os.Args[2:]))
+	}
+	listen := flag.String("listen", envDefault("VIRTICLE_LISTEN", "127.0.0.1:8080"), "address to serve the web UI and API on")
 	data := flag.String("data", "data", "directory for the database and the controller's SSH key")
-	tlsCert := flag.String("tls-cert", "", "PEM certificate to serve HTTPS with (needs -tls-key)")
-	tlsKey := flag.String("tls-key", "", "PEM private key for -tls-cert")
-	insecure := flag.Bool("insecure-http", false, "serve plain HTTP on a non-loopback address (passwords and sessions travel unencrypted)")
-	trusted := flag.String("trusted-proxy", "", "comma-separated IPs/CIDRs of reverse proxies whose X-Forwarded-For/-Proto/-Host headers are believed (client address, https, public host name). "+
+	tlsCert := flag.String("tls-cert", envDefault("VIRTICLE_TLS_CERT", ""), "PEM certificate to serve HTTPS with (needs -tls-key)")
+	tlsKey := flag.String("tls-key", envDefault("VIRTICLE_TLS_KEY", ""), "PEM private key for -tls-cert")
+	insecure := flag.Bool("insecure-http", os.Getenv("VIRTICLE_INSECURE_HTTP") != "", "serve plain HTTP on a non-loopback address (passwords and sessions travel unencrypted)")
+	trusted := flag.String("trusted-proxy", envDefault("VIRTICLE_TRUSTED_PROXY", ""), "comma-separated IPs/CIDRs of reverse proxies whose X-Forwarded-For/-Proto/-Host headers are believed (client address, https, public host name). "+
 		"Empty: those headers are ignored. With this set, a loopback or private -listen address serves plain HTTP without -insecure-http, because TLS ends at the proxy")
 	noScheduler := flag.Bool("no-scheduler", false, "do not run scheduled snapshots and backups from this controller (use on all but one when several controllers manage the same nodes)")
 	var alerts api.AlertSettings
@@ -98,24 +97,6 @@ func main() {
 		mgr.Add(n)
 	}
 
-	certFile, keyFile := *tlsCert, *tlsKey
-	plainBehindProxy := false // plain HTTP on a private address because a trusted proxy ends TLS
-	switch {
-	case certFile != "":
-	case tlscert.IsLoopback(*listen) || *insecure:
-	case len(proxies) > 0 && tlscert.IsPrivate(*listen):
-		plainBehindProxy = true
-	default:
-		var generated bool
-		certFile, keyFile, generated, err = tlscert.Ensure(*data, tlscert.NamesFor(*listen), time.Now())
-		if err != nil {
-			log.Fatalf("TLS certificate: %v", err)
-		}
-		if generated {
-			log.Printf("generated a self-signed certificate in %s", certFile)
-		}
-	}
-	alerts.CertFile = certFile
 	id, err := ensureInstanceID(filepath.Join(*data, "instance-id"))
 	if err != nil {
 		log.Fatalf("instance id: %v", err)
@@ -125,30 +106,7 @@ func main() {
 	if *noScheduler {
 		log.Printf("scheduled snapshots and backups are disabled in this controller (-no-scheduler)")
 	}
-	hs := &http.Server{
-		Addr:    *listen,
-		Handler: srv.Handler(),
-		// No Read/WriteTimeout: they would cut off console WebSockets, volume
-		// uploads and long task requests. Slow header attacks are bounded here.
-		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       2 * time.Minute,
-		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
-	}
-
-	if certFile == "" {
-		if plainBehindProxy {
-			log.Printf("serving plain HTTP on %s for the trusted proxies %s; TLS must end at the proxy, and only the proxies may reach this address", *listen, *trusted)
-		} else if !tlscert.IsLoopback(*listen) {
-			log.Printf("WARNING: serving plain HTTP on %s (-insecure-http): passwords and sessions are not encrypted", *listen)
-		}
-		log.Printf("listening on http://%s (%d nodes)", *listen, len(nodes))
-		log.Fatal(hs.ListenAndServe())
-	}
-	if fp, err := tlscert.Fingerprint(certFile); err == nil {
-		log.Printf("TLS certificate %s SHA-256 fingerprint %s", certFile, fp)
-	}
-	log.Printf("listening on https://%s (%d nodes)", *listen, len(nodes))
-	log.Fatal(hs.ListenAndServeTLS(certFile, keyFile))
+	startWeb(srv, st, *data, flagListen{listen: *listen, cert: *tlsCert, key: *tlsKey, insecure: *insecure, trusted: *trusted, proxies: proxies}, len(nodes))
 }
 
 // ensureInstanceID returns this controller's random id, creating it on first

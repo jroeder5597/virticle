@@ -541,6 +541,7 @@ func TestSetupAndLoginRateLimit(t *testing.T) {
 
 func TestSecurityHeadersAndCookie(t *testing.T) {
 	e := newEnv(t)
+	e.srv.webv.Store(&webView{hsts: true}) // HSTS is off unless the admin turns it on
 	e.do("POST", "/api/setup", credentials{"admin", testPW})
 
 	w := e.do("GET", "/", nil)

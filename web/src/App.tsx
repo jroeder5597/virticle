@@ -11,6 +11,7 @@ import VMDetailPage from "./pages/VMDetail";
 import NodeDetail from "./pages/NodeDetail";
 import Users from "./pages/Users";
 import Audit from "./pages/Audit";
+import WebAccess from "./pages/WebAccess";
 import Account from "./pages/Account";
 import CloudProfiles from "./pages/CloudProfiles";
 import ConsolePage from "./pages/ConsolePage";
@@ -94,6 +95,7 @@ export default function App() {
         <NavLink to="/datacenter/tasks">Tasks</NavLink>
         {session.role === "admin" && <NavLink to="/users">Users</NavLink>}
         {session.role === "admin" && <NavLink to="/audit">Audit</NavLink>}
+        {session.role === "admin" && <NavLink to="/web-access">Web access</NavLink>}
         </div>
         <div className="spacer" />
         <AlertBell />
@@ -117,6 +119,7 @@ export default function App() {
         <NavLink to="/datacenter/tasks">Tasks</NavLink>
         {session.role === "admin" && <NavLink to="/users">Users</NavLink>}
         {session.role === "admin" && <NavLink to="/audit">Audit</NavLink>}
+        {session.role === "admin" && <NavLink to="/web-access">Web access</NavLink>}
         </div>
         <Tree />
         <Resizer axis="x" cssVar="--sidebar-w" pref="sidebarW" min={SIDEBAR_MIN} max={sidebarMax} current={() => document.querySelector(".sidebar")?.getBoundingClientRect().width ?? 260} label="Resize the resource tree" />
@@ -140,6 +143,7 @@ export default function App() {
           {session.role !== "viewer" && <Route path="/cloudinit-profiles" element={<CloudProfiles />} />}
           {session.role === "admin" && <Route path="/users" element={<Users />} />}
           {session.role === "admin" && <Route path="/audit" element={<Audit />} />}
+          {session.role === "admin" && <Route path="/web-access" element={<WebAccess />} />}
           <Route path="*" element={<div className="empty">There is nothing at this address, or your role does not allow it.</div>} />
         </Routes>
       </main>
