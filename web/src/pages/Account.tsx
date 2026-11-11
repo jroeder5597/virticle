@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { ApiToken, del, get, post, Role } from "../api";
 import { atLeast, useRole } from "../auth";
 import { ErrorBox, Field, useAction } from "../ui";
+import { ConsolePrefCard } from "./ConsolePreview";
 
 const when = (unix?: number) => (unix ? new Date(unix * 1000).toLocaleString() : "");
 
@@ -16,6 +17,7 @@ export default function Account() {
       <div className="cards">
         <Password />
         <Tokens role={role} />
+        <ConsolePrefCard />
       </div>
     </>
   );

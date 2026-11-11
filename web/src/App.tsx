@@ -17,6 +17,7 @@ import Tasks from "./pages/Tasks";
 import Users from "./pages/Users";
 import Audit from "./pages/Audit";
 import Account from "./pages/Account";
+import ConsolePage from "./pages/ConsolePage";
 import { AlertBell } from "./pages/Alerts";
 import { RoleContext } from "./auth";
 import { ThemeToggle } from "./theme";
@@ -48,6 +49,14 @@ export default function App() {
 
   if (!session) return null;
   if (!session.user) return <SignIn setup={session.needsSetup} onDone={refresh} />;
+  if (loc.pathname.startsWith("/console/"))
+    return (
+      <RoleContext.Provider value={session.role}>
+        <Routes>
+          <Route path="/console/:node/:uuid" element={<ConsolePage />} />
+        </Routes>
+      </RoleContext.Provider>
+    );
   return (
     <RoleContext.Provider value={session.role}>
     <div className={"app" + (drawer ? " drawer-open" : "")}>
