@@ -76,7 +76,7 @@ test.describe.serial("tag colours and the tag editor", () => {
     expect(Math.abs(c.y + c.height / 2 - (h1.y + h1.height / 2))).toBeLessThan(h1.height / 2);
     expect(b.x).toBeGreaterThan(c.x + c.width - 1);
 
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await expect(page.locator("tbody tr", { hasText: V1 }).locator(".tag", { hasText: TAG })).toBeVisible();
     await expect(treeRow(page, V1).locator(".tgstrip .tag", { hasText: TAG })).toBeVisible();
   });
@@ -157,7 +157,7 @@ test.describe.serial("tag colours and the tag editor", () => {
     // reload: persists, and shows in the header, the list and the tree
     await page.reload();
     await expect.poll(async () => (await chipColors(page.locator(".titleline .tag", { hasText: TAG }))).bg).toBe("#6e56cf");
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await expect.poll(async () => (await chipColors(page.locator("tbody tr", { hasText: V1 }).locator(".tag", { hasText: TAG }))).bg).toBe("#6e56cf");
     await expect.poll(async () => (await chipColors(treeRow(page, V1).locator(".tgstrip .tag", { hasText: TAG }))).bg).toBe("#6e56cf");
     expect(textFor("#6e56cf")).toBe((await chipColors(treeRow(page, V1).locator(".tgstrip .tag", { hasText: TAG }))).fg);
@@ -251,7 +251,7 @@ test.describe.serial("tag colours and the tag editor", () => {
   test("tree: eight long tags stay on one line, do not widen the sidebar, and hovering or focusing lists them all", async ({ page, api, n1 }) => {
     v3 = await createCirros(api, n1, V3);
     await api.put(`/nodes/${v3.node}/vms/${v3.uuid}/tags`, { tags: LONG });
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     const row = treeRow(page, V3);
     await expect(row).toBeVisible();
     const strip = row.locator(".tgstrip");
@@ -309,7 +309,7 @@ test.describe.serial("tag colours and the tag editor", () => {
     await expect(page.locator(".titleline .tag.editable")).toHaveCount(8);
     // a colour reaches the tree's chip too, without reloading
     const first = row;
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await api.put(`/tags/${encodeURIComponent(LONG[0])}/color`, { color: "#ffffff" });
     await expect.poll(async () => (await chipColors(first.locator(".tgstrip .tag").first())).bg, { timeout: 15_000 }).toBe("#ffffff");
     expect((await chipColors(first.locator(".tgstrip .tag").first())).fg).not.toBe("#ffffff");
@@ -320,7 +320,7 @@ test.describe.serial("tag colours and the tag editor", () => {
     await api.post("/users", { username: VIEWER, password: PASS, role: "viewer" });
     const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] }, baseURL: env.base, viewport: { width: 1360, height: 860 } });
     const page = await ctx.newPage();
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await page.getByLabel("Username").fill(VIEWER);
     await page.getByLabel("Password").fill(PASS);
     await page.getByRole("button", { name: "Sign in" }).click();
