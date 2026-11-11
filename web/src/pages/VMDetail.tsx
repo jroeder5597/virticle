@@ -52,7 +52,7 @@ export default function VMDetailPage() {
   if (!d) {
     return (
       <>
-        <Link to="/" className="backlink"><ArrowLeft size={14} aria-hidden="true" /> Virtual machines</Link>
+        <Link to="/datacenter/vms" className="backlink"><ArrowLeft size={14} aria-hidden="true" /> Virtual machines</Link>
         <ErrorBox error={vm.error} />
       </>
     );
@@ -72,7 +72,7 @@ export default function VMDetailPage() {
 
   return (
     <>
-      <Link to="/" className="backlink"><ArrowLeft size={14} aria-hidden="true" /> Virtual machines</Link>
+      <Link to="/datacenter/vms" className="backlink"><ArrowLeft size={14} aria-hidden="true" /> Virtual machines</Link>
       <div className="head">
         <div className="titleline">
           <h1>

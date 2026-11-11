@@ -111,7 +111,7 @@ export default function ImageCatalogue(props: { node: number; nodeName?: string;
                       </button>
                     </>
                   ) : img.present ? (
-                    <Link className="button" to={`/?new=${props.node}&pool=${encodeURIComponent(props.pool)}&image=${encodeURIComponent(img.volumeName)}`} onClick={props.onClose}>
+                    <Link className="button" to={`/datacenter/vms?new=${props.node}&pool=${encodeURIComponent(props.pool)}&image=${encodeURIComponent(img.volumeName)}`} onClick={props.onClose}>
                       Create VM from this image
                     </Link>
                   ) : (

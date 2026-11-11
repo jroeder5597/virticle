@@ -44,7 +44,7 @@ test.describe.serial("storage", () => {
     const r = row(page, POOL);
     await expect(r).toBeVisible();
     await expectBadge(r, "running");
-    await expect(r).toContainText(PATH);
+    await expect(r.locator("td").first()).toHaveAttribute("title", PATH);
     const p = (await api.get(`/nodes/${n1}/pools`)).find((x: any) => x.name === POOL);
     expect(p).toMatchObject({ type: "dir", state: "running", target: PATH });
   });

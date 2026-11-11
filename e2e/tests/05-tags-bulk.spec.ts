@@ -30,7 +30,7 @@ test.describe.serial("tags and bulk actions", () => {
     await expect(page.locator(".tagedit .error")).toBeVisible();
     await input.press("Escape");
 
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await expect(row(page, A).locator(".tag", { hasText: "blue team" })).toBeVisible();
     await page.getByLabel("Filter by tag").selectOption("blue team");
     await expect(row(page, A)).toBeVisible();
@@ -59,7 +59,7 @@ test.describe.serial("tags and bulk actions", () => {
 
   test("bulk: select, tag, force off, delete with typed confirmation", async ({ page, api }) => {
     autoDialogs(page);
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await page.getByLabel("Search VMs").fill(`${P}bulk-`);
     await expect(row(page, A)).toBeVisible();
     await expect(row(page, B)).toBeVisible();

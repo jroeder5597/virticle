@@ -6,11 +6,25 @@ import (
 	"strconv"
 	"strings"
 
+	"virt-proj/internal/cluster"
+	"virt-proj/internal/hostconn"
 	"virt-proj/internal/store"
 )
 
+// nodeView is a node as the UI lists it: its status plus what its privilege
+// allows.
+type nodeView struct {
+	cluster.NodeStatus
+	Capabilities map[string]capability `json:"capabilities"`
+}
+
 func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]any{"nodes": s.Nodes.Status(), "publicKey": s.PubKey})
+	st := s.Nodes.Status()
+	views := make([]nodeView, len(st))
+	for i, n := range st {
+		views[i] = nodeView{n, nodeCapabilities(n.Privilege)}
+	}
+	writeJSON(w, map[string]any{"nodes": views, "publicKey": s.PubKey})
 }
 
 func (s *Server) addNode(w http.ResponseWriter, r *http.Request) {
@@ -20,6 +34,20 @@ func (s *Server) addNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n.Addr, n.User, n.Jump = strings.TrimSpace(n.Addr), strings.TrimSpace(n.User), strings.TrimSpace(n.Jump)
+	n.MigrationAddr = strings.TrimSpace(n.MigrationAddr)
+	if n.MigrationAddr != "" {
+		if h, _ := splitAddr(n.MigrationAddr); !validAddrHost(h) {
+			fail(w, badRequest("the migration address must be a host name or an IP address"))
+			return
+		}
+	}
+	if n.Privilege == "auto" {
+		n.Privilege = ""
+	}
+	if n.Privilege != "" && !hostconn.Privilege(n.Privilege).Valid() {
+		fail(w, badRequest("privilege must be root, sudo, none or auto"))
+		return
+	}
 	if n.Addr == "" {
 		fail(w, badRequest("address is required"))
 		return
@@ -58,6 +86,20 @@ func (s *Server) deleteNode(w http.ResponseWriter, r *http.Request) {
 }
 
 type nodeInfo struct {
+	// How the node is reached, and what its login user may do.
+	Addr              string                `json:"addr"`
+	User              string                `json:"user"`
+	Jump              string                `json:"jump,omitempty"`
+	Privilege         string                `json:"privilege"`
+	DetectedPrivilege string                `json:"detectedPrivilege,omitempty"`
+	PrivilegeNote     string                `json:"privilegeNote,omitempty"`
+	MigrationAddress  string                `json:"migrationAddress"`
+	EffectiveAddress  string                `json:"effectiveMigrationAddress"` // what other nodes use
+	ResolvedIPs       []string              `json:"resolvedIps,omitempty"`
+	HostUUID          string                `json:"hostUuid,omitempty"`
+	Capabilities      map[string]capability `json:"capabilities"`
+	Online            bool                  `json:"online"`
+
 	Hostname   string `json:"hostname"`
 	CPUModel   string `json:"cpuModel"`
 	CPUs       int32  `json:"cpus"`
@@ -67,9 +109,20 @@ type nodeInfo struct {
 }
 
 func (s *Server) nodeInfo(w http.ResponseWriter, r *http.Request) {
-	_, h, err := s.host(r)
+	id, h, err := s.host(r)
+	st, known := s.nodeStatus(id)
+	if !known {
+		fail(w, store.ErrNotFound)
+		return
+	}
+	mh, _ := migrationTarget(st.Node)
+	base := nodeInfo{
+		Addr: st.Addr, User: st.User, Jump: st.Jump, Privilege: st.Privilege, DetectedPrivilege: st.DetectedPrivilege,
+		PrivilegeNote: st.PrivilegeNote, MigrationAddress: st.MigrationAddr, EffectiveAddress: mh, HostUUID: st.HostUUID,
+		ResolvedIPs: cluster.ResolveAddr(st.Addr), Capabilities: nodeCapabilities(st.Privilege), Online: err == nil, Hostname: st.Hostname,
+	}
 	if err != nil {
-		fail(w, err)
+		writeJSON(w, base) // offline: only the connection settings
 		return
 	}
 	model, mem, cpus, _, _, _, _, _, err := h.NodeGetInfo()
@@ -83,9 +136,8 @@ func (s *Server) nodeInfo(w http.ResponseWriter, r *http.Request) {
 	for i, c := range model {
 		mb[i] = byte(c)
 	}
-	writeJSON(w, nodeInfo{
-		Hostname: h.Name, CPUModel: string(bytes.TrimRight(mb, "\x00")), CPUs: cpus,
-		MemoryKiB: mem, FreeKiB: free / 1024,
-		LibvirtVer: strconv.FormatUint(ver/1000000, 10) + "." + strconv.FormatUint(ver/1000%1000, 10) + "." + strconv.FormatUint(ver%1000, 10),
-	})
+	base.Hostname, base.CPUModel, base.CPUs = h.Name, string(bytes.TrimRight(mb, "\x00")), cpus
+	base.MemoryKiB, base.FreeKiB = mem, free/1024
+	base.LibvirtVer = strconv.FormatUint(ver/1000000, 10) + "." + strconv.FormatUint(ver/1000%1000, 10) + "." + strconv.FormatUint(ver%1000, 10)
+	writeJSON(w, base)
 }

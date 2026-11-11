@@ -22,7 +22,7 @@ const SUBMENUS: Record<string, string[]> = {
 async function signInAs(browser: Browser, user: string, pass: string) {
   const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] }, baseURL: env.base, viewport: { width: 1360, height: 860 } });
   const page = await ctx.newPage();
-  await page.goto("/");
+  await page.goto("/datacenter/vms");
   await page.getByLabel("Username").fill(user);
   await page.getByLabel("Password").fill(pass);
   await page.getByRole("button", { name: "Sign in" }).click();

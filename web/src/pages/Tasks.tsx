@@ -1,6 +1,6 @@
 import { get, Task } from "../api";
 import { useLive } from "../live";
-import { ErrorBox, StateBadge } from "../ui";
+import { ErrorBox, PageTitle, StateBadge } from "../ui";
 
 const time = (unix: number) => new Date(unix * 1000).toLocaleString();
 
@@ -9,7 +9,7 @@ export default function Tasks() {
   return (
     <>
       <div className="head">
-        <h1>Tasks</h1>
+        <PageTitle>Tasks</PageTitle>
       </div>
       <ErrorBox error={tasks.error} />
       {tasks.data && tasks.data.length === 0 ? (

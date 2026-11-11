@@ -41,10 +41,13 @@ var routeLevels = map[string]string{
 	"GET /api/tasks":  viewer,
 	"GET /api/alerts": viewer,
 
-	"GET /api/nodes":           viewer,
-	"POST /api/nodes":          admin,
-	"DELETE /api/nodes/{node}": admin,
-	"GET /api/nodes/{node}":    viewer,
+	"GET /api/nodes":                         viewer,
+	"POST /api/nodes":                        admin,
+	"DELETE /api/nodes/{node}":               admin,
+	"PUT /api/nodes/{node}":                  admin,
+	"POST /api/nodes/{node}/test-connection": admin,
+	"POST /api/nodes/{node}/forget-host-key": admin,
+	"GET /api/nodes/{node}":                  viewer,
 
 	"POST /api/nodes/{node}/evacuate/check":  operator,
 	"POST /api/nodes/{node}/evacuate":        admin,
@@ -73,6 +76,8 @@ var routeLevels = map[string]string{
 	"DELETE /api/cloudinit-profiles/{id}": operator,
 
 	"GET /api/vms":                                    viewer,
+	"GET /api/pools":                                  viewer,
+	"GET /api/networks":                               viewer,
 	"POST /api/nodes/{node}/vms":                      operator,
 	"GET /api/nodes/{node}/vms/{uuid}":                viewer,
 	"POST /api/nodes/{node}/vms/{uuid}/action":        operator,
@@ -87,6 +92,7 @@ var routeLevels = map[string]string{
 	"GET /api/nodes/{node}/vms/{uuid}/vnc":            operator,
 	"GET /api/nodes/{node}/vms/{uuid}/serial":         operator,
 	"GET /api/nodes/{node}/vms/{uuid}/screenshot":     operator,
+	"POST /api/nodes/{node}/vms/{uuid}/sendkey":       operator,
 
 	"PUT /api/nodes/{node}/vms/{uuid}/cpu":                         operator,
 	"PUT /api/nodes/{node}/vms/{uuid}/memory":                      operator,

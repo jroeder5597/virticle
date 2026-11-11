@@ -5,7 +5,7 @@
 import { Page } from "@playwright/test";
 import { mkdirSync } from "fs";
 import { cleanVMs, createCirros, expect, test } from "../lib/fixtures";
-import { P } from "../lib/env";
+import { env, P } from "../lib/env";
 
 const NAME = `${P}vis1`;
 const OUT = "test-results/visual";
@@ -181,7 +181,7 @@ test.describe.serial("visual pass", () => {
       const vmUrl = `/vm/${vm.node}/${vm.uuid}`;
       const heading = (n: string | RegExp) => page.getByRole("heading", { name: n }).first();
 
-      await page.goto("/");
+      await page.goto("/datacenter/vms");
       expect(await page.evaluate(() => document.documentElement.getAttribute("data-theme"))).toBe(m.scheme);
       await shot("list", () => expect(page.locator("tbody tr", { hasText: NAME })).toBeVisible());
       await page.getByRole("button", { name: "New VM" }).click();
@@ -264,6 +264,24 @@ test.describe.serial("visual pass", () => {
           await page.waitForLoadState("networkidle");
         });
       }
+      // Datacenter: every tab, and a host-interfaces section opened
+      for (const tab of ["summary", "vms", "storage", "network", "backups", "nodes", "tasks"]) {
+        await page.goto(tab === "summary" ? "/datacenter" : `/datacenter/${tab}`);
+        await shot("datacenter-" + tab, async () => {
+          await expect(page.getByRole("tab", { name: "Summary", exact: true })).toBeVisible();
+          await page.waitForLoadState("networkidle");
+        });
+      }
+      await page.goto("/datacenter/network");
+      await page.getByRole("button", { name: new RegExp("^" + env.node1) }).click();
+      await shot("datacenter-network-interfaces", () => expect(page.locator(".nicbox tbody tr").first()).toBeVisible({ timeout: 30_000 }));
+      // the Edit connection dialog of the node page's Settings tab, and its Test connection result
+      await page.goto(`/node/${vm.node}/settings`);
+      await page.getByRole("button", { name: "Edit connection" }).click();
+      await shot("node-edit-connection-dialog", () => expect(page.getByRole("dialog", { name: "Edit connection" }).locator(".keybox code")).toContainText("ssh-ed25519"));
+      await page.getByRole("dialog", { name: "Edit connection" }).getByRole("button", { name: "Test connection" }).click();
+      await shot("node-edit-connection-tested", () => expect(page.getByRole("dialog", { name: "Edit connection" }).locator(".testresult")).toContainText("Detected:", { timeout: 30_000 }));
+      await page.keyboard.press("Escape");
       // modals that carry the most layout
       await page.goto("/storage");
       await page.getByRole("button", { name: "New pool" }).click();

@@ -9,6 +9,7 @@ import { HostLoad, useHostSeries } from "../charts";
 import { AlertMarks, useAlerts } from "./Alerts";
 import Evacuate from "./Evacuate";
 import HostUpdates from "./HostUpdates";
+import ConnectionCard from "./NodeConnection";
 import MigrationTLS from "./MigrationTLS";
 import Networks from "./Networks";
 import Storage from "./Storage";
@@ -269,18 +270,7 @@ function Settings({ n, admin, onMaintenance, onRemove, busy }: { n: NodeStatus; 
   const online = n.state === "online";
   return (
     <div className="cards">
-      <div className="card">
-        <h3>Connection</h3>
-        <Facts
-          rows={[
-            ["Address", <span className="mono" key="a">{n.addr}</span>],
-            ["SSH user", <span className="mono" key="u">{n.user}</span>],
-            ["Jump host", n.jump ? <span className="mono" key="j">{n.jump}</span> : "none"],
-            ["State", <StateBadge key="s" state={n.state} />],
-          ]}
-        />
-        {n.error && <p className="rowerror">{n.error}</p>}
-      </div>
+      <ConnectionCard n={n} admin={admin} />
       <div className="card">
         <h3>Maintenance</h3>
         <p className="muted">A node in maintenance is never chosen as a migration or evacuation target.</p>

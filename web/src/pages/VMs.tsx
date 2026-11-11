@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { bytes, get, Network, NodeStatus, Pool, post, VM, Volume } from "../api";
 import { useLive } from "../live";
 import CloudInitFields, { CloudInitValues, cloudInitPayload, cloudInitUsed, emptyCloudInit } from "./CloudInit";
-import { ErrorBox, Field, Modal, NodePicker, StateBadge, useAction, useConfirm } from "../ui";
+import { ErrorBox, Field, Modal, NodePicker, PageTitle, StateBadge, useAction, useConfirm } from "../ui";
 import { powerConfirm, powerLabel } from "../power";
 import { BulkBar } from "./Bulk";
 import { emptyFw, FirmwareFields, fwPayload, FwValues } from "./Firmware";
@@ -60,7 +60,7 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
   return (
     <>
       <div className="head">
-        {fixedNode === undefined ? <h1>Virtual machines</h1> : <h2>Virtual machines</h2>}
+        {fixedNode === undefined ? <PageTitle>Virtual machines</PageTitle> : <h2>Virtual machines</h2>}
         <button className="primary" disabled={online.length === 0} onClick={() => setCreating(true)}>
           New VM
         </button>

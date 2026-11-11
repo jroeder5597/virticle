@@ -1,5 +1,5 @@
 // Small shared building blocks.
-import { ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CircleHelp, X } from "lucide-react";
 import "./menu.css";
@@ -308,4 +308,10 @@ export function HelpTip(props: { label: string; children: ReactNode }) {
         )}
     </span>
   );
+}
+
+/** True inside the Datacenter tabs, where the page itself owns the h1 and tab headings drop to h2. */
+export const EmbeddedContext = createContext(false);
+export function PageTitle({ children }: { children: ReactNode }) {
+  return useContext(EmbeddedContext) ? <h2>{children}</h2> : <h1>{children}</h1>;
 }

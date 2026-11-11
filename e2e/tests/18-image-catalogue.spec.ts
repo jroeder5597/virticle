@@ -104,7 +104,7 @@ test.describe.serial("image catalogue", () => {
   });
 
   test("New VM dialog hints at the catalogue when the pool has no image", async ({ page, api, n1 }) => {
-    await page.goto("/");
+    await page.goto("/datacenter/vms");
     await page.getByRole("button", { name: "New VM" }).click();
     const dlg = dialog(page, "New virtual machine");
     await field(dlg, "Node").selectOption({ label: env.node1 });
