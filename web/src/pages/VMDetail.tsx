@@ -30,7 +30,7 @@ export default function VMDetailPage() {
   const waitingForAgent = vm.data?.state === "running" && vm.data.agent !== "connected";
   useEffect(() => {
     if (!waitingForAgent) return;
-    const h = setInterval(vm.reload, 5000);
+    const h = setInterval(() => document.visibilityState !== "hidden" && vm.reload(), 5000);
     return () => clearInterval(h);
   }, [waitingForAgent, vm.reload]);
   const [deleting, setDeleting] = useState(false);

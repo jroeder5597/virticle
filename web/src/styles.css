@@ -262,7 +262,7 @@ th.sel, td.sel { width: 28px; padding-right: 0; }
 .meter-bar > div.full { background: var(--danger); }
 .meter-label { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .load { display: grid; gap: 4px; min-width: 190px; }
-.load .spark { width: 190px; }
+.load .spark { width: 150px; }
 .fsbar { display: grid; grid-template-columns: 1fr; gap: 3px; margin-bottom: 9px; }
 .fsbar .row { display: flex; justify-content: space-between; gap: 10px; }
 .menu { position: relative; display: inline-flex; }
@@ -303,8 +303,7 @@ th.sel, td.sel { width: 28px; padding-right: 0; }
 .hostupdates { display: grid; gap: 4px; justify-items: start; }
 .updlist { max-height: 220px; overflow: auto; font-size: 12.5px; }
 .updlist ul { margin: 4px 0; padding-left: 16px; }
-.nodeactions { white-space: normal !important; min-width: 130px; }
-.nodeactions button { margin: 2px 0 2px 4px; }
+.nodeaddr { font-size: 12px; margin-top: 2px; word-break: break-all; }
 .hostupdates { max-width: 230px; }
 .tgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; margin-top: 12px; align-items: start; }
 .tgrid h4 { margin: 0 0 8px; font-size: 13px; }

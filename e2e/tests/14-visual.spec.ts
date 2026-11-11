@@ -68,9 +68,28 @@ async function sideways(page: Page): Promise<number> {
   return page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
 }
 
+/** Desktop only: elements whose content is wider than their box (cut off or scrolling inside), or that end past the window. */
+async function clipped(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const out: string[] = [];
+    const vw = window.innerWidth;
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>("body *"))) {
+      if (el.closest("pre, textarea, code, canvas, svg, .xterm, .console, select, input")) continue;
+      const cs = getComputedStyle(el);
+      if (cs.display === "none" || cs.visibility === "hidden") continue;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      const id = `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 40)} "${(el.textContent ?? "").trim().slice(0, 30)}"`;
+      if (r.right > vw + 1) out.push(`ends ${Math.round(r.right - vw)}px past the window: ${id}`);
+      else if (el.scrollWidth > el.clientWidth + 1 && cs.overflowX !== "visible" && cs.textOverflow !== "ellipsis") out.push(`content ${el.scrollWidth - el.clientWidth}px wider than its box: ${id}`);
+    }
+    return [...new Set(out)].slice(0, 8);
+  });
+}
+
 const modes = [
-  { name: "dark", scheme: "dark" as const, viewport: { width: 1360, height: 860 } },
-  { name: "light", scheme: "light" as const, viewport: { width: 1360, height: 860 } },
+  { name: "dark", scheme: "dark" as const, viewport: { width: 1280, height: 800 } },
+  { name: "light", scheme: "light" as const, viewport: { width: 1440, height: 900 } },
   { name: "narrow", scheme: "light" as const, viewport: { width: 420, height: 860 } },
   { name: "narrow-dark", scheme: "dark" as const, viewport: { width: 420, height: 860 } },
 ];
@@ -99,6 +118,7 @@ test.describe.serial("visual pass", () => {
         for (const i of issues) problems.push(`${m.name}/${name}: low contrast: ${i}`);
         const over = await sideways(page);
         if (over > 1 && !opts.wide) problems.push(`${m.name}/${name}: page scrolls sideways by ${over}px`);
+        if (m.viewport.width >= 1000 && !opts.wide) for (const c of await clipped(page)) problems.push(`${m.name}/${name}: ${c}`);
       };
       const vmUrl = `/vm/${vm.node}/${vm.uuid}`;
       const heading = (n: string | RegExp) => page.getByRole("heading", { name: n }).first();
@@ -137,6 +157,13 @@ test.describe.serial("visual pass", () => {
       ] as const) {
         await page.goto(path);
         await shot(name, () => expect(heading(h)).toBeVisible());
+      }
+      for (const tab of ["summary", "vms", "storage", "network", "updates", "settings"]) {
+        await page.goto(`/node/${vm.node}/${tab}`);
+        await shot("node-" + tab, async () => {
+          await expect(page.locator("main .tabs")).toBeVisible();
+          await page.waitForLoadState("networkidle");
+        });
       }
       // modals that carry the most layout
       await page.goto("/storage");

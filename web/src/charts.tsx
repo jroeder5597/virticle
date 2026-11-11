@@ -42,13 +42,21 @@ export function usePoll<T>(path: string | null, ms = POLL_MS): T | undefined {
         () => {},
       );
     };
-    tick();
-    const id = setInterval(tick, ms);
-    document.addEventListener("visibilitychange", tick);
+    // No timer runs while the tab is hidden; becoming visible fetches once and restarts it.
+    let id: ReturnType<typeof setInterval> | undefined;
+    const sync = () => {
+      clearInterval(id);
+      id = undefined;
+      if (document.visibilityState === "hidden") return;
+      tick();
+      id = setInterval(tick, ms);
+    };
+    sync();
+    document.addEventListener("visibilitychange", sync);
     return () => {
       live = false;
       clearInterval(id);
-      document.removeEventListener("visibilitychange", tick);
+      document.removeEventListener("visibilitychange", sync);
     };
   }, [path, ms]);
   return data;
@@ -69,16 +77,31 @@ function pollAll() {
   );
 }
 
+// No timer runs while the tab is hidden.
+function syncAll() {
+  clearInterval(timer);
+  timer = undefined;
+  if (document.visibilityState === "hidden") return;
+  pollAll();
+  timer = setInterval(pollAll, POLL_MS);
+}
+
 /** Newest sample for every node and running VM. */
 export function useAllStats(): AllStats | undefined {
   const [s, setS] = useState<AllStats | undefined>(latest);
   useEffect(() => {
     watchers.add(setS);
-    if (watchers.size === 1) timer = setInterval(pollAll, POLL_MS);
-    pollAll();
+    if (watchers.size === 1) {
+      syncAll();
+      document.addEventListener("visibilitychange", syncAll);
+    } else pollAll();
     return () => {
       watchers.delete(setS);
-      if (watchers.size === 0) clearInterval(timer);
+      if (watchers.size === 0) {
+        clearInterval(timer);
+        timer = undefined;
+        document.removeEventListener("visibilitychange", syncAll);
+      }
     };
   }, []);
   return s;

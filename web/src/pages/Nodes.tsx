@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Alert, bytes, del, get, NodeInfo, NodeStatus, post, put } from "../api";
+import { Alert, bytes, get, NodeInfo, NodeStatus, post, put } from "../api";
 import { useLive } from "../live";
 import { useRole } from "../auth";
 import { ErrorBox, Field, Modal, StateBadge, useAction } from "../ui";
@@ -34,7 +34,6 @@ export default function Nodes() {
             <tr>
               <th>Node</th>
               <th>State</th>
-              <th>Address</th>
               <th>CPU</th>
               <th>Memory</th>
               <th />
@@ -49,9 +48,6 @@ export default function Nodes() {
                 alerts={alerts}
                 onEvacuate={() => setEvacuating(n)}
                 onMaintenance={() => act.run(() => put(`/nodes/${n.id}/maintenance`, { on: !n.maintenance }))}
-                onRemove={() =>
-                  window.confirm(`Remove ${n.hostname || n.addr}? Its virtual machines keep running; they just stop being shown here.`) && act.run(() => del(`/nodes/${n.id}`))
-                }
               />
             ))}
           </tbody>
@@ -63,7 +59,7 @@ export default function Nodes() {
   );
 }
 
-function NodeRow({ n, onRemove, canRemove, alerts, onEvacuate, onMaintenance }: { n: NodeStatus; onRemove: () => void; canRemove: boolean; alerts: Alert[]; onEvacuate: () => void; onMaintenance: () => void }) {
+function NodeRow({ n, canRemove, alerts, onEvacuate, onMaintenance }: { n: NodeStatus; canRemove: boolean; alerts: Alert[]; onEvacuate: () => void; onMaintenance: () => void }) {
   const [info, setInfo] = useState<NodeInfo | undefined>();
   const series = useHostSeries(n.id, n.state === "online");
   useEffect(() => {
@@ -80,14 +76,14 @@ function NodeRow({ n, onRemove, canRemove, alerts, onEvacuate, onMaintenance }: 
           </span>
         )}
         <AlertMarks alerts={alerts} match={(a) => a.node === n.id && a.kind !== "pool-usage" && a.kind !== "vm-state"} />
+        <div className="mono muted nodeaddr">
+          {n.user}@{n.addr}
+          {n.jump ? ` via ${n.jump}` : ""}
+        </div>
       </td>
       <td>
         <StateBadge state={n.state} />
         {n.error && <div className="rowerror">{n.error}</div>}
-      </td>
-      <td className="mono">
-        {n.user}@{n.addr}
-        {n.jump ? ` via ${n.jump}` : ""}
       </td>
       <td>
         {info ? `${info.cpus} × ${info.cpuModel}` : ""}
@@ -106,11 +102,6 @@ function NodeRow({ n, onRemove, canRemove, alerts, onEvacuate, onMaintenance }: 
         {canRemove && (
           <button onClick={onMaintenance} title="A node in maintenance is never chosen as a migration or evacuation target">
             {n.maintenance ? "End maintenance" : "Maintenance"}
-          </button>
-        )}
-        {canRemove && (
-          <button className="danger" onClick={onRemove}>
-            Remove
           </button>
         )}
       </td>

@@ -228,8 +228,7 @@ function NetworkTab({ id }: { id: number }) {
               <th>State</th>
               <th>MAC</th>
               <th>Addresses</th>
-              <th>Bridge / master</th>
-              <th>Libvirt network</th>
+              <th>Attached to</th>
               <th className="num">MTU</th>
               <th className="num">Speed</th>
             </tr>
@@ -248,8 +247,10 @@ function NetworkTab({ id }: { id: number }) {
                     <div key={a}>{a}</div>
                   ))}
                 </td>
-                <td className="mono">{i.master}</td>
-                <td>{byBridge.get(i.name)?.join(", ")}</td>
+                <td>
+                  {i.master && <span className="mono">{i.master}</span>}
+                  {byBridge.has(i.name) && <span>network {byBridge.get(i.name)!.join(", ")}</span>}
+                </td>
                 <td className="num">{i.mtu}</td>
                 <td className="num">{i.speedMbps ? `${i.speedMbps} Mb/s` : ""}</td>
               </tr>
