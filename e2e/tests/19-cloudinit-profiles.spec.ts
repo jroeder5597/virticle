@@ -2,7 +2,7 @@
 // profile, a VM made from it gets a seed disk, deleting the profile leaves the VM alone, viewers are refused.
 import { cleanVMs, expect, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
-import { autoDialogs, dialog, field, row, pick } from "../lib/ui";
+import { autoDialogs, dialog, field, row, pick, pickPool } from "../lib/ui";
 
 const PROF = `${P}prof`;
 const VM = `${P}cpvm1`;
@@ -64,6 +64,7 @@ test.describe.serial("cloud-init profiles", () => {
     await field(dlg, "vCPUs").fill("1");
     await field(dlg, "Memory (MiB)").fill("128");
     await dlg.getByRole("button", { name: "Disk image" }).click();
+    await pickPool(dlg, "Storage pool", "default");
     await pick(dlg, "Base image", new RegExp("^" + env.cirros.replace(/\./g, "\\.")));
     await field(dlg, "Disk size (GiB)").fill("1");
     await expect(dlg.locator("summary")).toContainText(PROF);

@@ -302,8 +302,7 @@ test.describe.serial("visual pass", () => {
       await page.getByRole("button", { name: new RegExp("^" + env.node1) }).click();
       await shot("datacenter-network-interfaces", () => expect(page.locator(".nicbox tbody tr").first()).toBeVisible({ timeout: 30_000 }));
       // the DHCP reservation form: the MAC field is the themed editable combo with the VMs' MACs
-      await page.goto("/networks");
-      await pick(page, page.getByRole("combobox").first(), env.node1);
+      await page.goto(`/node/${vm.node}/network`);
       await row(page, "default").first().click();
       await field(page.locator(".card", { hasText: "DHCP reservations" }), "MAC address").click();
       await shot("network-dhcp-mac-suggestions", () => expect(page.getByRole("listbox").getByRole("option").first()).toBeVisible({ timeout: 30_000 }), { viewportOnly: true });

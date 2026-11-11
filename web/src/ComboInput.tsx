@@ -59,11 +59,9 @@ export default function ComboInput(p: {
     };
     window.addEventListener("keydown", onEsc, true);
     window.addEventListener("resize", close);
-    window.addEventListener("scroll", close, true);
     return () => {
       window.removeEventListener("keydown", onEsc, true);
       window.removeEventListener("resize", close);
-      window.removeEventListener("scroll", close, true);
     };
   }, [visible]);
 

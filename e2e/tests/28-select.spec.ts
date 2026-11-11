@@ -93,6 +93,7 @@ test.describe.serial("themed select", () => {
     await page.getByRole("button", { name: "Add interface" }).click();
     const dlg = dialog(page, "Add network interface");
     const net = dlg.getByRole("combobox", { name: "Network", exact: true });
+    await expect(net).not.toHaveText(""); // the networks have loaded
     const before = await net.innerText();
     await net.click();
     const off = list(page).getByRole("option", { name: new RegExp(`^${NET} \\(inactive\\)`) });
@@ -134,7 +135,7 @@ test.describe.serial("themed select", () => {
     const mac = ((await api.vmDetail(vm.node, vm.uuid)).nics[0].mac as string).toLowerCase();
     await page.goto("/networks");
     await pick(page, page.getByRole("combobox").first(), env.node1);
-    await row(page, /^default\b/).first().click();
+    await row(page, "default").first().click();
     const card = page.locator(".card", { hasText: "DHCP reservations" });
     const input = field(card, "MAC address");
     await input.click();
