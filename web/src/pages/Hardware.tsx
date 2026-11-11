@@ -486,7 +486,7 @@ function CDROMs({ d, cdroms, send, run, busy, bare }: CardProps & { cdroms: Disk
         </tbody>
       </table>
       </div>
-      {cdroms.length === 0 && (
+      {cdroms.length < 4 && (
         <div className="hwadd">
           <button disabled={busy} onClick={() => run(() => send("POST", "/cdrom"))}>
             Add CD-ROM drive

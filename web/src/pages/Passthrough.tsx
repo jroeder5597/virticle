@@ -92,6 +92,7 @@ export default function PassthroughCard({ d, base, onChanged, bare }: { d: VMDet
           l={l}
           vm={l.vm}
           busy={act.busy}
+          running={d.state !== "shutoff"}
           onClose={() => setPicking(false)}
           onAttach={async (id) => {
             const ok = await act.run(async () => {
@@ -109,7 +110,7 @@ export default function PassthroughCard({ d, base, onChanged, bare }: { d: VMDet
   );
 }
 
-function Picker({ l, vm, busy, onClose, onAttach, error }: { l: Listing; vm: string; busy: boolean; onClose: () => void; onAttach: (id: string) => void; error?: string }) {
+function Picker({ l, vm, busy, running, onClose, onAttach, error }: { l: Listing; vm: string; busy: boolean; running: boolean; onClose: () => void; onAttach: (id: string) => void; error?: string }) {
   const [filter, setFilter] = useState("all");
   // Bridges are never passable and there are many; they go last.
   const rank = (x: Dev) => (x.category === "bridge" ? 2 : x.unsafe ? 1 : 0);
@@ -173,12 +174,13 @@ function Picker({ l, vm, busy, onClose, onAttach, error }: { l: Listing; vm: str
                   </td>
                   <td>
                     <span className={st.bad ? "rowerror" : st.ok ? "" : "muted"}>{st.text}</span>
+                    {running && x.category === "gpu" && st.ok && <small>Shut the VM down to attach a graphics card</small>}
                     {x.warnings?.map((w, i) => (
                       <small key={i}>{w}</small>
                     ))}
                   </td>
                   <td className="actions">
-                    <button disabled={busy || !st.ok} onClick={() => onAttach(x.id)}>
+                    <button disabled={busy || !st.ok || (running && x.category === "gpu")} title={running && x.category === "gpu" ? "Shut the VM down to attach a graphics card" : undefined} onClick={() => onAttach(x.id)}>
                       Attach
                     </button>
                   </td>
