@@ -101,6 +101,11 @@ func (s *Server) Handler() http.Handler {
 	auth("GET /api/nodes/{node}/vms/{uuid}/guest", s.vmGuest)
 	auth("GET /api/nodes/{node}/vms/{uuid}/agent-help", s.vmAgentHelp)
 
+	auth("GET /api/cloudinit-profiles", s.listCloudProfiles)
+	auth("POST /api/cloudinit-profiles", s.saveCloudProfile)
+	auth("PUT /api/cloudinit-profiles/{id}", s.saveCloudProfile)
+	auth("DELETE /api/cloudinit-profiles/{id}", s.deleteCloudProfile)
+
 	auth("GET /api/vms", s.listVMs)
 	auth("POST /api/nodes/{node}/vms", s.createVM)
 	auth("GET /api/nodes/{node}/vms/{uuid}", s.vmDetail)

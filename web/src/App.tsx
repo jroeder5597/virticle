@@ -17,6 +17,7 @@ import Tasks from "./pages/Tasks";
 import Users from "./pages/Users";
 import Audit from "./pages/Audit";
 import Account from "./pages/Account";
+import CloudProfiles from "./pages/CloudProfiles";
 import { AlertBell } from "./pages/Alerts";
 import { RoleContext } from "./auth";
 import { ThemeToggle } from "./theme";
@@ -107,6 +108,7 @@ export default function App() {
           <Route path="/nodes" element={<Nodes />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/account" element={<Account />} />
+          {session.role !== "viewer" && <Route path="/cloudinit-profiles" element={<CloudProfiles />} />}
           {session.role === "admin" && <Route path="/users" element={<Users />} />}
           {session.role === "admin" && <Route path="/audit" element={<Audit />} />}
           <Route path="*" element={<div className="empty">There is nothing at this address, or your role does not allow it.</div>} />

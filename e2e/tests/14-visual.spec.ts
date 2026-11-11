@@ -111,8 +111,12 @@ test.describe.serial("visual pass", () => {
   test.beforeAll(async ({ api, n1 }) => {
     mkdirSync(OUT, { recursive: true });
     vm = await createCirros(api, n1, NAME, { start: true });
+    await api.post("/cloudinit-profiles", { name: `${P}visprof`, description: "visual pass", user: "admin", password: "e2e-vis-pass-123", packages: ["qemu-guest-agent"], default: true });
   });
-  test.afterAll(async ({ api }) => cleanVMs(api, NAME));
+  test.afterAll(async ({ api }) => {
+    await cleanVMs(api, NAME);
+    for (const p of (await api.get("/cloudinit-profiles")).profiles) if (p.name === `${P}visprof`) await api.del(`/cloudinit-profiles/${p.id}`).catch(() => {});
+  });
 
   for (const m of modes) {
     test(`every page and tab: ${m.name}`, async ({ browser }) => {
@@ -140,6 +144,8 @@ test.describe.serial("visual pass", () => {
       await shot("list", () => expect(page.locator("tbody tr", { hasText: NAME })).toBeVisible());
       await page.getByRole("button", { name: "New VM" }).click();
       await shot("new-vm-dialog", () => expect(page.getByRole("dialog")).toBeVisible());
+      await page.getByRole("dialog").getByRole("button", { name: "Disk image" }).click();
+      await shot("new-vm-cloudinit-profile", () => expect(page.getByRole("dialog").getByText("Profile", { exact: true })).toBeVisible());
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: /^Alerts/ }).click();
       await shot("alerts", () => expect(page.getByRole("dialog", { name: "Alerts" })).toBeVisible());
@@ -166,6 +172,7 @@ test.describe.serial("visual pass", () => {
         ["/users", "users", "Users"],
         ["/audit", "audit", "Audit log"],
         ["/account", "account", "My account"],
+        ["/cloudinit-profiles", "cloudinit-profiles", "Cloud-init profiles"],
       ] as const) {
         await page.goto(path);
         await shot(name, () => expect(heading(h)).toBeVisible());
@@ -181,6 +188,10 @@ test.describe.serial("visual pass", () => {
       await page.goto("/storage");
       await page.getByRole("button", { name: "New pool" }).click();
       await shot("new-pool-dialog", () => expect(page.getByRole("dialog")).toBeVisible());
+      await page.keyboard.press("Escape");
+      await page.goto("/cloudinit-profiles");
+      await page.getByRole("button", { name: "New profile" }).click();
+      await shot("new-profile-dialog", () => expect(page.getByRole("dialog")).toBeVisible());
       await page.keyboard.press("Escape");
       await page.goto(vmUrl + "?tab=hardware");
       await page.getByRole("button", { name: "Add disk" }).click();

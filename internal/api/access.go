@@ -66,6 +66,12 @@ var routeLevels = map[string]string{
 	"POST /api/account/tokens":        viewer,
 	"DELETE /api/account/tokens/{id}": viewer,
 
+	// Profiles hold password hashes and keys: even reading them needs operator.
+	"GET /api/cloudinit-profiles":         operator,
+	"POST /api/cloudinit-profiles":        operator,
+	"PUT /api/cloudinit-profiles/{id}":    operator,
+	"DELETE /api/cloudinit-profiles/{id}": operator,
+
 	"GET /api/vms":                                    viewer,
 	"POST /api/nodes/{node}/vms":                      operator,
 	"GET /api/nodes/{node}/vms/{uuid}":                viewer,

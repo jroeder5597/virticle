@@ -34,6 +34,10 @@ type cloneCustomize struct {
 	Packages []string `json:"packages"`
 	// RawUserData replaces the generated cloud-config (Linux only).
 	RawUserData string `json:"rawUserData"`
+	// Profile is a saved cloud-init profile (Linux only) that the fields
+	// above override or extend; see mergeProfile.
+	Profile      int64 `json:"profile"`
+	passwordHash string
 }
 
 const (
@@ -89,7 +93,7 @@ func buildSeed(guest, cloneName string, c cloneCustomize) ([]byte, error) {
 		}
 		return img, nil
 	}
-	cfg := cloudinit.Config{Hostname: host, User: c.User, Password: c.Password, SSHKeys: c.SSHKeys, Packages: c.Packages, RawUserData: c.RawUserData}
+	cfg := cloudinit.Config{Hostname: host, User: c.User, Password: c.Password, SSHKeys: c.SSHKeys, Packages: c.Packages, RawUserData: c.RawUserData, PasswordHash: c.passwordHash}
 	img, err := cfg.Seed()
 	if err != nil {
 		return nil, badRequest("cloud-init: " + err.Error())
@@ -215,7 +219,22 @@ func (s *Server) vmClone(w http.ResponseWriter, r *http.Request) {
 	}
 	var seed []byte
 	if q.Customize != nil {
-		if seed, err = buildSeed(guest, q.Name, *q.Customize); err != nil {
+		c := *q.Customize
+		if c.Profile != 0 {
+			if guest == "windows" {
+				fail(w, badRequest("cloud-init profiles apply to Linux guests only"))
+				return
+			}
+			prof, err := s.resolveProfile(c.Profile)
+			if err != nil {
+				fail(w, err)
+				return
+			}
+			cfg := mergeProfile(prof, ciInput{c.Hostname, c.User, c.Password, c.SSHKeys, c.Packages, c.RawUserData})
+			c = cloneCustomize{Hostname: cfg.Hostname, User: cfg.User, Password: cfg.Password, SSHKeys: cfg.SSHKeys,
+				Packages: cfg.Packages, RawUserData: cfg.RawUserData, passwordHash: cfg.PasswordHash}
+		}
+		if seed, err = buildSeed(guest, q.Name, c); err != nil {
 			fail(w, err)
 			return
 		}

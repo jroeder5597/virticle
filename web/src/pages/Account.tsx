@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { ApiToken, del, get, post, Role } from "../api";
 import { atLeast, useRole } from "../auth";
 import { ErrorBox, Field, useAction } from "../ui";
@@ -16,6 +17,13 @@ export default function Account() {
       <div className="cards">
         <Password />
         <Tokens role={role} />
+        {atLeast(role, "operator") && (
+          <div className="card">
+            <h2>Cloud-init profiles</h2>
+            <p className="muted">Saved user, password, SSH keys and packages for new and cloned VMs.</p>
+            <Link to="/cloudinit-profiles">Manage profiles</Link>
+          </div>
+        )}
       </div>
     </>
   );

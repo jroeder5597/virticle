@@ -20,8 +20,11 @@ type Config struct {
 	Hostname string
 	User     string
 	Password string // hashed (SHA-512 crypt) before it is written
-	SSHKeys  []string
-	Packages []string
+	// PasswordHash is an already hashed password ($6$...), written as is. It
+	// is what saved profiles carry; Password wins if both are set.
+	PasswordHash string
+	SSHKeys      []string
+	Packages     []string
 	// RawUserData, when set, replaces the generated user-data verbatim.
 	RawUserData string
 	// NetworkConfig, when set, is written as network-config verbatim.
@@ -31,7 +34,9 @@ type Config struct {
 var (
 	hostnameRE = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$`)
 	userRE     = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
-	packageRE  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.+_:=~-]*$`)
+	// HashRE matches a SHA-512 crypt hash as HashPassword makes it.
+	HashRE    = regexp.MustCompile(`^\$6\$(rounds=[0-9]{4,9}\$)?[./0-9A-Za-z]{1,16}\$[./0-9A-Za-z]{86}$`)
+	packageRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.+_:=~-]*$`)
 )
 
 // Validate checks the user-supplied fields.
@@ -45,7 +50,10 @@ func (c Config) Validate() error {
 	if c.User != "" && !userRE.MatchString(c.User) {
 		return fmt.Errorf("invalid user name %q: use lowercase letters, digits, dash and underscore", c.User)
 	}
-	if c.Password != "" && c.User == "" {
+	if c.PasswordHash != "" && !HashRE.MatchString(c.PasswordHash) {
+		return fmt.Errorf("the password hash is not a SHA-512 crypt hash")
+	}
+	if (c.Password != "" || c.PasswordHash != "") && c.User == "" {
 		return fmt.Errorf("a password needs a user name")
 	}
 	if len(c.SSHKeys) > 0 && c.User == "" {
@@ -89,10 +97,12 @@ func (c Config) UserData() (string, error) {
 	}
 	if c.User != "" {
 		fmt.Fprintf(&b, "users:\n  - name: %s\n    shell: /bin/bash\n    sudo: \"ALL=(ALL) NOPASSWD:ALL\"\n", quote(c.User))
-		if c.Password != "" {
-			hash, err := HashPassword(c.Password)
-			if err != nil {
-				return "", err
+		if hash := c.PasswordHash; c.Password != "" || hash != "" {
+			if c.Password != "" {
+				var err error
+				if hash, err = HashPassword(c.Password); err != nil {
+					return "", err
+				}
 			}
 			fmt.Fprintf(&b, "    lock_passwd: false\n    passwd: %s\n", quote(hash))
 		}
@@ -103,7 +113,7 @@ func (c Config) UserData() (string, error) {
 			}
 		}
 	}
-	if c.Password != "" {
+	if c.Password != "" || c.PasswordHash != "" {
 		b.WriteString("ssh_pwauth: true\n")
 	}
 	if len(c.Packages) > 0 {
