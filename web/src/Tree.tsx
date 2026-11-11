@@ -12,6 +12,7 @@ import { ChevronRight, ChevronDown, Ellipsis, Play, Power, Terminal, Pause, Rota
 import { get, NodeStatus, Network as Net, Pool, post, put, ServerEvent, VM } from "./api";
 import { atLeast, useRole } from "./auth";
 import { useEvents } from "./live";
+import { TreeTags } from "./TreeTags";
 import "./shell.css";
 
 interface NIC {
@@ -502,12 +503,12 @@ const TreeRow = memo(
     const maint = r.kind === "node" && (r.data as NodeStatus).maintenance;
     return (
       <div
-        className={"trow" + (selected ? " sel" : "") + (r.muted ? " dim" : "") + (vm?.template ? " tpl" : "")}
+        className={"trow" + (selected ? " sel" : "") + (r.muted ? " dim" : "") + (vm?.template ? " tpl" : "") + (vm?.tags?.length ? " has-tags" : "")}
         role="treeitem"
         aria-level={r.level}
         aria-selected={selected}
         aria-expanded={r.open}
-        aria-label={vm ? `${r.label}, ${vm.template ? "template, " : ""}${vm.state}` : r.kind === "node" ? `${r.label}, ${st}${maint ? ", maintenance" : ""}` : r.label}
+        aria-label={vm ? `${r.label}, ${vm.template ? "template, " : ""}${vm.state}${vm.tags?.length ? ", tags: " + vm.tags.join(", ") : ""}` : r.kind === "node" ? `${r.label}, ${st}${maint ? ", maintenance" : ""}` : r.label}
         data-key={r.key}
         data-kind={r.kind}
         data-state={st || undefined}
@@ -531,6 +532,7 @@ const TreeRow = memo(
         <Link to={r.href} tabIndex={-1} className="lbl" title={r.label}>
           {r.label}
         </Link>
+        {vm?.tags?.length ? <TreeTags tags={vm.tags} /> : null}
         {maint && <Wrench size={12} className="maint" aria-label="In maintenance" />}
         {r.kind === "pool" && r.extra && r.extra !== "inactive" && <PoolBar p={r.data as Pool} text={r.extra} />}
         {r.kind !== "pool" && r.extra && !vm && r.kind !== "node" && <span className="x">{r.extra}</span>}

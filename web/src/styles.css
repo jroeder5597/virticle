@@ -232,13 +232,6 @@ main.viewer button:not(.link):not(.ghost):not(.tabs button):not([aria-haspopup="
 .secretbox code { word-break: break-all; flex: 1; }
 .row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
 /* tags, filters, bulk actions */
-.tags { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 8px; vertical-align: middle; }
-.tag { display: inline-flex; align-items: center; gap: 2px; font-size: 11.5px; padding: 1px 8px; border-radius: 4px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--link); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
-.tag.pick { cursor: pointer; }
-.tag button { padding: 0 2px; font-size: 10px; border: none; line-height: 1; }
-.tagedit { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
-.tagedit .tags { margin-left: 0; }
-.tagedit input { width: 130px; padding: 3px 8px; font-size: 12.5px; }
 .filters { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
 .filters input[type="search"] { width: 320px; max-width: 100%; }
 th.sel, td.sel { width: 28px; padding-right: 0; }
@@ -259,7 +252,7 @@ th.sel, td.sel { width: 28px; padding-right: 0; }
 .plot .stroke { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
 .plot .area { fill: currentColor; fill-opacity: 0.14; stroke: none; }
 .meter { display: flex; align-items: center; gap: 8px; }
-.meter-bar { height: 6px; width: 90px; background: var(--hover); border-radius: 3px; overflow: hidden; border: 1px solid var(--line); flex: none; }
+.meter-bar { height: 6px; width: 64px; background: var(--hover); border-radius: 3px; overflow: hidden; border: 1px solid var(--line); flex: none; }
 .meter-bar > div { height: 100%; background: var(--accent); }
 .meter-bar > div.full { background: var(--danger); }
 .meter-label { font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -333,3 +326,8 @@ textarea[readonly] { opacity: 0.8; }
 
 /* Row actions as icons (labelled for screen readers and on hover), so wide tables keep fitting. */
 .iconbtn { padding: 5px 8px; display: inline-flex; align-items: center; vertical-align: middle; }
+
+/* The VM list has many columns: keep numbers on one line and let the name cell (with its tags) give way. */
+td.num, th.num { white-space: nowrap; }
+table.vmlist td.vmname { max-width: 240px; overflow-wrap: anywhere; }
+table.vmlist td.vmnode { max-width: 150px; overflow-wrap: anywhere; }

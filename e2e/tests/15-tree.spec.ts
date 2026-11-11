@@ -19,7 +19,7 @@ test.describe.serial("resource tree", () => {
   test("shows both nodes and the VM under its node", async ({ page }) => {
     await page.goto("/datacenter/vms");
     await expect(tree(page)).toBeVisible();
-    for (const n of [env.node1, env.node2]) await expect(tree(page).getByRole("treeitem", { name: new RegExp(`^${n}, `) })).toBeVisible();
+    for (const n of [env.node1, env.node2]) await expect(tree(page).locator('[data-kind="node"]').filter({ hasText: n }).first()).toBeVisible(); // a VM may carry a node's name
     const row = vmRow(page);
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute("aria-level", "3");

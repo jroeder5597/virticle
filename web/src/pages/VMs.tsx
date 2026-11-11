@@ -90,7 +90,7 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
       ) : vms.data && list.length === 0 ? (
         <div className="empty">{all.length ? "No VM matches the search or tag filter." : "No virtual machines on the connected nodes."}</div>
       ) : (
-        <table>
+        <table className="vmlist">
           <thead>
             <tr>
               <th className="sel">
@@ -117,7 +117,7 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
                 <td className="sel">
                   <input type="checkbox" aria-label={`Select ${vm.name}`} checked={selected.has(keyOf(vm))} onChange={() => toggle(vm)} />
                 </td>
-                <td>
+                <td className="vmname">
                   <Link to={`/vm/${vm.node}/${vm.uuid}`}>{vm.name}</Link>
                   {vm.template && <span className="badge s-template">Template</span>}
                   <TagChips tags={vm.tags} onPick={setTagFilter} />
@@ -125,7 +125,7 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
                 <td>
                   <StateBadge state={vm.state} />
                 </td>
-                {fixedNode === undefined && <td>{vm.nodeName}</td>}
+                {fixedNode === undefined && <td className="vmnode">{vm.nodeName}</td>}
                 <td className="num">{vm.vcpus}</td>
                 <td className="num">{bytes(vm.memoryKiB * 1024)}</td>
                 <UsageCells p={vm.state === "running" ? live?.vms[`${vm.node}/${vm.uuid}`] : undefined} />

@@ -16,16 +16,19 @@ test.describe.serial("tags and bulk actions", () => {
     a = await createCirros(api, n1, A, { start: true });
     b = await createCirros(api, n1, B, { start: true });
     await openVM(page, a);
-    const input = page.getByPlaceholder("add tag");
+    await page.getByRole("button", { name: "+ Add Tag", exact: true }).click();
+    const input = page.getByRole("combobox", { name: "Tag name" });
     await input.fill("blue team");
     await input.press("Enter");
     await expect(page.locator(".tagedit .tag", { hasText: "blue team" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "+ Add Tag", exact: true })).toBeVisible();
     expect((await api.vmDetail(a.node, a.uuid)).tags).toEqual(["blue team"]);
     // an invalid tag is refused with a message
+    await page.getByRole("button", { name: "+ Add Tag", exact: true }).click();
     await input.fill("-bad");
     await input.press("Enter");
     await expect(page.locator(".tagedit .error")).toBeVisible();
-    await input.fill("");
+    await input.press("Escape");
 
     await page.goto("/datacenter/vms");
     await expect(row(page, A).locator(".tag", { hasText: "blue team" })).toBeVisible();
@@ -47,7 +50,9 @@ test.describe.serial("tags and bulk actions", () => {
     await page.getByLabel("Filter by tag").selectOption("");
 
     await openVM(page, a);
+    await page.locator(".tagedit .tag", { hasText: "blue team" }).hover();
     await page.getByRole("button", { name: "Remove tag blue team" }).click();
+    await confirm(page, "Remove tag");
     await expect(page.locator(".tagedit .tag")).toHaveCount(0);
     expect((await api.vmDetail(a.node, a.uuid)).tags ?? []).toEqual([]);
   });
