@@ -7,14 +7,16 @@ import { AlertMarks, useAlerts } from "./Alerts";
 import ImportDialog from "./Import";
 import { ErrorBox, Field, Modal, NodePicker, StateBadge, UsageBar, useAction } from "../ui";
 
-export default function Storage() {
+/** `fixedNode` pins the page to one node (node page tab): no node picker, no node auto-selection. */
+export default function Storage({ fixedNode }: { fixedNode?: number } = {}) {
   const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes");
-  const [node, setNode] = useState(0);
+  const [pickedNode, setNode] = useState(0);
+  const node = fixedNode ?? pickedNode;
   const [selected, setSelected] = useState("");
   const [creating, setCreating] = useState(false);
   const all = nodes.data?.nodes ?? [];
   useEffect(() => {
-    if (!all.some((n) => n.id === node && n.state === "online")) setNode(all.find((n) => n.state === "online")?.id ?? 0);
+    if (fixedNode === undefined && !all.some((n) => n.id === node && n.state === "online")) setNode(all.find((n) => n.state === "online")?.id ?? 0);
   }, [all, node]);
   const pools = useLive(() => (node ? get<Pool[]>(`/nodes/${node}/pools`) : Promise.resolve([])), `pools/${node}`, orEvents("pool"));
   const alerts = useAlerts();
@@ -22,7 +24,7 @@ export default function Storage() {
   const pool = pools.data?.find((p) => p.name === selected) ?? pools.data?.[0];
   const poolAction = (p: Pool, action: string) => act.run(() => post(`/nodes/${node}/pools/${encodeURIComponent(p.name)}/action`, { action }));
 
-  if (nodes.data && all.length === 0) {
+  if (fixedNode === undefined && nodes.data && all.length === 0) {
     return (
       <>
         <h1>Storage</h1>
@@ -35,9 +37,9 @@ export default function Storage() {
   return (
     <>
       <div className="head">
-        <h1>Storage</h1>
+        {fixedNode === undefined ? <h1>Storage</h1> : <h2>Storage pools</h2>}
         <div className="actions">
-          <NodePicker nodes={all} value={node} onChange={setNode} />
+          {fixedNode === undefined && <NodePicker nodes={all} value={node} onChange={setNode} />}
           <button className="primary" disabled={!node} onClick={() => setCreating(true)}>
             New pool
           </button>

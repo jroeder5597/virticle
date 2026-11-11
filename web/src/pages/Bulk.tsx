@@ -2,6 +2,7 @@
 // calls (three at a time) and shows each VM's own result, so every action is a
 // task of its own in the task log and failures are reported per VM.
 import { useEffect, useState } from "react";
+import { Check, Ellipsis, Minus, X } from "lucide-react";
 import { del, get, post, put, VM, VMDetail } from "../api";
 import { ErrorBox, Field, Modal, useAction } from "../ui";
 import { MAX_TAGS, TAG_RE } from "./Tags";
@@ -130,7 +131,7 @@ function BulkResults({ title, results, running, onClose }: { title: string; resu
       <ul className="checks" aria-label="Bulk results">
         {results.map((r) => (
           <li key={key(r.vm)} className={r.status === "ok" ? "ok" : ""}>
-            <span className="mark">{r.status === "ok" ? "✓" : r.status === "failed" ? "✗" : r.status === "skipped" ? "–" : "…"}</span>
+            <span className="mark">{r.status === "ok" ? <Check size={14} aria-label="ok" /> : r.status === "failed" ? <X size={14} aria-label="failed" /> : r.status === "skipped" ? <Minus size={14} aria-label="skipped" /> : <Ellipsis size={14} aria-label="running" />}</span>
             <span>
               <strong>{r.vm.name}</strong> <span className="muted">on {r.vm.nodeName}</span>
               {r.status === "skipped" && <span className="muted"> skipped: {r.text}</span>}

@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Alert, bytes, del, get, NodeInfo, NodeStatus, post, put } from "../api";
 import { useLive } from "../live";
 import { useRole } from "../auth";
@@ -6,8 +7,6 @@ import { ErrorBox, Field, Modal, StateBadge, useAction } from "../ui";
 import { HostLoad, useHostSeries } from "../charts";
 import { AlertMarks, useAlerts } from "./Alerts";
 import Evacuate from "./Evacuate";
-import HostUpdates from "./HostUpdates";
-import MigrationTLS from "./MigrationTLS";
 
 export default function Nodes() {
   const nodes = useLive(() => get<{ nodes: NodeStatus[]; publicKey: string }>("/nodes"), "nodes");
@@ -38,9 +37,6 @@ export default function Nodes() {
               <th>Address</th>
               <th>CPU</th>
               <th>Memory</th>
-              <th>libvirt</th>
-              <th>Host updates</th>
-              <th>Encrypted migration</th>
               <th />
             </tr>
           </thead>
@@ -77,7 +73,7 @@ function NodeRow({ n, onRemove, canRemove, alerts, onEvacuate, onMaintenance }: 
   return (
     <tr>
       <td>
-        {n.hostname || n.addr}
+        <Link to={`/node/${n.id}`}>{n.hostname || n.addr}</Link>
         {n.maintenance && (
           <span className="badge maint" title="Never chosen as a migration or evacuation target">
             maintenance
@@ -100,13 +96,6 @@ function NodeRow({ n, onRemove, canRemove, alerts, onEvacuate, onMaintenance }: 
       <td>
         {info ? `${bytes(info.memoryKiB * 1024)} total` : ""}
         <HostLoad points={series} kind="mem" />
-      </td>
-      <td>{info?.libvirtVersion}</td>
-      <td>
-        <HostUpdates node={n.id} online={n.state === "online"} />
-      </td>
-      <td>
-        <MigrationTLS node={n.id} online={n.state === "online"} admin={canRemove} />
       </td>
       <td className="actions nodeactions">
         {canRemove && n.state === "online" && (

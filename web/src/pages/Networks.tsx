@@ -7,14 +7,16 @@ import { ErrorBox, Field, Modal, NodePicker, StateBadge, useAction } from "../ui
 const modeNames: Record<string, string> = { nat: "NAT", route: "Routed", open: "Open", isolated: "Isolated", bridge: "Bridge" };
 const modeLabel = (n: Network) => (modeNames[n.forward] ?? n.forward) + (n.vlan ? ` · VLAN ${n.vlan}` : "");
 
-export default function Networks() {
+/** `fixedNode` pins the page to one node (node page tab): no node picker, no node auto-selection. */
+export default function Networks({ fixedNode }: { fixedNode?: number } = {}) {
   const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes");
-  const [node, setNode] = useState(0);
+  const [pickedNode, setNode] = useState(0);
+  const node = fixedNode ?? pickedNode;
   const [selected, setSelected] = useState("");
   const [creating, setCreating] = useState(false);
   const all = nodes.data?.nodes ?? [];
   useEffect(() => {
-    if (!all.some((n) => n.id === node && n.state === "online")) setNode(all.find((n) => n.state === "online")?.id ?? 0);
+    if (fixedNode === undefined && !all.some((n) => n.id === node && n.state === "online")) setNode(all.find((n) => n.state === "online")?.id ?? 0);
   }, [all, node]);
   const nets = useLive(() => (node ? get<Network[]>(`/nodes/${node}/networks`) : Promise.resolve([])), `nets/${node}`, orEvents("network"));
   const act = useAction();
@@ -37,9 +39,9 @@ export default function Networks() {
   return (
     <>
       <div className="head">
-        <h1>Networks</h1>
+        {fixedNode === undefined ? <h1>Networks</h1> : <h2>Virtual networks</h2>}
         <div className="actions">
-          {all.length > 0 && <NodePicker nodes={all} value={node} onChange={setNode} />}
+          {fixedNode === undefined && all.length > 0 && <NodePicker nodes={all} value={node} onChange={setNode} />}
           <button className="primary" disabled={!node} onClick={() => setCreating(true)}>
             New network
           </button>
@@ -109,7 +111,7 @@ function Detail({ base, name }: { base: string; name: string }) {
   const d = useLive(() => get<Network>(url), url, orEvents("network"));
   // Leases come and go without any libvirt event, so look again now and then.
   useEffect(() => {
-    const t = setInterval(d.reload, 10000);
+    const t = setInterval(() => document.visibilityState !== "hidden" && d.reload(), 10000);
     return () => clearInterval(t);
   }, [d.reload]);
   const n = d.data;

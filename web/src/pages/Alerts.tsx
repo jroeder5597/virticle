@@ -1,5 +1,5 @@
-import { Bell } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Bell, OctagonAlert, TriangleAlert, X } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { Alert, get } from "../api";
 import { useLive } from "../live";
@@ -32,7 +32,7 @@ export function AlertBell() {
   return (
     <div className="alertbell">
       <button className="bell" onClick={() => setOpen(!open)} aria-label={`Alerts: ${alerts.length}`} aria-expanded={open} title="Alerts">
-        <Bell size={16} aria-hidden />
+        <Bell size={16} aria-hidden="true" />
         <span className="name">Alerts</span>
         {alerts.length > 0 && <span className={"count " + (critical ? "critical" : "warning")}>{alerts.length}</span>}
       </button>
@@ -41,7 +41,7 @@ export function AlertBell() {
           <header>
             <strong>Alerts</strong>
             <button className="ghost" onClick={() => setOpen(false)} aria-label="Close alerts">
-              ✕
+              <X size={16} aria-hidden="true" />
             </button>
           </header>
           {alerts.length === 0 ? (
@@ -74,7 +74,7 @@ export function AlertMarks({ alerts, match }: { alerts: Alert[]; match: (a: Aler
     <span className="marks">
       {mine.map((a) => (
         <span key={a.id} className={"mark " + a.severity} title={a.message}>
-          {a.severity === "critical" ? "⛔" : "⚠"} {a.title}
+          {a.severity === "critical" ? <OctagonAlert size={12} aria-hidden="true" /> : <TriangleAlert size={12} aria-hidden="true" />} {a.title}
         </span>
       ))}
     </span>

@@ -12,12 +12,14 @@ import Storage from "./pages/Storage";
 import { BackupsSection } from "./pages/Backups";
 import Networks from "./pages/Networks";
 import Nodes from "./pages/Nodes";
+import NodeDetail from "./pages/NodeDetail";
 import Tasks from "./pages/Tasks";
 import Users from "./pages/Users";
 import Audit from "./pages/Audit";
 import Account from "./pages/Account";
 import { AlertBell } from "./pages/Alerts";
 import { RoleContext } from "./auth";
+import { ThemeToggle } from "./theme";
 
 type Session = { needsSetup: boolean; user: string; role: Role };
 
@@ -68,7 +70,7 @@ export default function App() {
         </div>
         <div className="spacer" />
         <AlertBell />
-        {/* Theme toggle slot: the reviewer mounts <ThemeToggle /> here. */}
+        <ThemeToggle />
         <NavLink className="acct" to="/account" aria-label={session.user} title={`Signed in as ${session.role}`}>
           <User size={16} aria-hidden />
           <span className="name">{session.user}</span>
@@ -98,6 +100,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<VMs />} />
           <Route path="/vm/:node/:uuid" element={<VMDetailPage />} />
+          <Route path="/node/:id/:tab?" element={<NodeDetail />} />
           <Route path="/storage" element={<Storage />} />
           <Route path="/backups" element={<BackupsSection />} />
           <Route path="/networks" element={<Networks />} />

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CornerDownRight } from "lucide-react";
 import { del, get, post, put, VMDetail } from "../api";
 import { useLive } from "../live";
 import { ErrorBox, Field, Modal, StateBadge, useAction } from "../ui";
@@ -83,7 +84,7 @@ export default function SnapshotsTab({ d, base }: { d: VMDetail; base: string })
               <tr key={s.name}>
                 <td>
                   <div style={{ paddingLeft: depth * 22 }}>
-                    {depth > 0 && <span className="muted">└ </span>}
+                    {depth > 0 && <CornerDownRight className="muted" size={14} aria-hidden="true" />}
                     <strong>{s.name}</strong> {s.isCurrent && <span className="badge s-running">current</span>}
                     {s.description && <div className="muted">{s.description}</div>}
                   </div>

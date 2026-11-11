@@ -94,6 +94,7 @@ func (s *Server) Handler() http.Handler {
 	auth("POST /api/nodes/{node}/evacuate/cancel", s.evacuateCancel)
 	auth("PUT /api/nodes/{node}/maintenance", s.putMaintenance)
 	auth("GET /api/nodes/{node}/updates", s.nodeUpdates)
+	auth("GET /api/nodes/{node}/interfaces", s.nodeInterfaces)
 	auth("GET /api/stats", s.allStats)
 	auth("GET /api/nodes/{node}/stats", s.nodeStats)
 	auth("GET /api/nodes/{node}/vms/{uuid}/stats", s.vmStats)

@@ -97,13 +97,15 @@ export default function Tree() {
   const [tabKey, setTabKey] = useState("");
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
-  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[]; key: string } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; up: number; items: MenuItem[]; key: string } | null>(null);
   const box = useRef<HTMLDivElement>(null);
 
   // ---- data ----
   const dirty = useRef(new Set<string>()); // what to refresh when the tab becomes visible: "nodes", "vms", "d:<id>"
   const wanted = useRef({ storage: new Set<number>(), network: new Set<number>() });
 
+  const dataRef = useRef(data);
+  dataRef.current = data;
   const loadNodes = useCallback(
     () => get<{ nodes: NodeStatus[] }>("/nodes").then((r) => setNodes((o) => reconcile(o, r.nodes, (n) => String(n.id))), () => {}),
     [],
@@ -119,20 +121,23 @@ export default function Tree() {
   );
   // The interfaces endpoint may not exist (404) or fail: show networks only, no error.
   const loadNetwork = useCallback(
-    (id: number) =>
+    // Host NICs cost an SSH command on the node: fetched once, not on every network event.
+    (id: number, refresh = false) =>
       Promise.all([
         get<Net[]>(`/nodes/${id}/networks`).catch(() => undefined),
-        get<{ interfaces: NIC[] }>(`/nodes/${id}/interfaces`).then((r) => r.interfaces ?? [], () => [] as NIC[]),
+        refresh && dataRef.current[id]?.nics ? undefined : get<{ interfaces: NIC[] }>(`/nodes/${id}/interfaces`).then((r) => r.interfaces ?? [], () => [] as NIC[]),
       ]).then(([n, nics]) =>
         setData((d) => ({
           ...d,
-          [id]: { ...d[id], nets: n ? reconcile(d[id]?.nets, n, (x) => x.uuid) : d[id]?.nets ?? [], nics: reconcile(d[id]?.nics, nics, (x) => x.name) },
+          [id]: { ...d[id], nets: n ? reconcile(d[id]?.nets, n, (x) => x.uuid) : d[id]?.nets ?? [], nics: nics ? reconcile(d[id]?.nics, nics, (x) => x.name) : d[id]?.nics },
         })),
       ),
     [],
   );
 
+  const firstLoad = useRef(0);
   useEffect(() => {
+    firstLoad.current = Date.now();
     loadNodes();
     loadVMs();
   }, [loadNodes, loadVMs]);
@@ -140,7 +145,7 @@ export default function Tree() {
   const refreshNode = useCallback(
     (id: number) => {
       if (wanted.current.storage.has(id)) loadStorage(id);
-      if (wanted.current.network.has(id)) loadNetwork(id);
+      if (wanted.current.network.has(id)) loadNetwork(id, true);
     },
     [loadStorage, loadNetwork],
   );
@@ -156,6 +161,8 @@ export default function Tree() {
   useEvents((e: ServerEvent) => {
     if (e.type === "domain") flushVMs();
     else if (e.type === "node") {
+      // The socket's "resync" on connect right after our own first load would only repeat it.
+      if (e.detail === "resync" && Date.now() - firstLoad.current < 4000) return;
       flushNodes();
       if (e.detail === "resync") {
         flushVMs();
@@ -380,9 +387,9 @@ export default function Tree() {
       if (r && r.open !== undefined) latest.current.setOpenKey(key, !r.open);
     },
     quick: (r: RowModel) => latest.current.rowQuick(r),
-    menu: (r: RowModel, x: number, y: number) => {
+    menu: (r: RowModel, x: number, y: number, up = y) => {
       const items = latest.current.rowItems(r);
-      if (items.length) setMenu({ x, y, items, key: r.key });
+      if (items.length) setMenu({ x, y, up, items, key: r.key });
     },
     focus: (key: string) => setTabKey(key),
   }).current;
@@ -425,7 +432,7 @@ export default function Tree() {
       case "F10": {
         if (e.key === "F10" && !e.shiftKey) { handled = false; break; }
         const b = el.getBoundingClientRect();
-        handlers.menu(r, b.left + 40, b.bottom);
+        handlers.menu(r, b.left + 40, b.bottom, b.top);
         break;
       }
       default:
@@ -461,7 +468,7 @@ export default function Tree() {
   );
 }
 
-type H = { toggle: (k: string) => void; quick: (r: RowModel) => Quick[]; menu: (r: RowModel, x: number, y: number) => void; focus: (k: string) => void };
+type H = { toggle: (k: string) => void; quick: (r: RowModel) => Quick[]; menu: (r: RowModel, x: number, y: number, up?: number) => void; focus: (k: string) => void };
 
 const shallow = (a: any, b: any) => {
   const ka = Object.keys(a);
@@ -524,7 +531,7 @@ const TreeRow = memo(
               title="More actions"
               onClick={(e) => {
                 const b = e.currentTarget.getBoundingClientRect();
-                h.menu(r, b.left, b.bottom);
+                h.menu(r, b.right, b.bottom, b.top);
               }}
             >
               <Ellipsis size={14} />
@@ -576,14 +583,17 @@ function PoolBar({ p, text }: { p: Pool; text: string }) {
   );
 }
 
-function Menu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; key?: string; onClose: () => void }) {
+function Menu({ x, y, up, items, onClose }: { x: number; y: number; up: number; items: MenuItem[]; key?: string; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
   useEffect(() => {
     const m = ref.current!;
     const w = m.offsetWidth,
       h = m.offsetHeight;
-    setPos({ left: Math.max(4, Math.min(x, window.innerWidth - w - 4)), top: Math.max(4, Math.min(y, window.innerHeight - h - 4)) });
+    // Near the right edge the menu grows leftwards from x; near the bottom it opens upwards from the anchor's top.
+    const left = x + w > window.innerWidth - 4 ? x - w : x;
+    const top = y + h > window.innerHeight - 4 ? up - h : y;
+    setPos({ left: Math.max(4, Math.min(left, window.innerWidth - w - 4)), top: Math.max(4, Math.min(top, window.innerHeight - h - 4)) });
     m.querySelector<HTMLElement>("button")?.focus();
     const away = (e: Event) => !m.contains(e.target as Node) && onClose();
     window.addEventListener("mousedown", away);

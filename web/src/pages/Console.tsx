@@ -4,6 +4,9 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { wsURL } from "../api";
+import { cssVar, useTheme } from "../theme";
+
+const termTheme = () => ({ background: cssVar("--term-bg", "#1B252B"), foreground: cssVar("--term-fg", "#F4F6F7"), cursor: cssVar("--term-fg", "#F4F6F7"), selectionBackground: cssVar("--term-sel", "#51626E") });
 
 type Status = "connecting" | "connected" | "closed";
 
@@ -35,7 +38,7 @@ export function VNCConsole({ node, uuid }: { node: number; uuid: string }) {
     setStatus("connecting");
     const r = new RFB(el, wsURL(`/nodes/${node}/vms/${uuid}/vnc`), { wsProtocols: ["binary"] });
     r.scaleViewport = true;
-    r.background = "#000";
+    r.background = cssVar("--screen", "#1B252B");
     r.addEventListener("connect", () => setStatus("connected"));
     r.addEventListener("disconnect", () => setStatus("closed"));
     r.addEventListener("credentialsrequired", () => {
@@ -75,9 +78,15 @@ export function SerialConsole({ node, uuid }: { node: number; uuid: string }) {
   const [status, setStatus] = useState<Status>("connecting");
   const [detail, setDetail] = useState<string | undefined>();
   const [attempt, setAttempt] = useState(0);
+  const termRef = useRef<Terminal | null>(null);
+  const { theme } = useTheme();
+  useEffect(() => {
+    if (termRef.current) termRef.current.options.theme = termTheme();
+  }, [theme]);
 
   useEffect(() => {
-    const term = new Terminal({ cursorBlink: true, fontSize: 13, scrollback: 5000, theme: { background: "#0b0e14" } });
+    const term = new Terminal({ cursorBlink: false, fontSize: 13, scrollback: 5000, fontFamily: cssVar("--mono", "monospace"), theme: termTheme() });
+    termRef.current = term;
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(holder.current!);
@@ -105,6 +114,7 @@ export function SerialConsole({ node, uuid }: { node: number; uuid: string }) {
       window.removeEventListener("resize", onResize);
       input.dispose();
       ws.close();
+      termRef.current = null;
       term.dispose();
     };
   }, [node, uuid, attempt]);
