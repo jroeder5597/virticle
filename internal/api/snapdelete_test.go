@@ -82,7 +82,7 @@ func TestPlanSnapshotDeleteOrphanAndUnknown(t *testing.T) {
 }
 
 func TestAnnotateSnapshots(t *testing.T) {
-	l := []snapInfo{{Name: "a", Kind: "external", Description: "Scheduled snapshot (virt-proj) [controller ab12]"}, {Name: "b", Kind: "internal"}}
+	l := []snapInfo{{Name: "a", Kind: "external", Description: "Scheduled snapshot (virticle) [controller ab12]"}, {Name: "b", Kind: "internal"}}
 	annotateSnapshots(l, true)
 	if l[0].Deletable || l[0].Reason == "" || !l[0].Scheduled || !l[1].Deletable || l[1].Scheduled {
 		t.Errorf("%+v", l)

@@ -379,7 +379,7 @@ func (s *Store) CreateToken(userID int64, name, role string, expires int64) (API
 	if _, err := rand.Read(b); err != nil {
 		return APIToken{}, "", err
 	}
-	secret := "vp_" + base64.RawURLEncoding.EncodeToString(b)
+	secret := "virticle_" + base64.RawURLEncoding.EncodeToString(b)
 	now := time.Now().Unix()
 	res, err := s.db.Exec(`INSERT INTO api_tokens(user_id, name, hash, role, created, expires) VALUES(?,?,?,?,?,?)`,
 		userID, name, hashToken(secret), role, now, expires)

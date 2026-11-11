@@ -15,11 +15,25 @@ import (
 )
 
 // NS is the XML namespace for application data in domain metadata.
-const NS = "https://virt-proj.invalid/ns/1"
+const NS = "https://virticle.invalid/ns/1"
+
+// Prefix is the XML prefix libvirt stores NS under.
+const Prefix = "virticle"
+
+// LegacyNS and LegacyPrefix are what versions before the rename wrote. They
+// are still read; see the metadata functions in internal/api.
+const (
+	LegacyNS     = "https://virt-proj.invalid/ns/1"
+	LegacyPrefix = "vp"
+)
 
 // Marker is the description given to every scheduled snapshot. Together with
 // the name pattern it tells scheduled snapshots from user-made ones.
-const Marker = "Scheduled snapshot (virt-proj)"
+const Marker = "Scheduled snapshot (virticle)"
+
+// legacyMarker is the description written before the rename; such snapshots
+// still count as scheduled ones.
+const legacyMarker = "Scheduled snapshot (virt-proj)"
 
 const (
 	rootName  = "meta"
@@ -133,9 +147,10 @@ type Snap struct {
 }
 
 // stampPrefix starts the suffix that names the controller that took a
-// scheduled snapshot: "Scheduled snapshot (virt-proj) [controller 1a2b3c4d]".
+// scheduled snapshot: "Scheduled snapshot (virticle) [controller 1a2b3c4d]".
 // Snapshots from before the suffix existed carry the bare Marker.
 const stampPrefix = Marker + " [controller "
+const legacyStampPrefix = legacyMarker + " [controller "
 
 // Stamp is the description for a scheduled snapshot taken by the controller
 // with the given instance id (empty: the bare Marker).
@@ -149,7 +164,11 @@ func Stamp(id string) string {
 // Controller returns the instance id in a scheduled snapshot's description,
 // or "" for a bare Marker or anything that is not a scheduler description.
 func Controller(desc string) string {
-	if rest, ok := strings.CutPrefix(desc, stampPrefix); ok {
+	rest, ok := strings.CutPrefix(desc, stampPrefix)
+	if !ok {
+		rest, ok = strings.CutPrefix(desc, legacyStampPrefix)
+	}
+	if ok {
 		if id, ok := strings.CutSuffix(rest, "]"); ok && id != "" && !strings.ContainsAny(id, "[] ") {
 			return id
 		}
@@ -157,7 +176,9 @@ func Controller(desc string) string {
 	return ""
 }
 
-func isMarker(desc string) bool { return desc == Marker || Controller(desc) != "" }
+func isMarker(desc string) bool {
+	return desc == Marker || desc == legacyMarker || Controller(desc) != ""
+}
 
 // Foreign returns the instance id of a controller other than self that took
 // a scheduled snapshot of this prefix at or after since; "" if there is none.
@@ -365,8 +386,22 @@ func Update(meta string, s *Schedule) (string, error) {
 	} else {
 		inner += elem
 	}
-	// libvirt stores the children with the "vp:" prefix; written back they
+	// libvirt stores the children with the "virticle:" (or, in a definition from
+	// before the rename, "vp:") prefix; written back they
 	// must be plain again, since the prefix is only declared by the root.
-	inner = strings.NewReplacer("<vp:", "<", "</vp:", "</").Replace(inner)
+	inner = StripPrefixes(inner)
 	return wrap(inner), nil
 }
+
+// StripPrefixes turns the children libvirt returns (prefixed with the
+// namespace prefix, which only the root declares) back into plain elements.
+func StripPrefixes(inner string) string {
+	return prefixStripper.Replace(inner)
+}
+
+var prefixStripper = strings.NewReplacer(
+	"<"+Prefix+":", "<", "</"+Prefix+":", "</",
+	"<"+LegacyPrefix+":", "<", "</"+LegacyPrefix+":", "</")
+
+// IsScheduled reports whether desc is a scheduler description, from this version or the one before the rename.
+func IsScheduled(desc string) bool { return isMarker(desc) }

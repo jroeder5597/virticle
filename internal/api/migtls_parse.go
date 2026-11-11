@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"virt-proj/internal/migpki"
+	"virticle/internal/migpki"
 )
 
 // Pure parts of the encrypted-migration support: reading what the node tells
@@ -212,8 +212,8 @@ func stateScript(dir string) string {
 		b.WriteString(" " + shq(a))
 	}
 	b.WriteString(`; do if [ -d "$a" ]; then echo "@@dir $a 1"; else echo "@@dir $a 0"; fi; done` + "\n")
-	b.WriteString(`for f in server-key.pem client-key.pem ca-cert.pem server-cert.pem client-cert.pem .virt-proj-migration.json; do p="$d/$f"; if [ -e "$p" ]; then echo "@@file $f $(sha256sum < "$p" | cut -d' ' -f1) $(stat -c '%U:%G %a' "$p")"; fi; done` + "\n")
-	b.WriteString(`for c in ca-cert.pem:ca server-cert.pem:server client-cert.pem:client .virt-proj-migration.json:marker; do f=${c%%:*}; n=${c##*:}; echo "@@content $n"; cat "$d/$f" 2>/dev/null; done` + "\n")
+	b.WriteString(`for f in server-key.pem client-key.pem ca-cert.pem server-cert.pem client-cert.pem .virticle-migration.json .virt-proj-migration.json; do p="$d/$f"; if [ -e "$p" ]; then echo "@@file $f $(sha256sum < "$p" | cut -d' ' -f1) $(stat -c '%U:%G %a' "$p")"; fi; done` + "\n")
+	b.WriteString(`for c in ca-cert.pem:ca server-cert.pem:server client-cert.pem:client .virticle-migration.json:marker .virt-proj-migration.json:oldmarker; do f=${c%%:*}; n=${c##*:}; echo "@@content $n"; cat "$d/$f" 2>/dev/null; done` + "\n")
 	b.WriteString(`echo "@@content ls"; ls -A "$d" 2>/dev/null` + "\n")
 	b.WriteString("echo '@@end'\ntrue")
 	return b.String()
@@ -224,12 +224,15 @@ type nodeState struct {
 	snap      migpki.Snapshot
 	dirExists map[string]bool // ancestors that exist
 	listing   map[string]bool // names in the directory
+	// markerFile is the name of the marker file that was read; it is the legacy
+	// name when only a marker from before the rename exists.
+	markerFile string
 }
 
 func parseState(out, dir, hostname string) (nodeState, error) {
 	st := nodeState{
 		snap:      migpki.Snapshot{Dir: dir, Hostname: hostname, Files: map[string]migpki.FileState{}},
-		dirExists: map[string]bool{}, listing: map[string]bool{},
+		dirExists: map[string]bool{}, listing: map[string]bool{}, markerFile: migpki.FileMarker,
 	}
 	content := map[string][]string{}
 	cur := ""
@@ -275,7 +278,14 @@ func parseState(out, dir, hostname string) (nodeState, error) {
 			st.listing[l] = true
 		}
 	}
-	if mk := join("marker"); mk != nil {
+	mk := join("marker")
+	if mk == nil {
+		// Written by a version before the rename.
+		if mk = join("oldmarker"); mk != nil {
+			st.markerFile = migpki.FileMarkerLegacy
+		}
+	}
+	if mk != nil {
 		m, err := parseMarker(mk)
 		if err != nil {
 			st.snap.MarkerBad = true

@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"virt-proj/internal/cluster"
+	"virticle/internal/cluster"
 )
 
 // A tag's colour belongs to its name and so applies on every VM that carries it. The names stay in libvirt

@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"virt-proj/internal/snapsched"
+	"virticle/internal/snapsched"
 )
 
 // Deleting snapshots. What libvirt does (checked on the lab, libvirt 11.10 on Rocky 10 with SELinux, and 11.3 on
@@ -143,7 +143,7 @@ func planSnapshotDelete(list []snapInfo, names []string, apparmor bool) snapPlan
 
 // scheduledSnapshot reports whether the description marks a snapshot the scheduler made.
 func scheduledSnapshot(desc string) bool {
-	return desc == snapsched.Marker || snapsched.Controller(desc) != ""
+	return snapsched.IsScheduled(desc)
 }
 
 // annotateSnapshots fills Deletable, Reason and Scheduled of a listing.

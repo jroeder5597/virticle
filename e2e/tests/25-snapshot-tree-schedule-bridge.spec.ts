@@ -274,7 +274,7 @@ test.describe.serial("snapshot tree, delete dialog, schedule, bridge picker", ()
     const first = await api.get(`${base()}/snapshot-schedule`);
     expect(Math.abs(first.nextRun - Date.now() / 1000)).toBeLessThan(5);
     // once a scheduled snapshot exists, the next run is the next 03:30 UTC
-    await api.post(`${base()}/snapshots`, { name: `${P}auto-20260101-000000`, description: "Scheduled snapshot (virt-proj)" });
+    await api.post(`${base()}/snapshots`, { name: `${P}auto-20260101-000000`, description: "Scheduled snapshot (virticle)" });
     const got = await api.get(`${base()}/snapshot-schedule`);
     expect(got.nextRun).toBeGreaterThan(Date.now() / 1000);
     expect(got.nextRun - Date.now() / 1000).toBeLessThanOrEqual(86400 + 60);

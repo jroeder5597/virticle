@@ -10,9 +10,9 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/cluster"
-	"virt-proj/internal/hostconn"
-	"virt-proj/internal/snapsched"
+	"virticle/internal/cluster"
+	"virticle/internal/hostconn"
+	"virticle/internal/snapsched"
 )
 
 // Scheduled backups. Like scheduled snapshots they keep no state of their

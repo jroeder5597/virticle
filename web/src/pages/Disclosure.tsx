@@ -2,12 +2,13 @@
 // and shown plainly in an Edit Settings dialog. The open state is remembered per browser.
 import { ReactNode, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { getPref } from "../storage";
 
-const key = (id: string) => `vp.hw.open.${id}`;
+const key = (id: string) => `virticle.hw.open.${id}`;
 
 function readOpen(id: string): boolean {
   try {
-    return localStorage.getItem(key(id)) === "1";
+    return getPref(key(id), `vp.hw.open.${id}`) === "1";
   } catch {
     return false;
   }

@@ -5,9 +5,11 @@
 // and the next change sends it again. No error is shown for a preference.
 import { useSyncExternalStore } from "react";
 import { get, put } from "./api";
+import { getPref as getStored } from "./storage";
 
 type Prefs = Record<string, string>;
-const MIRROR = "vp-prefs:";
+const MIRROR = "virticle-prefs:";
+const LEGACY_MIRROR = "vp-prefs:"; // before the rename
 const subs = new Set<() => void>();
 let user = "";
 let values: Prefs = {};
@@ -17,7 +19,7 @@ let saving = false;
 const mirrorKey = () => MIRROR + user;
 function readMirror(): Prefs {
   try {
-    const m = JSON.parse(localStorage.getItem(mirrorKey()) ?? "{}");
+    const m = JSON.parse(getStored(mirrorKey(), LEGACY_MIRROR + user) ?? "{}");
     return m && typeof m === "object" ? m : {};
   } catch {
     return {};

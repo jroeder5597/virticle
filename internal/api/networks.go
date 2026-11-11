@@ -13,8 +13,8 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/cluster"
-	"virt-proj/internal/hostconn"
+	"virticle/internal/cluster"
+	"virticle/internal/hostconn"
 )
 
 // netXML is the part of a network definition the UI shows and edits.

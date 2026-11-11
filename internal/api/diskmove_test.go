@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"virt-proj/internal/domxml"
+	"virticle/internal/domxml"
 )
 
 const moveDom = `<domain type='kvm'>

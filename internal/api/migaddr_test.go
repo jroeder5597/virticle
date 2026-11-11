@@ -4,7 +4,7 @@ import (
 	"net"
 	"testing"
 
-	"virt-proj/internal/store"
+	"virticle/internal/store"
 )
 
 func TestMigrationTargetAndURIs(t *testing.T) {

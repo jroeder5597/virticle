@@ -11,9 +11,9 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/cluster"
-	"virt-proj/internal/hostconn"
-	"virt-proj/internal/stats"
+	"virticle/internal/cluster"
+	"virticle/internal/hostconn"
+	"virticle/internal/stats"
 )
 
 // Live statistics. Each online node gets one sampler goroutine that wakes

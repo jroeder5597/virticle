@@ -77,7 +77,7 @@ export default function MigrationTLS({ node, online, admin }: { node: number; on
       {admin && st.state === "mismatch" && !addressOnly && (
         <button
           disabled={act.busy}
-          onClick={async () => (await confirm.ask({ title: "Repair encrypted migration", message: `The certificate files in ${st.dir} on ${st.hostname} are replaced. Existing files that this server did not create are kept as *.virt-proj-orig.`, items: st.problems ?? [], confirm: "Replace certificates" })) && setup(true)}
+          onClick={async () => (await confirm.ask({ title: "Repair encrypted migration", message: `The certificate files in ${st.dir} on ${st.hostname} are replaced. Existing files that this server did not create are kept as *.virticle-orig.`, items: st.problems ?? [], confirm: "Replace certificates" })) && setup(true)}
         >
           Repair
         </button>

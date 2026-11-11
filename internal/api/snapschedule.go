@@ -11,8 +11,8 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/hostconn"
-	"virt-proj/internal/snapsched"
+	"virticle/internal/hostconn"
+	"virticle/internal/snapsched"
 )
 
 // Scheduled snapshots keep no state of their own: the schedule lives in the
@@ -220,23 +220,6 @@ func metaFlags(h *hostconn.Host, dom libvirt.Domain, write bool) libvirt.DomainM
 		}
 	}
 	return f
-}
-
-func domainMeta(h *hostconn.Host, dom libvirt.Domain) (string, error) {
-	m, err := h.DomainGetMetadata(dom, int32(libvirt.DomainMetadataElement), libvirt.OptString{snapsched.NS}, metaFlags(h, dom, false))
-	var lv libvirt.Error
-	if errors.As(err, &lv) && lv.Code == uint32(libvirt.ErrNoDomainMetadata) {
-		return "", nil
-	}
-	return m, err
-}
-
-func setDomainMeta(h *hostconn.Host, dom libvirt.Domain, meta string) error {
-	var m libvirt.OptString
-	if meta != "" {
-		m = libvirt.OptString{meta}
-	}
-	return h.DomainSetMetadata(dom, int32(libvirt.DomainMetadataElement), m, libvirt.OptString{"vp"}, libvirt.OptString{snapsched.NS}, metaFlags(h, dom, true))
 }
 
 func (s *Server) getSnapshotSchedule(w http.ResponseWriter, r *http.Request) {

@@ -1,4 +1,4 @@
-module virt-proj
+module virticle
 
 go 1.26.0
 

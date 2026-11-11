@@ -14,7 +14,7 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/hostconn"
+	"virticle/internal/hostconn"
 )
 
 // Importing a disk image: the image is already on the node (an uploaded or
@@ -498,8 +498,8 @@ type workDir struct {
 }
 
 func newWorkDir(h *hostconn.Host, poolDir string) (*workDir, error) {
-	out, err := h.RunRoot("umask 077 && mktemp -d -- " + shQuote(poolDir+"/.virt-proj-import.XXXXXX"))
-	if err != nil || !strings.HasPrefix(out, poolDir+"/.virt-proj-import.") || hasControl(out) {
+	out, err := h.RunRoot("umask 077 && mktemp -d -- " + shQuote(poolDir+"/.virticle-import.XXXXXX"))
+	if err != nil || !strings.HasPrefix(out, poolDir+"/.virticle-import.") || hasControl(out) {
 		return nil, fmt.Errorf("cannot create a work directory in %s: %s", poolDir, impFirstLine(out))
 	}
 	return &workDir{h: h, path: out}, nil

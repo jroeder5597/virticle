@@ -9,7 +9,7 @@ const sample = `<domain type='kvm' xmlns:qemu='http://libvirt.org/schemas/domain
   <name>t</name>
   <!-- keep me -->
   <metadata>
-    <vp:tag xmlns:vp="https://virt-proj.invalid/ns/1">  odd   spacing </vp:tag>
+    <virticle:tag xmlns:virticle="https://virticle.invalid/ns/1">  odd   spacing </virticle:tag>
   </metadata>
   <os>
     <type arch='x86_64' machine='q35'>hvm</type>
@@ -48,7 +48,7 @@ func TestBootOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"<!-- keep me -->", `<vp:tag xmlns:vp="https://virt-proj.invalid/ns/1">  odd   spacing </vp:tag>`,
+		"<!-- keep me -->", `<virticle:tag xmlns:virticle="https://virticle.invalid/ns/1">  odd   spacing </virticle:tag>`,
 		"<qemu:commandline>\n    <qemu:arg value='-foo'/>\n  </qemu:commandline>", "xmlns:qemu=",
 		"<boot order='3'/>\n    </disk>", "<boot order='2'/>\n    </disk>",
 		"<model type='virtio'/>\n      <boot order='1'/>\n    </interface>",

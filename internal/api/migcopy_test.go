@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"virt-proj/internal/hostconn"
+	"virticle/internal/hostconn"
 )
 
 func hostWith(p hostconn.Privilege) *hostconn.Host {

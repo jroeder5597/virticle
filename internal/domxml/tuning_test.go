@@ -11,7 +11,7 @@ const tuneSample = `<domain type='kvm' xmlns:qemu='http://libvirt.org/schemas/do
   <uuid>11111111-2222-3333-4444-555555555555</uuid>
   <!-- keep this comment -->
   <metadata>
-    <vp:meta xmlns:vp='https://virt-proj.invalid/ns/1'><vp:tags>a,b</vp:tags></vp:meta>
+    <virticle:meta xmlns:virticle='https://virticle.invalid/ns/1'><virticle:tags>a,b</virticle:tags></virticle:meta>
   </metadata>
   <memory unit='KiB'>2097152</memory>
   <vcpu placement='static'>4</vcpu>
@@ -40,7 +40,7 @@ func survives(t *testing.T, out string) {
 	t.Helper()
 	for _, frag := range []string{
 		"<!-- keep this comment -->",
-		"<vp:meta xmlns:vp='https://virt-proj.invalid/ns/1'><vp:tags>a,b</vp:tags></vp:meta>",
+		"<virticle:meta xmlns:virticle='https://virticle.invalid/ns/1'><virticle:tags>a,b</virticle:tags></virticle:meta>",
 		"<uuid>11111111-2222-3333-4444-555555555555</uuid>",
 		"<disk type='file' device='disk'><source file='/x.qcow2'/><target dev='vda'/></disk>",
 		"<qemu:commandline><qemu:arg value='-foo'/></qemu:commandline>",

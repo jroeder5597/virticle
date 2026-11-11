@@ -329,6 +329,6 @@ test.describe.serial("VM page polish", () => {
     await expect(gpu.getByRole("button", { name: "Attach" })).toHaveAttribute("title", "Shut the VM down to attach a graphics card");
     await expect(dlg.locator("tr", { hasText: "0000:0b:00.0" }).getByRole("button", { name: "Attach" })).toBeEnabled();
     await page.keyboard.press("Escape");
-    await page.evaluate(() => localStorage.removeItem("vp.hw.open.hw-passthrough"));
+    await page.evaluate(() => localStorage.removeItem("virticle.hw.open.hw-passthrough"));
   });
 });

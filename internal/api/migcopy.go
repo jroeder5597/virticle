@@ -22,8 +22,8 @@ import (
 	"fmt"
 	"strings"
 
-	"virt-proj/internal/hostconn"
-	"virt-proj/internal/store"
+	"virticle/internal/hostconn"
+	"virticle/internal/store"
 )
 
 // nodeCopyCmd is the command, run as root on the source, that copies file

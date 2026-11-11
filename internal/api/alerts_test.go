@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"virt-proj/internal/store"
+	"virticle/internal/store"
 )
 
 func ids(a []Alert) map[string]string {

@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"virt-proj/internal/cluster"
-	"virt-proj/internal/hostconn"
-	"virt-proj/internal/store"
+	"virticle/internal/cluster"
+	"virticle/internal/hostconn"
+	"virticle/internal/store"
 )
 
 // nodeView is a node as the UI lists it: its status plus what its privilege

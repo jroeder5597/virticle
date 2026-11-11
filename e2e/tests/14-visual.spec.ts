@@ -175,7 +175,7 @@ test.describe.serial("visual pass", () => {
       test.setTimeout(240_000);
       const ctx = await browser.newContext({ storageState: ".auth/admin.json", viewport: m.viewport });
       // The theme no longer follows the OS: pick it the way the toggle does (localStorage, read before first paint).
-      await ctx.addInitScript((t) => localStorage.setItem("vp-theme", t), m.scheme);
+      await ctx.addInitScript((t) => localStorage.setItem("virticle-theme", t), m.scheme);
       const page = await ctx.newPage();
       const problems: string[] = [];
       const shot = async (name: string, ready: () => Promise<unknown>, opts: { contrast?: boolean; wide?: boolean; viewportOnly?: boolean } = {}) => {
@@ -338,8 +338,8 @@ test.describe.serial("visual pass", () => {
       await page.getByRole("button", { name: /^Advanced: CPU placement/ }).click();
       await page.getByRole("button", { name: /^Passthrough devices/ }).click();
       await shot("vm-hardware-sections-open", () => expect(page.locator("#hw-advanced-body")).toBeVisible({ timeout: 30_000 }));
-      await page.evaluate(() => localStorage.removeItem("vp.hw.open.hw-advanced"));
-      await page.evaluate(() => localStorage.removeItem("vp.hw.open.hw-passthrough"));
+      await page.evaluate(() => localStorage.removeItem("virticle.hw.open.hw-advanced"));
+      await page.evaluate(() => localStorage.removeItem("virticle.hw.open.hw-passthrough"));
       await page.goto(vmUrl);
       await page.locator(".head").getByRole("button", { name: "Actions", exact: true }).click();
       await page.getByRole("menuitem", { name: "Edit Settings", exact: true }).click();

@@ -1,4 +1,4 @@
-# virt-proj
+# Virticle
 
 A web front end for KVM/QEMU/libvirt hosts. It is one Go binary with the web UI
 embedded. It installs nothing on the hosts ("nodes"): everything goes over SSH
@@ -16,8 +16,8 @@ sessions, API tokens, the node list, the task log and the audit log.
 
 Requirements to build: Go (see `go.mod`) and Node.js.
 
-    make build                 # builds the web UI, then bin/virt-proj
-    ./bin/virt-proj -listen 127.0.0.1:8080 -data ./data
+    make build                 # builds the web UI, then bin/virticle
+    ./bin/virticle -listen 127.0.0.1:8080 -data ./data
 
 `make test` runs `go vet` and the unit tests. `go build` alone fails until the
 web UI has been built once, because the UI is embedded from `web/dist`.
@@ -36,7 +36,7 @@ characters.
    (`/run/libvirt/libvirt-sock` or the other usual paths).
 3. Enter the node's address and user. An optional jump host (`user@host`) can
    be given; its password is read from the environment variable
-   `VIRT_JUMP_PASSWORD` of the controller process.
+   `VIRTICLE_JUMP_PASSWORD` of the controller process.
 4. Host keys are trusted on first use and stored in `known_hosts` in the data
    directory.
 
@@ -57,7 +57,7 @@ Backups and the node-side file work need `qemu-img` and `tar` on the node.
 
 ## Flags
 
-All flags of `bin/virt-proj` (output of `-help`):
+All flags of `bin/virticle` (output of `-help`):
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
@@ -73,7 +73,10 @@ All flags of `bin/virt-proj` (output of `-help`):
 | `-alert-cert-days` | `30` | Alert when the web UI certificate expires within this many days. |
 | `-alert-webhook` | empty | `http(s)` URL that receives a JSON POST whenever an alert is raised or cleared. Empty: no notifications. |
 
-Environment: `VIRT_JUMP_PASSWORD` is the password for node jump hosts.
+Environment: `VIRTICLE_JUMP_PASSWORD` is the password for node jump hosts.
+`VIRTICLE_VIRTIO_WIN_PATTERN` overrides the volume name pattern that counts as
+the virtio-win ISO. The old names `VIRT_JUMP_PASSWORD` and
+`VIRT_VIRTIO_WIN_PATTERN` still work and log a deprecation line at start.
 
 ## TLS
 
@@ -101,7 +104,7 @@ same-origin check for state-changing requests compares `Origin` with the
 itself terminates TLS. Behind a proxy that would all be wrong, so start the
 controller with the proxy's address:
 
-    ./bin/virt-proj -listen 127.0.0.1:8080 -data ./data -trusted-proxy 127.0.0.1
+    ./bin/virticle -listen 127.0.0.1:8080 -data ./data -trusted-proxy 127.0.0.1
 
 Rules:
 
@@ -185,13 +188,13 @@ with further failures; the counters are in memory.
 
 ## API tokens
 
-Create a token in the UI under Account. The secret (`vp_...`) is shown once.
+Create a token in the UI under Account. The secret (`virticle_...`) is shown once.
 A token has a name, a role (the user's role or lower) and an optional expiry
 in days. Use it as a bearer token:
 
-    curl -H "Authorization: Bearer vp_xxxxxxxx" https://vm.example.org/api/vms
+    curl -H "Authorization: Bearer virticle_xxxxxxxx" https://vm.example.org/api/vms
 
-    curl -X POST -H "Authorization: Bearer vp_xxxxxxxx" -H 'Content-Type: application/json' \
+    curl -X POST -H "Authorization: Bearer virticle_xxxxxxxx" -H 'Content-Type: application/json' \
          -d '{"action":"start"}' https://vm.example.org/api/nodes/1/vms/<uuid>/action
 
 Requests with a bearer token are not subject to the browser same-origin check.
@@ -202,10 +205,13 @@ They are written to the audit log like other state-changing requests.
 - **libvirt on the nodes**: domains, networks, storage pools and volumes,
   snapshots. App-specific per-VM data (template mark, tags, snapshot schedule,
   backup schedule) is stored as children of one `<metadata>` element in the
-  domain XML, namespace `https://virt-proj.invalid/ns/1`, so `virsh dumpxml`
-  shows it and clones do not inherit it.
+  domain XML, namespace `https://virticle.invalid/ns/1`, so `virsh dumpxml`
+  shows it and clones do not inherit it. VMs configured by versions before the
+  rename carry the same data in namespace `https://virt-proj.invalid/ns/1`
+  (prefix `vp`); it is read as long as no new element exists, and replaced by
+  the new one the next time the app writes metadata for that VM.
 - **The data directory** (`-data`):
-  - `virt-proj.db`: SQLite database with users, password hashes, sessions, API
+  - `virticle.db`: SQLite database with users, password hashes, sessions, API
     token hashes, the node list, the task log and the audit log.
   - `id_ed25519`, `id_ed25519.pub`: the controller's SSH key.
   - `known_hosts`: trusted node host keys.
@@ -235,7 +241,8 @@ failed run after 5 minutes, and records failures in the task log under the user
 Two controllers pointed at the same nodes would both run every schedule. The
 snapshot guard is: each controller re-reads the newest scheduled snapshot right
 before creating one, stamps its id into the snapshot description
-(`Scheduled snapshot (virt-proj) [controller <id>]`), and raises the alert
+(`Scheduled snapshot (virticle) [controller <id>]`; the old
+`Scheduled snapshot (virt-proj)` text is still recognised), and raises the alert
 "Another controller is running schedules on node X" when it sees recent
 scheduled snapshots stamped by a different id. This narrows but does not remove
 the race (two controllers can still act within the same few seconds), and a
@@ -261,8 +268,8 @@ backup API (full, push mode, no checkpoint or snapshot is left in the domain);
 a shut-off VM with `qemu-img convert`. Optional: SHA-256 sums (checked on
 restore) and freezing guest file systems through the guest agent. A backup can
 be restored as a new VM or as the original, exported as one `.vmexport.tar` file
-and imported again. Hidden work directories `.virt-proj-*` in a pool are
-leftovers of an interrupted run.
+and imported again. Hidden work directories `.virticle-*` (`.virt-proj-*` from before the
+rename) in a pool are leftovers of an interrupted run.
 
 ## Known limitations
 
@@ -281,3 +288,21 @@ leftovers of an interrupted run.
 - Alert state, rate-limit counters and the scheduler's retry pacing are in
   memory and start empty after a restart.
 - No high availability or shared-storage features; no scheduled replication.
+
+## Upgrading from the working name virt-proj
+
+Replace the binary (`bin/virt-proj` is now `bin/virticle`) and start it with
+the same `-data` directory; nothing else is required.
+
+- `virt-proj.db` in the data directory is renamed to `virticle.db` at start
+  (with its `-wal` and `-shm` files). If both exist, `virticle.db` is used and
+  a warning is logged.
+- Rename `VIRT_JUMP_PASSWORD` to `VIRTICLE_JUMP_PASSWORD` when convenient; the
+  old name keeps working and is logged as deprecated.
+- Per-VM data is read from the old libvirt metadata namespace and moved to the
+  new one when the app next writes it for that VM. No VM definition is
+  rewritten at start. Backups made by the old name restore as before.
+- Encrypted-migration marker files (`.virt-proj-migration.json`) on nodes are
+  read and replaced by `.virticle-migration.json` on the next setup or removal.
+- Browser settings (theme, console click, tree state) are carried over on
+  the first visit. The session cookie keeps its name, so nobody is signed out.

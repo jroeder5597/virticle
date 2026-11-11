@@ -13,7 +13,7 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/hostconn"
+	"virticle/internal/hostconn"
 )
 
 var volNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,200}$`)

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"virt-proj/internal/hostconn"
+	"virticle/internal/hostconn"
 )
 
 // Network interfaces of a node, read-only. One fixed command prints `ip -j -d

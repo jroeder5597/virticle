@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"virt-proj/internal/cluster"
-	"virt-proj/internal/hostconn"
+	"virticle/internal/cluster"
+	"virticle/internal/hostconn"
 )
 
 // nodeTimeout bounds how long the all-nodes lists wait for one node.

@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"virt-proj/internal/cloudinit"
+	"virticle/internal/cloudinit"
 )
 
 // unattendLabel is the volume label of the answer-file ISO.

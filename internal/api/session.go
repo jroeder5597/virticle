@@ -10,7 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"virt-proj/internal/store"
+	"virticle/internal/store"
 )
 
 func logf(format string, a ...any) { log.Printf(format, a...) }

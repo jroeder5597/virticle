@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"virt-proj/internal/cluster"
-	"virt-proj/internal/hostconn"
-	"virt-proj/internal/store"
+	"virticle/internal/cluster"
+	"virticle/internal/hostconn"
+	"virticle/internal/store"
 )
 
 const nodeTestTimeout = 8 * time.Second

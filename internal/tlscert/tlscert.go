@@ -79,7 +79,7 @@ func generate(certFile, keyFile string, n Names, now time.Time) error {
 	}
 	tpl := &x509.Certificate{
 		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "virt-proj", Organization: []string{"virt-proj (self-signed)"}},
+		Subject:      pkix.Name{CommonName: "virticle", Organization: []string{"virticle (self-signed)"}},
 		NotBefore:    now.Add(-time.Hour),
 		NotAfter:     now.Add(validity),
 		KeyUsage:     x509.KeyUsageDigitalSignature,

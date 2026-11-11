@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"virt-proj/internal/catalog"
-	"virt-proj/internal/hostconn"
+	"virticle/internal/catalog"
+	"virticle/internal/hostconn"
 )
 
 // Image catalogue downloads. The node fetches everything itself (curl) and
@@ -229,7 +229,7 @@ func (s *Server) downloadImage(w http.ResponseWriter, r *http.Request) {
 	}
 	node := r.PathValue("node")
 	key := runKey(node, pool.Name, name)
-	run := &imageRun{h: h, pidFile: "/tmp/virt-proj-img-" + randHex() + ".pid"}
+	run := &imageRun{h: h, pidFile: "/tmp/virticle-img-" + randHex() + ".pid"}
 	if !imageRuns.add(key, run) {
 		fail(w, badRequest("this image is already being downloaded as "+name))
 		return

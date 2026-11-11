@@ -1,4 +1,4 @@
-// Command virt-proj is the controller: one binary that serves the web UI and
+// Command virticle is the controller: one binary that serves the web UI and
 // API and manages libvirt nodes over SSH.
 package main
 
@@ -18,12 +18,21 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"virt-proj/internal/api"
-	"virt-proj/internal/cluster"
-	"virt-proj/internal/store"
-	"virt-proj/internal/tlscert"
-	"virt-proj/web"
+	"virticle/internal/api"
+	"virticle/internal/cluster"
+	"virticle/internal/store"
+	"virticle/internal/tlscert"
+	"virticle/web"
 )
+
+// renameEnv keeps the old name of an environment variable working: its value
+// is used when the new name is not set.
+func renameEnv(old, name string) {
+	if v, ok := os.LookupEnv(old); ok && os.Getenv(name) == "" {
+		os.Setenv(name, v)
+		log.Printf("DEPRECATED: environment variable %s is now called %s; the old name still works for now", old, name)
+	}
+}
 
 func main() {
 	listen := flag.String("listen", "127.0.0.1:8080", "address to serve the web UI and API on")
@@ -41,6 +50,8 @@ func main() {
 	flag.IntVar(&alerts.CertDays, "alert-cert-days", 30, "alert when the web UI certificate expires within this many days")
 	flag.StringVar(&alerts.Webhook, "alert-webhook", "", "http(s) URL that receives a JSON POST whenever an alert is raised or cleared (empty: no notifications)")
 	flag.Parse()
+	renameEnv("VIRT_JUMP_PASSWORD", "VIRTICLE_JUMP_PASSWORD")
+	renameEnv("VIRT_VIRTIO_WIN_PATTERN", "VIRTICLE_VIRTIO_WIN_PATTERN")
 	if alerts.Webhook != "" {
 		if err := api.ValidateWebhookURL(alerts.Webhook); err != nil {
 			log.Fatal(err)
@@ -67,7 +78,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("SSH key: %v", err)
 	}
-	st, err := store.Open(filepath.Join(*data, "virt-proj.db"))
+	dbPath, err := store.DBPath(*data, log.Printf)
+	if err != nil {
+		log.Fatalf("database: %v", err)
+	}
+	st, err := store.Open(dbPath)
 	if err != nil {
 		log.Fatalf("database: %v", err)
 	}
@@ -165,7 +180,7 @@ func ensureKey(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	block, err := ssh.MarshalPrivateKey(priv, "virt-proj controller")
+	block, err := ssh.MarshalPrivateKey(priv, "virticle controller")
 	if err != nil {
 		return "", err
 	}
@@ -176,6 +191,6 @@ func ensureKey(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	line := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshPub))) + " virt-proj-controller"
+	line := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshPub))) + " virticle-controller"
 	return line, os.WriteFile(path+".pub", []byte(line+"\n"), 0o644)
 }

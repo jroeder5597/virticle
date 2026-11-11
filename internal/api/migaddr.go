@@ -14,7 +14,7 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/store"
+	"virticle/internal/store"
 )
 
 // splitAddr splits a node address ("host", "host:port", "[v6]:port" or a bare

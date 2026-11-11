@@ -14,9 +14,9 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/cluster"
-	"virt-proj/internal/hostconn"
-	"virt-proj/internal/tlscert"
+	"virticle/internal/cluster"
+	"virticle/internal/hostconn"
+	"virticle/internal/tlscert"
 )
 
 // AlertSettings are the thresholds and options set by server flags; zero
@@ -274,7 +274,7 @@ func (w *webhook) post(body []byte) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "virt-proj-alerts")
+	req.Header.Set("User-Agent", "virticle-alerts")
 	resp, err := w.client.Do(req)
 	if err != nil {
 		return err

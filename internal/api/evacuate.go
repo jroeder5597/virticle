@@ -14,8 +14,8 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/cluster"
-	"virt-proj/internal/hostconn"
+	"virticle/internal/cluster"
+	"virticle/internal/hostconn"
 )
 
 // Node evacuation: move the VMs of one node to the others. The plan (which VM

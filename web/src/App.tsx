@@ -71,7 +71,7 @@ export default function App() {
         <button className="menu-btn" aria-label="Open navigation" aria-expanded={drawer} onClick={() => setDrawer(!drawer)}>
           <Menu size={18} />
         </button>
-        <div className="brand">virt-proj</div>
+        <div className="brand">Virticle</div>
         <div className="toplinks" role="navigation" aria-label="Main">
         <NavLink to="/datacenter/vms">Virtual machines</NavLink>
         <NavLink to="/datacenter/storage">Storage</NavLink>
@@ -156,7 +156,7 @@ function SignIn({ setup, onDone }: { setup: boolean; onDone: () => void }) {
   return (
     <div className="signin">
       <form onSubmit={submit} className="card">
-        <h1>virt-proj</h1>
+        <h1>Virticle</h1>
         <p className="muted">{setup ? "Create the administrator account to get started." : "Sign in to manage your virtual machines."}</p>
         <Field label="Username">
           <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus autoComplete="username" />

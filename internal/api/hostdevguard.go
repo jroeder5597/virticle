@@ -7,7 +7,7 @@ import (
 
 	"github.com/digitalocean/go-libvirt"
 
-	"virt-proj/internal/hostconn"
+	"virticle/internal/hostconn"
 )
 
 // Taking a graphics card away from a host driver that still has it open can

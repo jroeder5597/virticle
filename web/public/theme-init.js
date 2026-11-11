@@ -3,7 +3,16 @@
 (function () {
   var t = "dark";
   try {
-    if (localStorage.getItem("vp-theme") === "light") t = "light";
+    // "vp-theme" is what versions before the rename stored; move it over once.
+    var s = localStorage.getItem("virticle-theme");
+    if (s === null) {
+      s = localStorage.getItem("vp-theme");
+      if (s !== null) {
+        localStorage.setItem("virticle-theme", s);
+        localStorage.removeItem("vp-theme");
+      }
+    }
+    if (s === "light") t = "light";
   } catch (e) {}
   var d = document.documentElement;
   d.setAttribute("data-theme", t);

@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"virt-proj/internal/hostconn"
+	"virticle/internal/hostconn"
 )
 
 // capability says whether a feature can work on a node, given how its login

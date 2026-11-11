@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"virt-proj/internal/hostconn"
-	"virt-proj/internal/store"
+	"virticle/internal/hostconn"
+	"virticle/internal/store"
 )
 
 // TestResult is what a trial connection to a node's settings found.
@@ -32,7 +32,7 @@ func (m *Manager) TestConnect(cfg store.Node, timeout time.Duration) (TestResult
 	if err != nil {
 		return res, err
 	}
-	dir, err := os.MkdirTemp("", "vp-khtest")
+	dir, err := os.MkdirTemp("", "virticle-khtest")
 	if err != nil {
 		return res, err
 	}
