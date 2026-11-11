@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Alert, bytes, del, get, NodeInfo, NodeStatus, post, put } from "../api";
 import { useLive } from "../live";
 import { useRole } from "../auth";
@@ -77,7 +78,7 @@ function NodeRow({ n, onRemove, canRemove, alerts, onEvacuate, onMaintenance }: 
   return (
     <tr>
       <td>
-        {n.hostname || n.addr}
+        <Link to={`/node/${n.id}`}>{n.hostname || n.addr}</Link>
         {n.maintenance && (
           <span className="badge maint" title="Never chosen as a migration or evacuation target">
             maintenance
