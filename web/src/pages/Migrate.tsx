@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Check, Lock, TriangleAlert, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { bytes, get, NodeStatus, post, Task, VMDetail } from "../api";
+import Select from "../Select";
 import { ErrorBox, Field, Modal, useAction, useConfirm } from "../ui";
 
 interface Check {
@@ -105,15 +106,13 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
         <>
           <div className="row">
             <Field label="Target node">
-              <select value={target} onChange={(e) => setTarget(Number(e.target.value))} aria-label="Target node">
-                {nodes.length === 0 && <option value={0}>no other node</option>}
-                {nodes.map((n) => (
-                  <option key={n.id} value={n.id} disabled={n.state !== "online"}>
-                    {n.hostname || n.addr}
-                    {n.state !== "online" ? ` (${n.state})` : ""}
-                  </option>
-                ))}
-              </select>
+              <Select
+                label="Target node"
+                value={String(target)}
+                onChange={(v) => setTarget(Number(v))}
+                placeholder="no other node"
+                options={nodes.map((n) => ({ value: String(n.id), label: (n.hostname || n.addr) + (n.state !== "online" ? ` (${n.state})` : ""), disabled: n.state !== "online", dot: "n-" + n.state }))}
+              />
             </Field>
           </div>
           {running && (

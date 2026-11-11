@@ -1,5 +1,6 @@
 import { FormEvent, Fragment, ReactNode, useEffect, useState } from "react";
 import { get, NodeStatus, post, put } from "../api";
+import Select from "../Select";
 import { ErrorBox, Field, Modal, StateBadge, useAction, useConfirm } from "../ui";
 
 export interface Capability {
@@ -206,13 +207,18 @@ function EditConnection({ n, info, onClose, onSaved }: { n: NodeStatus; info: Co
           </Field>
         </div>
         <Field label="Root access" hint="How commands that need root run. Keep detects it again when the user or address changes.">
-          <select value={priv} onChange={(e) => setPriv(e.target.value)}>
-            <option value="keep">Keep ({info.privilege || "not detected yet"})</option>
-            <option value="auto">Detect</option>
-            <option value="root">root</option>
-            <option value="sudo">sudo</option>
-            <option value="none">none</option>
-          </select>
+          <Select
+            label="Root access"
+            value={priv}
+            onChange={setPriv}
+            options={[
+              { value: "keep", label: `Keep (${info.privilege || "not detected yet"})` },
+              { value: "auto", label: "Detect" },
+              { value: "root", label: "root" },
+              { value: "sudo", label: "sudo" },
+              { value: "none", label: "none" },
+            ]}
+          />
         </Field>
         <label className="check">
           <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> Save even if the connection test fails (for a node that is down)

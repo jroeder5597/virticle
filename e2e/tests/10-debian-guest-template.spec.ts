@@ -1,7 +1,7 @@
 // A real distro image: cloud-init create, guest agent, guest card, charts, seal into a template, linked clone that boots.
 import { cleanVMs, expect, openVM, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
-import { dialog, expectBadge, field, vmAction } from "../lib/ui";
+import { dialog, expectBadge, field, vmAction, pick } from "../lib/ui";
 
 const NAME = `${P}deb1`;
 const CLONE = `${P}deb1-clone`;
@@ -24,12 +24,11 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     await page.getByRole("button", { name: "New VM" }).click();
     const dlg = dialog(page, "New virtual machine");
     await field(dlg, "Name").fill(NAME);
-    await field(dlg, "Node").selectOption({ label: env.node1 });
+    await pick(dlg, field(dlg, "Node"), env.node1);
     await field(dlg, "vCPUs").fill("1");
     await field(dlg, "Memory (MiB)").fill("512");
     await dlg.getByRole("button", { name: "Disk image" }).click();
-    const opt = dlg.locator("option", { hasText: env.debian });
-    await field(dlg, "Base image").selectOption((await opt.first().getAttribute("value"))!);
+    await pick(dlg, "Base image", new RegExp("^" + env.debian.replace(/\./g, "\\.")));
     await field(dlg, "Disk size (GiB)").fill(String(Math.ceil(img.capacity / 2 ** 30)));
     await dlg.locator("summary", { hasText: "Cloud-init" }).click();
     await field(dlg, "User").fill(USER);

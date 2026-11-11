@@ -15,3 +15,4 @@
 .confirm-items li { padding: 1px 6px; border: 1px solid var(--line); border-radius: 5px; overflow-wrap: anywhere; }
 [id^="hw-"], #snap-schedule { scroll-margin-top: 64px; }
 .menu-pos.inline > .ctxmenu { width: auto; max-width: none; }
+.ctxmenu .mi > button .chk { display: inline-block; width: 14px; flex: none; }

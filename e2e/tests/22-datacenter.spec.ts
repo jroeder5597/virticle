@@ -2,7 +2,7 @@
 // and an unreachable node is named instead of breaking the lists.
 import { expect, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
-import { confirm, dialog, expectBadge, field, row } from "../lib/ui";
+import { confirm, dialog, expectBadge, field, row, pick } from "../lib/ui";
 
 const POOL = `${P}dcpool`;
 const PATH = `/var/lib/libvirt/${P}dcpool`;
@@ -68,10 +68,10 @@ test.describe.serial("datacenter", () => {
     await expect(row(page, "default").filter({ hasText: env.node1 })).toBeVisible();
     await expect(row(page, "default").filter({ hasText: env.node2 })).toBeVisible();
     // the node filter narrows the list, the text filter works across nodes
-    await page.getByLabel("Filter by node").selectOption({ label: env.node2 });
+    await pick(page, "Filter by node", env.node2);
     await expect(row(page, "default").filter({ hasText: env.node1 })).toHaveCount(0);
     await expect(row(page, "default").filter({ hasText: env.node2 })).toBeVisible();
-    await page.getByLabel("Filter by node").selectOption({ label: "All nodes" });
+    await pick(page, "Filter by node", "All nodes");
     await page.getByLabel("Search pools by name, type or state").fill("zzz-no-such-pool");
     await expect(page.getByText("No pool matches the filter.")).toBeVisible();
     await page.getByLabel("Search pools by name, type or state").fill("");
@@ -82,7 +82,7 @@ test.describe.serial("datacenter", () => {
     await page.goto("/datacenter/storage");
     await page.getByRole("button", { name: "New pool" }).click();
     const dlg = dialog(page, "New storage pool");
-    await field(dlg, "Node").selectOption({ label: env.node2 });
+    await pick(dlg, field(dlg, "Node"), env.node2);
     await field(dlg, "Name").fill(POOL);
     await field(dlg, "Directory on the node").fill(PATH);
     await dlg.getByRole("button", { name: "Create" }).click();
@@ -126,7 +126,7 @@ test.describe.serial("datacenter", () => {
     await expect(row(page, "default").filter({ hasText: env.node2 })).toBeVisible();
     await page.getByRole("button", { name: "New network" }).click();
     const dlg = dialog(page, "New virtual network");
-    await field(dlg, "Node").selectOption({ label: env.node2 });
+    await pick(dlg, field(dlg, "Node"), env.node2);
     await field(dlg, "Name").fill(NET);
     await field(dlg, "Address of the node on this network").fill(`10.79.${OCT}.1/24`);
     await dlg.getByRole("button", { name: "Create" }).click();

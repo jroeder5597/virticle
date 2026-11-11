@@ -9,6 +9,8 @@ import { orEvents, useLive } from "../live";
 import { useLiveDebounced } from "../liveDebounced";
 import { useRole } from "../auth";
 import { netEvents, NodeErr, NodeErrors, NodeFilter, nodeEvents, nodeLabel, NodeNetwork } from "./dcShared";
+import ComboInput from "../ComboInput";
+import Select from "../Select";
 import { ErrorBox, Field, Modal, NodePicker, PageTitle, StateBadge, useAction, useConfirm } from "../ui";
 
 const modeNames: Record<string, string> = { nat: "NAT", route: "Routed", open: "Open", isolated: "Isolated", bridge: "Bridge" };
@@ -352,14 +354,7 @@ function Reservations({ url, n, onChange }: { url: string; n: Network; onChange:
       <form onSubmit={submit} style={{ marginTop: 12 }}>
         <div className="grid2">
           <Field label="MAC address" hint={free.length > 0 ? "Attached VM interfaces without a reservation are suggested." : undefined}>
-            <input list="net-macs" value={f.mac} onChange={(e) => setF({ ...f, mac: e.target.value })} required readOnly={editing} placeholder="52:54:00:12:34:56" />
-            <datalist id="net-macs">
-              {free.map((i) => (
-                <option key={i.mac} value={i.mac}>
-                  {i.vm}
-                </option>
-              ))}
-            </datalist>
+            <ComboInput mono value={f.mac} onChange={(mac) => setF({ ...f, mac })} required readOnly={editing} placeholder="52:54:00:12:34:56" suggestions={free.map((i) => ({ value: i.mac, hint: i.vm }))} />
           </Field>
           <Field label="IP address">
             <input value={f.ip} onChange={(e) => setF({ ...f, ip: e.target.value })} required placeholder={n.address ? n.address.replace(/\.\d+\/\d+$/, ".50") : ""} />
@@ -471,13 +466,7 @@ function CreateNetwork({ node: initialNode, nodes, onClose, onDone }: { node: nu
           </Field>
         )}
         <Field label="Type">
-          <select value={mode} onChange={(e) => setMode(e.target.value)}>
-            {Object.entries(modes).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
-          </select>
+          <Select label="Type" value={mode} onChange={setMode} options={Object.entries(modes).map(([k, v]) => ({ value: k, label: v }))} />
         </Field>
         {mode === "xml" ? (
           <Field label="Network definition" hint="Checked against libvirt's schema. A network with an existing name is refused.">

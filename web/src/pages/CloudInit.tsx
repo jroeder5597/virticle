@@ -1,3 +1,4 @@
+import Select from "../Select";
 import { useEffect, useState } from "react";
 import { post } from "../api";
 import { ErrorBox, Field, useAction } from "../ui";
@@ -67,15 +68,7 @@ export default function CloudInitFields(props: { vmName: string; value: CloudIni
       <p className="hint">Provisions the first boot of a cloud image through a small seed disk. The image must have cloud-init installed.</p>
       {usable && profiles && profiles.length > 0 && (
         <Field label="Profile" hint="Fields you leave empty are taken from the profile. SSH keys and packages you enter are added to its.">
-          <select value={v.profile} onChange={(e) => onChange({ ...v, profile: Number(e.target.value) })}>
-            <option value={0}>None</option>
-            {profiles.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-                {p.default ? " (default)" : ""}
-              </option>
-            ))}
-          </select>
+          <Select label="Profile" value={String(v.profile)} onChange={(x) => onChange({ ...v, profile: Number(x) })} options={[{ value: "0", label: "None" }, ...profiles.map((p) => ({ value: String(p.id), label: p.name + (p.default ? " (default)" : "") }))]} />
         </Field>
       )}
       {prof?.rawUserData.trim() && <p className="hint">The profile's raw user-data replaces the generated config; the fields below are ignored unless you enter your own raw user-data.</p>}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { get, put, VMDetail } from "../api";
+import Select from "../Select";
 import { ErrorBox, Field, useAction, useConfirm } from "../ui";
 import { OneLine } from "./Disclosure";
 
@@ -54,18 +55,26 @@ export function FirmwareFields({ node, value, onChange }: { node: number; value:
       <ErrorBox error={error} />
       <div className="grid2">
         <Field label="Guest OS type" hint={win ? "Hyper-V enlightenments and a local-time clock are added." : undefined}>
-          <select value={value.osType} onChange={(e) => setOS(e.target.value as FwValues["osType"])}>
-            <option value="linux">Linux / other</option>
-            <option value="windows">Windows</option>
-          </select>
+          <Select
+            label="Guest OS type"
+            value={value.osType}
+            onChange={(v) => setOS(v as FwValues["osType"])}
+            options={[
+              { value: "linux", label: "Linux / other" },
+              { value: "windows", label: "Windows" },
+            ]}
+          />
         </Field>
         <Field label="Firmware">
-          <select value={value.firmware} onChange={(e) => set({ firmware: e.target.value as FwValues["firmware"], secureBoot: e.target.value === "uefi" && value.secureBoot })}>
-            <option value="bios">BIOS</option>
-            <option value="uefi" disabled={caps && !caps.uefi}>
-              UEFI{caps && !caps.uefi ? " (not available on this node)" : ""}
-            </option>
-          </select>
+          <Select
+            label="Firmware"
+            value={value.firmware}
+            onChange={(v) => set({ firmware: v as FwValues["firmware"], secureBoot: v === "uefi" && value.secureBoot })}
+            options={[
+              { value: "bios", label: "BIOS" },
+              { value: "uefi", label: "UEFI" + (caps && !caps.uefi ? " (not available on this node)" : ""), disabled: !!caps && !caps.uefi },
+            ]}
+          />
         </Field>
         <label className="check">
           <input type="checkbox" checked={value.secureBoot} disabled={value.firmware !== "uefi" || !caps?.secureBoot} onChange={(e) => set({ secureBoot: e.target.checked })} /> Secure Boot
@@ -80,16 +89,26 @@ export function FirmwareFields({ node, value, onChange }: { node: number; value:
         <>
           <div className="grid2">
             <Field label="Disk bus">
-              <select value={value.diskBus} onChange={(e) => set({ diskBus: e.target.value as FwValues["diskBus"] })}>
-                <option value="sata">SATA</option>
-                <option value="virtio">VirtIO</option>
-              </select>
+              <Select
+                label="Disk bus"
+                value={value.diskBus}
+                onChange={(v) => set({ diskBus: v as FwValues["diskBus"] })}
+                options={[
+                  { value: "sata", label: "SATA" },
+                  { value: "virtio", label: "VirtIO" },
+                ]}
+              />
             </Field>
             <Field label="Network card">
-              <select value={value.nicModel} onChange={(e) => set({ nicModel: e.target.value as FwValues["nicModel"] })}>
-                <option value="e1000e">Intel e1000e</option>
-                <option value="virtio">VirtIO</option>
-              </select>
+              <Select
+                label="Network card"
+                value={value.nicModel}
+                onChange={(v) => set({ nicModel: v as FwValues["nicModel"] })}
+                options={[
+                  { value: "e1000e", label: "Intel e1000e" },
+                  { value: "virtio", label: "VirtIO" },
+                ]}
+              />
             </Field>
           </div>
           {(value.diskBus === "virtio" || value.nicModel === "virtio") && (

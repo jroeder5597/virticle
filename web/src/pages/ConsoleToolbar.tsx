@@ -3,6 +3,7 @@
 import { ReactNode, RefObject, useEffect, useRef, useState } from "react";
 import { Camera, ClipboardPaste, Copy, Eraser, Keyboard, Maximize2, Minimize2, Scaling } from "lucide-react";
 import type RFB from "@novnc/novnc/lib/rfb";
+import { DropdownMenu } from "../Menu";
 import { Modal } from "../ui";
 import { CODE, strokesFor, XK } from "./pasteKeys";
 import "./console.css";
@@ -40,39 +41,6 @@ function FullscreenButton({ box }: { box: RefObject<HTMLElement | null> }) {
       {full ? <Minimize2 size={15} aria-hidden /> : <Maximize2 size={15} aria-hidden />}
       <span className="lbl">{full ? "Exit full screen" : "Full screen"}</span>
     </button>
-  );
-}
-
-/** A dropdown that opens instantly and stays inside the window. */
-function Dropdown({ icon, label, children }: { icon: ReactNode; label: string; children: (close: () => void) => ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const [right, setRight] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const r = box.current?.getBoundingClientRect();
-    if (r) setRight(r.left + 230 > window.innerWidth - 8);
-    const close = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
-    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", key);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", key);
-    };
-  }, [open]);
-  return (
-    <div className="menu" ref={box}>
-      <button aria-haspopup="menu" aria-expanded={open} title={label} aria-label={label} onClick={() => setOpen(!open)}>
-        {icon}
-        <span className="lbl">{label}</span>
-      </button>
-      {open && (
-        <div className={"menu-list" + (right ? " right" : "")} role="menu">
-          {children(() => setOpen(false))}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -209,23 +177,18 @@ export function VncBar(p: VncBarProps) {
       <button disabled={!live} onClick={() => press(CAD)} title="Send Ctrl+Alt+Del">
         Ctrl+Alt+Del
       </button>
-      <Dropdown icon={<Keyboard size={15} aria-hidden />} label="Keys">
-        {(close) =>
-          COMBOS.map((c) => (
-            <button
-              key={c.label}
-              role="menuitem"
-              disabled={!live}
-              onClick={() => {
-                close();
-                press(c);
-              }}
-            >
-              {c.label}
-            </button>
-          ))
+      <DropdownMenu
+        chevron={false}
+        ariaLabel="Keys"
+        title="Keys"
+        label={
+          <>
+            <Keyboard size={15} aria-hidden />
+            <span className="lbl">Keys</span>
+          </>
         }
-      </Dropdown>
+        items={COMBOS.map((c) => ({ label: c.label, disabled: !live, run: () => press(c) }))}
+      />
       <button disabled={!live || !!typing} onClick={() => setPaste(true)} title="Paste text" aria-label="Paste text">
         <ClipboardPaste size={15} aria-hidden />
         <span className="lbl">Paste text</span>

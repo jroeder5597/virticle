@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { AgentHelp, get, GuestInfo, post, put, VMDetail } from "../api";
 import { useLive } from "../live";
+import Select from "../Select";
 import { ErrorBox, useAction, useConfirm } from "../ui";
 
 const utc = (off: number) => {
@@ -117,11 +118,7 @@ export function VirtioWin({ d, base, help }: { d: VMDetail; base: string; help: 
       ) : help.downloadPools.length > 0 ? (
         <div className="actions">
           <span className="muted">No virtio-win ISO found in the node's storage pools.</span>
-          <select value={pool} onChange={(e) => setPool(e.target.value)} style={{ width: "auto" }} aria-label="Pool for the download">
-            {help.downloadPools.map((p) => (
-              <option key={p}>{p}</option>
-            ))}
-          </select>
+          <Select auto label="Pool for the download" value={pool} onChange={setPool} options={help.downloadPools.map((p) => ({ value: p, label: p }))} />
           <button disabled={act.busy || !pool} onClick={download}>
             {act.busy ? "Downloading" : "Download to pool"}
           </button>

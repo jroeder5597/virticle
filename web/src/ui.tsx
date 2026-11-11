@@ -2,6 +2,7 @@
 import { createContext, ReactNode, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CircleHelp, X } from "lucide-react";
+import Select from "./Select";
 import "./menu.css";
 import "./helptip.css";
 
@@ -120,16 +121,15 @@ export function Progress({ value, failed }: { value: number; failed?: boolean })
   );
 }
 
-export function NodePicker(props: { nodes: { id: number; hostname?: string; addr: string; state: string }[]; value: number; onChange: (id: number) => void }) {
+export function NodePicker(props: { nodes: { id: number; hostname?: string; addr: string; state: string }[]; value: number; onChange: (id: number) => void; label?: string; auto?: boolean }) {
   return (
-    <select value={props.value} onChange={(e) => props.onChange(Number(e.target.value))}>
-      {props.nodes.map((n) => (
-        <option key={n.id} value={n.id} disabled={n.state !== "online"}>
-          {n.hostname || n.addr}
-          {n.state !== "online" ? ` (${n.state})` : ""}
-        </option>
-      ))}
-    </select>
+    <Select
+      label={props.label ?? "Node"}
+      auto={props.auto}
+      value={String(props.value)}
+      onChange={(v) => props.onChange(Number(v))}
+      options={props.nodes.map((n) => ({ value: String(n.id), label: (n.hostname || n.addr) + (n.state !== "online" ? ` (${n.state})` : ""), disabled: n.state !== "online", dot: "n-" + n.state }))}
+    />
   );
 }
 

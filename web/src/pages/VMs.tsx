@@ -4,6 +4,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { bytes, get, Network, NodeStatus, Pool, post, VM, Volume } from "../api";
 import { useLive } from "../live";
 import CloudInitFields, { CloudInitValues, cloudInitPayload, cloudInitUsed, emptyCloudInit } from "./CloudInit";
+import PoolSelect from "../PoolSelect";
+import Select from "../Select";
 import { ErrorBox, Field, Modal, NodePicker, PageTitle, StateBadge, useAction, useConfirm } from "../ui";
 import { powerConfirm, powerLabel } from "../power";
 import { BulkBar } from "./Bulk";
@@ -70,14 +72,7 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
         <div className="filters">
           <input type="search" placeholder="Search name, node, state or tag" aria-label="Search VMs" value={search} onChange={(e) => setSearch(e.target.value)} />
           {allTags.length > 0 && (
-            <select aria-label="Filter by tag" value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
-              <option value="">All tags</option>
-              {allTags.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
+            <Select auto label="Filter by tag" value={tagFilter} onChange={setTagFilter} options={[{ value: "", label: "All tags" }, ...allTags.map((t) => ({ value: t, label: t }))]} />
           )}
           {(search || tagFilter) && <span className="muted">{list.length} of {all.length} shown</span>}
         </div>
@@ -233,6 +228,9 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    const need = source === "iso" ? "an ISO" : source === "image" ? "a base image" : source === "existing" ? "a volume" : "";
+    if (need && !media) return void act.run(() => Promise.reject(new Error(`Choose ${need}.`)));
+    if (!pool) return void act.run(() => Promise.reject(new Error("Choose a storage pool.")));
     let created: { uuid: string; startError?: string } | undefined;
     const ok = await act.run(async () => {
       created = await post(`/nodes/${node}/vms`, {
@@ -299,26 +297,12 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
         </Field>
         {source === "iso" && (
           <Field label="ISO" hint={isos.length === 0 ? "No ISO images on this node. Upload one under Storage." : undefined}>
-            <select value={media} onChange={(e) => setMedia(e.target.value)} required>
-              <option value="">Choose an ISO</option>
-              {isos.map((v) => (
-                <option key={v.path} value={v.path}>
-                  {v.pool}/{v.name}
-                </option>
-              ))}
-            </select>
+            <Select label="ISO" value={media} onChange={setMedia} placeholder="Choose an ISO" options={isos.map((v) => ({ value: v.path, label: `${v.pool}/${v.name}` }))} />
           </Field>
         )}
         {source === "image" && (
           <Field label="Base image" hint="The new disk starts as a copy of this image, in the same pool.">
-            <select value={media} onChange={(e) => setMedia(e.target.value)} required>
-              <option value="">Choose an image</option>
-              {images.map((v) => (
-                <option key={v.path} value={v.name}>
-                  {v.name} ({bytes(v.capacity)})
-                </option>
-              ))}
-            </select>
+            <Select label="Base image" value={media} onChange={setMedia} placeholder="Choose an image" options={images.map((v) => ({ value: v.name, label: `${v.name} (${bytes(v.capacity)})` }))} />
           </Field>
         )}
         {source === "image" && images.length === 0 && pool && (
@@ -328,25 +312,12 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
         )}
         {source === "existing" && (
           <Field label="Volume" hint="Used as the VM's disk as it is, not copied (an imported disk, say). Import other formats under Storage first.">
-            <select value={media} onChange={(e) => setMedia(e.target.value)} required>
-              <option value="">Choose a volume</option>
-              {images.map((v) => (
-                <option key={v.path} value={v.name}>
-                  {v.name} ({bytes(v.capacity)})
-                </option>
-              ))}
-            </select>
+            <Select label="Volume" value={media} onChange={setMedia} placeholder="Choose a volume" options={images.map((v) => ({ value: v.name, label: `${v.name} (${bytes(v.capacity)})` }))} />
           </Field>
         )}
         <div className="grid2">
           <Field label="Storage pool">
-            <select value={pool} onChange={(e) => setPool(e.target.value)} required>
-              {pools.map((p) => (
-                <option key={p.name} value={p.name}>
-                  {p.name} ({bytes(p.available)} free)
-                </option>
-              ))}
-            </select>
+            <PoolSelect label="Storage pool" pools={pools} value={pool} onChange={setPool} needBytes={source === "existing" ? undefined : diskGiB * 2 ** 30} />
           </Field>
           {source !== "existing" && (
             <Field label="Disk size (GiB)">
@@ -354,14 +325,7 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
             </Field>
           )}
           <Field label="Network">
-            <select value={network} onChange={(e) => setNetwork(e.target.value)}>
-              <option value="">None</option>
-              {networks.map((n) => (
-                <option key={n.name} value={n.name}>
-                  {n.name} ({n.forward})
-                </option>
-              ))}
-            </select>
+            <Select label="Network" value={network} onChange={setNetwork} options={[{ value: "", label: "None" }, ...networks.map((n) => ({ value: n.name, label: `${n.name} (${n.forward})` }))]} />
           </Field>
         </div>
         <FirmwareFields node={node} value={fw} onChange={setFw} />

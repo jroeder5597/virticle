@@ -2,7 +2,7 @@
 import { Page } from "@playwright/test";
 import { expect, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
-import { dialog, expectBadge, field, row, confirm } from "../lib/ui";
+import { dialog, expectBadge, field, row, confirm, pick } from "../lib/ui";
 
 const POOL = `${P}pool`;
 const PATH = `/var/lib/libvirt/${P}pool`;
@@ -33,7 +33,7 @@ test.describe.serial("storage", () => {
   test("create a directory pool", async ({ page, api, n1 }) => {
     await page.goto("/storage");
     await expect(page.getByRole("heading", { name: "Storage" })).toBeVisible();
-    await page.getByRole("combobox").first().selectOption({ label: env.node1 });
+    await pick(page, page.getByRole("combobox").first(), env.node1);
     await page.getByRole("button", { name: "New pool" }).click();
     const dlg = dialog(page, "New storage pool");
     await expect(field(dlg, "Name")).toBeFocused();
@@ -51,7 +51,7 @@ test.describe.serial("storage", () => {
 
   test("a pool with a duplicate name shows libvirt's error and keeps the dialog open", async ({ page }) => {
     await page.goto("/storage");
-    await page.getByRole("combobox").first().selectOption({ label: env.node1 });
+    await pick(page, page.getByRole("combobox").first(), env.node1);
     await page.getByRole("button", { name: "New pool" }).click();
     const dlg = dialog(page, "New storage pool");
     await field(dlg, "Name").fill(POOL);
@@ -65,7 +65,7 @@ test.describe.serial("storage", () => {
 
   test("create a volume", async ({ page, api, n1 }) => {
     await page.goto("/storage");
-    await page.getByRole("combobox").first().selectOption({ label: env.node1 });
+    await pick(page, page.getByRole("combobox").first(), env.node1);
     await row(page, POOL).click();
     await expect(page.getByRole("heading", { name: `Volumes in ${POOL}` })).toBeVisible();
     await expect(page.getByText("This pool is empty.")).toBeVisible();
@@ -83,7 +83,7 @@ test.describe.serial("storage", () => {
 
   test("upload a file and import it as qcow2", async ({ page, api, n1 }) => {
     await page.goto("/storage");
-    await page.getByRole("combobox").first().selectOption({ label: env.node1 });
+    await pick(page, page.getByRole("combobox").first(), env.node1);
     await row(page, POOL).click();
     await page.locator('input[type="file"]').setInputFiles({ name: `${P}raw.img`, mimeType: "application/octet-stream", buffer: Buffer.alloc(1024 * 1024) });
     const r = row(page, `${P}raw.img`);
@@ -92,7 +92,7 @@ test.describe.serial("storage", () => {
 
     await r.getByRole("button", { name: "Import" }).click();
     const dlg = dialog(page, "Import a disk image or OVA");
-    await expect(field(dlg, "Source volume")).toHaveValue(`${P}raw.img`);
+    await expect(field(dlg, "Source volume")).toContainText(`${P}raw.img`);
     await dlg.getByRole("button", { name: "Inspect" }).click();
     await expect(dlg).toContainText("Detected format raw");
     await expect(field(dlg, "New volume name")).toHaveValue(`${P}raw-imported`);
@@ -107,7 +107,7 @@ test.describe.serial("storage", () => {
   test("download from a URL", async ({ page, api, n1 }) => {
     test.setTimeout(240_000);
     await page.goto("/storage");
-    await page.getByRole("combobox").first().selectOption({ label: env.node1 });
+    await pick(page, page.getByRole("combobox").first(), env.node1);
     await row(page, POOL).click();
     await page.getByRole("button", { name: "Download from URL" }).click();
     const dlg = dialog(page, `Download into ${POOL}`);
@@ -124,7 +124,7 @@ test.describe.serial("storage", () => {
 
   test("clone, resize and delete volumes", async ({ page, api, n1 }) => {
     await page.goto("/storage");
-    await page.getByRole("combobox").first().selectOption({ label: env.node1 });
+    await pick(page, page.getByRole("combobox").first(), env.node1);
     await row(page, POOL).click();
 
     await row(page, `${P}vol1.qcow2`).getByRole("button", { name: "Clone" }).click();
@@ -150,7 +150,7 @@ test.describe.serial("storage", () => {
 
   test("stop and start the pool, then remove it", async ({ page, api, n1 }) => {
     await page.goto("/storage");
-    await page.getByRole("combobox").first().selectOption({ label: env.node1 });
+    await pick(page, page.getByRole("combobox").first(), env.node1);
     const r = row(page, POOL);
     await r.getByRole("button", { name: "Stop" }).click();
     await confirm(page, /^Stop pool/);

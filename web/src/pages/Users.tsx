@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { del, get, post, put, Role, User } from "../api";
+import Select from "../Select";
 import { ErrorBox, Field, Modal, useAction, useConfirm } from "../ui";
 
 const roles: Role[] = ["admin", "operator", "viewer"];
@@ -45,11 +46,7 @@ export default function Users() {
             <tr key={u.id}>
               <td>{u.username}</td>
               <td>
-                <select value={u.role} disabled={act.busy} onChange={(e) => change(u, { role: e.target.value })} aria-label={`Role of ${u.username}`}>
-                  {roles.map((r) => (
-                    <option key={r}>{r}</option>
-                  ))}
-                </select>
+                <Select auto label={`Role of ${u.username}`} value={u.role} disabled={act.busy} onChange={(r) => change(u, { role: r })} options={roles.map((r) => ({ value: r, label: r }))} />
               </td>
               <td>{u.disabled ? <span className="badge s-shutoff">disabled</span> : <span className="badge s-running">active</span>}</td>
               <td>{when(u.created)}</td>
@@ -97,11 +94,7 @@ function AddUser({ onClose, onDone }: { onClose: () => void; onDone: () => void 
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" />
         </Field>
         <Field label="Role">
-          <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            {roles.map((r) => (
-              <option key={r}>{r}</option>
-            ))}
-          </select>
+          <Select label="Role" value={role} onChange={(r) => setRole(r as Role)} options={roles.map((r) => ({ value: r, label: r }))} />
         </Field>
         <ErrorBox error={act.error} />
         <footer>

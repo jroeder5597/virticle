@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { type LucideIcon, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpFromLine, Disc3, Link2, Link2Off, Maximize2, Network as NetIcon, Trash2, X } from "lucide-react";
 import { api, bytes, get, Network, Pool, Volume, VMDetail } from "../api";
 import { useRole } from "../auth";
+import Select from "../Select";
 import { ErrorBox, Field, Modal, useAction } from "../ui";
 import FirmwareCard from "./Firmware";
 import AdvancedCard from "./Advanced";
@@ -407,40 +408,37 @@ function AddDisk({ d, send, onClose }: { d: VMDetail; send: Send; onClose: () =>
             <input type="number" min={1} value={size} onChange={(e) => setSize(Number(e.target.value))} />
           </Field>
           <Field label="Format">
-            <select value={format} onChange={(e) => setFormat(e.target.value)}>
-              <option>qcow2</option>
-              <option>raw</option>
-            </select>
+            <Select
+              label="Format"
+              value={format}
+              onChange={setFormat}
+              options={[
+                { value: "qcow2", label: "qcow2" },
+                { value: "raw", label: "raw" },
+              ]}
+            />
           </Field>
         </div>
       ) : (
         <Field label="Volume">
-          <select value={volume} onChange={(e) => setVolume(e.target.value)}>
-            {vols.map((v) => (
-              <option key={v.name} value={v.name}>
-                {v.name} ({bytes(v.capacity)})
-              </option>
-            ))}
-          </select>
+          <Select label="Volume" value={volume} onChange={setVolume} options={vols.map((v) => ({ value: v.name, label: `${v.name} (${bytes(v.capacity)})` }))} />
         </Field>
       )}
       <div className="grid2">
         <Field label="Bus" hint={d.state !== "shutoff" && bus !== "virtio" ? "Appears after a restart." : undefined}>
-          <select value={bus} onChange={(e) => setBus(e.target.value)}>
-            <option value="virtio">virtio</option>
-            <option value="scsi">scsi</option>
-            <option value="sata">sata</option>
-          </select>
+          <Select
+            label="Bus"
+            value={bus}
+            onChange={setBus}
+            options={[
+              { value: "virtio", label: "virtio" },
+              { value: "scsi", label: "scsi" },
+              { value: "sata", label: "sata" },
+            ]}
+          />
         </Field>
         <Field label="Cache">
-          <select value={cache} onChange={(e) => setCache(e.target.value)}>
-            <option value="">default</option>
-            <option>none</option>
-            <option>writeback</option>
-            <option>writethrough</option>
-            <option>directsync</option>
-            <option>unsafe</option>
-          </select>
+          <Select label="Cache" value={cache} onChange={setCache} options={["", "none", "writeback", "writethrough", "directsync", "unsafe"].map((c) => ({ value: c, label: c || "default" }))} />
         </Field>
       </div>
       <label className="check">
@@ -523,13 +521,7 @@ function PickISO({ d, drive, send, onClose }: { d: VMDetail; drive: DiskT; send:
         <p className="muted">No ISO volumes in this node's pools. Upload one on the Storage page.</p>
       ) : (
         <Field label="ISO image" hint={drive.source ? `Replaces ${drive.source}.` : undefined}>
-          <select value={choice} onChange={(e) => setChoice(e.target.value)}>
-            {(isos ?? []).map(({ pool, vol }) => (
-              <option key={pool + "/" + vol.name} value={pool + "/" + vol.name}>
-                {pool} / {vol.name} ({bytes(vol.capacity)})
-              </option>
-            ))}
-          </select>
+          <Select label="ISO image" value={choice} onChange={setChoice} options={(isos ?? []).map(({ pool, vol }) => ({ value: pool + "/" + vol.name, label: `${pool} / ${vol.name} (${bytes(vol.capacity)})` }))} />
         </Field>
       )}
       <ErrorBox error={act.error} />
@@ -659,14 +651,7 @@ function NICForm({ d, nic, send, onClose }: { d: VMDetail; nic?: NicT; send: Sen
       </div>
       {kind === "network" ? (
         <Field label="Network">
-          <select value={network} onChange={(e) => setNetwork(e.target.value)}>
-            {nets.map((n) => (
-              <option key={n.name} value={n.name} disabled={!n.active}>
-                {n.name}
-                {n.active ? "" : " (inactive)"}
-              </option>
-            ))}
-          </select>
+          <Select label="Network" value={network} onChange={setNetwork} options={nets.map((n) => ({ value: n.name, label: n.name + (n.active ? "" : " (inactive)"), disabled: !n.active }))} />
         </Field>
       ) : (
         <Field label="Bridge device" group>
@@ -676,12 +661,7 @@ function NICForm({ d, nic, send, onClose }: { d: VMDetail; nic?: NicT; send: Sen
       {!nic && (
         <div className="grid2">
           <Field label="Model">
-            <select value={model} onChange={(e) => setModel(e.target.value)}>
-              <option>virtio</option>
-              <option>e1000e</option>
-              <option>e1000</option>
-              <option>rtl8139</option>
-            </select>
+            <Select label="Model" value={model} onChange={setModel} options={["virtio", "e1000e", "e1000", "rtl8139"].map((m) => ({ value: m, label: m }))} />
           </Field>
           <Field label="MAC address" hint="Leave empty to generate one.">
             <input className="mono" placeholder="52:54:00:12:34:56" value={mac} onChange={(e) => setMac(e.target.value)} />

@@ -3,7 +3,9 @@ import { useEffect, useState } from "react";
 import { ApiError, bytes, del, get, NodeStatus, Pool, post, put, Task, VMDetail } from "../api";
 import { useRole } from "../auth";
 import { useLive } from "../live";
-import { ErrorBox, Field, Modal, NodePicker, Progress, UsageBar, useAction, useConfirm } from "../ui";
+import PoolSelect from "../PoolSelect";
+import Select from "../Select";
+import { ErrorBox, Field, Modal, NodePicker, Progress, useAction, useConfirm } from "../ui";
 
 interface Manifest {
   vm: string;
@@ -98,20 +100,13 @@ function Target(props: { node: number; pool: string; setNode: (n: number) => voi
   useEffect(() => {
     if (pools.length && !pools.some((p) => p.name === props.pool)) props.setPool(pools[0].name);
   }, [pools]);
-  const cur = pools.find((p) => p.name === props.pool);
   return (
     <>
       <Field label="Target node">
-        <NodePicker nodes={nodes} value={props.node} onChange={props.setNode} />
+        <NodePicker label="Target node" nodes={nodes} value={props.node} onChange={props.setNode} />
       </Field>
       <Field label="Target pool" hint="Only running directory-backed pools can hold backups.">
-        <select value={props.pool} onChange={(e) => props.setPool(e.target.value)}>
-          {pools.map((p) => (
-            <option key={p.name}>{p.name}</option>
-          ))}
-        </select>
-        {cur && <UsageBar used={cur.allocation} total={cur.capacity} />}
-        {cur && <small>{bytes(cur.available)} free</small>}
+        <PoolSelect label="Target pool" pools={pools} value={props.pool} onChange={props.setPool} />
       </Field>
     </>
   );
@@ -213,10 +208,15 @@ function Restore(props: { b: BackupEntry; onClose: () => void; onDone: () => voi
             Backup of {m.vm} from {when(m.created)}. {notIncluded}
           </p>
           <Field label="Restore as">
-            <select value={mode} onChange={(e) => setMode(e.target.value as "new" | "original")}>
-              <option value="new">A new VM (new name, UUID and MAC addresses)</option>
-              <option value="original">The original (same name and UUID)</option>
-            </select>
+            <Select
+              label="Restore as"
+              value={mode}
+              onChange={(v) => setMode(v as "new" | "original")}
+              options={[
+                { value: "new", label: "A new VM (new name, UUID and MAC addresses)" },
+                { value: "original", label: "The original (same name and UUID)" },
+              ]}
+            />
           </Field>
           {mode === "new" ? (
             <Field label="New VM name">
@@ -395,10 +395,15 @@ function SchedulePanel({ d }: { d: VMDetail }) {
         <>
           <div className="grid2">
             <Field label="When">
-              <select value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value as BackupSched["mode"] })}>
-                <option value="daily">Daily at a fixed time (UTC)</option>
-                <option value="interval">At a fixed interval</option>
-              </select>
+              <Select
+                label="When"
+                value={form.mode}
+                onChange={(v) => setForm({ ...form, mode: v as BackupSched["mode"] })}
+                options={[
+                  { value: "daily", label: "Daily at a fixed time (UTC)" },
+                  { value: "interval", label: "At a fixed interval" },
+                ]}
+              />
             </Field>
             {form.mode === "daily" ? (
               <Field label="Time (UTC)">

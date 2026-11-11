@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiToken, del, get, post, Role } from "../api";
 import { atLeast, useRole } from "../auth";
+import Select from "../Select";
 import { ErrorBox, Field, useAction, useConfirm } from "../ui";
 import { ConsolePrefCard } from "./ConsolePreview";
 
@@ -143,11 +144,7 @@ function Tokens({ role }: { role: Role }) {
             <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="ci-pipeline" />
           </Field>
           <Field label="Role">
-            <select value={tokRole} onChange={(e) => setTokRole(e.target.value as Role)}>
-              {(["admin", "operator", "viewer"] as Role[]).filter((r) => atLeast(role, r)).map((r) => (
-                <option key={r}>{r}</option>
-              ))}
-            </select>
+            <Select label="Role" value={tokRole} onChange={(r) => setTokRole(r as Role)} options={(["admin", "operator", "viewer"] as Role[]).filter((r) => atLeast(role, r)).map((r) => ({ value: r, label: r }))} />
           </Field>
           <Field label="Expires in (days)" hint="0 = never">
             <input type="number" min={0} max={3650} value={days} onChange={(e) => setDays(e.target.value)} />

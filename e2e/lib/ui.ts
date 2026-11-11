@@ -3,14 +3,28 @@ import { expect, Locator, Page } from "@playwright/test";
 /** The open modal dialog (optionally by its title). */
 export const dialog = (page: Page, title?: string | RegExp) => (title ? page.getByRole("dialog", { name: title }) : page.getByRole("dialog"));
 
-/** The input, select or textarea of a `<Field label=...>`, found by its exact label text. */
+/** The input, textarea or themed Select button of a `<Field label=...>`, found by its exact label text. */
 export function field(scope: Locator | Page, label: string): Locator {
   const page = "page" in scope && typeof scope.page === "function" ? (scope as Locator).page() : (scope as Page);
   return scope
     .locator("label.field")
     .filter({ has: page.getByText(label, { exact: true }) })
-    .locator("input, select, textarea")
+    .locator("input, textarea, button.cb-btn")
     .first();
+}
+
+/**
+ * Chooses an option in a themed Select. `target` is the Select's accessible name (the Field label) or its locator
+ * (e.g. `field(dlg, "Node")`). `option` is the option's label: a string matches the whole label.
+ */
+export async function pick(scope: Locator | Page, target: string | Locator, option: string | RegExp) {
+  const page = "page" in scope && typeof scope.page === "function" ? (scope as Locator).page() : (scope as Page);
+  const btn = typeof target === "string" ? scope.getByRole("combobox", { name: target, exact: true }) : target;
+  await btn.click();
+  const list = page.getByRole("listbox").last();
+  await expect(list).toBeVisible();
+  await list.getByRole("option").filter({ has: page.locator(".sel-lab").getByText(option, { exact: typeof option === "string" }) }).first().click();
+  await expect(list).toBeHidden();
 }
 
 /** Chooses a pool in a PoolSelect (the themed pool picker) by name. */

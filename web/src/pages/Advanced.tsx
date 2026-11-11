@@ -1,3 +1,4 @@
+import Select from "../Select";
 import { useEffect, useState } from "react";
 import { bytes, get, put, VMDetail } from "../api";
 import { ErrorBox, Field, useAction, useConfirm } from "../ui";
@@ -168,19 +169,20 @@ function CpuShape({ t, busy, save }: P) {
     <div>
       <h4>CPU model and topology</h4>
       <Field label="CPU mode" hint={mode === "host-passthrough" ? "Needs an identical CPU on a migration target." : mode === "host-model" ? "Closest named model." : undefined}>
-        <select value={mode} onChange={(e) => setMode(e.target.value)}>
-          <option value="host-model">host-model</option>
-          <option value="host-passthrough">host-passthrough</option>
-          <option value="custom">custom model</option>
-        </select>
+        <Select
+          label="CPU mode"
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: "host-model", label: "host-model" },
+            { value: "host-passthrough", label: "host-passthrough" },
+            { value: "custom", label: "custom model" },
+          ]}
+        />
       </Field>
       {mode === "custom" && (
         <Field label="Model">
-          <select value={model} onChange={(e) => setModel(e.target.value)}>
-            {t.host.cpuModels.map((m) => (
-              <option key={m}>{m}</option>
-            ))}
-          </select>
+          <Select label="Model" value={model} onChange={setModel} options={t.host.cpuModels.map((m) => ({ value: m, label: m }))} />
         </Field>
       )}
       <label className="check">
@@ -268,15 +270,16 @@ function Hugepages({ t, busy, save }: P) {
     <div>
       <h4>Huge pages</h4>
       <Field label="Back guest memory with" hint="Reserve pages on the node first (vm.nr_hugepages).">
-        <select value={size} onChange={(e) => setSize(Number(e.target.value))}>
-          <option value={0}>ordinary pages</option>
-          {t.host.hugepageSizesKiB.map((k) => (
-            <option key={k} value={k}>
-              {bytes(k * 1024)} pages
-            </option>
-          ))}
-          {s.hugepages && !s.hugepageKiB && <option disabled>(default size, set elsewhere)</option>}
-        </select>
+        <Select
+          label="Back guest memory with"
+          value={String(size)}
+          onChange={(v) => setSize(Number(v))}
+          options={[
+            { value: "0", label: "ordinary pages" },
+            ...t.host.hugepageSizesKiB.map((k) => ({ value: String(k), label: `${bytes(k * 1024)} pages` })),
+            ...(s.hugepages && !s.hugepageKiB ? [{ value: "-1", label: "(default size, set elsewhere)", disabled: true }] : []),
+          ]}
+        />
       </Field>
       {size > 0 && (
         <div className={free(size) < need ? "error" : "muted"}>
@@ -302,12 +305,17 @@ function Numa({ t, busy, save }: P) {
       <h4>NUMA memory policy</h4>
       <div className="grid2">
         <Field label="Policy" hint={mode === "strict" ? "Allocation fails if the nodes have no memory left." : mode === "preferred" ? "Tries this node first, falls back to others." : undefined}>
-          <select value={mode} onChange={(e) => setMode(e.target.value)}>
-            <option value="">none (default)</option>
-            <option value="strict">strict</option>
-            <option value="preferred">preferred</option>
-            <option value="interleave">interleave</option>
-          </select>
+          <Select
+            label="Policy"
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: "", label: "none (default)" },
+              { value: "strict", label: "strict" },
+              { value: "preferred", label: "preferred" },
+              { value: "interleave", label: "interleave" },
+            ]}
+          />
         </Field>
         {mode && (
           <Field label="Host NUMA nodes" hint={`This node has: ${t.host.cells.map((c) => c.id).join(", ")}`}>

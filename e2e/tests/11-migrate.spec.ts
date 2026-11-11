@@ -14,7 +14,7 @@ test.describe.serial("live migration", () => {
     await openVM(page, { node: from, uuid: vm.uuid, name: NAME });
     await vmAction(page, "Migrate", "Migrate to another node");
     const dlg = dialog(page, `Migrate ${NAME}`);
-    await expect(dlg.getByRole("combobox", { name: "Target node" })).toHaveValue(String(to));
+    await expect(dlg.getByRole("combobox", { name: "Target node" })).toContainText(toName);
     await expect(dlg.getByLabel(/Live migration/)).toBeChecked();
     // the pre-flight list renders with at least one entry, none of them an error
     const checks = dlg.locator("ul.checks li");
