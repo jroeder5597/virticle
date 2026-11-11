@@ -7,6 +7,7 @@ import { ErrorBox, StateBadge, UsageBar, useAction } from "../ui";
 import { ConsoleCard } from "./ConsolePreview";
 import { GuestCard, useAgentHelp, VirtioWin } from "./Guest";
 import "./status.css";
+import { StatusLine } from "../Checks";
 
 const last = <T,>(a: T[]): T | undefined => a[a.length - 1];
 const dash = "–";
@@ -256,9 +257,7 @@ export default function Overview({ d, base, onChanged }: { d: VMDetail; base: st
             </dd>
           </dl>
           {d.passthroughDevices > 0 && (
-            <p className="note">
-              Passthrough devices: no live migration.
-            </p>
+            <StatusLine status="warning">Passthrough devices: no live migration.</StatusLine>
           )}
           <ErrorBox error={act.error} />
         </section>
@@ -352,7 +351,7 @@ function AgentCard({ d, base, onChanged }: { d: VMDetail; base: string; onChange
         </>
       )}
       {d.agent !== "connected" && help?.os === "windows" && <VirtioWin d={d} base={base} help={help} />}
-      {restart && <p className="note">Saved; the channel appears after a restart.</p>}
+      {restart && <StatusLine status="warning">Saved; the channel appears after a restart.</StatusLine>}
       {d.agent === "disconnected" && (
         <>
           <p>{d.state !== "running" ? "The VM is not running." : "Nothing answers in the guest."} Install and start the agent:</p>

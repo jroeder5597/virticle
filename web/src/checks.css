@@ -1,0 +1,13 @@
+/* Results: the dot carries the status, the text stays in the normal colour. */
+.cdot { flex: none; display: inline-block; width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; border: 1.5px solid var(--muted); background: transparent; box-sizing: content-box; }
+.cdot.c-ok { background: var(--ok); border-color: var(--ok); }
+.cdot.c-warning { background: var(--warn); border-color: var(--warn); }
+.cdot.c-error { background: var(--danger); border-color: var(--danger); }
+.checklist { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 2px; max-height: 40dvh; overflow: auto; }
+.checklist li { display: flex; gap: 10px; padding: 3px 0; font-size: 13px; line-height: 1.45; color: var(--text); }
+.checklist .ctext { min-width: 0; overflow-wrap: anywhere; }
+.checklist .ctext strong { font-weight: 600; }
+.checksum { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.alertpanel .atitle .cdot { margin-top: 0; vertical-align: middle; }
+.statusline > span { white-space: pre-wrap; min-width: 0; }
+.statusline { display: flex; gap: 10px; align-items: flex-start; margin: 6px 0; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }

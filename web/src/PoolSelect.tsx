@@ -6,6 +6,7 @@ import Combo from "./Combo";
 import { bytes, get, Pool } from "./api";
 import { poolLevel } from "./poolLevel";
 import "./poolselect.css";
+import { StatusDot } from "./Checks";
 
 type Limits = { warn: number; crit: number };
 let limits: Limits | undefined;
@@ -47,7 +48,7 @@ function PoolFace({ p, need, lim }: { p: Pool; need?: number; lim: Limits }) {
         <span className="num ps-use">
           {bytes(p.allocation)} used of {bytes(p.capacity)}
         </span>
-        {short && <span className="ps-warn">not enough free space</span>}
+        {short && <span className="ps-warn"><StatusDot status="warning" />not enough free space</span>}
       </span>
       <span className="ps-bar" aria-hidden="true">
         <span className={"ps-fill " + u.level} style={{ width: u.pct + "%" }} />

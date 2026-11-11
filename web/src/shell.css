@@ -31,7 +31,8 @@ body { overflow-x: hidden; }
 .tree-filter { display: flex; align-items: center; gap: 6px; margin: 8px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--radius, 8px); background: var(--bg); color: var(--muted); }
 .tree-filter input { flex: 1; min-width: 0; border: 0; background: none; color: var(--text); padding: 6px 0; font: inherit; outline: none; }
 .tree-filter:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
-.tree-err { margin: 0 8px 6px; padding: 6px 8px; border: 1px solid var(--danger); border-radius: var(--radius, 8px); color: var(--danger); font-size: 12.5px; cursor: pointer; word-break: break-word; }
+.tree-err .cdot { margin-top: 0; vertical-align: middle; }
+.tree-err { margin: 0 8px 6px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius, 8px); font-size: 12.5px; cursor: pointer; word-break: break-word; }
 .tree-note { padding: 8px 14px; color: var(--muted); font-size: 12.5px; }
 .tree-skel { margin: 8px; height: 120px; border-radius: var(--radius, 8px); background: var(--hover); }
 .tree { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0 4px 12px; }

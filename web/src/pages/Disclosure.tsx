@@ -3,6 +3,7 @@
 import { ReactNode, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { getPref } from "../storage";
+import { StatusDot } from "../Checks";
 
 const key = (id: string) => `virticle.hw.open.${id}`;
 
@@ -47,6 +48,7 @@ export function SectionFrame(props: { id: string; title: string; summary: string
 export function OneLine(props: { tone?: "note" | "error"; text: string; details?: ReactNode; summary?: string }) {
   return (
     <div className={"oneline " + (props.tone ?? "")}>
+      {props.tone && <StatusDot status={props.tone === "error" ? "error" : "warning"} />}
       <span>{props.text}</span>
       {props.details && (
         <details>

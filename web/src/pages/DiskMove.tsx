@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, TriangleAlert, X } from "lucide-react";
+import { CheckList, preflightItems } from "../Checks";
 import { bytes, get, Pool, post, Task, VMDetail } from "../api";
 import { useEvents } from "../live";
 import { ErrorBox, Field, Modal, useAction, useConfirm } from "../ui";
@@ -25,7 +25,6 @@ interface Plan {
 
 type DiskT = VMDetail["disks"][number];
 
-const rank = (c: CheckT) => (c.ok ? 2 : c.severity === "error" ? 0 : 1);
 
 /** Move one disk to another storage pool of the same node: pre-flight, options, then a task with progress and cancel. */
 export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDetail; disk: DiskT; onClose: () => void; onDone: () => void }) {
@@ -159,18 +158,7 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
                   )}
                 </p>
               )}
-              <ul className="checks">
-                {[...plan.checks]
-                  .sort((a, b) => rank(a) - rank(b))
-                  .map((c, i) => (
-                    <li key={i} className={c.ok ? "ok" : c.severity}>
-                      <span className="mark">{c.ok ? <Check size={14} aria-label="ok" /> : c.severity === "error" ? <X size={14} aria-label="error" /> : <TriangleAlert size={14} aria-label="warning" />}</span>
-                      <span>
-                        <strong>{c.check}</strong>: {c.message}
-                      </span>
-                    </li>
-                  ))}
-              </ul>
+              <CheckList items={preflightItems(plan.checks)} />
             </>
           )}
           <ErrorBox error={act.error} />

@@ -7,4 +7,5 @@
 .ps-fill { display: block; height: 100%; background: var(--ok); }
 .ps-fill.warn { background: var(--warn); }
 .ps-fill.crit { background: var(--danger); }
-.ps-warn { color: var(--warn); }
+.ps-warn { display: inline-flex; align-items: center; gap: 6px; }
+.ps-warn .cdot { margin-top: 0; }

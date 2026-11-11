@@ -26,7 +26,8 @@
 .sname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .sdesc { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sline .badge, .sline svg { flex: none; }
-.sreason { color: var(--warn); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sreason { display: flex; align-items: center; gap: 6px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sreason .cdot { margin-top: 0; }
 
 .smeta { grid-area: meta; display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .sact { grid-area: act; display: flex; gap: 4px; justify-content: flex-end; min-width: 0; }

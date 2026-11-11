@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { bytes, get, put, VMDetail } from "../api";
 import { ErrorBox, Field, useAction, useConfirm } from "../ui";
 import { OneLine, SectionFrame } from "./Disclosure";
+import { CheckList } from "../Checks";
 
 interface Tuning {
   state: string;
@@ -98,9 +99,7 @@ export default function AdvancedCard({ d, base, onChanged, bare }: { d: VMDetail
         details={t.warning}
         summary="Why this matters"
       />
-      {t.warnings.map((w, i) => (
-        <div key={i} className="error">{w}</div>
-      ))}
+      {t.warnings.length > 0 && <CheckList summary={false} label="Tuning warnings" items={t.warnings.map((w) => ({ status: "warning", detail: w }))} />}
       <ErrorBox error={act.error} />
       {msg && <div className="muted">{msg}</div>}
 

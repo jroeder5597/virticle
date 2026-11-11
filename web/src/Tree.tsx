@@ -16,6 +16,7 @@ import { getPref } from "./storage";
 import { publishInventory } from "./inventory";
 import { TreeTags } from "./TreeTags";
 import "./shell.css";
+import { StatusDot } from "./Checks";
 
 interface NIC {
   name: string;
@@ -473,7 +474,7 @@ export default function Tree() {
       </div>
       {error && (
         <div className="tree-err" role="alert" onClick={() => setError("")}>
-          {error}
+          <StatusDot status="error" /> {error}
         </div>
       )}
       <div className="tree" role="tree" aria-label="Resources" onKeyDown={onKeyDown}>

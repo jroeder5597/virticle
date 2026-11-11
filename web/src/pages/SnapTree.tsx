@@ -5,6 +5,7 @@ import { Clock, GitBranchPlus, RotateCcw, Trash2 } from "lucide-react";
 import { StateBadge } from "../ui";
 import { branchOf, buildSnapRows, TreeRow, TreeSnap } from "../snapTree";
 import "./snaptree.css";
+import { StatusDot } from "../Checks";
 
 export interface SnapNode extends TreeSnap {
   description?: string;
@@ -154,7 +155,7 @@ function Row<T extends SnapNode>({ r, i, focused, p, onFocus, onKey, rows }: { r
           {s.isCurrent && <span className="badge s-running">current</span>}
           {s.scheduled && <Clock size={13} aria-label="Made by the schedule" />}
         </span>
-        {block ? <span className="sreason" title={block}>{block}</span> : s.description && !s.scheduled ? <span className="sdesc" title={s.description}>{s.description}</span> : <span className="sdesc" title={s.files.join("\n")}>{s.scheduled ? "Taken by the schedule" : s.files.length ? s.files.join(", ") : " "}</span>}
+        {block ? <span className="sreason" title={block}><StatusDot status="warning" />{block}</span> : s.description && !s.scheduled ? <span className="sdesc" title={s.description}>{s.description}</span> : <span className="sdesc" title={s.files.join("\n")}>{s.scheduled ? "Taken by the schedule" : s.files.length ? s.files.join(", ") : " "}</span>}
       </span>
       <span className="smeta">
         <span className="when" title={relative(s.created)}>{when(new Date(s.created * 1000))}</span>

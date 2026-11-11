@@ -3,6 +3,7 @@ import { Trash2 } from "lucide-react";
 import { api, del, get, VMDetail } from "../api";
 import { ErrorBox, Modal, useAction, useConfirm } from "../ui";
 import { OneLine, SectionFrame } from "./Disclosure";
+import { StatusLine } from "../Checks";
 
 interface Dev {
   kind: "pci" | "usb";
@@ -127,13 +128,13 @@ function Picker({ l, vm, busy, running, onClose, onAttach, error }: { l: Listing
   };
   return (
     <Modal title="Host devices of this node" onClose={onClose} wide>
-      <div className="note">{l.warning}</div>
+      <StatusLine status="warning">{l.warning}</StatusLine>
       {!l.iommu && (
-        <div className="error">
+        <StatusLine status="error">
           This node has no active IOMMU, so no PCI device can be passed through (enable intel_iommu=on or amd_iommu=on and reboot). USB devices are not affected.
-        </div>
+        </StatusLine>
       )}
-      {!l.factsKnown && <div className="error">The node's network and storage layout could not be read; devices that might belong to the host are refused.</div>}
+      {!l.factsKnown && <StatusLine status="warning">The node's network and storage layout could not be read; devices that might belong to the host are refused.</StatusLine>}
       <div className="tabs" style={{ margin: "8px 0" }}>
         {[["all", "All"], ["gpu", "GPU"], ["network", "Network"], ["storage", "Storage"], ["usb-controller", "USB controllers"], ["usb", "USB devices"]].map(([k, name]) => (
           <button key={k} className={filter === k ? "on" : ""} onClick={() => setFilter(k)}>
@@ -173,7 +174,7 @@ function Picker({ l, vm, busy, running, onClose, onAttach, error }: { l: Listing
                     )}
                   </td>
                   <td>
-                    <span className={st.bad ? "rowerror" : st.ok ? "" : "muted"}>{st.text}</span>
+                    <StatusLine status={st.bad ? "error" : st.ok ? "ok" : "info"}>{st.text}</StatusLine>
                     {running && x.category === "gpu" && st.ok && <small>Shut the VM down to attach a graphics card</small>}
                     {x.warnings?.map((w, i) => (
                       <small key={i}>{w}</small>

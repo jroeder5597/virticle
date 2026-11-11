@@ -9,5 +9,3 @@
 .nicbox td, .nicbox th { white-space: nowrap; }
 .nicbox .num { font-variant-numeric: tabular-nums; }
 .connfacts dd { overflow-wrap: anywhere; }
-.capreasons { margin: 8px 0; padding-left: 18px; color: var(--warn); }
-.testresult p { margin: 4px 0; }

@@ -296,7 +296,7 @@ test.describe.serial("visual pass", () => {
       await page.getByRole("button", { name: "Edit connection" }).click();
       await shot("node-edit-connection-dialog", () => expect(page.getByRole("dialog", { name: "Edit connection" }).locator(".keybox code")).toContainText("ssh-ed25519"));
       await page.getByRole("dialog", { name: "Edit connection" }).getByRole("button", { name: "Test connection" }).click();
-      await shot("node-edit-connection-tested", () => expect(page.getByRole("dialog", { name: "Edit connection" }).locator(".testresult")).toContainText("Detected:", { timeout: 30_000 }));
+      await shot("node-edit-connection-tested", () => expect(page.getByRole("dialog", { name: "Edit connection" }).locator("ul.checklist")).toContainText("Root access", { timeout: 30_000 }));
       await page.keyboard.press("Escape");
       // modals that carry the most layout
       await page.goto("/storage");
@@ -355,13 +355,13 @@ test.describe.serial("visual pass", () => {
       await page.keyboard.press("Escape");
       await page.goto(vmUrl + "?tab=hardware");
       await page.locator("section.card").filter({ has: page.getByRole("heading", { name: "Disks", exact: true }) }).getByRole("row", { name: /vda/ }).getByRole("button", { name: "Move", exact: true }).click();
-      await shot("disk-move-dialog", () => expect(page.getByRole("dialog").locator("ul.checks li").first()).toBeVisible({ timeout: 60_000 }));
+      await shot("disk-move-dialog", () => expect(page.getByRole("dialog").locator("ul.checklist li").first()).toBeVisible({ timeout: 60_000 }));
       await page.keyboard.press("Escape");
       await page.goto(vmUrl);
       await page.locator(".head").getByRole("button", { name: "Actions", exact: true }).click();
       await page.getByRole("menuitem", { name: "Migrate", exact: true }).click();
       await page.getByRole("menuitem", { name: "Migrate to another node", exact: true }).click();
-      await shot("migrate-dialog", () => expect(page.getByRole("dialog").locator("ul.checks li").first()).toBeVisible({ timeout: 60_000 }));
+      await shot("migrate-dialog", () => expect(page.getByRole("dialog").locator("ul.checklist li").first()).toBeVisible({ timeout: 60_000 }));
       await page.keyboard.press("Escape");
 
       await ctx.close();

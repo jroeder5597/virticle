@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { bytes, get, Network, post, Task, Volume } from "../api";
 import { ErrorBox, Field, Modal, useAction } from "../ui";
+import { CheckList, StatusLine } from "../Checks";
 
 interface Inspect {
   kind: "disk" | "ova";
@@ -136,7 +137,7 @@ export default function ImportDialog({ node, pool, volumes, initial, onClose, on
                 Detected format <strong>{info.format}</strong>, virtual size {bytes(info.virtualSize)}, {bytes(info.actualSize)} on disk.
               </>
             )}
-            {info.warning && <div className="note">{info.warning}</div>}
+            {info.warning && <StatusLine status="warning">{info.warning}</StatusLine>}
           </div>
         )}
         {info && (
@@ -204,11 +205,7 @@ function Finished({ node, done, onClose }: { node: number; done: Imported; onClo
         Disk{(done.volumes?.length ?? 0) > 1 ? "s" : ""} converted: <span className="mono">{done.volumes?.join(", ")}</span>. The descriptor suggests the VM below ({p.firmware.toUpperCase()}
         {p.secureBoot ? " + Secure Boot" : ""}, {p.osType}). Adjust it and create it; the imported volume is used as the disk, not copied.
       </p>
-      {done.warnings?.map((w) => (
-        <div key={w} className="note" style={{ marginBottom: 8 }}>
-          {w}
-        </div>
-      ))}
+      {done.warnings && done.warnings.length > 0 && <CheckList summary={false} label="Import warnings" items={done.warnings.map((w) => ({ key: w, status: "warning", detail: w }))} />}
       <div className="grid2">
         <Field label="VM name">
           <input value={name} onChange={(e) => setName(e.target.value)} />

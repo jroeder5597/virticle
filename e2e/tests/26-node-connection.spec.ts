@@ -60,7 +60,8 @@ test.describe.serial("node connection", () => {
     await field(dlg, "Jump host (optional)").fill(before.jump ?? "");
     await field(dlg, "Migration address (optional)").fill(before.addr);
     await dlg.getByRole("button", { name: "Test connection" }).click();
-    await expect(dlg.locator(".testresult")).toContainText("Detected:", { timeout: 30_000 });
+    await expect(dlg.locator("ul.checklist")).toContainText("Root access", { timeout: 30_000 });
+    await expect(dlg.getByRole("img", { name: "failed" })).toHaveCount(0);
     await dlg.getByRole("button", { name: "Save" }).click();
     await expect(dlg).toBeHidden({ timeout: 30_000 });
     // same id, back online, the VM is listed again

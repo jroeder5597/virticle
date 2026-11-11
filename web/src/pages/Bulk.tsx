@@ -2,7 +2,7 @@
 // calls (three at a time) and shows each VM's own result, so every action is a
 // task of its own in the task log and failures are reported per VM.
 import { useEffect, useState } from "react";
-import { Check, Ellipsis, Minus, X } from "lucide-react";
+import { CheckList, CheckItem, StatusLine } from "../Checks";
 import { del, get, post, put, VM, VMDetail } from "../api";
 import { ErrorBox, Field, Modal, useAction, useConfirm } from "../ui";
 import { powerConfirm, powerLabel } from "../power";
@@ -137,19 +137,19 @@ function BulkResults({ title, results, running, onClose }: { title: string; resu
   const failed = results.filter((r) => r.status === "failed").length;
   return (
     <Modal title={`${title}: ${done} of ${results.length} done`} onClose={running ? () => {} : onClose}>
-      <ul className="checks" aria-label="Bulk results">
-        {results.map((r) => (
-          <li key={key(r.vm)} className={r.status === "ok" ? "ok" : ""}>
-            <span className="mark">{r.status === "ok" ? <Check size={14} aria-label="ok" /> : r.status === "failed" ? <X size={14} aria-label="failed" /> : r.status === "skipped" ? <Minus size={14} aria-label="skipped" /> : <Ellipsis size={14} aria-label="running" />}</span>
-            <span>
-              <strong>{r.vm.name}</strong> <span className="muted">on {r.vm.nodeName}</span>
-              {r.status === "skipped" && <span className="muted"> skipped: {r.text}</span>}
-              {r.status === "failed" && <div className="rowerror">{r.text}</div>}
-            </span>
-          </li>
-        ))}
-      </ul>
-      {!running && failed > 0 && <div className="error">{failed} failed. The task log has the details.</div>}
+      <CheckList
+        label="Bulk results"
+        sort={false}
+        items={results.map(
+          (r): CheckItem => ({
+            key: key(r.vm),
+            status: r.status === "ok" ? "ok" : r.status === "failed" ? "error" : r.status === "skipped" ? "info" : "pending",
+            title: r.vm.name,
+            detail: `on ${r.vm.nodeName}${r.status === "skipped" ? `, skipped: ${r.text}` : r.status === "failed" ? `, failed: ${r.text}` : r.status === "pending" ? ", waiting" : ""}`,
+          }),
+        )}
+      />
+      {!running && failed > 0 && <StatusLine status="error">The task log has the details.</StatusLine>}
       <footer>
         <button className="primary" disabled={running} onClick={onClose}>
           Close
@@ -217,24 +217,25 @@ function DeleteDialog({ vms, onClose, onConfirm }: { vms: VM[]; onClose: () => v
   return (
     <Modal title={`Delete ${deletable.length} VM(s)?`} onClose={onClose}>
       <p>This removes the VM definitions together with their NVRAM files, TPM state and snapshot records. It cannot be undone.</p>
-      <ul className="checks" aria-label="To be removed">
-        {vms.map((v) => (
-          <li key={key(v)}>
-            <span>
-              <strong>{v.name}</strong> <span className="muted">on {v.nodeName}</span>
-              {v.state !== "shutoff" ? (
-                <div className="muted">will be skipped: {v.state}, shut it down first</div>
-              ) : (
-                owned(v).map((k) => (
-                  <div key={k.target} className="mono muted">
-                    disk {k.target}: {k.source} ({disks ? "deleted" : "kept"})
-                  </div>
-                ))
-              )}
-            </span>
-          </li>
-        ))}
-      </ul>
+      <CheckList
+        label="To be removed"
+        sort={false}
+        summary={false}
+        items={vms.map(
+          (v): CheckItem => ({
+            key: key(v),
+            status: v.state !== "shutoff" ? "warning" : "info",
+            title: v.name,
+            detail:
+              `on ${v.nodeName}` +
+              (v.state !== "shutoff"
+                ? `, will be skipped: ${v.state}, shut it down first`
+                : owned(v)
+                    .map((k) => `; disk ${k.target}: ${k.source} (${disks ? "deleted" : "kept"})`)
+                    .join("")),
+          }),
+        )}
+      />
       <label className="check">
         <input type="checkbox" checked={disks} onChange={(e) => setDisks(e.target.checked)} /> Also delete their disk volumes
       </label>

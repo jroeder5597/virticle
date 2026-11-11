@@ -13,6 +13,7 @@ import DiskMoveDialog from "./DiskMove";
 import PoolSelect from "../PoolSelect";
 import BridgeSelect from "../BridgeSelect";
 import "./hw.css";
+import { StatusLine } from "../Checks";
 
 interface HwResult {
   applied: "live+config" | "live" | "config";
@@ -54,7 +55,7 @@ export type HwArea = "cpu" | "disks" | "nics" | "cdrom" | "boot" | "firmware" | 
 function Outcome({ hw }: { hw: ReturnType<typeof useHw> }) {
   return (
     <>
-      {hw.outcome && <div className={hw.outcome.restart ? "note" : "muted"}>{hw.outcome.text}</div>}
+      {hw.outcome && <StatusLine status={hw.outcome.restart ? "warning" : "ok"}>{hw.outcome.text}</StatusLine>}
       <ErrorBox error={hw.error} />
     </>
   );
