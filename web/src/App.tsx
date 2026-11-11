@@ -9,6 +9,7 @@ import Storage from "./pages/Storage";
 import { BackupsSection } from "./pages/Backups";
 import Networks from "./pages/Networks";
 import Nodes from "./pages/Nodes";
+import NodeDetail from "./pages/NodeDetail";
 import Tasks from "./pages/Tasks";
 import Users from "./pages/Users";
 import Audit from "./pages/Audit";
@@ -64,6 +65,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<VMs />} />
           <Route path="/vm/:node/:uuid" element={<VMDetailPage />} />
+          <Route path="/node/:id/:tab?" element={<NodeDetail />} />
           <Route path="/storage" element={<Storage />} />
           <Route path="/backups" element={<BackupsSection />} />
           <Route path="/networks" element={<Networks />} />

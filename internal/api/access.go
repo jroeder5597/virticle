@@ -52,6 +52,7 @@ var routeLevels = map[string]string{
 	"POST /api/nodes/{node}/evacuate/cancel": admin,
 	"PUT /api/nodes/{node}/maintenance":      admin,
 	"GET /api/nodes/{node}/updates":          viewer,
+	"GET /api/nodes/{node}/interfaces":       viewer,
 
 	"GET /api/users":         admin,
 	"POST /api/users":        admin,

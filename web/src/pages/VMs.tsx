@@ -9,7 +9,8 @@ import { emptyFw, FirmwareFields, fwPayload, FwValues } from "./Firmware";
 import { TagChips } from "./Tags";
 import { Meter, pct, useAllStats, VMPoint } from "../charts";
 
-export default function VMs() {
+/** `fixedNode` limits the list to one node (node page tab): the node column goes and New VM preselects it. */
+export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
   const vms = useLive(() => get<VM[]>("/vms"), "vms");
   const live = useAllStats();
   const nodes = useLive(() => get<{ nodes: NodeStatus[] }>("/nodes"), "nodes");
@@ -18,8 +19,8 @@ export default function VMs() {
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState("");
   const act = useAction();
-  const online = nodes.data?.nodes.filter((n) => n.state === "online") ?? [];
-  const all = [...(vms.data ?? [])].sort((a, b) => a.name.localeCompare(b.name) || a.node - b.node);
+  const online = nodes.data?.nodes.filter((n) => n.state === "online" && (fixedNode === undefined || n.id === fixedNode)) ?? [];
+  const all = [...(vms.data ?? [])].filter((v) => fixedNode === undefined || v.node === fixedNode).sort((a, b) => a.name.localeCompare(b.name) || a.node - b.node);
   const allTags = [...new Set(all.flatMap((v) => v.tags ?? []))].sort();
   const needle = search.trim().toLowerCase();
   const list = all.filter(
@@ -41,7 +42,7 @@ export default function VMs() {
   return (
     <>
       <div className="head">
-        <h1>Virtual machines</h1>
+        {fixedNode === undefined ? <h1>Virtual machines</h1> : <h2>Virtual machines</h2>}
         <button className="primary" disabled={online.length === 0} onClick={() => setCreating(true)}>
           New VM
         </button>
@@ -64,7 +65,7 @@ export default function VMs() {
         </div>
       )}
       {selected.size > 0 && <BulkBar selected={picked} onClear={() => setSelected(new Set())} />}
-      {nodes.data && nodes.data.nodes.length === 0 ? (
+      {fixedNode === undefined && nodes.data && nodes.data.nodes.length === 0 ? (
         <div className="empty">
           No nodes yet. <Link to="/nodes">Add a node</Link> to see its virtual machines.
         </div>
@@ -84,7 +85,7 @@ export default function VMs() {
               </th>
               <th>Name</th>
               <th>State</th>
-              <th>Node</th>
+              {fixedNode === undefined && <th>Node</th>}
               <th className="num">vCPUs</th>
               <th className="num">Memory</th>
               <th>CPU</th>
@@ -106,7 +107,7 @@ export default function VMs() {
                 <td>
                   <StateBadge state={vm.state} />
                 </td>
-                <td>{vm.nodeName}</td>
+                {fixedNode === undefined && <td>{vm.nodeName}</td>}
                 <td className="num">{vm.vcpus}</td>
                 <td className="num">{bytes(vm.memoryKiB * 1024)}</td>
                 <UsageCells p={vm.state === "running" ? live?.vms[`${vm.node}/${vm.uuid}`] : undefined} />
