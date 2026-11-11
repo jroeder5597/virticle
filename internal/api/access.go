@@ -37,9 +37,10 @@ const (
 // control); operator manages VMs, storage and networks; admin also manages
 // nodes, users and the audit log.
 var routeLevels = map[string]string{
-	"GET /api/events": viewer,
-	"GET /api/tasks":  viewer,
-	"GET /api/alerts": viewer,
+	"GET /api/version": viewer,
+	"GET /api/events":  viewer,
+	"GET /api/tasks":   viewer,
+	"GET /api/alerts":  viewer,
 
 	"GET /api/nodes":                         viewer,
 	"POST /api/nodes":                        admin,

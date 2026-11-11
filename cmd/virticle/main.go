@@ -50,6 +50,9 @@ func main() {
 	flag.IntVar(&alerts.CertDays, "alert-cert-days", 30, "alert when the web UI certificate expires within this many days")
 	flag.StringVar(&alerts.Webhook, "alert-webhook", "", "http(s) URL that receives a JSON POST whenever an alert is raised or cleared (empty: no notifications)")
 	flag.Parse()
+	if versionRequested() {
+		return
+	}
 	renameEnv("VIRT_JUMP_PASSWORD", "VIRTICLE_JUMP_PASSWORD")
 	renameEnv("VIRT_VIRTIO_WIN_PATTERN", "VIRTICLE_VIRTIO_WIN_PATTERN")
 	if alerts.Webhook != "" {
