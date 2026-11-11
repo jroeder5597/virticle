@@ -69,6 +69,10 @@ var routeLevels = map[string]string{
 	"POST /api/account/tokens":        viewer,
 	"DELETE /api/account/tokens/{id}": viewer,
 
+	// Own UI preferences: every role, session only.
+	"GET /api/me/prefs": viewer,
+	"PUT /api/me/prefs": viewer,
+
 	// Profiles hold password hashes and keys: even reading them needs operator.
 	"GET /api/cloudinit-profiles":         operator,
 	"POST /api/cloudinit-profiles":        operator,

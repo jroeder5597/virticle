@@ -118,7 +118,7 @@ func TestEveryRouteHasALevel(t *testing.T) {
 			continue
 		}
 		method, path, _ := strings.Cut(rt.pattern, " ")
-		account := strings.HasPrefix(path, "/api/account/")
+		account := strings.HasPrefix(path, "/api/account/") || strings.HasPrefix(path, "/api/me/")
 		if method != "GET" && !account && store.RoleRank(lvl) < store.RoleRank(operator) {
 			t.Errorf("%s lets a viewer change things", rt.pattern)
 		}
@@ -183,7 +183,7 @@ func TestViewerCannotMutate(t *testing.T) {
 	e.user("v", viewer)
 	for _, rt := range e.srv.routes {
 		method, _, _ := strings.Cut(rt.pattern, " ")
-		if rt.public || method == "GET" || strings.Contains(rt.pattern, "/account/") {
+		if rt.public || method == "GET" || strings.Contains(rt.pattern, "/account/") || strings.Contains(rt.pattern, "/api/me/") {
 			continue
 		}
 		if store.RoleRank(levelFor(rt.pattern)) <= store.RoleRank(viewer) {

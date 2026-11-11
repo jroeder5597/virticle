@@ -70,7 +70,18 @@ async function lowContrast(page: Page): Promise<string[]> {
 }
 
 async function sideways(page: Page): Promise<number> {
-  return page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  // The main area scrolls inside the app shell, so sideways overflow shows there, not on the document.
+  return page.evaluate(() => {
+    const c = document.querySelector(".content-scroll");
+    return Math.max(document.documentElement.scrollWidth - window.innerWidth, c ? c.scrollWidth - c.clientWidth : 0);
+  });
+}
+
+/** Opens or collapses the Tasks dock (the choice is stored for the user). */
+async function dock(page: Page, open: boolean) {
+  const b = page.getByRole("button", { name: open ? "Show tasks" : "Hide tasks" });
+  if (await b.count()) await b.click();
+  await expect(page.getByRole("button", { name: open ? "Hide tasks" : "Show tasks" })).toHaveAttribute("aria-expanded", String(open));
 }
 
 /** Desktop only: elements whose content is wider than their box (cut off or scrolling inside), or that end past the window. */
@@ -184,6 +195,11 @@ test.describe.serial("visual pass", () => {
       await page.goto("/datacenter/vms");
       expect(await page.evaluate(() => document.documentElement.getAttribute("data-theme"))).toBe(m.scheme);
       await shot("list", () => expect(page.locator("tbody tr", { hasText: NAME })).toBeVisible());
+      await dock(page, true);
+      await shot("dock-open", () => expect(page.locator(".dk-rows .dk-row").first()).toBeVisible({ timeout: 30_000 }), { viewportOnly: true });
+      await dock(page, false);
+      await shot("dock-collapsed", () => expect(page.locator(".dock-table")).toHaveCount(0), { viewportOnly: true });
+      await dock(page, true);
       await page.getByRole("button", { name: "New VM" }).click();
       await shot("new-vm-dialog", () => expect(page.getByRole("dialog")).toBeVisible());
       await page.getByRole("dialog").getByRole("button", { name: "Disk image" }).click();
@@ -231,11 +247,11 @@ test.describe.serial("visual pass", () => {
         await page.locator(".cc-box").scrollIntoViewIfNeeded(); // the preview only loads while the card is on screen
         await expect(page.locator(".cc-open img")).toBeVisible({ timeout: 30_000 });
       });
-      await page.evaluate(() => localStorage.setItem("vp-console-click", "inline"));
+      await page.request.put("/api/me/prefs", { data: { consoleClick: "inline" } });
       await page.goto(vmUrl);
       await page.locator(".cc-open").click();
       await shot("vm-console-inline", () => expect(page.locator(".cc .console.inline").getByText("Connected")).toBeVisible({ timeout: 30_000 }));
-      await page.evaluate(() => localStorage.removeItem("vp-console-click"));
+      await page.request.put("/api/me/prefs", { data: { consoleClick: "tab" } });
       await page.goto(`/console/${vm.node}/${vm.uuid}`);
       await shot("console-page", () => expect(page.getByText("Connected")).toBeVisible({ timeout: 30_000 }));
       await page.goto(`${vmUrl}?tab=console`);

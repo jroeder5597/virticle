@@ -47,3 +47,24 @@ func TestMergeNodesOrderByNameThenID(t *testing.T) {
 		t.Errorf("order %v %v %v", items[0].Node, items[1].Node, items[2].Node)
 	}
 }
+
+func TestNodeStorageCountsSharedFilesystemOnce(t *testing.T) {
+	mk := func(node int64, state string, capacity, alloc, avail uint64) nodePool {
+		return nodePool{poolInfo{State: state, Capacity: capacity, Allocation: alloc, Available: avail}, node, ""}
+	}
+	pools := []nodePool{
+		mk(1, "running", 1000, 300, 700),
+		mk(1, "running", 1000, 300, 700), // same filesystem as the first
+		mk(1, "running", 1000, 300, 700),
+		mk(1, "running", 500, 100, 400),  // another filesystem
+		mk(1, "inactive", 900, 0, 900),   // not running: ignored
+		mk(2, "running", 1000, 300, 700), // same numbers on another node: counted there
+	}
+	got := nodeStorage(pools)
+	if len(got) != 2 || got[0] != (nodeStore{1, 1500, 400}) || got[1] != (nodeStore{2, 1000, 300}) {
+		t.Errorf("got %+v", got)
+	}
+	if g := nodeStorage(nil); g == nil || len(g) != 0 {
+		t.Errorf("want empty non-nil, got %v", g)
+	}
+}
