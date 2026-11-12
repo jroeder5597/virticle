@@ -121,7 +121,7 @@ test.describe.serial("datacenter", () => {
     const calls: string[] = [];
     page.on("request", (q) => /\/api\/nodes\/\d+\/interfaces/.test(q.url()) && calls.push(q.url()));
     await page.goto("/datacenter/network");
-    await expect(page.getByRole("columnheader", { name: "Node", exact: true })).toBeVisible();
+    await expect(page.getByRole("main").getByRole("columnheader", { name: "Node", exact: true })).toBeVisible();
     await expect(row(page, "default").filter({ hasText: env.node1 })).toBeVisible();
     await expect(row(page, "default").filter({ hasText: env.node2 })).toBeVisible();
     await page.getByRole("button", { name: "New network" }).click();

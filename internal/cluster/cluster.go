@@ -288,6 +288,31 @@ func (m *Manager) session(ctx context.Context, n *node) error {
 	go func() {
 		wedged <- watch(evctx, func() error { _, err := h.ConnectGetLibVersion(); return err }, m.wdInterval, m.wdTimeout)
 	}()
+	// A node that is not prepared is looked at again from time to time, so
+	// that "virticle node prepare" takes effect without anyone touching the
+	// node here: the connection is made anew, which detects the access again.
+	prepared := make(chan struct{})
+	if priv == hostconn.PrivNone {
+		go func() {
+			iv := m.wdInterval
+			if iv <= 0 {
+				iv = watchInterval
+			}
+			t := time.NewTicker(iv)
+			defer t.Stop()
+			for {
+				select {
+				case <-evctx.Done():
+					return
+				case <-t.C:
+				}
+				if det, _, err := h.DetectPrivilege(); err == nil && det != hostconn.PrivNone {
+					close(prepared)
+					return
+				}
+			}
+		}()
+	}
 	n.set(h, "online", "")
 	m.Publish(Event{Type: "node", Node: n.cfg.ID, Detail: "online"})
 
@@ -296,6 +321,8 @@ func (m *Manager) session(ctx context.Context, n *node) error {
 		case <-ctx.Done():
 			return nil
 		case <-h.Disconnected():
+			return nil
+		case <-prepared:
 			return nil
 		case err := <-wedged:
 			if err != nil && h.IsConnected() {
