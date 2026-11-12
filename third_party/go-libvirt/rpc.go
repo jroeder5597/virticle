@@ -40,6 +40,8 @@ var ErrInterrupted = errors.New("procedure interrupted while awaiting response")
 type response struct {
 	Payload []byte
 	Status  uint32
+	// Type is the packet type (socket.Reply, socket.Stream).
+	Type uint32
 }
 
 // Error reponse from libvirt
@@ -110,7 +112,7 @@ func (l *Libvirt) Route(h *socket.Header, buf []byte) {
 	}
 
 	// send response to caller
-	l.callback(h.Serial, response{Payload: buf, Status: h.Status})
+	l.callback(h.Serial, response{Payload: buf, Status: h.Status, Type: h.Type})
 }
 
 func eventFromProcedureID(procID uint32) event.Event {
@@ -292,9 +294,22 @@ func (l *Libvirt) requestStream(proc uint32, program uint32, payload []byte,
 		return response{}, err
 	}
 
-	resp, err := l.getResponse(c)
+	// libvirtd may send the first stream data packets before the reply to
+	// the call (seen with a console whose guest is printing). Take the reply
+	// by its type and keep what came early, in order.
+	resp, early, ended, err := l.getReply(c)
 	if err != nil {
 		return resp, err
+	}
+	if in != nil {
+		for _, p := range early {
+			if _, err := in.Write(p); err != nil {
+				return response{}, err
+			}
+		}
+	}
+	if ended {
+		return resp, nil
 	}
 
 	if out != nil {
@@ -342,6 +357,26 @@ func (l *Libvirt) requestStream(proc uint32, program uint32, payload []byte,
 		return resp, nil
 	}
 	return l.processIncomingStream(c, in)
+}
+
+// getReply waits for the reply to a call that opens a stream. Stream data
+// packets that arrive before it are returned in early; ended reports that the
+// stream was already finished by one of them.
+func (l *Libvirt) getReply(c chan response) (resp response, early [][]byte, ended bool, err error) {
+	for {
+		resp, err = l.getResponse(c)
+		if err != nil {
+			return resp, nil, false, err
+		}
+		if resp.Type != socket.Stream {
+			return resp, early, ended, nil
+		}
+		if resp.Status == socket.StatusOK || len(resp.Payload) == 0 {
+			ended = true
+			continue
+		}
+		early = append(early, resp.Payload)
+	}
 }
 
 // processIncomingStream is called once we've successfully sent a request to

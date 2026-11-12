@@ -7,8 +7,9 @@ fixes this.
 
 ## What changed
 
-Only `rpc.go`, `requestStream`, the deferred deregister, plus a new test file
-`stream_wedge_test.go`. Everything else is byte-identical to the base version.
+`rpc.go` and a new test file `stream_wedge_test.go`. Everything else is
+byte-identical to the base version. First change: `requestStream`, the
+deferred deregister.
 
 ```go
 defer func() {
@@ -40,6 +41,27 @@ Late packets for a deregistered serial are dropped by `callback` as before.
 
 `TestStreamConsumerFailureDoesNotWedgeConnection` fails against the base
 version (deterministically) and passes with the patch.
+
+## Second change: stream data that arrives before the reply
+
+`rpc.go`: `response` carries the packet type, `Route` fills it in, and
+`requestStream` takes the reply through the new `getReply`. Test:
+`TestStreamDataBeforeReply` in `stream_wedge_test.go`.
+
+libvirtd may send the first stream data packets before the reply to the call
+that opened the stream. Seen with `DomainOpenConsole` on libvirt 11.10 (Rocky
+10) while the guest was printing its boot output; never seen on libvirt 11.3
+(Debian 13). The base version took the first packet for the reply without
+looking at its type (losing that data), and then took the real reply, which
+is empty with status OK, for the end of the stream. The console closed
+cleanly after a few bytes, in about one of three attempts during boot.
+
+`getReply` waits for the packet of type Reply and hands the stream packets
+that came first to the writer, in order.
+
+The test fails against the base version (the console ends after one byte)
+and passes with the patch. On the lab the browser test that opens the serial
+console failed 3 of 10 runs before and 0 of 12 after.
 
 ## Not fixed here
 
