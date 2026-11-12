@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { get, put, VMDetail } from "../api";
+import { get, post, put, VMDetail } from "../api";
 import { useLive } from "../live";
-import { useRole } from "../auth";
+import { atLeast, useRole } from "../auth";
 import { ErrorBox, StateBadge, useAction } from "../ui";
 import { SerialConsole, VNCConsole } from "./Console";
 import Hardware from "./Hardware";
@@ -95,7 +95,7 @@ export default function VMDetailPage() {
       </div>
       {tab === "overview" && <Overview d={d} base={base} onChanged={vm.reload} />}
       {tab === "hardware" && <Hardware d={d} base={base} onChanged={vm.reload} />}
-      {tab === "console" && <ConsoleTab d={d} />}
+      {tab === "console" && <ConsoleTab d={d} base={base} onChanged={vm.reload} />}
       {tab === "snapshots" && <SnapshotsTab d={d} base={base} />}
       {tab === "backups" && <BackupsTab d={d} base={base} />}
       {tab === "xml" && <XMLEditor d={d} base={base} onSaved={vm.reload} />}
@@ -103,11 +103,35 @@ export default function VMDetailPage() {
   );
 }
 
-function ConsoleTab({ d }: { d: VMDetail }) {
+function ConsoleTab({ d, base, onChanged }: { d: VMDetail; base: string; onChanged: () => void }) {
   const kinds = [...(d.hasVNC ? ["vnc"] : []), ...(d.hasSerial ? ["serial"] : [])];
   const [kind, setKind] = useState(kinds[0]);
+  const act = useAction();
+  const op = atLeast(useRole(), "operator");
+  const [note, setNote] = useState<string>();
+  if (kinds.length === 0)
+    return (
+      <div className="empty">
+        <p>{d.serialPending === "add" ? "A serial console is saved. It applies after the VM is powered off and started." : "This VM has neither a VNC display nor a serial console."}</p>
+        {op && d.serialPending !== "add" && (
+          <button
+            disabled={act.busy}
+            onClick={() =>
+              act.run(async () => {
+                const r = await post<{ note?: string; needsRestart: boolean }>(`${base}/serial-console`);
+                setNote(r.needsRestart ? r.note : undefined);
+                onChanged();
+              })
+            }
+          >
+            Add serial console
+          </button>
+        )}
+        {note && <p className="muted">{note}</p>}
+        <ErrorBox error={act.error} />
+      </div>
+    );
   if (d.state === "shutoff") return <div className="empty">Start the VM to open its console.</div>;
-  if (kinds.length === 0) return <div className="empty">This VM has neither a VNC display nor a serial console. Add one on the XML tab.</div>;
   return (
     <>
       {kinds.length > 1 && (

@@ -15,7 +15,7 @@
 /* One column: the stack dissolves and the cards follow the order of use. */
 @container (max-width: 759px) {
   .hwcol { display: contents; }
-  #hw-cpu { order: 1; } #hw-boot { order: 2; } #hw-disks { order: 3; } #hw-nics { order: 4; } #hw-cdrom { order: 5; } #hw-firmware { order: 6; }
+  #hw-cpu { order: 1; } #hw-boot { order: 2; } #hw-disks { order: 3; } #hw-nics { order: 4; } #hw-cdrom { order: 5; } #hw-firmware { order: 6; } #hw-serial { order: 6; } #hw-clock { order: 6; }
   .hw > .hwcol { display: contents; }
   #hw-advanced, #hw-passthrough { order: 7; }
 }

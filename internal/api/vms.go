@@ -11,6 +11,7 @@ import (
 	"github.com/digitalocean/go-libvirt"
 
 	"virticle/internal/cluster"
+	"virticle/internal/domxml"
 	"virticle/internal/hostconn"
 )
 
@@ -217,6 +218,12 @@ type vmDetail struct {
 	HasSerial   bool     `json:"hasSerial"`
 	TPM         bool     `json:"tpm"`
 	Passthrough int      `json:"passthroughDevices"`
+
+	// Serials are the serial devices of the running definition; SerialPending
+	// is "add" or "remove" when the saved definition differs (applies after a power cycle).
+	Serials       []domxml.Serial `json:"serials"`
+	SerialPending string          `json:"serialPending,omitempty"`
+
 	// Agent is "connected", "disconnected" (channel present, nothing
 	// answering inside the guest) or "absent" (no channel device).
 	Agent string `json:"agent"`
@@ -268,6 +275,10 @@ func (s *Server) vmDetail(w http.ResponseWriter, r *http.Request) {
 		d.Firmware = "uefi"
 	}
 	d.FW = firmwareInfo(raw)
+	d.Serials, _ = domxml.Serials(raw)
+	if d.Serials == nil {
+		d.Serials = []domxml.Serial{}
+	}
 	for _, b := range x.OS.Boot {
 		d.Boot = append(d.Boot, b.Dev)
 	}
@@ -352,6 +363,7 @@ func (s *Server) vmDetail(w http.ResponseWriter, r *http.Request) {
 		// Boot order is only ever edited in the saved definition, so show that
 		// one; the live one stays in force until the next start.
 		if raw, err := h.DomainGetXMLDesc(dom, libvirt.DomainXMLInactive); err == nil {
+			d.SerialPending = serialPending(d.Serials, raw)
 			var c domainXML
 			if xml.Unmarshal([]byte(raw), &c) == nil {
 				order := map[string]int{}
@@ -445,6 +457,9 @@ func (s *Server) vmAction(w http.ResponseWriter, r *http.Request) {
 	if err := s.task(r, req.Action, dom.Name, h.Name, func(func(float64)) error { return fn() }); err != nil {
 		fail(w, err)
 		return
+	}
+	if req.Action == "resume" {
+		s.autoSyncClock(userOf(r), "resume", h, dom)
 	}
 	writeJSON(w, map[string]bool{"ok": true})
 }

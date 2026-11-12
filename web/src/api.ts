@@ -111,6 +111,9 @@ export interface VMDetail extends VM {
   nics: { mac: string; type: string; source: string; model?: string; ips: string[]; linkState: string; bootOrder?: number }[];
   hasVNC: boolean;
   hasSerial: boolean;
+  /** Serial devices of the running definition; serialPending says the saved one differs. */
+  serials: { type: string; port: string }[];
+  serialPending?: "add" | "remove";
   tpm: boolean;
   passthroughDevices: number;
   agent: "connected" | "disconnected" | "absent";

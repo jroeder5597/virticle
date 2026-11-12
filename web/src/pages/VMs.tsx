@@ -204,6 +204,7 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
   const [media, setMedia] = useState("");
   const [network, setNetwork] = useState("");
   const [start, setStart] = useState(true);
+  const [serial, setSerial] = useState(true);
   const [ci, setCi] = useState<CloudInitValues>(emptyCloudInit);
   const [pools, setPools] = useState<Pool[]>([]);
   const [networks, setNetworks] = useState<Network[]>([]);
@@ -252,6 +253,7 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
         diskGiB,
         network,
         start,
+        serial,
         iso: source === "iso" ? media : "",
         baseVolume: source === "image" ? media : "",
         existingVolume: source === "existing" ? media : "",
@@ -354,6 +356,9 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
         {source === "image" && <CloudInitFields vmName={name} value={ci} onChange={setCi} canSave preselect />}
         <label className="check">
           <input type="checkbox" checked={start} onChange={(e) => setStart(e.target.checked)} /> Start after creating
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={serial} onChange={(e) => setSerial(e.target.checked)} /> Serial console
         </label>
         <ErrorBox error={act.error} />
         <footer>

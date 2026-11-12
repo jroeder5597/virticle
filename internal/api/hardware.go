@@ -88,6 +88,13 @@ func (c hwCtx) result(applied string) hwResult {
 	return r
 }
 
+// endNote closes an existing note with a full stop so another sentence can follow.
+func (r *hwResult) endNote() {
+	if r.Note != "" && !strings.HasSuffix(r.Note, ".") {
+		r.Note += "."
+	}
+}
+
 // addNote appends a sentence; notes are shown as running text, so each one is capitalised and ends with a full stop.
 func (r *hwResult) addNote(s string) {
 	s = strings.TrimSpace(s)

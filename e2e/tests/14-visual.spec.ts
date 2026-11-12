@@ -372,6 +372,13 @@ test.describe.serial("visual pass", () => {
       await page.getByRole("menuitem", { name: "Network interfaces", exact: true }).click();
       await shot("edit-settings-dialog", () => expect(page.getByRole("dialog", { name: "Network interfaces" }).locator("tbody tr").nth(1)).toBeVisible(), { viewportOnly: true });
       await page.keyboard.press("Escape");
+      for (const area of ["Serial console", "Clock"]) {
+        await page.locator(".head").getByRole("button", { name: "Actions", exact: true }).click();
+        await page.getByRole("menuitem", { name: "Edit Settings", exact: true }).click();
+        await page.getByRole("menuitem", { name: area, exact: true }).click();
+        await shot("edit-settings-" + area.toLowerCase().replace(/ /g, "-"), () => expect(page.getByRole("dialog", { name: area })).toBeVisible(), { viewportOnly: true });
+        await page.keyboard.press("Escape");
+      }
       await page.locator(".head").getByRole("button", { name: "Actions", exact: true }).click();
       await page.getByRole("menuitem", { name: "Snapshots", exact: true }).click();
       await page.getByRole("menuitem", { name: "Take snapshot", exact: true }).click();

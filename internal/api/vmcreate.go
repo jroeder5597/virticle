@@ -46,6 +46,8 @@ type createVMRequest struct {
 	// CPU is baseline (the default: the best model every node can run),
 	// host-model or host-passthrough.
 	CPU string `json:"cpu"`
+	// Serial adds a serial console (pty) and its console alias; absent means yes.
+	Serial *bool `json:"serial"`
 
 	seedPath   string // set while creating, once the seed volume exists
 	diskFormat string // driver type of the disk; qcow2 unless an existing volume says otherwise
@@ -119,7 +121,7 @@ func (q createVMRequest) domainXML(diskPath string) string {
 	if win {
 		features += "<hyperv mode='custom'><relaxed state='on'/><vapic state='on'/><spinlocks state='on' retries='8191'/><vpindex state='on'/><runtime state='on'/><synic state='on'/><stimer state='on'/><frequencies state='on'/></hyperv>"
 	}
-	clock := "<clock offset='utc'/>"
+	clock := "<clock offset='utc'><timer name='rtc' tickpolicy='catchup'/><timer name='pit' tickpolicy='delay'/><timer name='hpet' present='no'/><timer name='kvmclock' present='yes'/></clock>"
 	if win {
 		clock = "<clock offset='localtime'><timer name='rtc' tickpolicy='catchup'/><timer name='pit' tickpolicy='delay'/><timer name='hpet' present='no'/><timer name='hypervclock' present='yes'/></clock>"
 	}
@@ -156,9 +158,10 @@ func (q createVMRequest) domainXML(diskPath string) string {
 		}
 		b.WriteString("    " + tpmXML(model) + "\n")
 	}
-	b.WriteString(`    <serial type='pty'/>
-    <console type='pty'/>
-    <channel type='unix'>
+	if q.Serial == nil || *q.Serial {
+		b.WriteString("    <serial type='pty'/>\n    <console type='pty'/>\n")
+	}
+	b.WriteString(`    <channel type='unix'>
       <target type='virtio' name='org.qemu.guest_agent.0'/>
     </channel>
     <input type='tablet' bus='usb'/>
