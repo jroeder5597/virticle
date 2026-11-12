@@ -14,6 +14,15 @@ import { TagChips } from "./Tags";
 import { Meter, pct, useAllStats, VMPoint } from "../charts";
 import { baselineLabel, useCpuBaseline } from "../cpu";
 
+const DEFAULT_DISK_GIB = 20;
+
+// suggestedDiskGiB is the disk size offered for a new VM: the default, or the
+// whole GiB that are free in the pool when that is less (at least 1).
+export function suggestedDiskGiB(availableBytes: number): number {
+  const free = Math.floor(availableBytes / 2 ** 30);
+  return Math.max(1, Math.min(DEFAULT_DISK_GIB, free));
+}
+
 /** `fixedNode` limits the list to one node (node page tab): the node column goes and New VM preselects it. */
 export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
   const vms = useLive(() => get<VM[]>("/vms"), "vms");
@@ -200,7 +209,8 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
   const [source, setSource] = useState<"iso" | "image" | "empty" | "existing">(preset ? "image" : "iso");
   const [pool, setPool] = useState(preset?.pool ?? "");
   const presetImage = useRef(preset?.image); // used once, for the first load of the node's volumes
-  const [diskGiB, setDisk] = useState(20);
+  const [diskGiB, setDisk] = useState(DEFAULT_DISK_GIB);
+  const diskEdited = useRef(false); // once the user types a size, it is left alone
   const [media, setMedia] = useState("");
   const [network, setNetwork] = useState("");
   const [start, setStart] = useState(true);
@@ -209,6 +219,14 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
   const [pools, setPools] = useState<Pool[]>([]);
   const [networks, setNetworks] = useState<Network[]>([]);
   const [volumes, setVolumes] = useState<(Volume & { pool: string })[]>([]);
+
+  // The suggested disk size fits the chosen pool: 20 GiB, or what is free
+  // when the pool has less.
+  useEffect(() => {
+    if (diskEdited.current) return;
+    const p = pools.find((x) => x.name === pool);
+    if (p) setDisk(suggestedDiskGiB(p.available));
+  }, [pool, pools]);
 
   // Pools, networks and images belong to the chosen node.
   useEffect(() => {
@@ -333,7 +351,15 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
           </Field>
           {source !== "existing" && (
             <Field label="Disk size (GiB)">
-              <input type="number" min={1} value={diskGiB} onChange={(e) => setDisk(Number(e.target.value))} />
+              <input
+                type="number"
+                min={1}
+                value={diskGiB}
+                onChange={(e) => {
+                  diskEdited.current = true;
+                  setDisk(Number(e.target.value));
+                }}
+              />
             </Field>
           )}
           <Field label="Network">

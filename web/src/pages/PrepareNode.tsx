@@ -121,7 +121,10 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
     <Modal title="Prepare node" onClose={onClose} wide>
       <form onSubmit={submit} autoComplete="off">
         <p>
-          Installs libvirt and QEMU, installs the node command, and creates a service account for this server with a restricted key and a sudo rule that lets it run the node command as root, and nothing else. The credential below is used for this run only and is not stored.
+          {allowRoot
+            ? "Installs libvirt and QEMU and the node command. This server will sign in to the node as root; no service account is created."
+            : "Installs libvirt and QEMU and the node command, and creates a service account for this server. The account gets a restricted key and may run the node command as root, and nothing else."}{" "}
+          The credential below is used for this run only and is not stored.
         </p>
         <div className="grid2">
           <Field label="Address" hint="Host name or IP, optionally with :port.">
@@ -161,7 +164,7 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
           <input type="checkbox" checked={checkOnly} onChange={(e) => setCheckOnly(e.target.checked)} /> Check only, change nothing
         </label>
         <label className="check">
-          <input type="checkbox" checked={allowRoot} onChange={(e) => setAllowRoot(e.target.checked)} /> Use Root access: the controller signs in as root and no service account is created
+          <input type="checkbox" checked={allowRoot} onChange={(e) => setAllowRoot(e.target.checked)} /> Root access instead of a service account
         </label>
         {!allowRoot && (
           <>
