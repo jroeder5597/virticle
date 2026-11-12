@@ -116,17 +116,18 @@ directory is renamed into place last, so a backup is complete or absent. A
 backup restores as a new VM or as the original, and exports to one
 `.vmexport.tar`.
 
-## Node privilege levels
+## Node access
 
-Every node is reached in one of two ways and runs the same root program, the node command
-(`/usr/local/libexec/virticle-node`), with the same verbs. `virticle node prepare` installs it for both.
+A node is reached in one of two ways. Both run the same program as root, the node command
+(`/usr/local/libexec/virticle-node`), which `virticle node prepare` installs. See [install-node.md](install-node.md).
 
-| Level | How | Limits |
+| Access | How | Limits |
 | --- | --- | --- |
-| Helper (service account) | `virticle node prepare` (default): the controller signs in as `virticle` and runs the node command with `sudo -n` | Everything works, between any two nodes; files go node to node. VMDK disks and qcow2 with an external data file cannot be backed up. |
-| Root | `virticle node prepare --root`: the controller signs in as root and runs the node command directly | The same. Discouraged. |
+| Service account | `virticle node prepare` (default, recommended): the controller signs in as `virticle` and runs the node command with `sudo -n` | No limit of its own. VMDK disks and qcow2 with an external data file cannot be backed up. |
+| Root | `virticle node prepare --root`: the controller signs in as root and runs the node command directly | The same. A service account is safer. |
 
-A node whose account has passwordless full sudo but no node command is not prepared.
+A node that has neither is "Not prepared": the features that need root are off. A node whose account has general
+passwordless sudo but no node command is also not prepared.
 
 ## Known limits
 
@@ -138,6 +139,7 @@ A node whose account has passwordless full sudo but no node command is not prepa
   migration.
 - External snapshots could not be deleted on Debian nodes (AppArmor).
 - No high availability, no shared-storage features, no replication.
+- The node command and the two access modes are built and unit-tested but not yet run in the lab.
 - Not verified end to end: ACME issuance, the systemd service, arm64. See
   `ROADMAP.md`.
 

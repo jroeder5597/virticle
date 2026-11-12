@@ -34,7 +34,7 @@ type Node struct {
 	Jump string `json:"jump,omitempty"`
 	// Maintenance keeps the node out of the targets the planners pick.
 	Maintenance bool `json:"maintenance"`
-	// Privilege is how the login user obtains root: root | helper | none. Empty
+	// Privilege is how the login user obtains root: root | helper (the service account) | none. Empty
 	// means not detected yet; the cluster detects it on the first connection.
 	Privilege string `json:"privilege"`
 	// MigrationAddr is what other nodes use to reach this one (IP or name).

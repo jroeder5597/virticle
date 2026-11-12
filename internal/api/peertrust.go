@@ -63,7 +63,7 @@ func (s *Server) ensurePeerTrust(src, dst *hostconn.Host, dstNode store.Node, ep
 }
 
 // dropPeerTrust removes what ensurePeerTrust installed for the node that is
-// going away: its key on the other helper nodes, and its host key on them,
+// going away: its key on the other nodes, and its host key on them,
 // and the other nodes' keys and host keys on the departing node itself.
 // Best effort; nodes that are offline keep their entries (the keys only allow
 // delivering files into storage pools).

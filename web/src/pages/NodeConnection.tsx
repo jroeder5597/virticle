@@ -52,10 +52,12 @@ interface EditResponse {
 }
 
 const PRIVILEGE_TEXT: Record<string, string> = {
-  root: "root: the SSH user is root",
-  helper: "helper: scoped sudo, the account may run the virticle helper as root and nothing else",
-  none: "none: nothing runs as root, features that need it are off",
+  root: "Root: the controller signs in as root and runs the node command directly",
+  helper: "Service account: the account may run the node command as root through sudo, and nothing else",
+  none: "Not prepared: no node command, features that need root are off",
 };
+
+const PRIVILEGE_NAME: Record<string, string> = { root: "Root", helper: "Service account", none: "Not prepared" };
 
 const mono = (v: ReactNode, key: string) => (
   <span className="mono" key={key}>
@@ -99,7 +101,7 @@ export default function ConnectionCard({ n, admin }: { n: NodeStatus; admin: boo
     ["Migration address", mono(info?.effectiveMigrationAddress ?? n.addr, "m")],
     ["SSH user", mono(n.user, "u")],
     ["Jump host", n.jump ? mono(n.jump, "j") : "none"],
-    ["Root access", info?.privilege ? <span key="p">{PRIVILEGE_TEXT[info.privilege] ?? info.privilege}</span> : "not detected yet"],
+    ["Node access", info?.privilege ? <span key="p">{PRIVILEGE_TEXT[info.privilege] ?? info.privilege}</span> : "not detected yet"],
     ["State", <StateBadge key="s" state={n.state} />],
   ];
   return (
@@ -118,7 +120,7 @@ export default function ConnectionCard({ n, admin }: { n: NodeStatus; admin: boo
       {info?.privilegeNote && <p className="muted">Detected: {info.privilegeNote}.</p>}
       {info && info.privilege && info.detectedPrivilege && info.privilege !== info.detectedPrivilege && (
         <StatusLine status="warning">
-          The node reports {info.detectedPrivilege}, but this node is set to {info.privilege}.
+          The node reports {PRIVILEGE_NAME[info.detectedPrivilege] ?? info.detectedPrivilege}, but this node is set to {PRIVILEGE_NAME[info.privilege] ?? info.privilege}.
         </StatusLine>
       )}
       {blocked.length > 0 ? (
@@ -227,17 +229,17 @@ function EditConnection({ n, info, onClose, onSaved }: { n: NodeStatus; info: Co
             <input value={mig} onChange={(e) => setMig(e.target.value)} />
           </Field>
         </div>
-        <Field label="Root access" hint="How commands that need root run. Keep detects it again when the user or address changes.">
+        <Field label="Node access" hint="How the controller runs commands that need root on this node. Keep detects it again when the user or address changes.">
           <Select
-            label="Root access"
+            label="Node access"
             value={priv}
             onChange={setPriv}
             options={[
-              { value: "keep", label: `Keep (${info.privilege || "not detected yet"})` },
+              { value: "keep", label: `Keep (${PRIVILEGE_NAME[info.privilege] ?? "not detected yet"})` },
               { value: "auto", label: "Detect" },
-              { value: "root", label: "root" },
-              { value: "helper", label: "helper (scoped sudo)" },
-              { value: "none", label: "none" },
+              { value: "root", label: "Root" },
+              { value: "helper", label: "Service account" },
+              { value: "none", label: "Not prepared" },
             ]}
           />
         </Field>

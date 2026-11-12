@@ -16,15 +16,15 @@ import (
 // takes an administrator: "virticle node prepare").
 
 const (
-	// HelperPath is where the node command is installed on a node.
-	HelperPath = nodeproto.Path
+	// NodeCmdPath is where the node command is installed on a node.
+	NodeCmdPath = nodeproto.Path
 	// OldHelperPath is the shell script of versions before the node command.
 	// A node that still has it was prepared by an older version.
 	OldHelperPath = "/usr/local/libexec/virticle-helper"
 	// SudoersPath is the drop-in that allows the service account to run it.
 	SudoersPath = "/etc/sudoers.d/virticle"
-	// HelperVersion is the protocol number the node command must report.
-	HelperVersion = nodeproto.Version
+	// NodeCmdVersion is the protocol number the node command must report.
+	NodeCmdVersion = nodeproto.Version
 	// OlderVersionMessage is what a node with the old script is told.
 	OlderVersionMessage = "prepared by an older version; run `virticle node prepare` again"
 )
@@ -33,7 +33,7 @@ const (
 // and nothing else, without a password. sudoers cannot pin the arguments of a
 // command that takes any, so the node command validates them itself.
 func SudoersLine(user string) string {
-	return fmt.Sprintf("# Written by virticle node prepare. Lets %s run the virticle node command as root, and nothing else.\n%s ALL=(root) NOPASSWD: %s\n", user, user, HelperPath)
+	return fmt.Sprintf("# Written by virticle node prepare. Lets %s run the virticle node command as root, and nothing else.\n%s ALL=(root) NOPASSWD: %s\n", user, user, NodeCmdPath)
 }
 
 var userNameRE = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
@@ -54,7 +54,7 @@ func NodeCmd(p Privilege, verb string, args ...string) (cmd string, ok bool) {
 	default:
 		return "", false
 	}
-	b.WriteString(HelperPath + " " + verb)
+	b.WriteString(NodeCmdPath + " " + verb)
 	for _, a := range args {
 		b.WriteString(" " + Quote(a))
 	}

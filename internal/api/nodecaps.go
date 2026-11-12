@@ -14,7 +14,7 @@ type capability struct {
 }
 
 // Features that run something as root on the node. They all go through the
-// node command (internal/hostconn helper.go), for the service account and for a
+// node command (internal/hostconn nodecmd.go), for the service account and for a
 // root login alike, so a node either has all of them or none. Everything else
 // the app does goes through libvirt, which a member of the libvirt group may
 // use, or reads world-readable system files.

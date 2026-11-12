@@ -36,11 +36,15 @@ You can leave the page; the task keeps going.
 
 ![Nodes](img/nodes.png)
 
-- **Add node** registers a host. **Prepare this node** in that dialog sets up
-  a fresh host first; see [install-node.md](install-node.md).
+- **Add node** registers a prepared host. **Prepare this node** in that dialog
+  prepares a fresh host first: it installs libvirt and the node command and
+  sets up either a **Service account** (recommended) or **Root** access; see
+  [install-node.md](install-node.md). Run prepare again when the controller says
+  a node was prepared by an older version.
 - Click a node for its summary, VMs, storage, networks, updates and settings.
 - **Settings > Test connection** runs each connection step and shows which one
-  fails.
+  fails. The **Node access** row says whether the node is reached as a Service
+  account, as Root, or is not prepared.
 - **Maintenance** stops the node from being chosen as a migration target.
 - **Evacuate** live-migrates the node's VMs to the other nodes.
 
@@ -143,9 +147,13 @@ downloaded as one file and imported on another installation. The format is in
 4. **Migrate**. With **Live migration** ticked the VM keeps running.
 
 - Disks are copied along; shared storage is not needed.
-- Live migration needs no SSH between the nodes. When files have to be copied,
-  the controller sets up a restricted key between the two nodes itself; the
-  **SSH between nodes** row shows whether it works.
+- The controller coordinates a live migration; the nodes need no SSH between
+  them for it. When files have to be copied (disks on local storage, snapshot
+  files, a backup restored on another node), they go straight from node to
+  node with a node key that the controller installs itself. The key can only
+  deliver a new file into a storage pool. The **SSH between nodes** row
+  says whether a copy is needed and whether the path works, and **Migration
+  ports** whether the target's firewall lets the migration data through.
 - To encrypt the streams, set up encrypted migration for both nodes on the
   Nodes page.
 - A Debian node and a RHEL-family node cannot exchange VMs.
@@ -185,8 +193,8 @@ downloaded as one file and imported on another installation. The format is in
 | --- | --- |
 | Node shows Offline | Node **Settings > Test connection**. It names the failing step. |
 | Guest agent "Not responding" | Install and start `qemu-guest-agent` in the VM. |
-| Migration blocked | Read the red pre-flight row. Usually SSH trust or a missing network on the target. |
-| Migration or backup refused for a node | The node has no node command, or one from an older version. Run `virticle node prepare` for it again. |
+| Migration blocked | Read the red pre-flight row. Usually a missing network or pool on the target, or a firewall between the nodes (SSH between nodes, Migration ports). |
+| Migration or backup refused for a node | **Node access** says Not prepared: the node has no node command, or one from an older version. Run `virticle node prepare` for it again. |
 | Locked out after a web access change | Wait 60 seconds for the automatic revert, or run `virticle web reset` and restart. |
 | "No ISO images on this node" | Upload one under **Storage**. |
 | A task failed | **Tasks** shows the libvirt error in the Result column. |

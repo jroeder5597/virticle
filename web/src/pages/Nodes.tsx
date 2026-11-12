@@ -126,14 +126,14 @@ function AddNode({ onClose }: { onClose: () => void }) {
     <Modal title="Add node" onClose={onClose}>
       <form onSubmit={submit}>
         <p>
-          A node must be prepared before it can be added. Use Prepare this node for a new host; it installs the access this server needs. If the node is
+          A node must be prepared before it can be added. Use Prepare this node for a new host; it installs libvirt and the node command. If the node is
           already prepared, enter its address and the user here.
         </p>
         <div className="grid2">
           <Field label="Address" hint="Host name or IP, optionally with :port.">
             <input value={addr} onChange={(e) => setAddr(e.target.value)} required autoFocus placeholder="kvm1.example.lan" />
           </Field>
-          <Field label="SSH user" hint="virticle (the service account that Prepare creates), or root if the node was prepared for root.">
+          <Field label="SSH user" hint="virticle (the Service account that Prepare creates), or root (Root access).">
             <input value={user} onChange={(e) => setUser(e.target.value)} required />
           </Field>
         </div>
@@ -142,7 +142,7 @@ function AddNode({ onClose }: { onClose: () => void }) {
         </Field>
         <ErrorBox error={act.error} />
         <footer>
-          <button type="button" onClick={() => setPreparing(true)} title="Install libvirt and set up the access this server needs on a host">
+          <button type="button" onClick={() => setPreparing(true)} title="Install libvirt and install the node command on a host">
             Prepare this node
           </button>
           <button type="button" onClick={onClose}>

@@ -322,7 +322,7 @@ test.describe.serial("visual pass", () => {
       await page.getByRole("button", { name: "Edit connection" }).click();
       await shot("node-edit-connection-dialog", () => expect(page.getByRole("dialog", { name: "Edit connection" }).locator(".keybox code")).toContainText("ssh-ed25519"));
       await page.getByRole("dialog", { name: "Edit connection" }).getByRole("button", { name: "Test connection" }).click();
-      await shot("node-edit-connection-tested", () => expect(page.getByRole("dialog", { name: "Edit connection" }).locator("ul.checklist")).toContainText("Root access", { timeout: 30_000 }));
+      await shot("node-edit-connection-tested", () => expect(page.getByRole("dialog", { name: "Edit connection" }).locator("ul.checklist")).toContainText("Node access", { timeout: 30_000 }));
       await page.keyboard.press("Escape");
       // Prepare node: the form, then the result of a check against a lab node (needs the administrator key)
       await page.goto("/nodes");

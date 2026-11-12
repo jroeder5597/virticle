@@ -14,7 +14,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Path confinement. The rules are the ones the old shell helper had:
+// Path confinement. The rules are the ones the old shell script had:
 //
 //   - a path is absolute, made of the characters A-Za-z0-9._+=,@/-, has no
 //     empty, "." or ".." component, no trailing slash and at most 200 bytes

@@ -42,14 +42,14 @@ func TestDropHost(t *testing.T) {
 }
 
 func TestParseDetect(t *testing.T) {
-	v := HelperVersion
+	v := NodeCmdVersion
 	cases := []struct {
 		in   string
 		want Privilege
 	}{
-		{"uid=0\nhelper=" + v + "\nuser=root", PrivRoot},
+		{"uid=0\nnode=" + v + "\nuser=root", PrivRoot},
 		{"uid=0\nuser=root", PrivNone},
-		{"uid=1000\nhelper=" + v + "\nuser=virticle", PrivService},
+		{"uid=1000\nnode=" + v + "\nuser=virticle", PrivService},
 		{"uid=1000\nuser=ne-user", PrivNone},
 		{"", PrivNone},
 	}
@@ -74,6 +74,6 @@ func TestParsePrivilege(t *testing.T) {
 		t.Errorf("stored value of the service account: %q", PrivService)
 	}
 	if Privilege("sudo").Valid() {
-		t.Error("the retired broad sudo setting is still valid")
+		t.Error("the retired general sudo setting is still valid")
 	}
 }

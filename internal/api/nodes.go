@@ -45,7 +45,7 @@ func (s *Server) addNode(w http.ResponseWriter, r *http.Request) {
 		n.Privilege = ""
 	}
 	if n.Privilege != "" && !hostconn.Privilege(n.Privilege).Valid() {
-		fail(w, badRequest("privilege must be root, helper, none or auto"))
+		fail(w, badRequest(accessModeMessage))
 		return
 	}
 	if n.Addr == "" {
@@ -77,7 +77,7 @@ func (s *Server) deleteNode(w http.ResponseWriter, r *http.Request) {
 		fail(w, store.ErrNotFound)
 		return
 	}
-	s.dropPeerTrust(id) // best effort: the node's key and host key on the other helper nodes
+	s.dropPeerTrust(id) // best effort: the node's key and host key on the other nodes
 	if err := s.Store.DeleteNode(id); err != nil {
 		fail(w, err)
 		return

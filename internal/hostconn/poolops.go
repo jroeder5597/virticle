@@ -42,7 +42,7 @@ const curlDownloadOpts = "curl -q -fsSL --proto '=http,https' --proto-redir '=ht
 
 var helperPrefixRE = regexp.MustCompile(`^virticle-(node|helper): `)
 
-func helperMessage(out string, err error) string {
+func nodeCmdMessage(out string, err error) string {
 	return helperPrefixRE.ReplaceAllString(firstLineOf(out, err), "")
 }
 
@@ -66,14 +66,14 @@ func (h *Host) Download(o DownloadOpts) error {
 	if m := mismatchRE.FindStringSubmatch(out); m != nil {
 		return &DigestMismatch{Got: m[1]}
 	}
-	return fmt.Errorf("download failed: %s", helperMessage(out, err))
+	return fmt.Errorf("download failed: %s", nodeCmdMessage(out, err))
 }
 
 func msgOrDefault(out string, err error, def string) string {
 	if err == nil {
 		return def
 	}
-	return helperMessage(out, err)
+	return nodeCmdMessage(out, err)
 }
 
 // DownloadCancel stops the download of dest that is running on the node. It
@@ -81,7 +81,7 @@ func msgOrDefault(out string, err error, def string) string {
 func (h *Host) DownloadCancel(dest string) error {
 	out, err := h.RunNode("download-cancel", dest)
 	if err != nil {
-		return errors.New(helperMessage(out, err))
+		return errors.New(nodeCmdMessage(out, err))
 	}
 	return nil
 }
@@ -139,7 +139,7 @@ func (h *Host) TarExtract(file, workDir string, names ...string) (string, error)
 func (h *Host) ConvertStart(workDir, src, srcFmt string) error {
 	out, err := h.run("import-convert-start", workDir, src)
 	if err != nil || out != "started" {
-		return fmt.Errorf("cannot start qemu-img: %s", helperMessage(out, err))
+		return fmt.Errorf("cannot start qemu-img: %s", nodeCmdMessage(out, err))
 	}
 	return nil
 }
@@ -153,7 +153,7 @@ func (h *Host) ConvertStatus(workDir string) (string, error) {
 // and deletes the work directory.
 func (h *Host) ConvertKill(workDir string) error {
 	if out, err := h.RunNode("import-convert-kill", workDir); err != nil {
-		return errors.New(helperMessage(out, err))
+		return errors.New(nodeCmdMessage(out, err))
 	}
 	return h.RemoveTree(workDir)
 }

@@ -26,11 +26,14 @@ const nodeUsage = `usage:
                           [--password-stdin] [--data DIR] [user@]host[:port]
 
 prepare signs in as the administrator (your SSH agent, or --identity, or a password read from
-standard input), installs libvirt and QEMU, creates a service account for the controller with a
-restricted SSH key and a sudo right for the virticle node command only, and tests the connection.
-With --root the controller signs in as root instead and no account is created. Both ways install
-the node command. --check changes nothing. Running prepare again changes nothing. unprepare removes
-the account, key, node command and sudo rule; packages, VMs, pools and networks stay.
+standard input), installs libvirt and QEMU, installs the node command (virticle-node) and tests
+the connection. There are two ways for the controller to reach the node:
+  Service account (default, recommended): prepare creates an account for the controller with a
+    restricted SSH key and a sudo rule that lets it run the node command as root, and nothing else.
+  Root (--root): the controller signs in as root and runs the node command directly. No account
+    is created.
+--check changes nothing. Running prepare again changes nothing. unprepare removes the account,
+key, node command and sudo rule; packages, VMs, pools and networks stay.
 (--allow-root is the old name of --root.)`
 
 // useExistingFlag is a boolean flag that also accepts --use-existing-user=NAME.
@@ -66,7 +69,7 @@ func nodeCommand(args []string) int {
 		user      = fs.String("user", "", "service account name (default virticle)")
 		existing  useExistingFlag
 		confirm   = fs.Bool("confirm", false, "with --use-existing-user: add the account to the libvirt and kvm groups and give it the sudo rule for the node command")
-		root      = fs.Bool("root", false, "the controller logs in as root instead of a service account (warns; a dedicated account is safer)")
+		root      = fs.Bool("root", false, "Root access: the controller signs in as root instead of using a service account (a service account is safer)")
 		allowRoot = fs.Bool("allow-root", false, "")
 		from      = fs.String("from", "", "restrict the controller's key to this source address (comma-separated patterns)")
 		extras    = fs.String("extras", "", "comma-separated extra packages: guestfs, virtiofs")

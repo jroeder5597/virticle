@@ -28,7 +28,7 @@ test.describe.serial("result checks", () => {
     await dlg.getByRole("button", { name: "Test connection" }).click();
     const list = dlg.locator("ul.checklist");
     await expect(list).toContainText("libvirt reachable", { timeout: 30_000 });
-    for (const t of ["Address resolves", "Host reachable", "SSH host key", /^SSH sign-in as /, "libvirt reachable", "Root access", "Migration address"]) {
+    for (const t of ["Address resolves", "Host reachable", "SSH host key", /^SSH sign-in as /, "libvirt reachable", "Node access", "Migration address"]) {
       await expect(step(dlg, t)).toHaveCount(1);
     }
     await expect(dlg.getByRole("img", { name: "failed" })).toHaveCount(0);
@@ -58,7 +58,7 @@ test.describe.serial("result checks", () => {
     await expect(bad.getByRole("img", { name: "failed" })).toBeVisible({ timeout: 40_000 });
     await expect(step(dlg, "Host reachable").getByRole("img", { name: "ok" })).toBeVisible();
     await expect(step(dlg, "SSH host key").getByRole("img", { name: /ok|info/ })).toBeVisible();
-    for (const t of ["libvirt reachable", "Root access", "Migration address"]) {
+    for (const t of ["libvirt reachable", "Node access", "Migration address"]) {
       const s = step(dlg, t);
       await expect(s.getByRole("img", { name: "not run" })).toBeVisible();
       await expect(s).toContainText("Not run");

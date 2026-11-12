@@ -58,9 +58,11 @@ Rocky Linux 10.
    It is used once and not stored. Prepare then:
    - checks the host (CPU flags, `/dev/kvm`, disk space, time sync),
    - installs libvirt and QEMU,
+   - installs the node command (`virticle-node`), the one program the
+     controller runs as root on the node,
    - creates the service account `virticle` with a restricted SSH key and a
-     sudo rule for the node command (or, with the root option, installs the
-     node command for a root login),
+     sudo rule that allows the node command and nothing else (with the root
+     option there is no account: the controller signs in as root),
    - tests the connection.
 3. Save the node.
 
@@ -91,8 +93,9 @@ runs libvirt is prepared the same way; its networks, pools and VMs stay.
 - **Remote access**: **Web access** (admin) switches to HTTPS or a reverse
   proxy without a restart. An unconfirmed change reverts after 60 seconds.
 
-Migration and cross-node backups also need SSH trust between the nodes; the
-pre-flight check names the fix.
+Live migration is coordinated by the controller. When a migration or a restore
+has to copy files, they go from node to node over a restricted node key that
+the controller sets up itself; the pre-flight check shows whether it works.
 
 ## Documentation
 
@@ -100,7 +103,7 @@ pre-flight check names the fix.
 | --- | --- |
 | Using the UI, with screenshots; troubleshooting | [docs/user-guide.md](docs/user-guide.md) |
 | Install, upgrade, rollback, uninstall | [docs/install.md](docs/install.md) |
-| Preparing a node, the helper, manual steps | [docs/install-node.md](docs/install-node.md) |
+| Preparing a node, the node command, manual steps | [docs/install-node.md](docs/install-node.md) |
 | HTTPS, ACME, reverse proxies | [docs/web-tls.md](docs/web-tls.md) |
 | Flags, roles, API tokens, data, schedules, backup format, limits | [docs/reference.md](docs/reference.md) |
 | Building, tests, releases | [docs/development.md](docs/development.md) |

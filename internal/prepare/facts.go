@@ -85,9 +85,9 @@ if command -v virsh >/dev/null 2>&1; then
 fi
 echo "sudo_bin=$(command -v sudo 2>/dev/null)"
 echo "visudo_bin=$(command -v visudo 2>/dev/null)"
-echo "old_helper=$([ -e ` + oldHelperPath + ` ] && echo yes)"
-echo "helper_version=$(` + helperPath + ` version 2>/dev/null | head -n 1)"
-echo "helper_sha=$(sha256sum ` + helperPath + ` 2>/dev/null | cut -d' ' -f1)"
+echo "old_script=$([ -e ` + oldHelperPath + ` ] && echo yes)"
+echo "node_version=$(` + nodeCmdPath + ` version 2>/dev/null | head -n 1)"
+echo "node_sha=$(sha256sum ` + nodeCmdPath + ` 2>/dev/null | cut -d' ' -f1)"
 echo "sudoers_file=$([ -f ` + sudoersPath + ` ] && head -c 4096 ` + sudoersPath + ` | tr '\n' '|')"
 `
 
@@ -108,26 +108,26 @@ getent group kvm >/dev/null && echo group_kvm=yes
 true`
 
 const (
-	helperPath    = nodeproto.Path
+	nodeCmdPath   = nodeproto.Path
 	oldHelperPath = "/usr/local/libexec/virticle-helper"
 	sudoersPath   = "/etc/sudoers.d/virticle"
 )
 
 // Facts are the parsed lines of FactsScript.
 type Facts struct {
-	UID                                                      string
-	Arch, OSID, OSVersion, OSLike, OSName, Kernel            string
-	CPUVirt, Hypervisor, KVMDev, Nested                      string
-	IOMMUGroups                                              int
-	IOMMUCmdline                                             string
-	FreePath                                                 string
-	FreeBytes                                                int64
-	SELinux, AppArmor, TimeSync                              string
-	Virsh, LibvirtVersion, LibvirtUnits                      string
-	Domains                                                  int
-	Controllers                                              []string // instance ids found in snapshot descriptions
-	SudoBin, VisudoBin, HelperVersion, HelperSHA, SudoersRaw string
-	OldHelper                                                bool // the shell script of an earlier version is still installed
+	UID                                                        string
+	Arch, OSID, OSVersion, OSLike, OSName, Kernel              string
+	CPUVirt, Hypervisor, KVMDev, Nested                        string
+	IOMMUGroups                                                int
+	IOMMUCmdline                                               string
+	FreePath                                                   string
+	FreeBytes                                                  int64
+	SELinux, AppArmor, TimeSync                                string
+	Virsh, LibvirtVersion, LibvirtUnits                        string
+	Domains                                                    int
+	Controllers                                                []string // instance ids found in snapshot descriptions
+	SudoBin, VisudoBin, NodeCmdVersion, NodeCmdSHA, SudoersRaw string
+	OldScript                                                  bool // the shell script of an earlier version is still installed
 }
 
 // ParseFacts reads FactsScript's output.
@@ -193,12 +193,12 @@ func ParseFacts(out string) Facts {
 			f.SudoBin = v
 		case "visudo_bin":
 			f.VisudoBin = v
-		case "old_helper":
-			f.OldHelper = v == "yes"
-		case "helper_version":
-			f.HelperVersion = v
-		case "helper_sha":
-			f.HelperSHA = v
+		case "old_script":
+			f.OldScript = v == "yes"
+		case "node_version":
+			f.NodeCmdVersion = v
+		case "node_sha":
+			f.NodeCmdSHA = v
 		case "sudoers_file":
 			f.SudoersRaw = v
 		}
@@ -364,7 +364,7 @@ func ManualInstall() string {
 type Options struct {
 	User          string   // service account; default DefaultUser
 	UseExisting   bool     // the account exists; change nothing about it except the key
-	Confirm       bool     // with UseExisting: also add it to the groups and grant the helper rule
+	Confirm       bool     // with UseExisting: also add it to the groups and grant the sudo rule
 	AllowRoot     bool     // the controller logs in as root (the node command runs directly, no service account)
 	From          string   // controller address(es) the key is restricted to
 	Extras        []string // guestfs, virtiofs

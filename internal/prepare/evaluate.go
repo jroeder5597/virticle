@@ -196,7 +196,7 @@ func accountRows(p Plan, o Options) []Row {
 		} else {
 			add("account", "Service account", OK, u+" exists and is in the libvirt and kvm groups where they exist")
 		}
-		if rule := u + " ALL=(root) NOPASSWD: " + helperPath; !strings.Contains(p.Facts.SudoersRaw, rule) {
+		if rule := u + " ALL=(root) NOPASSWD: " + nodeCmdPath; !strings.Contains(p.Facts.SudoersRaw, rule) {
 			st, hint := Warning, "; rerun with the confirm option to add it"
 			if o.Confirm {
 				st, hint = Info, "; it will be added"

@@ -1,6 +1,6 @@
 package api
 
-// Node-side helpers of the backup code. They call the typed operations of
+// Node-side functions of the backup code. They call the typed operations of
 // internal/hostconn, so they work for root and service-account nodes alike.
 
 import (
