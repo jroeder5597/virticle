@@ -4,9 +4,10 @@ Virticle is one controller program. It needs nothing on the machines it
 manages (the "nodes") except SSH access and libvirt; see `install-node.md` for
 preparing a node and `web-tls.md` for HTTPS and reverse proxies.
 
-No release has been published yet and the repository is private, so the
-download locations below are placeholders. Replace `RELEASES_URL` with the
-location the owner publishes releases at.
+Releases are at <https://github.com/jroeder5597/virticle/releases>. The
+repository is private, so downloading needs a GitHub login with access:
+`gh release download v1.2.3 -R jroeder5597/virticle`. Below, `RELEASES_URL` is
+`https://github.com/jroeder5597/virticle/releases/download`.
 
 ## Supported platforms
 
@@ -61,7 +62,7 @@ Check it: `systemctl status virticle`, `journalctl -u virticle`,
 ### Configuration
 
 Edit `/etc/virticle/virticle.env` and run `sudo systemctl restart virticle`.
-`VIRTICLE_ARGS` holds extra flags (`virticle -help` lists them; the README
+`VIRTICLE_ARGS` holds extra flags (`virticle -help` lists them; `reference.md`
 describes each), for example `-listen`, `-tls-cert`, `-tls-key`,
 `-trusted-proxy`. `VIRTICLE_JUMP_PASSWORD` is the password for node jump hosts.
 The file is readable by root only.
@@ -80,7 +81,7 @@ the user `virticle`, for example under `/etc/virticle/`.
 
 ## Container
 
-    docker build -t virticle .
+    docker build -t virticle .      # in an LXC: podman build --network=host
     docker run -d --name virticle -p 127.0.0.1:8080:8080 -v virticle-data:/data virticle
 
 or `docker compose up -d --build` with the `compose.yaml` of this repository.
