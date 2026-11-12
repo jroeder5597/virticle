@@ -66,10 +66,10 @@ func (s *Server) ensurePeerTrust(src, dst *hostconn.Host, dstNode store.Node, ep
 }
 
 // dropPeerTrust removes what ensurePeerTrust installed for the node that is
-// going away: its key on the other helper nodes, and its host key on them.
-// Best effort; nodes that are offline keep their entries (they are harmless
-// once the node is gone: the key belongs to a machine the controller no longer
-// manages).
+// going away: its key on the other helper nodes, and its host key on them,
+// and the other nodes' keys and host keys on the departing node itself.
+// Best effort; nodes that are offline keep their entries (the keys only allow
+// delivering files into storage pools).
 func (s *Server) dropPeerTrust(id int64) {
 	h, err := s.Nodes.Host(id)
 	if err != nil || h.Privilege() != hostconn.PrivHelper {
@@ -99,6 +99,18 @@ func (s *Server) dropPeerTrust(id int64) {
 		if ep, err := endpointFor(gone); err == nil {
 			if err := o.PeerUnsetHostKey(ep.Host, ep.port()); err != nil {
 				log.Printf("forgetting the host key of %s on %s: %v", h.Name, o.Name, err)
+			}
+		}
+		// The other direction: the departing node may still run and would
+		// keep accepting the key of a node it no longer belongs to.
+		if opub, err := o.PeerKey(); err == nil {
+			if err := h.PeerDisallow(opub); err != nil {
+				log.Printf("removing the node key of %s from %s: %v", o.Name, h.Name, err)
+			}
+		}
+		if ep, err := endpointFor(n.Node); err == nil {
+			if err := h.PeerUnsetHostKey(ep.Host, ep.port()); err != nil {
+				log.Printf("forgetting the host key of %s on %s: %v", o.Name, h.Name, err)
 			}
 		}
 	}

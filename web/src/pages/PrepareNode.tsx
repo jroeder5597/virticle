@@ -184,7 +184,7 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
               </label>
             )}
             <label className="check">
-              <input type="checkbox" checked={broad} onChange={(e) => setBroad(e.target.checked)} /> Full sudo instead of the helper, for pool writes and disk moves
+              <input type="checkbox" checked={broad} onChange={(e) => setBroad(e.target.checked)} /> Full sudo instead of the helper
             </label>
           </>
         )}

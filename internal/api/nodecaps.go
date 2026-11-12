@@ -22,11 +22,11 @@ var rootFeatures = []struct {
 	scoped      bool
 }{
 	{"installTLS", "Encrypted migration needs root or sudo on this node: the certificates go into /etc/pki/qemu", true},
-	{"writePools", "Downloading or importing into a storage pool needs root or sudo on this node: the pool directories belong to root", false},
+	{"writePools", "Downloading or importing into a storage pool needs root or sudo on this node: the pool directories belong to root", true},
 	{"backups", "Backups need root or sudo on this node: they read and write disk images in the pool directories", true},
 	{"migration", "Moving a VM to or from this node needs root or sudo on it: disk images and snapshot files are copied as root", true},
-	{"diskMove", "Moving a disk between pools needs root or sudo on this node", false},
-	{"clone", "Cloning with guest preparation needs root or sudo on this node", false},
+	{"diskMove", "Moving a disk between pools needs root or sudo on this node", true},
+	{"clone", "Cloning with guest preparation needs root or sudo on this node", true},
 }
 
 // nodeCapabilities evaluates every feature for a privilege setting. An

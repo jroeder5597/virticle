@@ -120,7 +120,7 @@ backup restores as a new VM or as the original, and exports to one
 
 | Level | How | Limits |
 | --- | --- | --- |
-| Helper | `virticle node prepare` (default) | Image download and import, disk move and clone-with-sysprep are disabled. Backups (manual and scheduled, restore, export, import) work between helper nodes, files go node to node; a backup or restore between a helper node and a root/sudo node is refused. Migration works between two helper nodes (files go node to node, live migration is coordinated by the controller); a helper node and a root/sudo node can migrate only VMs that need no file copy. |
+| Helper | `virticle node prepare` (default) | Everything works between helper nodes; files go node to node. A file copy between a helper node and a root or broad-sudo node is refused. VMDK disks and qcow2 with an external data file cannot be backed up. |
 | Broad sudo | `virticle node prepare --broad-sudo`, or an account with passwordless sudo | None. |
 | Root | SSH as root | None. Discouraged. |
 

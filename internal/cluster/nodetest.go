@@ -244,7 +244,7 @@ func (m *Manager) TestConnect(cfg store.Node, timeout time.Duration) (res TestRe
 	case hostconn.PrivSudo:
 		st.add("privilege", StepWarning, "Broad sudo; run Prepare node to scope it. "+note)
 	case hostconn.PrivHelper:
-		st.add("privilege", StepOK, "Scoped access (helper): "+note+". Pool writes and disk moves need broad sudo or root")
+		st.add("privilege", StepOK, "Scoped access (helper): "+note)
 	default:
 		st.add("privilege", StepOK, string(p)+": "+note)
 	}

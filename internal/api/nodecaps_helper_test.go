@@ -1,7 +1,6 @@
 package api
 
 import (
-	"strings"
 	"testing"
 
 	"virticle/internal/prepare"
@@ -9,14 +8,9 @@ import (
 
 func TestCapabilitiesUnderTheHelper(t *testing.T) {
 	c := nodeCapabilities("helper")
-	for _, k := range []string{"installTLS", "migration", "backups"} {
+	for _, k := range []string{"installTLS", "migration", "backups", "writePools", "diskMove", "clone"} {
 		if !c[k].OK {
 			t.Errorf("%s goes through the helper: %+v", k, c[k])
-		}
-	}
-	for _, k := range []string{"writePools", "diskMove", "clone"} {
-		if c[k].OK || !strings.Contains(c[k].Reason, "broad sudo") {
-			t.Errorf("%s under the helper: %+v", k, c[k])
 		}
 	}
 	for _, p := range []string{"root", "sudo", ""} {
