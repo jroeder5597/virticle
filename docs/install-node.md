@@ -23,7 +23,7 @@ logged, not written to the audit log or the task record. It is separate from the
 3. **Creates the service account** (default `virticle`, a system user, home `/var/lib/virticle`, shell `/bin/sh`, no
    password, groups `libvirt` and `kvm`).
 4. **Installs the controller's public key** for that account with restrictions, the **helper**, and the **sudoers rule**.
-5. **Tests the connection** as the service account, with the same steps as Test connection.
+5. **Creates the node key** of the account (for copies between nodes, see below). **Tests the connection** as the service account, with the same steps as Test connection.
 
 The sudoers file names one account, so a host has one service account: preparing it for another account replaces the
 rule. Running it again changes nothing and says so. `virticle node unprepare admin@host` removes the account, key, helper and
@@ -61,7 +61,7 @@ The names were checked on Debian 13 and Rocky Linux 10.
 
 | | Debian family | RHEL family |
 |---|---|---|
-| base | `qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients dnsmasq-base ovmf swtpm swtpm-tools sudo curl ca-certificates` | `qemu-kvm libvirt virt-install edk2-ovmf swtpm swtpm-tools sudo curl` |
+| base | `qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients dnsmasq-base ovmf swtpm swtpm-tools sudo curl ca-certificates openssh-client` | `qemu-kvm libvirt virt-install edk2-ovmf swtpm swtpm-tools sudo curl openssh-clients` |
 | extra `guestfs` | `libguestfs-tools` | `guestfs-tools` |
 | extra `virtiofs` | `virtiofsd` | `virtiofsd` |
 
@@ -72,14 +72,14 @@ As root on the node. Debian family:
 ```sh
 apt-get update
 apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients \
-    dnsmasq-base ovmf swtpm swtpm-tools sudo curl ca-certificates
+    dnsmasq-base ovmf swtpm swtpm-tools sudo curl ca-certificates openssh-client
 systemctl enable --now libvirtd
 ```
 
 RHEL family (libvirt runs as modular daemons there; prepare enables the sockets):
 
 ```sh
-dnf install -y qemu-kvm libvirt virt-install edk2-ovmf swtpm swtpm-tools sudo curl
+dnf install -y qemu-kvm libvirt virt-install edk2-ovmf swtpm swtpm-tools sudo curl openssh-clients
 systemctl enable --now virtqemud.socket virtnetworkd.socket virtstoraged.socket virtnodedevd.socket \
     virtsecretd.socket virtproxyd.socket virtlogd.socket
 ```
@@ -97,6 +97,7 @@ usermod -aG libvirt,kvm virticle
 install -d -m 700 -o virticle -g virticle /var/lib/virticle/.ssh
 echo 'restrict,pty,port-forwarding ssh-ed25519 AAAA... virticle-controller' > /var/lib/virticle/.ssh/authorized_keys
 chown virticle:virticle /var/lib/virticle/.ssh/authorized_keys; chmod 600 /var/lib/virticle/.ssh/authorized_keys
+runuser -u virticle -- ssh-keygen -q -t ed25519 -N '' -C virticle-peer@$(hostname) -f /var/lib/virticle/.ssh/virticle_peer_ed25519
 
 install -d -m 755 /usr/local/libexec
 install -m 755 -o root -g root virticle-helper /usr/local/libexec/virticle-helper   # the file from this binary, see below
@@ -146,6 +147,42 @@ never evaluate an argument, and there is no subcommand that runs a given command
 | `migtls-remove DIR (rm:NAME\|restore:NAME)...` | removes the setup's files, puts backups back |
 | `migtls-rmdir DIR TARGET` | removes an empty directory the setup created (`TARGET` is `DIR` or one of its parents below `/etc`) |
 | `gpu-users PCIADDR` | names the processes that hold a graphics card open |
+| `roots` | prints the allowed roots (see below) |
+| `stat PATH...` | `KIND\|BLOCKS\|BLOCKSIZE\|MODE\|SIZE` per path, or `MISSING` |
+| `remove PATH...` | removes files (not directories, not symbolic links; a missing file is fine) |
+| `rmtree DIR` | removes a work directory (`.virticle-*`) or a directory that holds `manifest.json` |
+| `rmdir DIR` | removes an empty directory |
+| `move SRC DST` / `copy SRC DST` | rename or copy; `DST` must not exist and is never replaced |
+| `read PATH MAX` | prints a file, at most `MAX` bytes (up to 64 MiB) |
+| `write PATH MAX [600\|644]` | stdin to a new file, at most `MAX` bytes |
+| `mkworkdir DIR TAG` / `chmod-work 700\|711 DIR` | private work directory `DIR/.virticle-TAG.XXXXXX` and its mode |
+| `qemu-img-info PATH [chain] [FORMAT]` | `qemu-img info` as JSON; every backing file must also be inside a root |
+| `sha256 PATH` | SHA-256 of a file |
+| `tools-missing NAME...` | which of `qemu-img ssh scp tar sha256sum` are missing |
+| `peer-key`, `peer-allow`, `peer-disallow` | the account's own node key; install or remove a peer's key (restricted to `peer-recv`) |
+| `peer-hostkey-set HOST PORT`, `peer-hostkey-unset`, `peer-list` | host keys the node accepts for its peers; what is on record |
+| `peer-send HOST PORT USER SRC DST MODE`, `peer-ping`, `peer-recv` | send a file to a peer node; test a peer; receive (the peer key's forced command) |
+
+**Allowed roots.** The file verbs work only inside the target directories of the libvirt storage pools of type `dir`,
+`fs` and `netfs`, and the UEFI NVRAM directory `/var/lib/libvirt/qemu/nvram`. The helper computes them on the node on
+every call. A path must be absolute and plain (`A-Za-z0-9._+=,@/-`, at most 200 characters, no `..`, `//` or trailing
+`/`); its parent directory is resolved with `realpath` and must be inside a root; verbs that change or remove refuse a
+final component that is a symbolic link; verbs that create refuse to replace anything. A pool whose directory is a
+system place (`/etc`, `/usr`, `/root`, `/var/lib/libvirt/qemu`, ...) is never a root.
+
+**Node to node copies.** Each helper node has its own SSH key (`~/.ssh/virticle_peer_ed25519`, made by
+`virticle node prepare`; the private half stays on the node). When a migration needs files copied, the controller
+installs the sending node's public key on the receiving node with `restrict,command="sudo -n <helper> peer-recv"`, so
+that key can deliver a new file into a storage pool and nothing else, and records the receiving node's SSH host key
+(taken from the controller's `known_hosts`) on the sending node, which checks it strictly. Then `peer-send` on the
+source reads the file as root and streams it over `ssh`, run as the service account, to `peer-recv` on the target. The
+data does not pass through the controller. This is done by the pre-flight check, idempotently; nothing is entered by
+hand. Removing a node from the controller removes its key from the other helper nodes. `virticle node unprepare`
+removes the node's key and the peer keys installed on it.
+
+**Live migration** of a node in helper mode is coordinated by the controller (it calls the phases of libvirt's
+migration protocol on both nodes), so no SSH between the nodes is needed for it. The memory stream and the disk mirror
+still go from node to node.
 
 **There is no self-update.** A helper that replaced itself from the service account would let anyone who holds that
 account install any code as root, which is the broad sudo this avoids. When the controller finds a helper whose version
@@ -155,9 +192,9 @@ if present, else none) until an administrator runs `virticle node prepare` again
 ### What the helper covers
 
 With the helper the account can run libvirt operations (it is in the `libvirt` group), upload and manage volumes through
-libvirt, take screenshots, and set up and remove **encrypted migration** certificates. Features that run free-form
-commands as root on the node (writing into pool directories by download or import, backups, migration of disk files
-between nodes, moving a disk between pools, clone with guest preparation) are **off** for a node in `helper` mode and the
+libvirt, take screenshots, set up and remove **encrypted migration** certificates, and **migrate VMs** (live and
+offline, between two helper nodes). Features that run free-form commands as root on the node (writing into pool
+directories by download or import, backups, moving a disk between pools, clone with guest preparation) are **off** for a node in `helper` mode and the
 UI says why. `--broad-sudo` gives the account the older unrestricted rule instead
 (`virticle ALL=(ALL) NOPASSWD: ALL`) when you need those; the node is then shown with the warning "Broad sudo; run
 Prepare node to scope it".

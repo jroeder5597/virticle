@@ -24,7 +24,7 @@ var rootFeatures = []struct {
 	{"installTLS", "Encrypted migration needs root or sudo on this node: the certificates go into /etc/pki/qemu", true},
 	{"writePools", "Downloading or importing into a storage pool needs root or sudo on this node: the pool directories belong to root", false},
 	{"backups", "Backups need root or sudo on this node: they read and write disk images in the pool directories", false},
-	{"migration", "Moving a VM to or from this node needs root or sudo on it: disk images and snapshot files are copied as root", false},
+	{"migration", "Moving a VM to or from this node needs root or sudo on it: disk images and snapshot files are copied as root", true},
 	{"diskMove", "Moving a disk between pools needs root or sudo on this node", false},
 	{"clone", "Cloning with guest preparation needs root or sudo on this node", false},
 }

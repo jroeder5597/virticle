@@ -306,8 +306,8 @@ func Classify(id, version, like, name string) Distro {
 
 // Package names per family. The lists were checked on Debian 13 and Rocky 10.
 var (
-	debianBase = []string{"qemu-system-x86", "qemu-utils", "libvirt-daemon-system", "libvirt-clients", "dnsmasq-base", "ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "ca-certificates"}
-	rhelBase   = []string{"qemu-kvm", "libvirt", "virt-install", "edk2-ovmf", "swtpm", "swtpm-tools", "sudo", "curl"}
+	debianBase = []string{"qemu-system-x86", "qemu-utils", "libvirt-daemon-system", "libvirt-clients", "dnsmasq-base", "ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "ca-certificates", "openssh-client"}
+	rhelBase   = []string{"qemu-kvm", "libvirt", "virt-install", "edk2-ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "openssh-clients"}
 	// Extras by name: guestfs (guest disk tools), virtiofs (shared folders).
 	debianExtras = map[string][]string{"guestfs": {"libguestfs-tools"}, "virtiofs": {"virtiofsd"}}
 	rhelExtras   = map[string][]string{"guestfs": {"guestfs-tools"}, "virtiofs": {"virtiofsd"}}

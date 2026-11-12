@@ -363,7 +363,7 @@ func TestPrepareRunsStepsInOrder(t *testing.T) {
 		ids = append(ids, r.ID)
 	}
 	order := []string{"admin", "arch", "distro", "cpu", "kvm", "nested", "iommu", "space", "mac", "time", "libvirt", "controller", "packages", "account",
-		"do-packages", "do-services", "do-network", "do-pool", "do-account", "do-key", "do-helper", "do-sudoers", "test-ssh", "summary"}
+		"do-packages", "do-services", "do-network", "do-pool", "do-account", "do-key", "do-helper", "do-sudoers", "do-peerkey", "test-ssh", "summary"}
 	if strings.Join(ids, ",") != strings.Join(order, ",") {
 		t.Errorf("rows:\n%v\nwant\n%v", ids, order)
 	}

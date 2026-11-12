@@ -77,6 +77,7 @@ func (s *Server) deleteNode(w http.ResponseWriter, r *http.Request) {
 		fail(w, store.ErrNotFound)
 		return
 	}
+	s.dropPeerTrust(id) // best effort: the node's key and host key on the other helper nodes
 	if err := s.Store.DeleteNode(id); err != nil {
 		fail(w, err)
 		return

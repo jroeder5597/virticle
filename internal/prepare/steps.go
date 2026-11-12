@@ -176,6 +176,9 @@ func steps(o Options) []stepDef {
 		if rule {
 			list = append(list, stepDef{id: "do-sudoers", title: "Install sudo rule", run: stepSudoers})
 		}
+		if !o.BroadSudo {
+			list = append(list, stepDef{id: "do-peerkey", title: "Node key", run: stepPeerKey})
+		}
 	}
 	return list
 }
@@ -476,6 +479,31 @@ func stepSudoers(r *Runner, p Plan, o Options) (string, bool, error) {
 	return installFile(r, what, hostconn.SudoersPath, "755", "440", content, `visudo -cf "$1"`, "visudo rejected the sudo rule; nothing was installed")
 }
 
+// peerKeyScript creates the service account's own key pair for node to node
+// transfers (the helper's peer-send uses it; the private half stays here).
+const peerKeyScript = `
+home=$(getent passwd "$u" | cut -d: -f6)
+[ -n "$home" ] && [ -d "$home" ] || { echo "no home directory for $u"; exit 1; }
+grp=$(id -gn "$u")
+d="$home/.ssh"; k="$d/virticle_peer_ed25519"
+if [ -f "$k" ] && [ -f "$k.pub" ] && [ ! -L "$k" ]; then echo "the node key exists ($k.pub)"; echo @@unchanged; exit 0; fi
+command -v ssh-keygen >/dev/null 2>&1 || { echo "ssh-keygen is missing (install the OpenSSH client)"; exit 1; }
+command -v runuser >/dev/null 2>&1 || { echo "runuser is missing (util-linux)"; exit 1; }
+[ -d "$d" ] || install -d -m 700 -o "$u" -g "$grp" "$d"
+rm -f "$k" "$k.pub"
+runuser -u "$u" -- ssh-keygen -q -t ed25519 -N '' -C "virticle-peer@$(hostname)" -f "$k" || exit 1
+command -v restorecon >/dev/null 2>&1 && restorecon -R "$d" >/dev/null 2>&1
+echo "created the node key $k.pub"; echo @@changed`
+
+func stepPeerKey(r *Runner, p Plan, o Options) (string, bool, error) {
+	out, err := r.root("u="+shq(o.ServiceUser())+"\n"+peerKeyScript, "")
+	if err != nil {
+		return "", false, fmt.Errorf("%w: %s", err, firstLines(out, 6))
+	}
+	d, ch := parseStep(out)
+	return d, ch, nil
+}
+
 // --- unprepare ---
 
 const unprepareScript = `
@@ -486,6 +514,14 @@ if [ -n "$home" ] && [ -f "$home/.ssh/authorized_keys" ] && grep -qF -- "$blob" 
   chown --reference="$home/.ssh/authorized_keys" "$t"; chmod 600 "$t"; mv -f "$t" "$home/.ssh/authorized_keys"
   echo "key removed"; changed=1
 else echo "no controller key"; fi
+if [ -n "$home" ] && [ -d "$home/.ssh" ]; then
+  if [ -f "$home/.ssh/virticle_peer_ed25519" ] || [ -f "$home/.ssh/virticle_peer_known_hosts" ]; then rm -f "$home/.ssh/virticle_peer_ed25519" "$home/.ssh/virticle_peer_ed25519.pub" "$home/.ssh/virticle_peer_known_hosts"; echo "node key removed"; changed=1; fi
+  if [ -f "$home/.ssh/authorized_keys" ] && grep -qF -- "virticle-helper peer-recv" "$home/.ssh/authorized_keys"; then
+    t=$(mktemp "$home/.ssh/.authorized_keys.XXXXXX"); grep -vF -- "virticle-helper peer-recv" "$home/.ssh/authorized_keys" > "$t"
+    chown --reference="$home/.ssh/authorized_keys" "$t"; chmod 600 "$t"; mv -f "$t" "$home/.ssh/authorized_keys"
+    echo "peer keys removed"; changed=1
+  fi
+fi
 if [ -f ` + sudoersPath + ` ] && head -c 200 ` + sudoersPath + ` | grep -q 'Written by virticle node prepare' && grep -q "^$u ALL=" ` + sudoersPath + `; then rm -f ` + sudoersPath + `; echo "sudo rule removed"; changed=1; else echo "no sudo rule for $u"; fi
 if [ -f ` + helperPath + ` ] && [ ! -f ` + sudoersPath + ` ]; then rm -f ` + helperPath + `; rmdir /usr/local/libexec 2>/dev/null; echo "helper removed"; changed=1; elif [ -f ` + helperPath + ` ]; then echo "helper kept, another account's sudo rule uses it"; else echo "no helper"; fi
 if [ "$u" != root ] && getent passwd "$u" | grep -q "` + AccountComment + `"; then
@@ -530,6 +566,8 @@ func (r *Runner) Unprepare(o Options) []Row {
 func titleOf(s string) string {
 	s = strings.ToLower(s)
 	switch {
+	case strings.Contains(s, "node key"), strings.Contains(s, "peer key"):
+		return "Node key"
 	case strings.Contains(s, "key"):
 		return "SSH key"
 	case strings.Contains(s, "helper"):
