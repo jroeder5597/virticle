@@ -23,10 +23,15 @@ type prepareReq struct {
 	PrivateKey string `json:"privateKey"` // secret: used for this run only
 	CheckOnly  bool   `json:"checkOnly"`
 
+	AllowRoot bool `json:"allowRoot"`
+	Minimal   bool `json:"minimal"`
+
+	// The web interface no longer sends these; they are still accepted for
+	// scripts. Extras is ignored (the guest disk tools are always installed,
+	// virtiofsd was never needed).
 	User        string   `json:"user"`
 	UseExisting bool     `json:"useExisting"`
 	Confirm     bool     `json:"confirm"`
-	AllowRoot   bool     `json:"allowRoot"`
 	From        string   `json:"from"`
 	Extras      []string `json:"extras"`
 }
@@ -96,7 +101,7 @@ func (s *Server) prepareStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	o := prepare.Options{User: req.User, UseExisting: req.UseExisting, Confirm: req.Confirm, AllowRoot: req.AllowRoot,
-		From: strings.TrimSpace(req.From), Extras: req.Extras, ControllerKey: s.PubKey, InstanceID: s.InstanceID}
+		From: strings.TrimSpace(req.From), Minimal: req.Minimal, ControllerKey: s.PubKey, InstanceID: s.InstanceID}
 	if err := o.Validate(); err != nil {
 		fail(w, badRequest(err.Error()))
 		return
@@ -127,6 +132,16 @@ func (s *Server) prepareStart(w http.ResponseWriter, r *http.Request) {
 		}
 		defer conn.Close()
 		run := &prepare.Runner{N: conn, SudoPassword: admin.Password}
+		// The account the controller will sign in as is settled by the check;
+		// the UI registers the node with it.
+		setUser := func() {
+			if run.User != "" {
+				job.mu.Lock()
+				job.user = run.User
+				job.mu.Unlock()
+			}
+		}
+		defer setUser()
 		var rows []prepare.Row
 		if req.CheckOnly {
 			var err error
@@ -136,9 +151,10 @@ func (s *Server) prepareStart(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			rows = run.Prepare(o, func(rs []prepare.Row) {
+				setUser()
 				job.set(rs)
 				progress(progressOf(rs))
-			}, func() []prepare.Row { return prepare.Verify(s.Nodes, req.Addr, o.ServiceUser(), req.Jump) })
+			}, func() []prepare.Row { return prepare.Verify(s.Nodes, req.Addr, run.User, req.Jump) })
 		}
 		job.set(rows)
 		job.mu.Lock()

@@ -39,12 +39,21 @@ type Row struct {
 // Default locations on a node.
 const (
 	DefaultPoolPath = "/var/lib/libvirt/images"
-	DefaultHome     = "/var/lib/virticle"
-	DefaultUser     = "virticle"
+	// DefaultUser is the node's service account. It is deliberately not
+	// "virticle": that is the account of the controller package, which
+	// prepare never touches.
+	DefaultUser = "virticle-node"
+	DefaultHome = "/var/lib/virticle-node"
+	// LegacyUser is the account name earlier versions used on nodes. A
+	// LegacyUser account that carries AccountComment is kept and reused.
+	LegacyUser = "virticle"
 	// AccountComment marks an account this tool created; unprepare removes
 	// only accounts that carry it.
 	AccountComment = "virticle service account"
 )
+
+// HomeFor is the home directory of a service account that prepare creates.
+func HomeFor(user string) string { return "/var/lib/" + user }
 
 // FactsScript prints key=value lines describing the host. It changes nothing
 // and always succeeds. It runs as root (or through sudo) so that /dev/kvm,
@@ -99,6 +108,7 @@ echo "acct=$pw"
 if [ -n "$pw" ]; then
   echo "acct_groups=$(id -nG "$u" 2>/dev/null)"
   home=$(echo "$pw" | cut -d: -f6)
+  if [ -d "$home" ]; then echo "acct_home_owner=$(stat -c %U "$home" 2>/dev/null)"; fi
   if [ -r "$home/.ssh/authorized_keys" ]; then sed 's/^/authkey=/' "$home/.ssh/authorized_keys"; fi
   if su -s /bin/sh -c 'exit 0' "$u" 2>/dev/null; then echo acct_login=ok; fi
   if [ -r ` + sudoersPath + ` ]; then echo "acct_sudoers=yes"; fi
@@ -222,7 +232,8 @@ type Account struct {
 	Comment      string
 	Groups       map[string]bool
 	AuthKeys     []string
-	GroupLibvirt bool // the group exists on the host
+	HomeOwner    string // owner of the home directory; empty when it does not exist
+	GroupLibvirt bool   // the group exists on the host
 	GroupKVM     bool
 }
 
@@ -243,6 +254,8 @@ func ParseAccount(out string) Account {
 			for _, g := range strings.Fields(v) {
 				a.Groups[g] = true
 			}
+		case "acct_home_owner":
+			a.HomeOwner = strings.TrimSpace(v)
 		case "authkey":
 			a.AuthKeys = append(a.AuthKeys, v)
 		case "group_libvirt":
@@ -311,31 +324,30 @@ func Classify(id, version, like, name string) Distro {
 }
 
 // Package names per family. The lists were checked on Debian 13 and Rocky 10.
+// The guest disk tools provide virt-sysprep, which "sysprep on clone" uses;
+// "prepare --minimal" leaves them out.
 var (
-	debianBase = []string{"qemu-system-x86", "qemu-utils", "libvirt-daemon-system", "libvirt-clients", "dnsmasq-base", "ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "ca-certificates", "openssh-client"}
-	rhelBase   = []string{"qemu-kvm", "libvirt", "virt-install", "edk2-ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "openssh-clients"}
-	// Extras by name: guestfs (guest disk tools), virtiofs (shared folders).
-	debianExtras = map[string][]string{"guestfs": {"libguestfs-tools"}, "virtiofs": {"virtiofsd"}}
-	rhelExtras   = map[string][]string{"guestfs": {"guestfs-tools"}, "virtiofs": {"virtiofsd"}}
+	debianBase  = []string{"qemu-system-x86", "qemu-utils", "libvirt-daemon-system", "libvirt-clients", "dnsmasq-base", "ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "ca-certificates", "openssh-client"}
+	rhelBase    = []string{"qemu-kvm", "libvirt", "virt-install", "edk2-ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "openssh-clients"}
+	debianGuest = []string{"libguestfs-tools"}
+	rhelGuest   = []string{"guestfs-tools"}
 )
 
-// ValidExtra reports whether name is a known extra.
-func ValidExtra(name string) bool { _, ok := debianExtras[name]; return ok }
-
-// PackageList is the package names to install for a family and extras.
-func PackageList(f Family, extras []string) []string {
+// PackageList is the package names to install for a family. minimal leaves
+// out the guest disk tools.
+func PackageList(f Family, minimal bool) []string {
 	var out []string
-	var ex map[string][]string
 	switch f {
 	case FamilyDebian:
-		out, ex = append(out, debianBase...), debianExtras
+		out = append(out, debianBase...)
+		if !minimal {
+			out = append(out, debianGuest...)
+		}
 	case FamilyRHEL:
-		out, ex = append(out, rhelBase...), rhelExtras
-	default:
-		return nil
-	}
-	for _, e := range extras {
-		out = append(out, ex[e]...)
+		out = append(out, rhelBase...)
+		if !minimal {
+			out = append(out, rhelGuest...)
+		}
 	}
 	return out
 }
@@ -357,22 +369,24 @@ func shq(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'
 // ManualInstall is the text shown for a distribution that is not supported:
 // what to install by hand.
 func ManualInstall() string {
-	return "Install by hand: Debian family " + strings.Join(debianBase, " ") + "; RHEL family " + strings.Join(rhelBase, " ") + ". Then enable libvirt and run this again"
+	return "Install by hand: Debian family " + strings.Join(append(append([]string{}, debianBase...), debianGuest...), " ") + "; RHEL family " + strings.Join(append(append([]string{}, rhelBase...), rhelGuest...), " ") + ". Then enable libvirt and run this again"
 }
 
 // Options say what to do and how.
 type Options struct {
-	User          string   // service account; default DefaultUser
-	UseExisting   bool     // the account exists; change nothing about it except the key
-	Confirm       bool     // with UseExisting: also add it to the groups and grant the sudo rule
-	AllowRoot     bool     // the controller logs in as root (the node command runs directly, no service account)
-	From          string   // controller address(es) the key is restricted to
-	Extras        []string // guestfs, virtiofs
-	ControllerKey string   // the controller's public key line
-	InstanceID    string   // this controller's instance id, to tell other controllers apart
+	User          string // service account; empty: an account made by an earlier version, else DefaultUser (see Runner.Check)
+	UseExisting   bool   // the account exists and is managed by hand; change nothing about it except the key
+	Confirm       bool   // with UseExisting: also add it to the groups and grant the sudo rule
+	AllowRoot     bool   // the controller logs in as root (the node command runs directly, no service account)
+	From          string // controller address(es) the key is restricted to
+	Minimal       bool   // leave out the guest disk tools
+	ControllerKey string // the controller's public key line
+	InstanceID    string // this controller's instance id, to tell other controllers apart
 }
 
-// ServiceUser is the account the controller will log in as.
+// ServiceUser is the account the controller will log in as. With no name given
+// it is DefaultUser; Runner.Check replaces an empty name by the account an
+// earlier version made, when there is one.
 func (o Options) ServiceUser() string {
 	switch {
 	case o.AllowRoot:
@@ -393,11 +407,6 @@ func (o Options) Validate() error {
 	}
 	if o.ServiceUser() == "root" && !o.AllowRoot {
 		return fmt.Errorf("the account root needs the root option")
-	}
-	for _, e := range o.Extras {
-		if !ValidExtra(e) {
-			return fmt.Errorf("unknown extra %q (guestfs, virtiofs)", e)
-		}
 	}
 	if o.From != "" {
 		if err := validFrom(o.From); err != nil {

@@ -195,16 +195,20 @@ func TestEvaluateProblems(t *testing.T) {
 func TestEvaluateAccount(t *testing.T) {
 	base := plan(debian13Facts)
 	o := Options{ControllerKey: testKey}
-	if r := find(Evaluate(base, o), "account"); r.Status != Info || !strings.Contains(r.Detail, "virticle would be created") {
+	if r := find(Evaluate(base, o), "account"); r.Status != Info || !strings.Contains(r.Detail, "The account virticle-node will be created") || !strings.Contains(r.Detail, "/var/lib/virticle-node") {
 		t.Errorf("new account: %+v", r)
 	}
 	base.Account = Account{Exists: true, Comment: "somebody else", Shell: "/bin/bash", Groups: map[string]bool{}}
 	if r := find(Evaluate(base, o), "account"); r.Status != Error {
 		t.Errorf("a foreign account of that name: %+v", r)
 	}
-	base.Account.Comment = AccountComment
-	if r := find(Evaluate(base, o), "account"); r.Status != OK {
+	base.Account = Account{Exists: true, Comment: AccountComment, Shell: "/bin/sh", Home: "/var/lib/virticle-node", HomeOwner: "virticle-node", Groups: map[string]bool{"libvirt": true, "kvm": true}, GroupKVM: true, GroupLibvirt: true}
+	if r := find(Evaluate(base, o), "account"); r.Status != OK || !strings.Contains(r.Detail, "exists and is set up") {
 		t.Errorf("our account: %+v", r)
+	}
+	base.Account.Shell, base.Account.Groups = "/sbin/nologin", map[string]bool{}
+	if r := find(Evaluate(base, o), "account"); r.Status != Info || !strings.Contains(r.Detail, "group libvirt") || !strings.Contains(r.Detail, "/bin/sh") {
+		t.Errorf("our account needs repair: %+v", r)
 	}
 	o.UseExisting = true
 	base.Account = Account{Exists: true, Shell: "/bin/bash", Groups: map[string]bool{"kvm": true}, GroupLibvirt: true, GroupKVM: true}
@@ -221,7 +225,7 @@ func TestEvaluateAccount(t *testing.T) {
 		t.Errorf("nologin: %+v", r)
 	}
 	r = find(Evaluate(base, Options{AllowRoot: true, ControllerKey: testKey}), "account")
-	if r.Status != Warning || r.Detail != "Uses root; a dedicated account is safer" {
+	if r.Status != Warning || !strings.Contains(r.Detail, "sign in as root") {
 		t.Errorf("root: %+v", r)
 	}
 }
@@ -236,7 +240,6 @@ func TestValidate(t *testing.T) {
 		{ControllerKey: testKey, User: "a;b"},
 		{ControllerKey: testKey, User: "root"},
 		{ControllerKey: testKey, AllowRoot: true, UseExisting: true},
-		{ControllerKey: testKey, Extras: []string{"docker"}},
 		{ControllerKey: testKey, From: `10.0.0.1" command="id`},
 		{ControllerKey: testKey, From: "a b"},
 		{},
@@ -250,7 +253,7 @@ func TestValidate(t *testing.T) {
 	if err := (Options{ControllerKey: testKey, AllowRoot: true}).Validate(); err != nil {
 		t.Errorf("allow-root: %v", err)
 	}
-	if err := (Options{ControllerKey: testKey, From: "10.0.0.0/24,192.168.1.5,!10.0.0.9", Extras: []string{"guestfs", "virtiofs"}}).Validate(); err != nil {
+	if err := (Options{ControllerKey: testKey, From: "10.0.0.0/24,192.168.1.5,!10.0.0.9", Minimal: true}).Validate(); err != nil {
 		t.Errorf("from/extras: %v", err)
 	}
 }
@@ -267,8 +270,8 @@ func TestAuthorizedKeyLine(t *testing.T) {
 }
 
 func TestPackageLists(t *testing.T) {
-	d := PackageList(FamilyDebian, []string{"guestfs", "virtiofs"})
-	r := PackageList(FamilyRHEL, []string{"guestfs", "virtiofs"})
+	d := PackageList(FamilyDebian, false)
+	r := PackageList(FamilyRHEL, false)
 	has := func(l []string, p string) bool {
 		for _, x := range l {
 			if x == p {
@@ -277,17 +280,22 @@ func TestPackageLists(t *testing.T) {
 		}
 		return false
 	}
-	for _, p := range []string{"qemu-system-x86", "libvirt-daemon-system", "libvirt-clients", "ovmf", "swtpm", "swtpm-tools", "libguestfs-tools", "virtiofsd"} {
+	for _, p := range []string{"qemu-system-x86", "libvirt-daemon-system", "libvirt-clients", "ovmf", "swtpm", "swtpm-tools", "libguestfs-tools"} {
 		if !has(d, p) {
 			t.Errorf("debian list lacks %s", p)
 		}
 	}
-	for _, p := range []string{"qemu-kvm", "libvirt", "virt-install", "edk2-ovmf", "swtpm", "swtpm-tools", "guestfs-tools", "virtiofsd"} {
+	for _, p := range []string{"qemu-kvm", "libvirt", "virt-install", "edk2-ovmf", "swtpm", "swtpm-tools", "guestfs-tools"} {
 		if !has(r, p) {
 			t.Errorf("rhel list lacks %s", p)
 		}
 	}
-	if PackageList(FamilyOther, nil) != nil {
+	for _, p := range []string{"virtiofsd", "libguestfs-tools", "guestfs-tools"} {
+		if has(PackageList(FamilyDebian, true), p) || has(PackageList(FamilyRHEL, true), p) {
+			t.Errorf("--minimal still has %s", p)
+		}
+	}
+	if PackageList(FamilyOther, false) != nil {
 		t.Error("no list for an unknown family")
 	}
 }
@@ -386,7 +394,7 @@ func TestPrepareRunsStepsInOrder(t *testing.T) {
 	}
 	// The sudo rule carries the node command path only, the key line the restrictions.
 	all := strings.Join(n.log, "\n")
-	if !strings.Contains(all, "virticle ALL=(root) NOPASSWD: /usr/local/libexec/virticle-node\n") {
+	if !strings.Contains(all, "virticle-node ALL=(root) NOPASSWD: /usr/local/libexec/virticle-node\n") {
 		t.Error("the sudoers rule was not sent")
 	}
 	if !strings.Contains(all, "restrict,pty,port-forwarding ssh-ed25519 ") {
@@ -588,7 +596,7 @@ func TestExistingAccountSudoRuleAndConfirm(t *testing.T) {
 	base := plan(debian13Facts)
 	base.Account = Account{Exists: true, Shell: "/bin/bash", Groups: map[string]bool{"libvirt": true, "kvm": true}, GroupLibvirt: true, GroupKVM: true}
 	o := Options{ControllerKey: testKey, User: "svc", UseExisting: true}
-	if r := find(Evaluate(base, o), "sudo"); r.Status != Warning || !strings.Contains(r.Detail, "confirm") {
+	if r := find(Evaluate(base, o), "sudo"); r.Status != Warning || !strings.Contains(r.Detail, "--confirm") {
 		t.Errorf("no rule yet: %+v", r)
 	}
 	base.Facts.SudoersRaw = "# x|svc ALL=(root) NOPASSWD: /usr/local/libexec/virticle-node|"

@@ -39,13 +39,16 @@ You can leave the page; the task keeps going.
 A node is a host that runs your VMs. To add one:
 
 1. Open **Nodes**, then **Add node**.
-2. For a new host, choose **Prepare this node**. It installs libvirt and the
-   node command (`virticle-node`), and sets up the access the controller
-   needs. You choose **Service account** (recommended) or **Root**. See
+2. For a new host, choose **Prepare this node**. It installs libvirt, QEMU,
+   the guest disk tools and the node command (`virticle-node`), and sets up
+   the access the controller needs. Choose **Check** to see what would
+   change, then **Prepare**. The only option is **Root access instead of a
+   service account**; leave it off unless you want Root. See
    [install-node.md](install-node.md).
 3. When prepare has finished, choose **Add this node**.
 4. For a host that is already prepared, enter its address and SSH user
-   (`virticle` for a Service account, `root` for Root) and choose **Add**.
+   (`virticle-node` for a Service account, `root` for Root) and choose
+   **Add**. A node prepared by version 0.2.0 uses `virticle`.
 
 ![Add node dialog](img/add-node.png)
 

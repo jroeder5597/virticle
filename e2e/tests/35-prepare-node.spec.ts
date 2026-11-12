@@ -1,5 +1,5 @@
-// Prepare node, check only, against lab node 1. Read-only: the dialog signs in with an administrator
-// key pasted into it, looks at the host and changes nothing. The key is a secret for this one run: after
+// Prepare node, Check only, against lab node 1. Read-only: the dialog signs in with an administrator
+// key pasted into it, looks at the host and changes nothing (the Prepare button is never pressed here). The key is a secret for this one run: after
 // the form is submitted it must be nowhere on the page, in the task list or in the audit log.
 //
 // The administrator key is read from E2E_ADMIN_KEY_FILE (default: the lab's controller key, which is
@@ -28,6 +28,7 @@ test.describe.serial("prepare node, check only", () => {
 
     await page.goto("/nodes");
     await page.getByRole("button", { name: "Add node" }).click();
+    await expect(field(dialog(page, "Add node"), "SSH user")).toHaveValue("virticle-node");
     await field(dialog(page, "Add node"), "Address").fill(node.addr);
     await field(dialog(page, "Add node"), "Jump host (optional)").fill(node.jump ?? "");
     await dialog(page, "Add node").getByRole("button", { name: "Prepare this node" }).click();
@@ -37,7 +38,10 @@ test.describe.serial("prepare node, check only", () => {
     await expect(field(dlg, "Address")).toHaveValue(node.addr);
     await pick(dlg, "Credential", "Private key");
     await dlg.locator("textarea").fill(key);
-    await expect(dlg.getByLabel("Check only, change nothing")).toBeChecked();
+    // one checkbox only (Root access), and the two buttons Check and Prepare
+    await expect(dlg.getByRole("checkbox")).toHaveCount(1);
+    await expect(dlg.getByLabel("Root access instead of a service account")).not.toBeChecked();
+    await expect(dlg.getByRole("button", { name: "Prepare", exact: true })).toBeVisible();
     await dlg.getByRole("button", { name: "Check", exact: true }).click();
 
     // the form is gone and the secret with it
@@ -53,6 +57,8 @@ test.describe.serial("prepare node, check only", () => {
     await expect(list).toContainText("Existing VMs are left alone");
     await expect(list).toContainText(/Debian GNU\/Linux 13|Rocky Linux 10/);
     await expect(res.getByRole("button", { name: "Add this node" })).toHaveCount(0); // a check does not offer to register
+    await expect(res.getByRole("button", { name: "Prepare", exact: true })).toBeVisible(); // but Prepare is there, without retyping the key
+    await expect(list.locator("strong", { hasText: /^Service account$/ })).toBeVisible();
     await expect(res.getByRole("img", { name: "not run" })).toHaveCount(0);
 
     // no secret on the page, in the tasks or in the audit log

@@ -165,6 +165,11 @@ func Evaluate(p Plan, o Options) []Row {
 
 func gibText(b int64) string { return fmt.Sprintf("%.1f GiB", float64(b)/gib) }
 
+// noLogin reports whether a login shell refuses logins.
+func noLogin(shell string) bool {
+	return shell == "" || strings.HasSuffix(shell, "/nologin") || strings.HasSuffix(shell, "/false")
+}
+
 // accountRows says what would be done about the service account.
 func accountRows(p Plan, o Options) []Row {
 	var rows []Row
@@ -174,9 +179,9 @@ func accountRows(p Plan, o Options) []Row {
 	a, u := p.Account, o.ServiceUser()
 	switch {
 	case o.AllowRoot:
-		add("account", "Service account", Warning, "Uses root; a dedicated account is safer")
+		add("account", "Service account", Warning, "The controller will sign in as root. A service account is safer; leave the root option off to use one")
 	case o.UseExisting && !a.Exists:
-		add("account", "Service account", Error, fmt.Sprintf("The account %s does not exist (drop use-existing-user to create it)", u))
+		add("account", "Service account", Error, fmt.Sprintf("The account %s does not exist. Leave out --use-existing-user and prepare creates it", u))
 	case o.UseExisting:
 		var missing []string
 		for _, g := range []string{"libvirt", "kvm"} {
@@ -187,35 +192,75 @@ func accountRows(p Plan, o Options) []Row {
 			}
 		}
 		if len(missing) > 0 {
-			st := Warning
-			hint := "; rerun with the confirm option to add them"
 			if o.Confirm {
-				st, hint = Info, "; they will be added"
+				add("account", "Service account", Info, fmt.Sprintf("%s is not in the group %s; prepare will add it", u, strings.Join(missing, " and ")))
+			} else {
+				add("account", "Service account", Warning, fmt.Sprintf("%s is not in the group %s, so it cannot use libvirt. Add --confirm and prepare adds it", u, strings.Join(missing, " and ")))
 			}
-			add("account", "Service account", st, fmt.Sprintf("%s exists but is not in the group(s) %s%s", u, strings.Join(missing, ", "), hint))
 		} else {
-			add("account", "Service account", OK, u+" exists and is in the libvirt and kvm groups where they exist")
+			add("account", "Service account", OK, u+" exists and is in the groups libvirt and kvm (where they exist)")
 		}
 		if rule := u + " ALL=(root) NOPASSWD: " + nodeCmdPath; !strings.Contains(p.Facts.SudoersRaw, rule) {
-			st, hint := Warning, "; rerun with the confirm option to add it"
 			if o.Confirm {
-				st, hint = Info, "; it will be added"
+				add("sudo", "Sudo rule", Info, "There is no sudo rule for "+u+" yet; prepare will add one that allows the node command only")
+			} else {
+				add("sudo", "Sudo rule", Warning, "There is no sudo rule that lets "+u+" run the node command. Add --confirm and prepare adds one, or add it yourself")
 			}
-			add("sudo", "Sudo rule", st, "No sudo rule lets "+u+" run the node command"+hint)
 		}
-		if a.Shell == "/usr/sbin/nologin" || a.Shell == "/sbin/nologin" || a.Shell == "/bin/false" {
-			add("shell", "Login shell", Error, fmt.Sprintf("%s has the shell %s, so the controller cannot run commands as it", u, a.Shell))
+		if noLogin(a.Shell) {
+			add("shell", "Login shell", Error, fmt.Sprintf("%s has the login shell %s, so the controller cannot sign in as it. Give it a login shell such as /bin/sh, or let prepare create its own account (leave out --use-existing-user)", u, a.Shell))
 		}
+	case a.Exists && strings.Contains(a.Comment, AccountComment):
+		add("account", "Service account", changedStatus(accountFixes(a, u)), markedAccountText(a, u))
 	case a.Exists:
-		if strings.Contains(a.Comment, AccountComment) {
-			add("account", "Service account", OK, u+" exists")
-		} else {
-			add("account", "Service account", Error, fmt.Sprintf("An account named %s exists and was not created by this tool; pick another name or use use-existing-user", u))
+		msg := fmt.Sprintf("An account named %s already exists and was not made by Virticle, so prepare leaves it alone. Choose another name with --user OTHERNAME on the command line", u)
+		if u == LegacyUser {
+			msg = "The account virticle belongs to the Virticle controller and prepare does not use it for a node. Leave --user out and prepare makes the account " + DefaultUser
 		}
+		add("account", "Service account", Error, msg)
 	default:
-		add("account", "Service account", Info, fmt.Sprintf("%s would be created (home %s, shell /bin/sh, no password)", u, DefaultHome))
+		add("account", "Service account", Info, fmt.Sprintf("The account %s will be created: a system account with the home %s, the login shell /bin/sh and no password, in the groups libvirt and kvm", u, HomeFor(u)))
 	}
 	return rows
+}
+
+func changedStatus(fixes []string) string {
+	if len(fixes) > 0 {
+		return Info
+	}
+	return OK
+}
+
+// accountFixes lists what prepare would still change on an account of ours.
+func accountFixes(a Account, u string) []string {
+	var f []string
+	if !a.Groups["libvirt"] {
+		f = append(f, "add it to the group libvirt")
+	}
+	if a.GroupKVM && !a.Groups["kvm"] {
+		f = append(f, "add it to the group kvm")
+	}
+	if noLogin(a.Shell) {
+		f = append(f, "give it the login shell /bin/sh (now "+a.Shell+")")
+	}
+	switch {
+	case a.HomeOwner == "":
+		f = append(f, "create its home directory "+a.Home)
+	case a.HomeOwner != u:
+		f = append(f, "give its home directory to it")
+	}
+	return f
+}
+
+func markedAccountText(a Account, u string) string {
+	old := ""
+	if u == LegacyUser {
+		old = " It was made by an earlier version of Virticle and is kept, so no second account is made."
+	}
+	if f := accountFixes(a, u); len(f) > 0 {
+		return fmt.Sprintf("The account %s exists. Prepare will %s.%s", u, strings.Join(f, ", "), old)
+	}
+	return fmt.Sprintf("The account %s exists and is set up.%s", u, old)
 }
 
 // HasError reports whether any row is an error.

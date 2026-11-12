@@ -113,7 +113,7 @@ function NodeRow({ n, canRemove, alerts, onEvacuate, onMaintenance }: { n: NodeS
 
 function AddNode({ onClose }: { onClose: () => void }) {
   const [addr, setAddr] = useState("");
-  const [user, setUser] = useState("virticle");
+  const [user, setUser] = useState("virticle-node");
   const [jump, setJump] = useState("");
   const [preparing, setPreparing] = useState(false);
   const act = useAction();
@@ -133,7 +133,7 @@ function AddNode({ onClose }: { onClose: () => void }) {
           <Field label="Address" hint="Host name or IP, optionally with :port.">
             <input value={addr} onChange={(e) => setAddr(e.target.value)} required autoFocus placeholder="kvm1.example.lan" />
           </Field>
-          <Field label="SSH user" hint="virticle (the Service account that Prepare creates), or root (Root access).">
+          <Field label="SSH user" hint="virticle-node (the account that Prepare creates), or root (Root access). A node prepared by version 0.2.0 uses virticle.">
             <input value={user} onChange={(e) => setUser(e.target.value)} required />
           </Field>
         </div>
