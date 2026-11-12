@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"sync/atomic"
 
 	"virticle/internal/hostconn"
@@ -56,19 +55,15 @@ func (s *Server) exportBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var total uint64
-	names := make([]string, 0, len(m.files()))
-	for _, f := range m.files() {
-		names = append(names, shq(f))
-	}
+	names := m.files()
 	for _, d := range m.Disks {
 		total += d.Bytes
 	}
 	// Explicit plain member names, so the archive can be vetted on import.
-	cmd := "cd " + shq(b.dir) + " && tar -cf - --format=posix -- " + strings.Join(names, " ")
 	out := &streamOut{w: w, filename: m.VM + ".vmexport.tar", total: total}
 	err = s.task(r, "backup export", b.name, b.h.Name, func(progress func(float64)) error {
 		out.progress = progress
-		return b.h.PipeRoot(r.Context(), cmd, nil, out)
+		return b.h.TarPack(r.Context(), b.dir, names, out)
 	})
 	if err != nil {
 		if !out.started {
@@ -96,7 +91,7 @@ func (s *Server) importBackup(w http.ResponseWriter, r *http.Request) {
 		fail(w, badRequest("unsupported characters in the pool directory "+pd.Dir))
 		return
 	}
-	free, err := freeBytes(h, pd.Dir)
+	free, err := bkFreeBytes(h, pd.Dir)
 	if err != nil {
 		fail(w, err)
 		return
@@ -130,7 +125,7 @@ func (s *Server) importBackup(w http.ResponseWriter, r *http.Request) {
 			pw.CloseWithError(err)
 			vetCh <- vetResult{names, err}
 		}()
-		perr := h.PipeRoot(r.Context(), "umask 077; cd "+shq(wd.path)+" && tar --no-same-owner --no-same-permissions -xf -", pr, nil)
+		perr := h.TarUnpack(r.Context(), wd.path, pr)
 		pr.CloseWithError(errors.New("extraction ended"))
 		v := <-vetCh
 		var br badRequest
@@ -154,7 +149,7 @@ func (s *Server) importBackup(w http.ResponseWriter, r *http.Request) {
 
 // finishImport checks the unpacked directory like a backup and moves it to
 // its final name.
-func finishImport(h *hostconn.Host, pd poolDir, wd *workDir, got []string, res *map[string]any) error {
+func finishImport(h *hostconn.Host, pd poolDir, wd *bkWork, got []string, res *map[string]any) error {
 	ref := &backupRef{h: h, pd: pd, dir: wd.path}
 	m, err := ref.load()
 	if err != nil {
@@ -179,7 +174,7 @@ func finishImport(h *hostconn.Host, pd poolDir, wd *workDir, got []string, res *
 		return badRequest("domain.xml is not a valid domain definition: " + err.Error())
 	}
 	for _, d := range m.Disks {
-		info, err := qemuInfo(h, wd.path+"/"+d.File)
+		info, err := bkQemuInfo(h, wd.path+"/"+d.File)
 		if err != nil {
 			return fmt.Errorf("%s: %w", d.File, err)
 		}
@@ -189,8 +184,11 @@ func finishImport(h *hostconn.Host, pd poolDir, wd *workDir, got []string, res *
 	}
 	name := backupDirName(m.VM, m.createdTime())
 	final := pd.Dir + "/" + name
-	if out, err := h.RunRoot("test ! -e " + shq(final) + " && chmod 700 -- " + shq(wd.path) + " && mv -T -- " + shq(wd.path) + " " + shq(final)); err != nil {
-		return badRequest("a backup named " + name + " already exists in this pool, or it cannot be moved into place: " + impFirstLine(out))
+	if err := h.ChmodWork(wd.path, "700"); err != nil {
+		return err
+	}
+	if err := h.Move(wd.path, final); err != nil {
+		return badRequest("a backup named " + name + " already exists in this pool, or it cannot be moved into place: " + impFirstLine(err.Error()))
 	}
 	*res = map[string]any{"pool": pd.Name, "dir": name, "vm": m.VM, "uuid": m.UUID}
 	return nil
