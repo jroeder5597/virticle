@@ -1,13 +1,13 @@
 import { ReactNode, useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import ServerOff from "lucide-react/icons/server-off";
-import { bytes, del, get, Network, NodeInfo, NodeStatus, Pool, put, VM } from "../api";
+import { bytes, del, get, Network, NodeInfo, NodeStatus, Pool, VM } from "../api";
 import { useLive } from "../live";
 import { useRole } from "../auth";
 import { ErrorBox, StateBadge, useAction, useConfirm } from "../ui";
 import { HostLoad, useHostSeries } from "../charts";
 import { AlertMarks, useAlerts } from "./Alerts";
-import Evacuate from "./Evacuate";
+import MaintenanceActions from "./Maintenance";
 import HostUpdates from "./HostUpdates";
 import ConnectionCard from "./NodeConnection";
 import MigrationTLS from "./MigrationTLS";
@@ -36,7 +36,6 @@ export default function NodeDetail() {
   const alerts = useAlerts();
   const act = useAction();
   const confirm = useConfirm();
-  const [evacuating, setEvacuating] = useState(false);
   const n = nodes.data?.nodes.find((x) => x.id === id);
   const tab: Tab = TABS.some(([k]) => k === tabParam) ? (tabParam as Tab) : "summary";
 
@@ -45,7 +44,6 @@ export default function NodeDetail() {
 
   const online = n.state === "online";
   const name = n.hostname || n.addr;
-  const toggleMaintenance = () => act.run(() => put(`/nodes/${n.id}/maintenance`, { on: !n.maintenance }));
   const remove = async () => {
     if (!(await confirm.ask({ title: `Remove node ${name}`, message: `The node ${name} is removed from this controller. Its virtual machines keep running; they just stop being shown here.`, confirm: "Remove node" }))) return;
     if (await act.run(() => del(`/nodes/${n.id}`))) nav("/nodes");
@@ -69,14 +67,7 @@ export default function NodeDetail() {
         </div>
         {admin && (
           <div className="actions">
-            {online && (
-              <button onClick={() => setEvacuating(true)} title="Move the virtual machines of this node to the others">
-                Evacuate
-              </button>
-            )}
-            <button onClick={toggleMaintenance} disabled={act.busy} title="A node in maintenance is never chosen as a migration or evacuation target">
-              {n.maintenance ? "End maintenance" : "Maintenance"}
-            </button>
+            <MaintenanceActions n={n} nodes={nodes.data.nodes} />
             <button className="danger" onClick={remove} disabled={act.busy}>
               Remove
             </button>
@@ -105,10 +96,9 @@ export default function NodeDetail() {
           {tab === "storage" && <Storage fixedNode={id} />}
           {tab === "network" && <NetworkTab id={id} />}
           {tab === "updates" && <HostUpdates node={id} online={online} />}
-          {tab === "settings" && <Settings n={n} admin={admin} onMaintenance={toggleMaintenance} onRemove={remove} busy={act.busy} />}
+          {tab === "settings" && <Settings n={n} admin={admin} />}
         </>
       )}
-      {evacuating && nodes.data && <Evacuate node={n} nodes={nodes.data.nodes} onClose={() => setEvacuating(false)} />}
     </>
   );
 }
@@ -267,40 +257,15 @@ function NetworkTab({ id }: { id: number }) {
   );
 }
 
-function Settings({ n, admin, onMaintenance, onRemove, busy }: { n: NodeStatus; admin: boolean; onMaintenance: () => void; onRemove: () => void; busy: boolean }) {
+function Settings({ n, admin }: { n: NodeStatus; admin: boolean }) {
   const online = n.state === "online";
   return (
     <div className="cards">
       <ConnectionCard n={n} admin={admin} />
       <div className="card">
-        <h3>Maintenance</h3>
-        <p className="muted">A node in maintenance is never chosen as a migration or evacuation target.</p>
-        <p>{n.maintenance ? "This node is in maintenance." : "This node is available as a target."}</p>
-        {admin && (
-          <button onClick={onMaintenance} disabled={busy}>
-            {n.maintenance ? "End maintenance" : "Start maintenance"}
-          </button>
-        )}
-      </div>
-      <div className="card">
         <h3>Encrypted migration</h3>
         {online ? <MigrationTLS node={n.id} online={online} admin={admin} /> : <p className="muted">Needs a connection to the node.</p>}
       </div>
-      <div className="card">
-        <h3>Passthrough and topology</h3>
-        <p className="muted">
-          Host devices for passthrough and the NUMA layout are listed per virtual machine, under its Hardware and Tuning tabs. Open a VM of this node from the <Link to={`/node/${n.id}/vms`}>VM tab</Link>.
-        </p>
-      </div>
-      {admin && (
-        <div className="card">
-          <h3>Remove node</h3>
-          <p className="muted">Its virtual machines keep running; they just stop being shown here.</p>
-          <button className="danger" onClick={onRemove} disabled={busy}>
-            Remove node
-          </button>
-        </div>
-      )}
     </div>
   );
 }

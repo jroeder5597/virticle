@@ -43,6 +43,9 @@ type Node struct {
 	// HostUUID is the libvirt host UUID last seen on this node, used to tell
 	// whether an edited address still leads to the same machine.
 	HostUUID string `json:"hostUuid,omitempty"`
+	// MigTLSOff is set when encrypted migration was removed from the node by hand: the controller then
+	// does not install the migration certificate again until it is asked to.
+	MigTLSOff bool `json:"migTlsOff,omitempty"`
 }
 
 type Task struct {
@@ -98,7 +101,7 @@ func (s *Store) Close() error { return s.db.Close() }
 // --- nodes ---
 
 func (s *Store) Nodes() ([]Node, error) {
-	rows, err := s.db.Query(`SELECT id, addr, user, jump, maintenance, privilege, migration_addr, host_uuid FROM nodes ORDER BY id`)
+	rows, err := s.db.Query(`SELECT id, addr, user, jump, maintenance, privilege, migration_addr, host_uuid, migtls_off FROM nodes ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +109,7 @@ func (s *Store) Nodes() ([]Node, error) {
 	var out []Node
 	for rows.Next() {
 		var n Node
-		if err := rows.Scan(&n.ID, &n.Addr, &n.User, &n.Jump, &n.Maintenance, &n.Privilege, &n.MigrationAddr, &n.HostUUID); err != nil {
+		if err := rows.Scan(&n.ID, &n.Addr, &n.User, &n.Jump, &n.Maintenance, &n.Privilege, &n.MigrationAddr, &n.HostUUID, &n.MigTLSOff); err != nil {
 			return nil, err
 		}
 		out = append(out, n)

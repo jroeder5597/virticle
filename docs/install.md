@@ -138,7 +138,7 @@ To build from source, run `make build` (needs Go and Node.js). The result is
    characters.
 3. Add nodes. If this machine will run your VMs too, choose **Set up this
    machine as a node** on the **Datacenter** page (SSH must be running on it;
-   the administrator login is used once). Otherwise prepare each node from the **Nodes** page or with
+   the administrator login is used once). Otherwise add each node from the **Nodes** page (**Add node**) or prepare it with
    `virticle node prepare`. [install-node.md](install-node.md) describes the
    preparation.
 
@@ -185,11 +185,11 @@ Steps:
 1. Install the new controller package, or replace the binary, and restart the
    controller. See [Upgrade and rollback](#upgrade-and-rollback).
 2. For each node, prepare it again. Use either way:
-   - In the web UI: **Nodes > Add node > Prepare this node**.
+   - In the web UI: open the node, then **Settings > Prepare this node**.
    - In a shell: `virticle node prepare admin@host`. Add `--root` if the node
      is a Root node.
-3. Open the node in the web UI and choose **Settings > Test connection**. The
-   **Node access** row shows how the node is reached.
+3. Open the node in the web UI. **Settings** no longer warns that the node is
+   not prepared.
 
 A node that you added with full sudo, or as root without preparing it, needs
 the same step. Nodes that 0.2.0 prepared keep their account `virticle` when you

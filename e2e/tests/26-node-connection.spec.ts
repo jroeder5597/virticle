@@ -3,7 +3,7 @@
 // refuses a wrong address with the connection error without saving anything.
 import { cleanVMs, createCirros, expect, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
-import { cancelConfirm, confirm, dialog, field } from "../lib/ui";
+import { dialog, field } from "../lib/ui";
 
 const VM = `${P}conn1`;
 
@@ -12,15 +12,20 @@ test.describe.serial("node connection", () => {
     await cleanVMs(api, VM);
   });
 
-  test("the Settings tab shows address, hostname, resolved IP, migration address and the node access", async ({ page, api, n1 }) => {
+  test("the Settings tab shows address, SSH user and state, and the rest under Details", async ({ page, api, n1 }) => {
     const node = (await api.nodes()).find((n) => n.id === n1)!;
     await page.goto(`/node/${n1}/settings`);
     const card = page.locator(".card", { has: page.getByRole("heading", { name: "Connection", exact: true }) });
     await expect(card).toBeVisible();
     await expect(card.locator("dt", { hasText: /^Address$/ })).toBeVisible();
     await expect(card).toContainText(node.addr);
-    for (const k of ["Reported hostname", "Resolved IP", "Migration address", "SSH user", "Jump host", "Node access"]) await expect(card.locator("dt", { hasText: new RegExp(`^${k}$`) })).toBeVisible();
-    await expect(card).toContainText(/Root: the controller signs in as root|Service account: the account may run|Not prepared: no node command/);
+    for (const k of ["SSH user", "State"]) await expect(card.locator("dt", { hasText: new RegExp(`^${k}$`) })).toBeVisible();
+    // the rest is folded away until asked for
+    await expect(card.locator("dt", { hasText: /^Resolved IP$/ })).toBeHidden();
+    await card.getByText("Details", { exact: true }).click();
+    for (const k of ["Reported hostname", "Resolved IP", "Migration address", "Jump host"]) await expect(card.locator("dt", { hasText: new RegExp(`^${k}$`) })).toBeVisible();
+    await expect(card.locator("dt", { hasText: /^Node access$/ })).toHaveCount(0);
+    await expect(card.getByRole("button", { name: "Forget host key" })).toHaveCount(0); // only next to a host key error
     const info = await api.get(`/nodes/${n1}`);
     expect(["root", "helper", "none"]).toContain(info.privilege);
     expect(info.hostUuid).toMatch(/^[0-9a-f-]{36}$/);
@@ -33,11 +38,14 @@ test.describe.serial("node connection", () => {
     await page.goto(`/node/${n1}/settings`);
     await page.getByRole("button", { name: "Edit connection" }).click();
     const dlg = dialog(page, "Edit connection");
-    await expect(dlg.locator(".keybox code")).toContainText("ssh-ed25519"); // the controller's public key, as in Add node
+    await expect(field(dlg, "Node access")).toHaveCount(0); // detected, not chosen
+    await dlg.getByText("Advanced", { exact: true }).click();
+    await expect(dlg.locator(".keybox code")).toContainText("ssh-ed25519"); // the controller's public key
     await field(dlg, "Address").fill("192.168.150.99");
     await dlg.getByRole("button", { name: "Save" }).click();
     await expect(dlg.locator(".error")).toContainText("connection test failed", { timeout: 30_000 });
     await expect(dlg.locator(".error")).toContainText("192.168.150.99");
+    await expect(dlg.getByRole("button", { name: "Save anyway" })).toBeVisible(); // only after a failed save
     await page.keyboard.press("Escape");
     const after = (await api.nodes()).find((n) => n.id === n1)!;
     expect(after.addr).toBe(before.addr);
@@ -57,6 +65,7 @@ test.describe.serial("node connection", () => {
     await page.getByRole("button", { name: "Edit connection" }).click();
     const dlg = dialog(page, "Edit connection");
     await field(dlg, "SSH user").fill(before.user); // the same values typed again
+    await dlg.getByText("Advanced", { exact: true }).click();
     await field(dlg, "Jump host (optional)").fill(before.jump ?? "");
     await field(dlg, "Migration address (optional)").fill(before.addr);
     await dlg.getByRole("button", { name: "Test connection" }).click();
@@ -77,12 +86,10 @@ test.describe.serial("node connection", () => {
     await expect.poll(async () => (await api.nodes()).find((n) => n.id === n1)?.state, { timeout: 60_000 }).toBe("online");
   });
 
-  test("forget host key asks first, then reconnects and trusts the key again", async ({ page, api, n1 }) => {
+  test("forget host key is not offered for a healthy node, and the endpoint reconnects the node", async ({ page, api, n1 }) => {
     await page.goto(`/node/${n1}/settings`);
-    await page.getByRole("button", { name: "Forget host key" }).click();
-    await cancelConfirm(page, "Forget host key");
-    await page.getByRole("button", { name: "Forget host key" }).click();
-    await confirm(page, "Forget host key");
+    await expect(page.getByRole("button", { name: "Forget host key" })).toHaveCount(0);
+    await api.post(`/nodes/${n1}/forget-host-key`, {});
     await expect.poll(async () => (await api.nodes()).find((n) => n.id === n1)?.state, { timeout: 60_000 }).toBe("online");
     await expect(page.locator(".error")).toHaveCount(0);
   });

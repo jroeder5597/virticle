@@ -1,14 +1,12 @@
 import { useEffect, useState } from "react";
 import { bytes, EvacPlan, EvacRun, get, NodeStatus, post } from "../api";
-import Select from "../Select";
+import DialogAdvanced from "./DialogAdvanced";
 import { ErrorBox, Modal, StateBadge, useAction, useConfirm } from "../ui";
 import { CheckList, StatusLine } from "../Checks";
 
 /** Plan and run the evacuation of one node. */
 export default function Evacuate({ node, nodes, onClose }: { node: NodeStatus; nodes: NodeStatus[]; onClose: () => void }) {
-  const [includeShutOff, setIncludeShutOff] = useState(true);
   const [targets, setTargets] = useState<Record<number, boolean>>({});
-  const [concurrency, setConcurrency] = useState(1);
   const [plan, setPlan] = useState<EvacPlan | undefined>();
   const [picked, setPicked] = useState<Record<string, boolean>>({});
   const [run, setRun] = useState<EvacRun | undefined>();
@@ -17,19 +15,26 @@ export default function Evacuate({ node, nodes, onClose }: { node: NodeStatus; n
   const cancel = useAction();
   const confirm = useConfirm();
   const others = nodes.filter((n) => n.id !== node.id);
-  const chosen = others.filter((n) => targets[n.id] !== false).map((n) => n.id);
+  const eligible = (n: NodeStatus) => n.state === "online" && !n.maintenance;
+  const chosen = others.filter((n) => eligible(n) && targets[n.id] !== false).map((n) => n.id);
+  const chosenKey = chosen.join(",");
   const name = node.hostname || node.addr;
 
   const runCheck = async () => {
     setPlan(undefined);
     await check.run(async () => {
-      const p = await post<EvacPlan>(`/nodes/${node.id}/evacuate/check`, { targets: chosen, includeShutOff });
+      const p = await post<EvacPlan>(`/nodes/${node.id}/evacuate/check`, { targets: chosen, includeShutOff: true });
       setPlan(p);
       const all: Record<string, boolean> = {};
       [...p.assignments.map((a) => a.vm), ...p.blocked.map((b) => b.vm)].forEach((v) => (all[v.uuid] = true));
       setPicked(all);
     });
   };
+
+  // The check runs when the dialog opens and again when the choice of targets changes.
+  useEffect(() => {
+    if (!run && chosen.length > 0) runCheck();
+  }, [chosenKey]);
 
   // Pick up a run that is already going (or just ended) when the dialog opens.
   useEffect(() => {
@@ -47,7 +52,7 @@ export default function Evacuate({ node, nodes, onClose }: { node: NodeStatus; n
   const go = async () => {
     const vms = Object.keys(picked).filter((u) => picked[u]);
     await start.run(async () => {
-      await post(`/nodes/${node.id}/evacuate`, { targets: chosen, vms, includeShutOff, concurrency });
+      await post(`/nodes/${node.id}/evacuate`, { targets: chosen, vms, includeShutOff: true });
       const r = await get<{ run: EvacRun | null }>(`/nodes/${node.id}/evacuate`);
       if (r.run) setRun(r.run);
     });
@@ -58,37 +63,10 @@ export default function Evacuate({ node, nodes, onClose }: { node: NodeStatus; n
     <Modal title={`Evacuate ${name}`} onClose={onClose} wide>
       {!run && (
         <>
-          <p>
-            Moves the virtual machines of this node to other nodes with the normal migration (every move gets its own task and pre-flight). Nodes in maintenance are never used as a
-            target.
-          </p>
-          <div className="evacopts">
-            <div>
-              <strong>Targets</strong>
-              {others.length === 0 && <div className="muted">There is no other node.</div>}
-              {others.map((n) => (
-                <label key={n.id} className="check">
-                  <input type="checkbox" checked={targets[n.id] !== false} disabled={n.state !== "online" || n.maintenance} onChange={(e) => setTargets({ ...targets, [n.id]: e.target.checked })} />
-                  {n.hostname || n.addr}
-                  {n.state !== "online" && <StateBadge state={n.state} />}
-                  {n.maintenance && <span className="badge maint">Maintenance</span>}
-                </label>
-              ))}
-            </div>
-            <div>
-              <label className="check">
-                <input type="checkbox" checked={includeShutOff} onChange={(e) => setIncludeShutOff(e.target.checked)} />
-                Include VMs that are shut off
-              </label>
-              <label className="check">
-                Moves at the same time
-                <Select auto label="Moves at the same time" value={String(concurrency)} onChange={(v) => setConcurrency(Number(v))} options={[1, 2, 3].map((n) => ({ value: String(n), label: String(n) }))} />
-              </label>
-            </div>
-          </div>
-          <button onClick={runCheck} disabled={check.busy || others.length === 0}>
-            {check.busy ? "Checking" : plan ? "Check again" : "Check what can move"}
-          </button>
+          <p>Moves the virtual machines of this node to the other nodes with the normal migration; nodes in maintenance are never used.</p>
+          {others.length === 0 && <div className="muted">There is no other node.</div>}
+          {others.length > 0 && chosen.length === 0 && <div className="muted">No other node is available as a target.</div>}
+          {check.busy && !plan && <p className="muted">Checking</p>}
           <ErrorBox error={check.error} />
           {plan && (
             <div className="evacplan">
@@ -130,15 +108,26 @@ export default function Evacuate({ node, nodes, onClose }: { node: NodeStatus; n
                 </tbody>
               </table>
               {plan.assignments.length + plan.blocked.length === 0 && <div className="muted">This node has no virtual machines to move.</div>}
-              <ErrorBox error={start.error} />
-              <footer>
-                <button onClick={onClose}>Close</button>
-                <button className="primary" onClick={go} disabled={start.busy || plan.assignments.every((a) => !picked[a.vm.uuid])}>
-                  Evacuate {plan.assignments.filter((a) => picked[a.vm.uuid]).length} VM(s)
-                </button>
-              </footer>
             </div>
           )}
+          <DialogAdvanced>
+            <strong>Targets</strong>
+            {others.map((n) => (
+              <label key={n.id} className="check">
+                <input type="checkbox" checked={eligible(n) && targets[n.id] !== false} disabled={!eligible(n)} onChange={(e) => setTargets({ ...targets, [n.id]: e.target.checked })} />
+                {n.hostname || n.addr}
+                {n.state !== "online" && <StateBadge state={n.state} />}
+                {n.maintenance && <span className="badge maint">Maintenance</span>}
+              </label>
+            ))}
+          </DialogAdvanced>
+          <ErrorBox error={start.error} />
+          <footer>
+            <button onClick={onClose}>Close</button>
+            <button className="primary" onClick={go} disabled={start.busy || !plan || plan.assignments.every((a) => !picked[a.vm.uuid])}>
+              Evacuate {plan ? plan.assignments.filter((a) => picked[a.vm.uuid]).length : 0} VM(s)
+            </button>
+          </footer>
         </>
       )}
       {run && (

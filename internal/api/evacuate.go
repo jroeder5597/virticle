@@ -27,7 +27,7 @@ import (
 type evacReq struct {
 	Targets        []int64  `json:"targets"`
 	VMs            []string `json:"vms"`
-	IncludeShutOff bool     `json:"includeShutOff"`
+	IncludeShutOff *bool    `json:"includeShutOff"` // absent: shut-off VMs are included
 	Concurrency    int      `json:"concurrency"`
 	// Encrypt is passed to every move (see migReq.Encrypt); nil picks
 	// encryption where both nodes are set up for it.
@@ -102,7 +102,7 @@ func (s *Server) buildEvacPlan(srcID int64, src *hostconn.Host, req evacReq) (ev
 		domByUUID[uuid] = d
 		all = append(all, evacVM{UUID: uuid, Name: d.Name, State: stateName(state), MemoryKiB: maxMem})
 	}
-	vms, err := selectEvacVMs(all, req.VMs, req.IncludeShutOff)
+	vms, err := selectEvacVMs(all, req.VMs, req.IncludeShutOff == nil || *req.IncludeShutOff)
 	if err != nil {
 		return out, nil, badRequest(err.Error())
 	}

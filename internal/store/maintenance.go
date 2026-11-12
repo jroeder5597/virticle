@@ -30,7 +30,29 @@ func migrateNodes(tx *sql.Tx) error {
 			return err
 		}
 	}
+	if len(have) > 0 && !have["migtls_off"] {
+		if _, err = tx.Exec(`ALTER TABLE nodes ADD COLUMN migtls_off INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
 	return migrateNodeConnection(tx, have)
+}
+
+// SetMigTLSOff records that encrypted migration was removed from a node by hand, so the
+// controller does not set it up again until an administrator asks for it.
+func (s *Store) SetMigTLSOff(id int64, off bool) error {
+	v := 0
+	if off {
+		v = 1
+	}
+	res, err := s.db.Exec(`UPDATE nodes SET migtls_off=? WHERE id=?`, v, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // SetMaintenance marks or unmarks a node as being in maintenance.

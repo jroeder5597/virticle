@@ -1,4 +1,4 @@
-// Nodes page: host updates, maintenance toggle, evacuation of one prefixed VM.
+// Nodes page: maintenance (one action, with the offer to move the VMs), evacuation of one prefixed VM.
 import { cleanVMs, createCirros, expect, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
 import { dialog, row } from "../lib/ui";
@@ -30,17 +30,31 @@ test.describe.serial("nodes", () => {
   test("maintenance toggles on and off and the evacuation dialog honours it", async ({ page, api, n1, n2 }) => {
     await page.goto("/nodes");
     const r2 = row(page, env.node2);
+    // one Maintenance action; a separate Evacuate button exists only for a node that is already in maintenance
+    await expect(r2.getByRole("button", { name: "Evacuate" })).toHaveCount(0);
     await r2.getByRole("button", { name: "Maintenance", exact: true }).click();
+    // a node with VMs offers to move them in the same step: not now
+    const ask = dialog(page, `Maintenance on ${env.node2}`);
+    await expect(r2.locator(".badge.maint").or(ask)).toBeVisible();
+    if (await ask.isVisible()) {
+      await ask.getByLabel(/Move its virtual machines to other nodes/).uncheck();
+      await ask.getByRole("button", { name: "Start maintenance" }).click();
+    }
     await expect(r2.locator(".badge.maint")).toBeVisible();
     expect((await api.nodes()).find((n) => n.id === n2)?.maintenance).toBe(true);
     // a node in maintenance is not offered as an evacuation target
+    await api.put(`/nodes/${n1}/maintenance`, { on: true });
+    await page.goto("/nodes");
     await row(page, env.node1).getByRole("button", { name: "Evacuate" }).click();
     const dlg = dialog(page, `Evacuate ${env.node1}`);
+    await dlg.getByText("Advanced", { exact: true }).click();
     await expect(dlg.locator("label.check", { hasText: env.node2 }).locator("input")).toBeDisabled();
     await expect(dlg.locator("label.check", { hasText: env.node2 }).locator(".badge.maint")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(dlg).toBeHidden();
-    // turn it off again
+    // turn both off again
+    await api.put(`/nodes/${n1}/maintenance`, { on: false });
+    await page.goto("/nodes");
     await r2.getByRole("button", { name: "End maintenance" }).click();
     await expect(r2.locator(".badge.maint")).toHaveCount(0);
     await expect(r2.getByRole("button", { name: "Maintenance", exact: true })).toBeVisible();
@@ -51,10 +65,12 @@ test.describe.serial("nodes", () => {
     test.setTimeout(300_000);
     const vm = await createCirros(api, n1, VM);
     await page.goto("/nodes");
-    await row(page, env.node1).getByRole("button", { name: "Evacuate" }).click();
+    // Maintenance on node 1 offers, in the same step, to move its VMs: that opens the plan, which is checked at once
+    await row(page, env.node1).getByRole("button", { name: "Maintenance", exact: true }).click();
+    const ask = dialog(page, `Maintenance on ${env.node1}`);
+    await expect(ask.getByLabel(/Move its virtual machines to other nodes/)).toBeChecked();
+    await ask.getByRole("button", { name: "Start maintenance" }).click();
     const dlg = dialog(page, `Evacuate ${env.node1}`);
-    // only the second node as the target
-    await dlg.getByRole("button", { name: "Check what can move" }).click();
     const plan = dlg.locator(".evacplan");
     await expect(plan).toBeVisible({ timeout: 90_000 });
     await expect(plan.locator("tbody tr", { hasText: VM })).toContainText(env.node2);

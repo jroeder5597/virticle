@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Lock } from "lucide-react";
 import { del, get, post } from "../api";
+import { useEvents } from "../live";
 import { useAction, useConfirm } from "../ui";
-import { CheckList, StatusLine } from "../Checks";
+import { CheckList, CheckStatus, StatusLine } from "../Checks";
 
 export interface MigTLS {
   state: "not set up" | "ok" | "expiring" | "expired" | "mismatch";
@@ -13,19 +13,22 @@ export interface MigTLS {
   notes?: string[];
   changes?: string[];
   note?: string;
+  /** Removed by hand: the controller does not set it up again until Fix. */
+  off?: boolean;
+  /** The last failure of the automatic setup. */
+  autoError?: string;
   daysLeft?: number;
   cert?: { subject: string; issuer: string; dnsNames: string[]; ips: string[]; notAfter: string; fingerprint: string };
   files?: { name: string; owner: string; mode: string }[];
 }
 
-const badgeClass = { "not set up": "", ok: "s-ok", expiring: "s-paused", expired: "s-failed", mismatch: "s-failed" };
-
-/** Encrypted-migration status of one node, with the admin actions to set it up, issue it again and remove it. */
+/**
+ * Encrypted-migration status of one node. The controller sets it up and renews it by itself; this shows one status line and, under
+ * Details, what is installed with Fix (when something is wrong) and Remove. A certificate removed by hand stays removed until Fix.
+ */
 export default function MigrationTLS({ node, online, admin }: { node: number; online: boolean; admin: boolean }) {
   const [st, setSt] = useState<MigTLS | undefined>();
   const [err, setErr] = useState<string | undefined>();
-  const [open, setOpen] = useState(false);
-  const [done, setDone] = useState<MigTLS | undefined>();
   const act = useAction();
   const confirm = useConfirm();
   const load = () =>
@@ -40,65 +43,63 @@ export default function MigrationTLS({ node, online, admin }: { node: number; on
     setSt(undefined);
     if (online) load();
   }, [node, online]);
+  // The controller works in the background: refresh when it reports a result for this node.
+  useEvents((e) => {
+    if (online && e.type === "node" && e.node === node && e.detail === "migration-tls") load();
+  });
   if (!online) return null;
   if (err) return <StatusLine status="error">Encrypted migration: {err}</StatusLine>;
   if (!st) return <span className="muted">Checking</span>;
 
-  const setup = (force: boolean) =>
+  const fix = (force: boolean) =>
     act.run(async () => {
-      setDone(await post<MigTLS>(`/nodes/${node}/migration-tls`, { force }));
+      await post<MigTLS>(`/nodes/${node}/migration-tls`, { force });
       await load();
     });
   const remove = () =>
     act.run(async () => {
-      setDone(await del<MigTLS>(`/nodes/${node}/migration-tls`));
+      await del<MigTLS>(`/nodes/${node}/migration-tls`);
       await load();
     });
-  // The node's address changed and the certificate does not cover it: the files are ours and unmodified, so issuing again is safe and needs no repair.
+  // The node's address changed and the certificate does not cover it: the files are ours and unmodified, so issuing again is safe.
   const addressOnly = st.state === "mismatch" && (st.problems ?? []).length > 0 && (st.problems ?? []).every((p) => p.includes("does not cover"));
-  const label = st.state === "ok" ? "encrypted" : st.state === "expiring" ? `expires in ${st.daysLeft} days` : st.state;
+  const wrong = st.state !== "ok";
+  const status: CheckStatus = st.state === "ok" ? "ok" : st.state === "not set up" ? (st.off ? "info" : "warning") : st.state === "expiring" ? "warning" : "error";
+  const word =
+    st.state === "ok"
+      ? "Encrypted"
+      : st.state === "expiring"
+        ? `Expires in ${st.daysLeft} days`
+        : st.state === "not set up"
+          ? st.off
+            ? "Off"
+            : "Not set up"
+          : st.state === "expired"
+            ? "Expired"
+            : "Needs repair";
+  const doFix = async () => {
+    if (st.state === "mismatch" && !addressOnly) {
+      const ok = await confirm.ask({
+        title: "Fix encrypted migration",
+        message: `The certificate files in ${st.dir} on ${st.hostname} are replaced. Existing files that this server did not create are kept as *.virticle-orig.`,
+        items: st.problems ?? [],
+        confirm: "Replace certificates",
+      });
+      if (ok) await fix(true);
+      return;
+    }
+    await fix(false);
+  };
   return (
     <div className="migtls">
-      <button className="link" onClick={() => setOpen(!open)} aria-expanded={open} title="TLS for the memory and disk streams of live migrations">
-        <span className={`badge ${badgeClass[st.state]}`}>
-          {(st.state === "ok" || st.state === "expiring") && <Lock size={12} aria-hidden="true" />}{" "}
-          {label}
-        </span>
-      </button>
-      {admin && st.state === "not set up" && (
-        <button disabled={act.busy} onClick={() => setup(false)} title="Create a certificate for this node and install it where libvirt and QEMU read it. qemu.conf is not changed.">
-          Set up encrypted migration
-        </button>
-      )}
-      {admin && (st.state === "ok" || st.state === "expiring" || st.state === "expired" || addressOnly) && (
-        <button disabled={act.busy} onClick={() => setup(false)}>
-          Re-issue
-        </button>
-      )}
-      {admin && st.state === "mismatch" && !addressOnly && (
-        <button
-          disabled={act.busy}
-          onClick={async () => (await confirm.ask({ title: "Repair encrypted migration", message: `The certificate files in ${st.dir} on ${st.hostname} are replaced. Existing files that this server did not create are kept as *.virticle-orig.`, items: st.problems ?? [], confirm: "Replace certificates" })) && setup(true)}
-        >
-          Repair
-        </button>
-      )}
-      {admin && st.state !== "not set up" && (
-        <button
-          className="danger"
-          disabled={act.busy}
-          onClick={async () => (await confirm.ask({ title: "Remove encrypted migration", message: `The migration certificates this server installed on ${st.hostname} are removed. Live migrations to and from it will be unencrypted.`, confirm: "Remove certificates" })) && remove()}
-        >
-          Remove
-        </button>
-      )}
-      {confirm.dialog}
-      {act.error && <StatusLine status="error">{act.error}</StatusLine>}
-      {st.problems && st.problems.length > 0 && (
-        <CheckList summary={false} label="Encrypted migration problems" items={st.problems.map((p) => ({ status: st.state === "expiring" ? "warning" : "error", detail: p }))} />
-      )}
-      {open && (
+      <StatusLine status={status}>{word}</StatusLine>
+      <details open={wrong}>
+        <summary>Details</summary>
         <div className="updlist">
+          {st.autoError && <StatusLine status="warning">Automatic setup failed: {st.autoError}</StatusLine>}
+          {st.problems && st.problems.length > 0 && (
+            <CheckList summary={false} label="Encrypted migration problems" items={st.problems.map((p) => ({ status: st.state === "expiring" ? "warning" : "error", detail: p }))} />
+          )}
           {st.cert ? (
             <ul>
               <li>
@@ -112,14 +113,34 @@ export default function MigrationTLS({ node, online, admin }: { node: number; on
           ) : (
             <div className="muted">No certificate installed by this server.</div>
           )}
-          <small>
-            Directory <code>{st.dir}</code>, key readable by <code>{st.qemuUser ?? "?"}</code>. {(st.notes ?? []).join(" ")}
-          </small>
+          {act.error && <StatusLine status="error">{act.error}</StatusLine>}
+          {admin && (
+            <div className="actions">
+              {wrong && (
+                <button disabled={act.busy} onClick={doFix}>
+                  Fix
+                </button>
+              )}
+              {st.state !== "not set up" && (
+                <button
+                  className="danger"
+                  disabled={act.busy}
+                  onClick={async () =>
+                    (await confirm.ask({
+                      title: "Remove encrypted migration",
+                      message: `The migration certificates this server installed on ${st.hostname} are removed. Live migrations to and from it will be unencrypted until you press Fix.`,
+                      confirm: "Remove certificates",
+                    })) && remove()
+                  }
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          )}
         </div>
-      )}
-      {done && done.changes && (
-        <StatusLine status="ok">Done: {done.changes.join("; ")}.</StatusLine>
-      )}
+      </details>
+      {confirm.dialog}
     </div>
   );
 }

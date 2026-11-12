@@ -49,30 +49,29 @@ nodes use that address for migrations; change it if they cannot reach it.
 To add another host:
 
 1. Open **Nodes**, then **Add node**.
-2. For a new host, choose **Prepare this node**. It installs libvirt, QEMU,
-   the guest disk tools and the node command (`virticle-node`), and sets up
-   the access the controller needs. Choose **Check** to see what would
-   change, then **Prepare**. The only option is **Root access instead of a
-   service account**; leave it off unless you want Root. See
-   [install-node.md](install-node.md).
-3. When prepare has finished, choose **Add this node**.
-4. For a host that is already prepared, enter its address and SSH user
-   (`virticle-node` for a Service account, `root` for Root) and choose
-   **Add**. A node prepared by version 0.2.0 uses `virticle`.
+2. Enter the address and an administrator login. **Add node** installs
+   libvirt, QEMU, the guest disk tools and the node command
+   (`virticle-node`) if they are missing, sets up the access the controller
+   needs, and adds the node. Choose **Check** first to see what would change.
+   The only option is **Root access instead of a service account**; leave it
+   off unless you want Root. See [install-node.md](install-node.md).
+3. For a host that you already prepared in a shell, open **Advanced** and
+   choose **Already prepared**. Enter its address and SSH user
+   (`virticle-node` for a Service account, `root` for Root). A node prepared
+   by version 0.2.0 uses `virticle`.
 
 ![Add node dialog](img/add-node.png)
 
-Run prepare again when the controller says a node was "prepared by an older
-version".
+When the node's **Settings** say it was prepared by an older version, choose
+**Prepare this node** there.
 
 What you can do with a node:
 
 | To do this | Do this |
 | --- | --- |
 | See a node's summary, VMs, storage, networks, updates and settings | Click the node. |
-| Find out why a node is Offline | **Settings > Test connection**. It runs each connection step and shows which one fails. The **Node access** row says whether the node is reached as a Service account, as Root, or is not prepared. |
-| Keep new migrations away from a node | **Maintenance**. The node is never chosen as a migration target. |
-| Empty a node | **Evacuate**. It live-migrates the node's VMs to the other nodes. |
+| Find out why a node is Offline | **Settings > Test connection**. It runs each connection step and shows which one fails. **Settings** warns when the node is not prepared. |
+| Keep new migrations away from a node, or empty it | **Maintenance**. The node is never chosen as a migration target. When the node has VMs, tick **Move its virtual machines to other nodes** to live-migrate them away. **Evacuate** appears while a node is in maintenance. |
 
 ## Virtual machines
 
@@ -192,8 +191,9 @@ Good to know:
   | **SSH between nodes** | Whether a file copy is needed and whether the path works. |
   | **Migration ports** | Whether the target's firewall lets the migration data through. |
 
-- To encrypt the streams, set up encrypted migration for both nodes on the
-  Nodes page.
+- The streams are encrypted when both nodes are set up. The controller sets
+  this up by itself on every prepared node; see **Settings > Encrypted
+  migration** on the node.
 - A Debian node and a RHEL-family node cannot exchange VMs.
 
 ## Storage
@@ -232,7 +232,7 @@ Good to know:
 | Node shows Offline | Node **Settings > Test connection**. It names the failing step. |
 | Guest agent "Not responding" | Install and start `qemu-guest-agent` in the VM. |
 | Migration blocked | Read the red pre-flight row. Usually a missing network or pool on the target, or a firewall between the nodes (SSH between nodes, Migration ports). |
-| Migration or backup refused for a node | **Node access** says Not prepared: the node has no node command, or one from an older version. Run `virticle node prepare` for it again (see [install.md](install.md#upgrading-from-010)). |
+| Migration or backup refused for a node | **Settings** says the node is not prepared: it has no node command, or one from an older version. Choose **Prepare this node** there, or run `virticle node prepare` for it again (see [install.md](install.md#upgrading-from-010)). |
 | Locked out after a web access change | Wait 60 seconds for the automatic revert, or run `virticle web reset` and restart. |
 | "No ISO images on this node" | Upload one under **Storage**. |
 | A task failed | **Tasks** shows the libvirt error in the Result column. |

@@ -58,6 +58,7 @@ type Server struct {
 	limiter *limiter
 	shots   shotCache
 	cpuBase baselineState
+	migAuto *migTLSAuto // automatic encrypted-migration setup (migtlsauto.go)
 }
 
 type ctxKey struct{}
@@ -66,6 +67,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.startSnapshotScheduler()
 	s.startAlerts()
+	s.startMigAuto()
 	s.startCPUBaseline()
 	s.routes = nil
 	pub := func(pattern string, h http.HandlerFunc) {

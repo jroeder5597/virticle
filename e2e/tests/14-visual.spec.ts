@@ -320,22 +320,25 @@ test.describe.serial("visual pass", () => {
       // the Edit connection dialog of the node page's Settings tab, and its Test connection result
       await page.goto(`/node/${vm.node}/settings`);
       await page.getByRole("button", { name: "Edit connection" }).click();
-      await shot("node-edit-connection-dialog", () => expect(page.getByRole("dialog", { name: "Edit connection" }).locator(".keybox code")).toContainText("ssh-ed25519"));
+      await shot("node-edit-connection-dialog", () => expect(page.getByRole("dialog", { name: "Edit connection" }).getByLabel("SSH user")).toBeVisible());
       await page.getByRole("dialog", { name: "Edit connection" }).getByRole("button", { name: "Test connection" }).click();
       await shot("node-edit-connection-tested", () => expect(page.getByRole("dialog", { name: "Edit connection" }).locator("ul.checklist")).toContainText("Node access", { timeout: 30_000 }));
       await page.keyboard.press("Escape");
       // Prepare node: the form, then the result of a check against a lab node (needs the administrator key)
       await page.goto("/nodes");
       await page.getByRole("button", { name: "Add node" }).click();
-      await page.getByRole("dialog", { name: "Add node" }).getByRole("button", { name: "Prepare this node" }).click();
-      await shot("prepare-node-form", () => expect(page.getByRole("dialog", { name: "Prepare node" })).toBeVisible());
-      await page.getByRole("dialog", { name: "Prepare node" }).getByRole("checkbox", { name: "Root access instead of a service account" }).check();
-      await shot("prepare-node-form-options", () => expect(page.getByRole("dialog", { name: "Prepare node" }).getByRole("checkbox", { name: "Root access instead of a service account" })).toBeChecked());
-      await page.getByRole("dialog", { name: "Prepare node" }).getByRole("checkbox", { name: "Root access instead of a service account" }).uncheck();
+      await shot("prepare-node-form", () => expect(page.getByRole("dialog", { name: "Add node" })).toBeVisible());
+      await page.getByRole("dialog", { name: "Add node" }).getByRole("checkbox", { name: "Root access instead of a service account" }).check();
+      await shot("prepare-node-form-options", () => expect(page.getByRole("dialog", { name: "Add node" }).getByRole("checkbox", { name: "Root access instead of a service account" })).toBeChecked());
+      await page.getByRole("dialog", { name: "Add node" }).getByRole("checkbox", { name: "Root access instead of a service account" }).uncheck();
+      await page.getByRole("dialog", { name: "Add node" }).getByText("Advanced", { exact: true }).click();
+      await page.getByRole("dialog", { name: "Add node" }).getByRole("button", { name: "Already prepared: connect without an administrator login" }).click();
+      await shot("add-node-direct-form", () => expect(page.getByRole("dialog", { name: "Add node" }).getByLabel("SSH user")).toBeVisible());
+      await page.getByRole("dialog", { name: "Add node" }).getByRole("button", { name: "Use an administrator login instead" }).click();
       const adminKey = (() => { try { return readFileSync(process.env.E2E_ADMIN_KEY_FILE ?? "/root/virt-proj/lab/keys/controller", "utf8").trim(); } catch { return ""; } })();
       if (adminKey) {
         const n1 = (await (await page.request.get("/api/nodes")).json()).nodes.find((n: any) => n.hostname === env.node1 || n.addr === env.node1);
-        const dlg = page.getByRole("dialog", { name: "Prepare node" });
+        const dlg = page.getByRole("dialog", { name: "Add node" });
         await field(dlg, "Address").fill(n1.addr);
         await field(dlg, "Jump host (optional)").fill(n1.jump ?? "");
         await pick(dlg, "Credential", "Private key");

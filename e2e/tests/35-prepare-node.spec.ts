@@ -1,5 +1,5 @@
-// Prepare node, Check only, against lab node 1. Read-only: the dialog signs in with an administrator
-// key pasted into it, looks at the host and changes nothing (the Prepare button is never pressed here). The key is a secret for this one run: after
+// The Add node dialog, Check only, against lab node 1. Read-only: the dialog signs in with an administrator
+// key pasted into it, looks at the host and changes nothing (the Add node button is never pressed here). The key is a secret for this one run: after
 // the form is submitted it must be nowhere on the page, in the task list or in the audit log.
 //
 // The administrator key is read from E2E_ADMIN_KEY_FILE (default: the lab's controller key, which is
@@ -28,20 +28,26 @@ test.describe.serial("prepare node, check only", () => {
 
     await page.goto("/nodes");
     await page.getByRole("button", { name: "Add node" }).click();
-    await expect(field(dialog(page, "Add node"), "SSH user")).toHaveValue("virticle-node");
-    await field(dialog(page, "Add node"), "Address").fill(node.addr);
-    await field(dialog(page, "Add node"), "Jump host (optional)").fill(node.jump ?? "");
-    await dialog(page, "Add node").getByRole("button", { name: "Prepare this node" }).click();
-
-    const dlg = dialog(page, "Prepare node");
+    // one dialog: address, administrator user and credential up front; the jump host is under Advanced
+    const dlg = dialog(page, "Add node");
     await expect(dlg).toBeVisible();
-    await expect(field(dlg, "Address")).toHaveValue(node.addr);
+    await expect(dlg.getByRole("button", { name: "Prepare this node" })).toHaveCount(0);
+    await expect(field(dlg, "Administrator user")).toHaveValue("root");
+    await field(dlg, "Address").fill(node.addr);
+    await dlg.getByText("Advanced", { exact: true }).click();
+    await field(dlg, "Jump host (optional)").fill(node.jump ?? "");
     await pick(dlg, "Credential", "Private key");
     await dlg.locator("textarea").fill(key);
-    // one checkbox only (Root access), and the two buttons Check and Prepare
+    // one checkbox only (Root access), and the buttons Cancel, Check and Add node
     await expect(dlg.getByRole("checkbox")).toHaveCount(1);
     await expect(dlg.getByLabel("Root access instead of a service account")).not.toBeChecked();
-    await expect(dlg.getByRole("button", { name: "Prepare", exact: true })).toBeVisible();
+    await expect(dlg.getByRole("button", { name: "Add node", exact: true })).toBeVisible();
+    // the direct form for a node prepared on the command line is one click away
+    await dlg.getByRole("button", { name: "Already prepared: connect without an administrator login" }).click();
+    await expect(field(dlg, "SSH user")).toHaveValue("virticle-node");
+    await expect(dlg.locator("textarea, input[type=password]")).toHaveCount(0);
+    await dlg.getByRole("button", { name: "Use an administrator login instead" }).click();
+    await dlg.locator("textarea").fill(key);
     await dlg.getByRole("button", { name: "Check", exact: true }).click();
 
     // the form is gone and the secret with it
@@ -56,8 +62,7 @@ test.describe.serial("prepare node, check only", () => {
     }
     await expect(list).toContainText("Existing VMs are left alone");
     await expect(list).toContainText(/Debian GNU\/Linux 13|Rocky Linux 10/);
-    await expect(res.getByRole("button", { name: "Add this node" })).toHaveCount(0); // a check does not offer to register
-    await expect(res.getByRole("button", { name: "Prepare", exact: true })).toBeVisible(); // but Prepare is there, without retyping the key
+    await expect(res.getByRole("button", { name: "Add node", exact: true })).toBeVisible(); // Add node is there, without retyping the key
     await expect(list.locator("strong", { hasText: /^Service account$/ })).toBeVisible();
     await expect(res.getByRole("img", { name: "not run" })).toHaveCount(0);
 
