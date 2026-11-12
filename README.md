@@ -16,6 +16,8 @@ manages hosts ("nodes") over SSH and runs no agent on them.
 - **Access**: users with three roles, API tokens, audit log, task log, alerts.
 - **HTTPS**: self-signed, your own certificate, ACME, or behind a reverse proxy.
 
+![Datacenter summary](docs/img/datacenter.png)
+
 Libvirt stays the source of truth: VMs made with `virsh` and VMs made here look
 the same.
 
@@ -67,9 +69,13 @@ the public key shown in the dialog into the SSH user's `authorized_keys`.
 
 ### 4. Create a VM
 
-1. **Storage > (pool) > Download image** and pick a cloud image.
-2. **Virtual machines > New VM**: name, node, image, CPU, memory, network.
+1. **Storage**: select a pool, open **Image catalogue** and download a cloud
+   image.
+2. **Virtual machines > New VM**: name, node, **Disk image**, CPU, memory,
+   network.
 3. Open the VM and use the **Console** tab.
+
+![VM overview](docs/img/vm-overview.png)
 
 ## Everyday use
 
@@ -77,7 +83,10 @@ the public key shown in the dialog into the SSH user's `authorized_keys`.
 - **Tasks panel at the bottom**: every action with progress and result. Long
   actions run in the background.
 - **Status**: a green, yellow or red dot with the word Ok, Warning or Error.
-- **Migrate**: VM menu > Migrate. The pre-flight list says what blocks it.
+- **Migrate**: **Actions > Migrate**. The pre-flight list says what blocks it.
+
+  ![Migration pre-flight](docs/img/migrate.png)
+
 - **Remote access**: **Web access** (admin) switches to HTTPS or a reverse
   proxy without a restart. An unconfirmed change reverts after 60 seconds.
 
@@ -88,12 +97,18 @@ pre-flight check names the fix.
 
 | Topic | File |
 | --- | --- |
+| Using the UI, with screenshots; troubleshooting | [docs/user-guide.md](docs/user-guide.md) |
 | Install, upgrade, rollback, uninstall | [docs/install.md](docs/install.md) |
 | Preparing a node, the helper, manual steps | [docs/install-node.md](docs/install-node.md) |
 | HTTPS, ACME, reverse proxies | [docs/web-tls.md](docs/web-tls.md) |
 | Flags, roles, API tokens, data, schedules, backup format, limits | [docs/reference.md](docs/reference.md) |
 | Building, tests, releases | [docs/development.md](docs/development.md) |
 | What is done, untested and open | [ROADMAP.md](ROADMAP.md) |
+
+## Contributing and security
+
+- Bugs and ideas: open an issue. Code: see [CONTRIBUTING.md](CONTRIBUTING.md).
+- Vulnerabilities: report privately, see [SECURITY.md](SECURITY.md).
 
 ## Status
 

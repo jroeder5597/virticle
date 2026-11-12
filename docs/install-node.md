@@ -6,6 +6,8 @@ exactly what it does so you can do the same by hand.
 
 ## What prepare does
 
+![Prepare node dialog](img/prepare-node.png)
+
 It signs in with an **administrator credential that you give for this one run** (your SSH agent or a key file with
 the CLI; a password or pasted private key in the web dialog). The credential is used in memory only. It is not stored, not
 logged, not written to the audit log or the task record. It is separate from the controller's own key.

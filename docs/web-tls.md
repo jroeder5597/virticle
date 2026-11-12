@@ -2,6 +2,8 @@
 
 Settings > Web access (admin only, link "Web access" in the top bar) chooses how the controller serves its web UI and API. The same settings can be given on the command line, so a headless install works without ever opening the page.
 
+![Web access page](img/web-access.png)
+
 | Mode | What it does |
 |---|---|
 | Off (HTTP) | Plain HTTP on one address, 127.0.0.1:8080 by default. A non-loopback address shows the row "Sign-ins travel unencrypted". |
