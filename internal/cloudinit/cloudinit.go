@@ -82,6 +82,23 @@ func quote(s string) string {
 	return strings.TrimSpace(b.String())
 }
 
+// GuestAgentPackage is installed by default so the VM page can see the guest.
+const GuestAgentPackage = "qemu-guest-agent"
+
+// EnsureGuestAgent adds the guest agent to the package list unless it is
+// there already or raw user-data replaces the generated config.
+func (c *Config) EnsureGuestAgent() {
+	if strings.TrimSpace(c.RawUserData) != "" {
+		return
+	}
+	for _, p := range c.Packages {
+		if p == GuestAgentPackage {
+			return
+		}
+	}
+	c.Packages = append(append([]string{}, c.Packages...), GuestAgentPackage)
+}
+
 // UserData renders the #cloud-config document (or the raw override).
 func (c Config) UserData() (string, error) {
 	if c.RawUserData != "" {

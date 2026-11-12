@@ -333,59 +333,50 @@ test.describe.serial("snapshot tree, delete dialog, schedule, bridge picker", ()
     await api.del(`${base()}/backup-schedule`);
   });
 
-  test.describe("bridge picker", () => {
+  test.describe("bridge in the Network select", () => {
     const addInterface = async (page: Page) => {
       await openVM(page, vm, "hardware");
       await page.getByRole("button", { name: "Add interface" }).click();
-      const dlg = dialog(page, "Add network interface");
-      await dlg.getByRole("button", { name: "Host bridge" }).click();
-      return dlg;
+      return dialog(page, "Add network interface");
     };
-    test("lists only the node's bridges, libvirt ones in their own group, with addresses; search and keyboard work", async ({ page, api, n1 }) => {
+    test("one list of virtual networks and the host bridges that no virtual network manages", async ({ page, api, n1 }) => {
+      const nets: any[] = await api.get(`/nodes/${n1}/networks`);
       const nics: any[] = (await api.get(`/nodes/${n1}/interfaces`)).interfaces;
-      const bridges = nics.filter((n) => n.type === "bridge" || n.kind === "openvswitch").map((n) => n.name).sort();
+      const managed = new Set(nets.map((n) => n.bridge).filter(Boolean));
+      const bridges = nics.filter((n) => (n.type === "bridge" || n.kind === "openvswitch") && !managed.has(n.name)).map((n) => n.name);
       const dlg = await addInterface(page);
-      const combo = dlg.getByRole("combobox", { name: "Bridge device" });
-      await expect(combo).toBeVisible();
+      const combo = dlg.getByRole("combobox", { name: "Network", exact: true });
+      await expect(dlg.getByRole("button", { name: "Host bridge" })).toHaveCount(0); // no second picker
+      await expect(combo).not.toHaveText("");
       await combo.click();
       const opts = page.getByRole("listbox").getByRole("option");
-      await expect(opts).toHaveCount(bridges.length);
-      const shown = (await opts.locator(".bs-name").allTextContents()).sort();
-      expect(shown).toEqual(bridges);
-      for (const n of nics.filter((x) => !bridges.includes(x.name))) await expect(page.getByRole("option", { name: new RegExp("^" + n.name + "\\b") })).toHaveCount(0);
-      // virbr0 belongs to libvirt's default network
-      const v = page.getByRole("option", { name: /^virbr0/ });
-      await expect(v).toContainText("192.168.122.1/24");
-      await expect(v).toContainText("used by libvirt network default");
-      await expect(page.getByRole("group", { name: "Managed by libvirt networks" })).toContainText("virbr0");
-      await expect(page.getByRole("listbox")).toContainText("Usually better: pick the libvirt network itself");
-      // search by name and by address
-      await page.keyboard.type("zzz");
-      await expect(page.getByText("Nothing matches zzz")).toBeVisible();
-      await page.getByRole("searchbox", { name: "Search bridges by name or address" }).fill("122.1");
-      await expect(opts).toHaveCount(1);
-      await page.getByRole("searchbox", { name: "Search bridges by name or address" }).fill("vir");
-      await expect(opts).toHaveCount(1);
-      // keyboard: Enter chooses, the request carries the bridge
-      await page.keyboard.press("ArrowDown");
-      await page.keyboard.press("Enter");
-      await expect(page.getByRole("listbox")).toHaveCount(0);
-      await expect(combo).toContainText("virbr0");
-      const req = page.waitForRequest((r) => r.method() === "POST" && /\/nics$/.test(r.url()));
-      await dlg.getByRole("button", { name: "Add", exact: true }).click();
-      expect((await req).postDataJSON()).toMatchObject({ bridge: "virbr0" });
-      await expect(dlg).toBeHidden();
-      await expect(page.locator("#hw-nics")).toContainText("virbr0");
+      await expect(opts).toHaveCount(nets.length + bridges.length);
+      for (const n of nets) await expect(page.getByRole("option", { name: new RegExp("^" + n.name + " \\(") })).toHaveCount(1);
+      for (const b of bridges) await expect(page.getByRole("option", { name: new RegExp("^" + b + " \\(host bridge\\)") })).toHaveCount(1);
+      // a bridge that libvirt manages is not listed twice: pick its virtual network instead
+      for (const n of nets.filter((x) => x.bridge)) await expect(page.getByRole("option", { name: new RegExp("^" + n.bridge + " \\(host bridge\\)") })).toHaveCount(0);
+      if (bridges.length > 0) {
+        await page.getByRole("option", { name: new RegExp("^" + bridges[0] + " \\(host bridge\\)") }).click();
+        const req = page.waitForRequest((r) => r.method() === "POST" && /\/nics$/.test(r.url()));
+        await dlg.getByRole("button", { name: "Add", exact: true }).click();
+        expect((await req).postDataJSON()).toMatchObject({ bridge: bridges[0] });
+        await expect(dlg).toBeHidden();
+        await expect(page.locator("#hw-nics")).toContainText(bridges[0]);
+      } else {
+        await page.keyboard.press("Escape");
+        await page.keyboard.press("Escape");
+      }
     });
-    test("Escape closes only the list; a name can be entered manually", async ({ page }) => {
+    test("Model and MAC address are under Advanced; Escape closes only the list", async ({ page }) => {
       const dlg = await addInterface(page);
-      await dlg.getByRole("combobox", { name: "Bridge device" }).click();
+      await expect(dlg.getByRole("combobox", { name: "Model", exact: true })).toHaveCount(0);
+      await dlg.getByRole("button", { name: "Advanced" }).click();
+      await expect(dlg.getByRole("combobox", { name: "Model", exact: true })).toBeVisible();
+      await expect(field(dlg, "MAC address")).toBeVisible();
+      await dlg.getByRole("combobox", { name: "Network", exact: true }).click();
       await page.keyboard.press("Escape");
       await expect(page.getByRole("listbox")).toHaveCount(0);
       await expect(dlg).toBeVisible();
-      await dlg.getByRole("combobox", { name: "Bridge device" }).click();
-      await page.getByRole("button", { name: "Enter a name manually" }).click();
-      await expect(dlg.getByRole("textbox", { name: "Bridge device" })).toBeVisible();
       await page.keyboard.press("Escape");
     });
     test("the server refuses a name that is not a bridge, or not there, with a clear message", async ({ api, n1 }) => {

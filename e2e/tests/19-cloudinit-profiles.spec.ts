@@ -64,10 +64,11 @@ test.describe.serial("cloud-init profiles", () => {
     await field(dlg, "vCPUs").fill("1");
     await field(dlg, "Memory (MiB)").fill("128");
     await dlg.getByRole("button", { name: "Disk image" }).click();
-    await pickPool(dlg, "Storage pool", "default");
+    // the pool select is hidden when the node has a single running pool
+    if (await dlg.getByRole("combobox", { name: "Storage pool" }).count()) await pickPool(dlg, "Storage pool", "default");
     await pick(dlg, "Base image", new RegExp("^" + env.cirros.replace(/\./g, "\\.")));
     await field(dlg, "Disk size (GiB)").fill("1");
-    await expect(dlg.locator("summary")).toContainText(PROF);
+    await expect(dlg.locator("summary", { hasText: "Cloud-init" })).toContainText(PROF);
     await expect(field(dlg, "Profile")).toContainText(PROF);
     await expect(field(dlg, "User")).toHaveAttribute("placeholder", "cpuser");
     await expect(field(dlg, "Password")).toHaveAttribute("placeholder", "(from the profile)");

@@ -75,5 +75,8 @@
   .hwt-stack td.wrap { flex: 1 1 100%; order: 9; }
   .hwt-stack td.actions { margin-left: auto; order: 5; }
 }
+/* "Advanced" in a dialog: one box, closed by default. */
+.dlg-adv { margin: 10px 0; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; }
+.dlg-adv .disc-body { margin-top: 10px; }
 .disc-head { flex-wrap: wrap; white-space: normal; }
 .disc-sum { flex: 1 1 14em; }

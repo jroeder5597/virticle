@@ -11,6 +11,12 @@ export interface FwCaps {
   tpmModels: string[];
 }
 
+/**
+ * The firmware a Linux guest gets in the New VM dialog. The server has the same constant for requests that name
+ * none (defaultLinuxFirmware in internal/api/vmcreate.go); to make UEFI the default, change both.
+ */
+export const defaultLinuxFirmware: "bios" | "uefi" = "bios";
+
 export interface FwValues {
   osType: "linux" | "windows";
   firmware: "bios" | "uefi";
@@ -20,13 +26,13 @@ export interface FwValues {
   nicModel: "virtio" | "e1000e";
 }
 
-export const emptyFw: FwValues = { osType: "linux", firmware: "bios", secureBoot: false, tpm: false, diskBus: "virtio", nicModel: "virtio" };
+export const emptyFw: FwValues = { osType: "linux", firmware: defaultLinuxFirmware, secureBoot: false, tpm: false, diskBus: "virtio", nicModel: "virtio" };
 
 /** What the form sends; the server fills in the same defaults, this keeps the UI honest about them. */
 export const fwPayload = (v: FwValues) => ({ ...v });
 
-/** Firmware, TPM and OS-type choices of the create form. Offers only what the node supports. */
-export function FirmwareFields({ node, value, onChange }: { node: number; value: FwValues; onChange: (v: FwValues) => void }) {
+/** The node's firmware abilities; undefined while loading. */
+export function useFwCaps(node: number) {
   const [caps, setCaps] = useState<FwCaps | undefined>();
   const [error, setError] = useState<string | undefined>();
   useEffect(() => {
@@ -39,32 +45,52 @@ export function FirmwareFields({ node, value, onChange }: { node: number; value:
       live = false;
     };
   }, [node]);
+  return { caps, error };
+}
+
+/** The defaults that follow the guest OS type, limited to what the node can do. */
+export function osDefaults(osType: FwValues["osType"], caps?: FwCaps): FwValues {
+  if (osType === "windows") {
+    // Windows 11 wants UEFI, Secure Boot and a TPM; SATA and e1000e install without extra drivers.
+    const uefi = !!caps?.uefi;
+    return { osType, firmware: uefi ? "uefi" : "bios", secureBoot: uefi && !!caps?.secureBoot, tpm: !!caps?.tpm, diskBus: "sata", nicModel: "e1000e" };
+  }
+  const uefi = defaultLinuxFirmware === "uefi" && (!caps || caps.uefi);
+  return { ...emptyFw, osType, firmware: uefi ? "uefi" : "bios" };
+}
+
+/** A choice the node cannot honour is dropped once its abilities are known. */
+export function limitToCaps(v: FwValues, caps: FwCaps): FwValues {
+  const firmware = v.firmware === "uefi" && !caps.uefi ? "bios" : v.firmware;
+  const secureBoot = v.secureBoot && firmware === "uefi" && caps.secureBoot;
+  const tpm = v.tpm && caps.tpm;
+  return firmware === v.firmware && secureBoot === v.secureBoot && tpm === v.tpm ? v : { ...v, firmware, secureBoot, tpm };
+}
+
+/** Guest OS type of the New VM dialog. It sets the defaults of everything in the dialog's Advanced section. */
+export function OsTypeField({ value, caps, onChange }: { value: FwValues; caps?: FwCaps; onChange: (v: FwValues) => void }) {
+  return (
+    <Field label="Guest OS type">
+      <Select
+        label="Guest OS type"
+        value={value.osType}
+        onChange={(v) => onChange(osDefaults(v as FwValues["osType"], caps))}
+        options={[
+          { value: "linux", label: "Linux / other" },
+          { value: "windows", label: "Windows" },
+        ]}
+      />
+    </Field>
+  );
+}
+
+/** Firmware, Secure Boot, TPM and (for Windows) disk bus and network card, for the dialog's Advanced section. */
+export function FirmwareFields({ value, caps, onChange }: { value: FwValues; caps?: FwCaps; onChange: (v: FwValues) => void }) {
   const set = (p: Partial<FwValues>) => onChange({ ...value, ...p });
   const win = value.osType === "windows";
-  const setOS = (osType: FwValues["osType"]) => {
-    if (osType === "windows") {
-      // Windows 11 wants UEFI, Secure Boot and a TPM; SATA and e1000e install without extra drivers.
-      const uefi = !!caps?.uefi;
-      onChange({ osType, firmware: uefi ? "uefi" : "bios", secureBoot: uefi && !!caps?.secureBoot, tpm: !!caps?.tpm, diskBus: "sata", nicModel: "e1000e" });
-    } else {
-      onChange({ ...emptyFw, osType });
-    }
-  };
   return (
     <>
-      <ErrorBox error={error} />
       <div className="grid2">
-        <Field label="Guest OS type" hint={win ? "Hyper-V enlightenments and a local-time clock are added." : undefined}>
-          <Select
-            label="Guest OS type"
-            value={value.osType}
-            onChange={(v) => setOS(v as FwValues["osType"])}
-            options={[
-              { value: "linux", label: "Linux / other" },
-              { value: "windows", label: "Windows" },
-            ]}
-          />
-        </Field>
         <Field label="Firmware">
           <Select
             label="Firmware"
@@ -111,9 +137,7 @@ export function FirmwareFields({ node, value, onChange }: { node: number; value:
               />
             </Field>
           </div>
-          {(value.diskBus === "virtio" || value.nicModel === "virtio") && (
-            <p className="note">VirtIO devices need the virtio-win driver during Windows setup: attach the driver ISO as a second CD-ROM and load the storage driver when the installer asks for it. SATA and e1000e work without drivers.</p>
-          )}
+          {(value.diskBus === "virtio" || value.nicModel === "virtio") && <p className="note">VirtIO devices need the virtio-win driver during Windows setup.</p>}
         </>
       )}
     </>

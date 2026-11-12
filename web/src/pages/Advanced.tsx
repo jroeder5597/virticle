@@ -51,7 +51,6 @@ function cpuList(cpus: number[]): string {
   return out.join(",");
 }
 
-/** CPU pinning, CPU model and topology, huge pages and NUMA policy of one VM. */
 /** One line for the collapsed header: what is set now. */
 function tuningSummary(t: Tuning): string {
   const s = t.saved;
@@ -59,7 +58,6 @@ function tuningSummary(t: Tuning): string {
   return [
     pinned ? `${pinned} CPU pin${pinned > 1 ? "s" : ""}` : "No pinning",
     s.hugepages ? (s.hugepageKiB ? `${bytes(s.hugepageKiB * 1024)} huge pages` : "huge pages") : "ordinary pages",
-    s.numaMode ? `NUMA ${s.numaMode} on node ${s.numaNodeset ?? "?"}` : "default NUMA policy",
   ].join(", ");
 }
 
@@ -80,7 +78,7 @@ export default function AdvancedCard({ d, base, onChanged, bare }: { d: VMDetail
       onChanged();
     });
 
-  const title = "Advanced: CPU placement, huge pages, NUMA";
+  const title = "Advanced";
   if (loadErr)
     return (
       <SectionFrame id="hw-advanced" title={title} summary="Could not be read" bare={bare}>
@@ -109,10 +107,9 @@ export default function AdvancedCard({ d, base, onChanged, bare }: { d: VMDetail
 
       <div className="tgrid">
         <HostTopology t={t} />
-        <CpuShape key={JSON.stringify([s.cpuMode, s.cpuModel, s.topology, t.cpuPolicy])} t={t} busy={act.busy} save={save} />
+        <CpuShape key={JSON.stringify([s.cpuMode, s.cpuModel, t.cpuPolicy])} t={t} busy={act.busy} save={save} />
         <Pinning key={JSON.stringify([s.pins, s.emulatorPin])} t={t} busy={act.busy} save={save} />
         <Hugepages key={String(s.hugepageKiB) + s.hugepages} t={t} busy={act.busy} save={save} />
-        <Numa key={`${s.numaMode}/${s.numaNodeset}`} t={t} busy={act.busy} save={save} />
       </div>
       </div>
     </SectionFrame>
@@ -167,11 +164,9 @@ function CpuShape({ t, busy, save }: P) {
   const pol = t.cpuPolicy;
   const [mode, setMode] = useState(pol ? "baseline" : s.cpuMode);
   const [model, setModel] = useState(s.cpuModel || t.host.cpuModels.find((m) => m === "qemu64") || t.host.cpuModels[0] || "");
-  const [tp, setTp] = useState(s.topology ?? { sockets: 1, cores: t.maxVcpus, threads: 1 });
-  const [none, setNone] = useState(!s.topology);
   return (
     <div>
-      <h4>CPU model and topology</h4>
+      <h4>CPU model</h4>
       <Field
         label="CPU mode"
         hint={
@@ -202,40 +197,20 @@ function CpuShape({ t, busy, save }: P) {
           <Select label="Model" value={model} onChange={setModel} options={t.host.cpuModels.map((m) => ({ value: m, label: m }))} />
         </Field>
       )}
-      <label className="check">
-        <input type="checkbox" checked={none} onChange={(e) => setNone(e.target.checked)} /> No explicit topology (libvirt decides)
-      </label>
-      {!none && (
-        <>
-          <div className="grid3">
-            <Field label="Sockets">
-              <input type="number" min={1} value={tp.sockets} onChange={(e) => setTp({ ...tp, sockets: Number(e.target.value) })} />
-            </Field>
-            <Field label="Cores">
-              <input type="number" min={1} value={tp.cores} onChange={(e) => setTp({ ...tp, cores: Number(e.target.value) })} />
-            </Field>
-            <Field label="Threads">
-              <input type="number" min={1} value={tp.threads} onChange={(e) => setTp({ ...tp, threads: Number(e.target.value) })} />
-            </Field>
-          </div>
-          <small>
-            Sockets × cores × threads must equal the VM's maximum vCPU count ({t.maxVcpus}); now {tp.sockets * tp.cores * tp.threads * (s.topology?.dies ?? 1) * (s.topology?.clusters ?? 1)}.
-          </small>
-        </>
-      )}
       <footer style={{ justifyContent: "flex-start" }}>
         {/* A baseline VM that keeps the baseline is saved as its own model, so a topology change does not re-resolve the CPU. */}
         <button
           disabled={busy}
           onClick={() => {
             const keep = mode === "baseline" && !!pol;
-            save("cpu", { mode: keep ? "custom" : mode, model: keep ? pol!.model : mode === "custom" ? model : "", noTopology: none, sockets: none ? 0 : tp.sockets, cores: none ? 0 : tp.cores, threads: none ? 0 : tp.threads });
+            // No topology fields: the server leaves an explicit topology of the VM as it is.
+            save("cpu", { mode: keep ? "custom" : mode, model: keep ? pol!.model : mode === "custom" ? model : "" });
           }}
         >
           Save CPU
         </button>
         {pol && pol.relation && pol.relation !== "same" && (
-          <button disabled={busy} onClick={() => save("cpu", { mode: "baseline", model: "", noTopology: none, sockets: none ? 0 : tp.sockets, cores: none ? 0 : tp.cores, threads: none ? 0 : tp.threads })}>
+          <button disabled={busy} onClick={() => save("cpu", { mode: "baseline", model: "" })}>
             Use current baseline
           </button>
         )}
@@ -319,43 +294,6 @@ function Hugepages({ t, busy, save }: P) {
       <footer style={{ justifyContent: "flex-start" }}>
         <button disabled={busy} onClick={() => save("hugepages", { pageSizeKiB: size })}>
           Save huge pages
-        </button>
-      </footer>
-    </div>
-  );
-}
-
-function Numa({ t, busy, save }: P) {
-  const s = t.saved;
-  const [mode, setMode] = useState(s.numaMode ?? "");
-  const [nodeset, setNodeset] = useState(s.numaNodeset ?? (t.host.cells[0] ? String(t.host.cells[0].id) : "0"));
-  return (
-    <div>
-      <h4>NUMA memory policy</h4>
-      <div className="grid2">
-        <Field label="Policy" hint={mode === "strict" ? "Allocation fails if the nodes have no memory left." : mode === "preferred" ? "Tries this node first, falls back to others." : undefined}>
-          <Select
-            label="Policy"
-            value={mode}
-            onChange={setMode}
-            options={[
-              { value: "", label: "none (default)" },
-              { value: "strict", label: "strict" },
-              { value: "preferred", label: "preferred" },
-              { value: "interleave", label: "interleave" },
-            ]}
-          />
-        </Field>
-        {mode && (
-          <Field label="Host NUMA nodes" hint={`This node has: ${t.host.cells.map((c) => c.id).join(", ")}`}>
-            <input value={nodeset} onChange={(e) => setNodeset(e.target.value)} />
-          </Field>
-        )}
-      </div>
-      {t.host.cells.length === 1 && <small>Single NUMA node here; a policy matters after a move to a larger node.</small>}
-      <footer style={{ justifyContent: "flex-start" }}>
-        <button disabled={busy} onClick={() => save("numa", { mode, nodeset: mode ? nodeset : "" })}>
-          Save NUMA policy
         </button>
       </footer>
     </div>

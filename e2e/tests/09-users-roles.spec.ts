@@ -81,7 +81,10 @@ test.describe.serial("users and roles", () => {
     await expect(page.getByRole("heading", { level: 1, name: VM })).toBeVisible();
     // The Actions menu is there, but nothing that changes the VM is enabled
     await page.locator(".head").getByRole("button", { name: "Actions", exact: true }).click();
-    for (const g of ["Power", "Edit Settings", "Clone", "Template", "Migrate", "Delete"]) await expect(page.getByRole("menuitem", { name: g, exact: true })).toBeDisabled();
+    for (const g of ["Power", "Edit Settings", "Clone", "Convert to template", "Migrate"]) await expect(page.getByRole("menuitem", { name: g, exact: true })).toBeDisabled();
+    await page.getByRole("menuitem", { name: "More", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Edit XML", exact: true })).toBeEnabled();
+    await expect(page.getByRole("menuitem", { name: "Delete VM", exact: true })).toBeDisabled();
     await page.getByRole("menuitem", { name: "Snapshots", exact: true }).click();
     await expect(page.getByRole("menuitem", { name: "Take snapshot", exact: true })).toBeDisabled();
     await expect(page.getByRole("menuitem", { name: "Manage snapshots", exact: true })).toBeEnabled();
@@ -98,9 +101,9 @@ test.describe.serial("users and roles", () => {
     const inputs = hw.locator("input, textarea, button.cb-btn");
     const n = await inputs.count();
     for (let i = 0; i < n; i++) await expect(inputs.nth(i)).toBeDisabled();
-    for (const b of ["Edit", "Add disk", "Add interface", "Save boot order"]) await expect(hw.getByRole("button", { name: b }).first()).toBeHidden();
+    for (const b of ["Edit", "Add disk", "Add interface"]) await expect(hw.getByRole("button", { name: b }).first()).toBeHidden();
 
-    await page.locator(".tabs").getByRole("button", { name: "XML" }).click();
+    await page.goto(`/vm/${vm.node}/${vm.uuid}?tab=xml`); // the XML editor is reached from Actions, More, Edit XML; the link keeps working
     await expect(page.getByLabel("Domain XML")).toHaveAttribute("readonly", "");
     await expect(page.getByRole("button", { name: "Save" })).toBeHidden();
 

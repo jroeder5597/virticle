@@ -2,7 +2,7 @@
 // Every change is sent to the server, which applies it to the running VM and
 // the saved definition where libvirt allows and says which one happened.
 import { useEffect, useState } from "react";
-import { type LucideIcon, ArrowDown, ArrowLeftRight, ArrowUp, ArrowUpFromLine, Disc3, Link2, Link2Off, Maximize2, Network as NetIcon, Trash2, X } from "lucide-react";
+import { type LucideIcon, ArrowLeftRight, ArrowUpFromLine, Disc3, Link2, Link2Off, Maximize2, Network as NetIcon, Trash2 } from "lucide-react";
 import { api, bytes, get, Network, Pool, Volume, VMDetail } from "../api";
 import { useRole } from "../auth";
 import Select from "../Select";
@@ -11,9 +11,9 @@ import FirmwareCard from "./Firmware";
 import AdvancedCard from "./Advanced";
 import PassthroughCard from "./Passthrough";
 import DiskMoveDialog from "./DiskMove";
-import { ClockCard, SerialCard } from "./SerialClock";
 import PoolSelect from "../PoolSelect";
-import BridgeSelect from "../BridgeSelect";
+import { HostNIC, isBridge, shownAddresses } from "../BridgeSelect";
+import { AdvancedSection } from "./Disclosure";
 import "./hw.css";
 import { StatusLine } from "../Checks";
 
@@ -52,7 +52,7 @@ function useHw(d: VMDetail, base: string, onChanged: () => void) {
   return { send, run, busy: act.busy, error: act.error, outcome };
 }
 
-export type HwArea = "cpu" | "disks" | "nics" | "cdrom" | "boot" | "firmware" | "advanced" | "passthrough" | "serial" | "clock";
+export type HwArea = "cpu" | "disks" | "nics" | "cdrom" | "boot" | "firmware" | "advanced" | "passthrough";
 
 function Outcome({ hw }: { hw: ReturnType<typeof useHw> }) {
   return (
@@ -83,10 +83,6 @@ function Section({ area, d, base, onChanged, hw, bare }: { area: HwArea; d: VMDe
       return <AdvancedCard d={d} base={base} onChanged={onChanged} bare={bare} />;
     case "passthrough":
       return <PassthroughCard d={d} base={base} onChanged={onChanged} bare={bare} />;
-    case "serial":
-      return <SerialCard {...p} base={base} />;
-    case "clock":
-      return <ClockCard {...p} base={base} />;
   }
 }
 
@@ -124,12 +120,10 @@ export default function Hardware({ d, base, onChanged }: { d: VMDetail; base: st
         <div className="hwcol">
           {S("cpu")}
           {S("firmware")}
-          {S("serial")}
         </div>
         <div className="hwcol">
           {S("boot")}
           {S("cdrom")}
-          {S("clock")}
         </div>
         {S("disks")}
         {S("nics")}
@@ -172,22 +166,27 @@ function RowBtn({ label, icon: Icon, ...rest }: { label: string; icon: LucideIco
 }
 
 function CpuMemory({ d, send, run, busy, bare }: CardProps) {
+  const curMem = Math.round(d.currentMemoryKiB / 1024);
+  const curMaxMem = Math.round(d.memoryKiB / 1024);
   const [editing, setEditing] = useState(!!bare);
   const [vcpus, setVcpus] = useState(d.vcpus);
-  const [maxV, setMaxV] = useState(d.maxVcpus);
-  const [mem, setMem] = useState(Math.round(d.currentMemoryKiB / 1024));
-  const [maxMem, setMaxMem] = useState(Math.round(d.memoryKiB / 1024));
+  const [mem, setMem] = useState(curMem);
+  // The maximums stay as they are, and grow only when the new value needs it, until the user types in Advanced.
+  const [maxV, setMaxV] = useState<number>();
+  const [maxMem, setMaxMem] = useState<number>();
+  const maxVNow = maxV ?? Math.max(d.maxVcpus, vcpus);
+  const maxMemNow = maxMem ?? Math.max(curMaxMem, mem);
   const start = () => {
     setVcpus(d.vcpus);
-    setMaxV(d.maxVcpus);
-    setMem(Math.round(d.currentMemoryKiB / 1024));
-    setMaxMem(Math.round(d.memoryKiB / 1024));
+    setMem(curMem);
+    setMaxV(undefined);
+    setMaxMem(undefined);
     setEditing(true);
   };
   const save = async () => {
     const ok = await run(async () => {
-      if (vcpus !== d.vcpus || maxV !== d.maxVcpus) await send("PUT", "/cpu", { vcpus, maxVcpus: maxV });
-      if (mem !== Math.round(d.currentMemoryKiB / 1024) || maxMem !== Math.round(d.memoryKiB / 1024)) await send("PUT", "/memory", { memoryMiB: mem, maxMemoryMiB: maxMem });
+      if (vcpus !== d.vcpus || maxVNow !== d.maxVcpus) await send("PUT", "/cpu", { vcpus, maxVcpus: maxVNow });
+      if (mem !== curMem || maxMemNow !== curMaxMem) await send("PUT", "/memory", { memoryMiB: mem, maxMemoryMiB: maxMemNow });
     });
     if (ok && !bare) setEditing(false);
   };
@@ -199,33 +198,37 @@ function CpuMemory({ d, send, run, busy, bare }: CardProps) {
           <dl className="hwdl">
             <dt>vCPUs</dt>
             <dd>
-              {d.vcpus} <span className="muted">(up to {d.maxVcpus})</span>
+              {d.vcpus} {d.maxVcpus !== d.vcpus && <span className="muted">(up to {d.maxVcpus})</span>}
             </dd>
             <dt>Memory</dt>
             <dd>
-              {bytes(d.currentMemoryKiB * 1024)} <span className="muted">(up to {bytes(d.memoryKiB * 1024)})</span>
+              {bytes(d.currentMemoryKiB * 1024)} {d.memoryKiB !== d.currentMemoryKiB && <span className="muted">(up to {bytes(d.memoryKiB * 1024)})</span>}
             </dd>
           </dl>
         </>
       ) : (
         <>
           <div className="grid2">
-            <Field label="vCPUs now">
+            <Field label="vCPUs">
               <input type="number" min={1} value={vcpus} onChange={num(setVcpus)} />
             </Field>
-            <Field label="Maximum vCPUs" hint={d.state !== "shutoff" ? "Applies after a restart." : undefined}>
-              <input type="number" min={1} value={maxV} onChange={num(setMaxV)} />
-            </Field>
-            <Field label="Memory now (MiB)" hint={d.state !== "shutoff" ? "Live, up to the running maximum." : undefined}>
+            <Field label="Memory (MiB)">
               <input type="number" min={64} value={mem} onChange={num(setMem)} />
             </Field>
-            <Field label="Maximum memory (MiB)" hint={d.state !== "shutoff" ? "Applies after a restart." : undefined}>
-              <input type="number" min={64} value={maxMem} onChange={num(setMaxMem)} />
-            </Field>
           </div>
+          <AdvancedSection>
+            <div className="grid2">
+              <Field label="Maximum vCPUs" hint={d.state !== "shutoff" ? "Applies after a restart." : undefined}>
+                <input type="number" min={1} value={maxVNow} onChange={num(setMaxV)} />
+              </Field>
+              <Field label="Maximum memory (MiB)" hint={d.state !== "shutoff" ? "Applies after a restart." : undefined}>
+                <input type="number" min={64} value={maxMemNow} onChange={num(setMaxMem)} />
+              </Field>
+            </div>
+          </AdvancedSection>
           <footer>
             <button onClick={() => setEditing(false)}>Cancel</button>
-            <button className="primary" disabled={busy || vcpus < 1 || mem < 64 || vcpus > maxV || mem > maxMem} onClick={save}>
+            <button className="primary" disabled={busy || vcpus < 1 || mem < 64 || vcpus > maxVNow || mem > maxMemNow} onClick={save}>
               Apply
             </button>
           </footer>
@@ -290,31 +293,27 @@ function Disks({ d, disks, send, run, busy, onChanged, bare }: CardProps & { dis
 }
 
 function DetachBody({ disk, d, send, onClose }: { disk: DiskT; d: VMDetail; send: Send; run: CardProps["run"]; onClose: () => void }) {
-  const [del, setDel] = useState(false);
   const act = useAction();
+  const go = (del: boolean) => async () => {
+    if (await act.run(() => send("DELETE", `/disks/${disk.target}${del ? "?delete=1" : ""}`))) onClose();
+  };
   return (
     <>
       <p>
         <span className="mono">{disk.source}</span> is removed from the VM{d.state !== "shutoff" ? " while it runs; unmount it in the guest first" : ""}.
       </p>
-      {!disk.readOnly && (
-        <label className="check">
-          <input type="checkbox" checked={del} onChange={(e) => setDel(e.target.checked)} />
-          Also delete the volume if it is in a storage pool (cannot be undone)
-        </label>
-      )}
+      {!disk.readOnly && <p className="muted">Detach and delete also deletes the volume if it is in a storage pool. This cannot be undone.</p>}
       <ErrorBox error={act.error} />
       <footer>
         <button onClick={onClose}>Cancel</button>
-        <button
-          className="danger"
-          disabled={act.busy}
-          onClick={async () => {
-            if (await act.run(() => send("DELETE", `/disks/${disk.target}${del ? "?delete=1" : ""}`))) onClose();
-          }}
-        >
+        <button disabled={act.busy} onClick={go(false)}>
           Detach
         </button>
+        {!disk.readOnly && (
+          <button className="danger" disabled={act.busy} onClick={go(true)}>
+            Detach and delete
+          </button>
+        )}
       </footer>
     </>
   );
@@ -361,11 +360,8 @@ function AddDisk({ d, send, onClose }: { d: VMDetail; send: Send; onClose: () =>
   const [pool, setPool] = useState("");
   const [vols, setVols] = useState<Volume[]>([]);
   const [volume, setVolume] = useState("");
-  const [name, setName] = useState(`${d.name}-disk${d.disks.length + 1}.qcow2`);
   const [size, setSize] = useState(10);
-  const [format, setFormat] = useState("qcow2");
   const [bus, setBus] = useState("virtio");
-  const [cache, setCache] = useState("");
   const [readonly, setReadonly] = useState(false);
   const act = useAction();
   useEffect(() => {
@@ -383,14 +379,14 @@ function AddDisk({ d, send, onClose }: { d: VMDetail; send: Send; onClose: () =>
       () => setVols([]),
     );
   }, [pool, d.node, d.disks]);
+  // The volume gets a generated name and the qcow2 format; the server picks the name.
   const submit = () =>
     act.run(async () => {
       await send("POST", "/disks", {
         pool,
         bus,
-        cache: cache || undefined,
         readonly,
-        ...(mode === "new" ? { newVolume: { name, sizeGiB: size, format } } : { volume }),
+        ...(mode === "new" ? { newVolume: { sizeGiB: size, format: "qcow2" } } : { volume }),
       });
       onClose();
     });
@@ -408,31 +404,15 @@ function AddDisk({ d, send, onClose }: { d: VMDetail; send: Send; onClose: () =>
         <PoolSelect pools={pools} value={pool} onChange={setPool} label="Storage pool" needBytes={mode === "new" ? size * 2 ** 30 : undefined} />
       </Field>
       {mode === "new" ? (
-        <div className="grid2">
-          <Field label="Volume name">
-            <input value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-          <Field label="Size (GiB)">
-            <input type="number" min={1} value={size} onChange={(e) => setSize(Number(e.target.value))} />
-          </Field>
-          <Field label="Format">
-            <Select
-              label="Format"
-              value={format}
-              onChange={setFormat}
-              options={[
-                { value: "qcow2", label: "qcow2" },
-                { value: "raw", label: "raw" },
-              ]}
-            />
-          </Field>
-        </div>
+        <Field label="Size (GiB)">
+          <input type="number" min={1} value={size} onChange={(e) => setSize(Number(e.target.value))} />
+        </Field>
       ) : (
         <Field label="Volume">
           <Select label="Volume" value={volume} onChange={setVolume} options={vols.map((v) => ({ value: v.name, label: `${v.name} (${bytes(v.capacity)})` }))} />
         </Field>
       )}
-      <div className="grid2">
+      <AdvancedSection>
         <Field label="Bus" hint={d.state !== "shutoff" && bus !== "virtio" ? "Appears after a restart." : undefined}>
           <Select
             label="Bus"
@@ -445,18 +425,15 @@ function AddDisk({ d, send, onClose }: { d: VMDetail; send: Send; onClose: () =>
             ]}
           />
         </Field>
-        <Field label="Cache">
-          <Select label="Cache" value={cache} onChange={setCache} options={["", "none", "writeback", "writethrough", "directsync", "unsafe"].map((c) => ({ value: c, label: c || "default" }))} />
-        </Field>
-      </div>
-      <label className="check">
-        <input type="checkbox" checked={readonly} onChange={(e) => setReadonly(e.target.checked)} />
-        Read-only
-      </label>
+        <label className="check">
+          <input type="checkbox" checked={readonly} onChange={(e) => setReadonly(e.target.checked)} />
+          Read-only
+        </label>
+      </AdvancedSection>
       <ErrorBox error={act.error} />
       <footer>
         <button onClick={onClose}>Cancel</button>
-        <button className="primary" disabled={act.busy || !pool || (mode === "new" ? !name : !volume)} onClick={submit}>
+        <button className="primary" disabled={act.busy || !pool || (mode === "new" ? size < 1 : !volume)} onClick={submit}>
           Add disk
         </button>
       </footer>
@@ -629,63 +606,67 @@ function RemoveNIC({ nic, send, onClose }: { nic: NicT; send: Send; onClose: () 
   );
 }
 
+/** One list of the virtual networks and the host bridges that no virtual network already manages. */
 function NICForm({ d, nic, send, onClose }: { d: VMDetail; nic?: NicT; send: Send; onClose: () => void }) {
   const [nets, setNets] = useState<Network[]>([]);
-  const [kind, setKind] = useState<"network" | "bridge">(nic && nic.type === "bridge" ? "bridge" : "network");
-  const [network, setNetwork] = useState(nic && nic.type === "network" ? nic.source : "");
-  const [bridge, setBridge] = useState(nic && nic.type === "bridge" ? nic.source : "");
-  const [model, setModel] = useState("virtio");
+  const [bridges, setBridges] = useState<HostNIC[]>([]);
+  const [target, setTarget] = useState(nic ? (nic.type === "bridge" ? "br:" : "net:") + nic.source : "");
+  // The guest OS type chose the model of the VM's first interface at creation; new ones follow it.
+  const first = d.nics[0]?.model;
+  const [model, setModel] = useState(first && NIC_MODELS.includes(first) ? first : "virtio");
   const [mac, setMac] = useState("");
   const act = useAction();
   useEffect(() => {
     get<Network[]>(`/nodes/${d.node}/networks`).then(
       (n) => {
         setNets(n);
-        setNetwork((cur) => cur || (n.find((x) => x.name === "default") ?? n[0])?.name || "");
+        setTarget((cur) => cur || "net:" + ((n.find((x) => x.name === "default" && x.active) ?? n.find((x) => x.active) ?? n[0])?.name ?? ""));
       },
       () => {},
     );
+    get<{ interfaces: HostNIC[] }>(`/nodes/${d.node}/interfaces`).then(
+      (r) => setBridges(r.interfaces.filter(isBridge)),
+      () => {},
+    );
   }, [d.node]);
-  const target = kind === "network" ? { network } : { bridge };
+  const managed = new Set(nets.map((n) => n.bridge).filter(Boolean));
+  const current = nic && nic.type === "bridge" ? nic.source : "";
+  const unmanaged = bridges.filter((b) => !managed.has(b.name));
+  const bridgeOptions = [
+    ...unmanaged.map((b) => ({ name: b.name, hint: shownAddresses(b).join("  ") || undefined })),
+    ...(current && !unmanaged.some((b) => b.name === current) ? [{ name: current, hint: undefined }] : []),
+  ];
+  const options = [
+    ...nets.map((n) => ({ value: "net:" + n.name, label: n.active ? `${n.name} (virtual network)` : `${n.name} (inactive)`, disabled: !n.active })),
+    ...bridgeOptions.map((b) => ({ value: "br:" + b.name, label: `${b.name} (host bridge)`, hint: b.hint })),
+  ];
+  const picked = target.slice(target.indexOf(":") + 1);
+  const body = target.startsWith("br:") ? { bridge: picked } : { network: picked };
   return (
     <Modal title={nic ? `Change network of ${nic.mac}` : "Add network interface"} onClose={onClose}>
-      <div className="segmented">
-        <button className={kind === "network" ? "on" : ""} onClick={() => setKind("network")}>
-          Virtual network
-        </button>
-        <button className={kind === "bridge" ? "on" : ""} onClick={() => setKind("bridge")}>
-          Host bridge
-        </button>
-      </div>
-      {kind === "network" ? (
-        <Field label="Network">
-          <Select label="Network" value={network} onChange={setNetwork} options={nets.map((n) => ({ value: n.name, label: n.name + (n.active ? "" : " (inactive)"), disabled: !n.active }))} />
-        </Field>
-      ) : (
-        <Field label="Bridge device" group>
-          <BridgeSelect node={d.node} value={bridge} onChange={setBridge} networks={nets} />
-        </Field>
-      )}
+      <Field label="Network">
+        <Select label="Network" value={target} onChange={setTarget} options={options} />
+      </Field>
       {!nic && (
-        <div className="grid2">
-          <Field label="Model">
-            <Select label="Model" value={model} onChange={setModel} options={["virtio", "e1000e", "e1000", "rtl8139"].map((m) => ({ value: m, label: m }))} />
-          </Field>
-          <Field label="MAC address" hint="Leave empty to generate one.">
-            <input className="mono" placeholder="52:54:00:12:34:56" value={mac} onChange={(e) => setMac(e.target.value)} />
-          </Field>
-        </div>
+        <AdvancedSection>
+          <div className="grid2">
+            <Field label="Model">
+              <Select label="Model" value={model} onChange={setModel} options={NIC_MODELS.map((m) => ({ value: m, label: m }))} />
+            </Field>
+            <Field label="MAC address" hint="Leave empty to generate one.">
+              <input className="mono" placeholder="52:54:00:12:34:56" value={mac} onChange={(e) => setMac(e.target.value)} />
+            </Field>
+          </div>
+        </AdvancedSection>
       )}
       <ErrorBox error={act.error} />
       <footer>
         <button onClick={onClose}>Cancel</button>
         <button
           className="primary"
-          disabled={act.busy || !(kind === "network" ? network : bridge)}
+          disabled={act.busy || !picked}
           onClick={async () => {
-            const ok = await act.run(() =>
-              nic ? send("PUT", `/nics/${nic.mac}`, target) : send("POST", "/nics", { ...target, model, mac: mac || undefined }),
-            );
+            const ok = await act.run(() => (nic ? send("PUT", `/nics/${nic.mac}`, body) : send("POST", "/nics", { ...body, model, mac: mac || undefined })));
             if (ok) onClose();
           }}
         >
@@ -695,6 +676,8 @@ function NICForm({ d, nic, send, onClose }: { d: VMDetail; nic?: NicT; send: Sen
     </Modal>
   );
 }
+
+const NIC_MODELS = ["virtio", "e1000e", "e1000", "rtl8139"];
 
 // --- boot order ---
 
@@ -726,92 +709,37 @@ function bootDevices(d: VMDetail): { all: BootDev[]; order: string[]; legacy: bo
   return { all, order: order.filter((x, i) => order.indexOf(x) === i), legacy: true };
 }
 
+/** "Boot from" sets the first boot device; the devices after it keep their order. */
 function Boot({ d, send, run, busy, bare }: CardProps) {
-  const { all, order: current, legacy } = bootDevices(d);
-  const key = current.join(",");
-  const [order, setOrder] = useState(current);
-  const [dirty, setDirty] = useState(false);
-  useEffect(() => {
-    if (!dirty) setOrder(key ? key.split(",") : []);
-  }, [key, dirty]);
-  const label = (id: string) => all.find((x) => x.id === id)?.label ?? id;
-  const move = (i: number, by: number) => {
-    const o = [...order];
-    [o[i], o[i + by]] = [o[i + by], o[i]];
-    setOrder(o);
-    setDirty(true);
+  const { order } = bootDevices(d);
+  const disks = d.disks.filter((k) => k.device === "disk").map((k) => k.target);
+  const cdroms = d.disks.filter((k) => k.device === "cdrom").map((k) => k.target);
+  const nics = d.nics.map((n) => n.mac);
+  const first: Record<string, string | undefined> = { disk: disks[0], cdrom: cdroms[0], network: nics[0] };
+  const kindOf = (id: string) => (nics.includes(id) ? "network" : cdroms.includes(id) ? "cdrom" : "disk");
+  const current = order.length > 0 ? kindOf(order[0]) : "";
+  const choose = (kind: string) => {
+    const target = first[kind];
+    if (!target || kind === current) return;
+    const rest = (order.length > 0 ? order : [...disks, ...cdroms, ...nics]).filter((x) => x !== target);
+    run(() => send("PUT", "/boot", { order: [target, ...rest] }));
   };
-  const rest = all.filter((x) => !order.includes(x.id));
   return (
     <Card id="hw-boot" title="Boot order" bare={bare}>
-      {legacy && <p className="muted">Class-based list ({d.boot.join(", ")}); saving makes it per device.</p>}
-      <div className="table-scroll">
-      <table className="compact hwt">
-        <tbody>
-          {order.map((id, i) => (
-            <tr key={id}>
-              <td className="num fit">{i + 1}.</td>
-              <td className="wrap">{label(id)}</td>
-              <td className="actions fit">
-                <RowBtn label="Move up" icon={ArrowUp} disabled={i === 0} onClick={() => move(i, -1)} />
-                <RowBtn label="Move down" icon={ArrowDown} disabled={i === order.length - 1} onClick={() => move(i, 1)} />
-                <RowBtn
-                  label="Remove from boot order"
-                  icon={X}
-                  onClick={() => {
-                    setOrder(order.filter((x) => x !== id));
-                    setDirty(true);
-                  }}
-                />
-              </td>
-            </tr>
-          ))}
-          {order.length === 0 && (
-            <tr>
-              <td className="muted">None set; the firmware decides.</td>
-            </tr>
-          )}
-          {rest.map((x) => (
-            <tr key={x.id}>
-              <td className="fit" />
-              <td className="muted wrap">{x.label}</td>
-              <td className="actions fit">
-                <button
-                  className="link"
-                  onClick={() => {
-                    setOrder([...order, x.id]);
-                    setDirty(true);
-                  }}
-                >
-                  Add
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      </div>
-      <footer className="hwfoot">
-        {d.state !== "shutoff" && <span className="muted">Applies at the next start.</span>}
-        <button
-          disabled={!dirty}
-          onClick={() => {
-            setOrder(current);
-            setDirty(false);
-          }}
-        >
-          Revert
-        </button>
-        <button
-          className="primary"
-          disabled={!dirty || busy || order.length === 0}
-          onClick={async () => {
-            if (await run(() => send("PUT", "/boot", { order }))) setDirty(false);
-          }}
-        >
-          Save boot order
-        </button>
-      </footer>
+      <Field label="Boot from" hint={d.state !== "shutoff" ? "Applies at the next start." : undefined}>
+        <Select
+          label="Boot from"
+          value={current}
+          onChange={choose}
+          placeholder="Not set"
+          disabled={busy}
+          options={[
+            { value: "disk", label: "Disk", disabled: !first.disk },
+            { value: "cdrom", label: "CD-ROM", disabled: !first.cdrom },
+            { value: "network", label: "Network", disabled: !first.network },
+          ]}
+        />
+      </Field>
     </Card>
   );
 }

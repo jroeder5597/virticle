@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { get, post, VMDetail } from "../api";
+import { get, post, put, VMDetail } from "../api";
 import { ErrorBox, Field, Modal, useAction } from "../ui";
 import CloudInitFields, { cloudInitPayload, cloudInitUsed, CloudInitValues, emptyCloudInit } from "./CloudInit";
+import { AdvancedSection } from "./Disclosure";
 import { StatusLine } from "../Checks";
 
 interface CloneInfo {
@@ -14,15 +15,20 @@ interface CloneInfo {
   sysprepProblem?: string;
 }
 
-export function CloneDialog({ d, base, linked: linkedFirst, onClose }: { d: VMDetail; base: string; linked?: boolean; onClose: () => void }) {
+/**
+ * A template is cloned linked unless "Full copy" is ticked in Advanced; any other VM is always a full copy.
+ * A clone of a template gets a new identity when the node can do it; Advanced has the opt-out.
+ */
+export function CloneDialog({ d, base, onClose }: { d: VMDetail; base: string; onClose: () => void }) {
   const nav = useNavigate();
   const act = useAction();
   const [info, setInfo] = useState<CloneInfo>();
   const [infoError, setInfoError] = useState<string>();
   const [name, setName] = useState(d.name + "-clone");
-  const [linked, setLinked] = useState(!!linkedFirst && d.template);
+  const [fullCopy, setFullCopy] = useState(false);
   const [start, setStart] = useState(false);
-  const [sysprep, setSysprep] = useState(false);
+  // undefined: not touched, so the default applies (on for a template when the node can do it).
+  const [sysprepChoice, setSysprepChoice] = useState<boolean>();
   const [ci, setCi] = useState<CloudInitValues>(emptyCloudInit);
   const [result, setResult] = useState<string>();
 
@@ -31,6 +37,9 @@ export function CloneDialog({ d, base, linked: linkedFirst, onClose }: { d: VMDe
   }, [base]);
 
   const windows = info?.guest === "windows";
+  const linked = d.template && !fullCopy;
+  const canSysprep = !!info && !info.sysprepProblem;
+  const sysprep = canSysprep && (sysprepChoice ?? d.template);
   // Profiles are Linux-only; for Windows the select is not offered.
   const customize = cloudInitUsed(windows ? { ...ci, profile: 0 } : ci);
   const submit = async () => {
@@ -59,47 +68,31 @@ export function CloneDialog({ d, base, linked: linkedFirst, onClose }: { d: VMDe
       <Field label="Name of the clone">
         <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
       </Field>
-      <div className="field">
-        <span>Disks</span>
-        <label className="check">
-          <input type="radio" name="clonemode" checked={!linked} onChange={() => setLinked(false)} />
-          Full clone: independent copy
-        </label>
-        <label className="check">
-          <input type="radio" name="clonemode" checked={linked} disabled={!d.template} onChange={() => setLinked(true)} />
-          Linked clone: fast, small, needs the template
-        </label>
-        <small>{d.template ? "A linked clone stores only its changes and keeps reading the template's disks, so the template cannot be deleted while it exists." : "Linked clones need a template as the source, so its disks can no longer change. Use \"Convert to template\" first."}</small>
-      </div>
+      {d.template && <p className="muted">{linked ? "The clone is fast and small, and the template cannot be deleted while it exists." : "The clone is an independent copy of the template's disks."}</p>}
       <label className="check">
         <input type="checkbox" checked={start} onChange={(e) => setStart(e.target.checked)} />
         Start the clone when it is ready
       </label>
-      <div className="field">
-        <label className="check">
-          <input type="checkbox" checked={sysprep} disabled={!info || !!info.sysprepProblem} onChange={(e) => setSysprep(e.target.checked)} />
-          Sysprep: give the clone a new identity
-          {info?.sysprep && <span className="badge">via {info.sysprep}</span>}
-        </label>
-        {info?.sysprep === "virt-sysprep" && (
-          <small>virt-sysprep runs on the clone's disks on the node (machine-id, SSH host keys, logs, DHCP leases and MAC rules are reset). It works on any Linux image.</small>
+      {d.template && info?.sysprepProblem && <p className="muted">{info.sysprepProblem}</p>}
+      {!info && !infoError && <p className="muted">Checking what the node supports</p>}
+      {infoError && <p className="muted">{infoError}</p>}
+      <CloudInitFields value={ci} onChange={setCi} profiles={!!info && !windows} />
+      <AdvancedSection>
+        {d.template && (
+          <label className="check">
+            <input type="checkbox" checked={fullCopy} onChange={(e) => setFullCopy(e.target.checked)} />
+            Full copy
+          </label>
         )}
-        {info?.sysprep === "sealed template" && (
-          <small>
-            The template was sealed
-            {windows ? " with sysprep /generalize: Windows creates a new SID on the clone's first boot." : ": the clone creates a new machine-id and SSH host keys on its first boot."}
-          </small>
-        )}
-        {info?.sysprepProblem && <small>{info.sysprepProblem}</small>}
-        {!info && !infoError && <small>Checking what the node supports</small>}
-        {infoError && <small>{infoError}</small>}
-      </div>
-      <CloudInitFields vmName={name} value={ci} onChange={setCi} profiles={!!info && !windows} />
-      <p className="hint muted">
-        {windows
-          ? "Credentials go into an unattend.xml on a small ISO. Needs a sealed Windows guest."
-          : "Credentials go into a fresh cloud-init seed. Needs cloud-init in the guest."}
-      </p>
+        <div className="field">
+          <label className="check">
+            <input type="checkbox" checked={sysprep} disabled={!canSysprep} onChange={(e) => setSysprepChoice(e.target.checked)} />
+            Give the clone a new identity
+            {info?.sysprep && <span className="badge">via {info.sysprep}</span>}
+          </label>
+          {!d.template && info?.sysprepProblem && <small>{info.sysprepProblem}</small>}
+        </div>
+      </AdvancedSection>
       <ErrorBox error={act.error} />
       {result && <StatusLine status="info">{result}</StatusLine>}
       <footer>
@@ -112,32 +105,41 @@ export function CloneDialog({ d, base, linked: linkedFirst, onClose }: { d: VMDe
   );
 }
 
-export function SealDialog({ d, base, onClose, onDone }: { d: VMDetail; base: string; onClose: () => void; onDone: () => void }) {
+/**
+ * Convert to template. A running VM whose guest agent answers can also have its identity reset (default on): the
+ * guest is sealed, shut down and marked as a template in one go. A VM that is off is only marked.
+ */
+export function ConvertDialog({ d, base, onClose, onDone }: { d: VMDetail; base: string; onClose: () => void; onDone: () => void }) {
   const act = useAction();
+  const canReset = d.state === "running" && d.agent === "connected";
+  const [reset, setReset] = useState(true);
+  const seal = canReset && reset;
+  const blocked = d.state !== "shutoff" && !seal;
   return (
-    <Modal title={`Seal ${d.name}`} onClose={onClose}>
-      <p>
-        Runs a script in the guest through the agent, shuts it down and marks the VM as a template. Clones get a new identity on first boot.
-      </p>
-      <ul>
-        <li>Linux: clears the machine-id, deletes the SSH host keys, runs <code>cloud-init clean</code> if present, removes DHCP leases, logs and shell history.</li>
-        <li>Windows: runs <code>sysprep /generalize /oobe /shutdown</code>, which takes minutes and cannot be undone for this installation.</li>
-      </ul>
-      <StatusLine status="warning">Not reversible for this guest. Seal a copy to keep it usable.</StatusLine>
+    <Modal title={`Convert ${d.name} to a template`} onClose={onClose}>
+      <p>A template can be cloned, also linked, but not started.</p>
+      {canReset && (
+        <label className="check">
+          <input type="checkbox" checked={reset} onChange={(e) => setReset(e.target.checked)} />
+          Also reset its identity
+        </label>
+      )}
+      {seal && <StatusLine status="warning">This shuts the VM down and cannot be undone for this guest; reset a copy to keep it usable.</StatusLine>}
+      {blocked && <p className="muted">Shut the VM down first to convert it without resetting its identity.</p>}
       <ErrorBox error={act.error} />
       <footer>
         <button onClick={onClose}>Cancel</button>
         <button
-          className="danger"
-          disabled={act.busy}
+          className={seal ? "danger" : "primary"}
+          disabled={act.busy || blocked}
           onClick={async () => {
-            if (await act.run(() => post(`${base}/seal`))) {
+            if (await act.run(() => (seal ? post(`${base}/seal`) : put(`${base}/template`, { template: true })))) {
               onDone();
               onClose();
             }
           }}
         >
-          {act.busy ? "Sealing" : "Seal and convert"}
+          {act.busy ? "Converting" : "Convert to template"}
         </button>
       </footer>
     </Modal>

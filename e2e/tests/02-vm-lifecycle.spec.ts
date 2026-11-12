@@ -24,6 +24,7 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
     await dlg.getByRole("button", { name: "Disk image" }).click();
     await pick(dlg, "Base image", new RegExp("^" + env.cirros.replace(/\./g, "\\.")));
     await field(dlg, "Disk size (GiB)").fill("1");
+    await dlg.getByRole("button", { name: "Advanced" }).click();
     await expect(field(dlg, "Firmware")).toContainText("BIOS");
     await dlg.getByRole("button", { name: "Create" }).click();
     await expect(dlg).toBeHidden();
@@ -121,9 +122,9 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
 
   test("delete from the detail page removes the VM and its disk", async ({ page, api, n1 }) => {
     await openVM(page, vm);
-    await vmAction(page, "Delete", "Delete VM");
+    await vmAction(page, "More", "Delete VM");
     const dlg = dialog(page, `Delete ${NAME}?`);
-    await dlg.getByLabel(/Also delete its disk/).check();
+    await expect(dlg.getByLabel(/Also delete its disk/)).toBeChecked(); // ticked by default
     await dlg.getByRole("button", { name: "Delete VM" }).click();
     await expect(page).toHaveURL(/\/datacenter\/vms$/);
     await expect(row(page, NAME)).toHaveCount(0);

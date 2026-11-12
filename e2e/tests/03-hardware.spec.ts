@@ -30,10 +30,11 @@ test.describe.serial("hardware editing", () => {
     await openVM(page, vm, "hardware");
     const c = card(page, "CPU and memory");
     await c.getByRole("button", { name: "Edit" }).click();
-    await field(c, "Maximum vCPUs").fill("2");
-    await field(c, "vCPUs now").fill("2");
+    await field(c, "vCPUs").fill("2");
+    await field(c, "Memory (MiB)").fill("192");
+    // the maximums are in Advanced; the vCPU maximum follows the new count when it is left alone
+    await c.getByRole("button", { name: "Advanced" }).click();
     await field(c, "Maximum memory (MiB)").fill("256");
-    await field(c, "Memory now (MiB)").fill("192");
     await c.getByRole("button", { name: "Apply" }).click();
     await expect(c.getByRole("button", { name: "Edit" })).toBeVisible();
     await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
@@ -46,7 +47,9 @@ test.describe.serial("hardware editing", () => {
     await openVM(page, vm, "hardware");
     const c = card(page, "CPU and memory");
     await c.getByRole("button", { name: "Edit" }).click();
-    await field(c, "vCPUs now").fill("5");
+    await c.getByRole("button", { name: "Advanced" }).click();
+    await field(c, "Maximum vCPUs").fill("2");
+    await field(c, "vCPUs").fill("5");
     await expect(c.getByRole("button", { name: "Apply" })).toBeDisabled();
     await c.getByRole("button", { name: "Cancel" }).click();
   });
@@ -81,12 +84,12 @@ test.describe.serial("hardware editing", () => {
     const c = card(page, "Disks");
     await c.getByRole("button", { name: "Add disk" }).click();
     const dlg = dialog(page, "Add disk");
-    await field(dlg, "Volume name").fill(`${NAME}-data.qcow2`);
     await field(dlg, "Size (GiB)").fill("1");
     await dlg.getByRole("button", { name: "Add disk" }).click();
     await expect(dlg).toBeHidden();
     await expect(page.getByText("Applied and saved.", { exact: true })).toBeVisible();
-    const r = row(c, `${NAME}-data.qcow2`);
+    // the volume name is generated: <vm>-disk1.qcow2
+    const r = row(c, `${NAME}-disk1.qcow2`);
     await expect(r).toBeVisible();
     const target = (await r.locator("td.mono").first().innerText()).trim();
     expect(target).toBe("vdb");
@@ -107,12 +110,11 @@ test.describe.serial("hardware editing", () => {
     // The guest (still booting) cannot release a hot-unplugged disk yet: the UI must say so and keep the volume.
     await r.getByRole("button", { name: "Detach" }).click();
     const dt = dialog(page, "Detach vdb?");
-    await dt.getByLabel(/Also delete the volume/).check();
-    await dt.getByRole("button", { name: "Detach" }).click();
+    await dt.getByRole("button", { name: "Detach and delete", exact: true }).click();
     await expect(dt).toBeHidden();
     await expect(page.getByText(/The guest has not released the disk yet; it disappears once the guest lets go of it, or at the next restart\. The volume was not deleted/)).toBeVisible();
     const vols = await api.get(`/nodes/${vm.node}/pools/default/volumes`);
-    expect(vols.some((v: any) => v.name === `${NAME}-data.qcow2`)).toBe(true);
+    expect(vols.some((v: any) => v.name === `${NAME}-disk1.qcow2`)).toBe(true);
   });
 
   test("detach on the stopped VM applies at once and deletes the volume", async ({ page, api }) => {
@@ -121,26 +123,25 @@ test.describe.serial("hardware editing", () => {
     await openVM(page, vm, "hardware");
     const c = card(page, "Disks");
     // the pending detach of the previous test took effect with the power-off
-    await expect(row(c, `${NAME}-data.qcow2`)).toHaveCount(0);
+    await expect(row(c, `${NAME}-disk1.qcow2`)).toHaveCount(0);
     await c.getByRole("button", { name: "Add disk" }).click();
     const dlg = dialog(page, "Add disk");
-    await field(dlg, "Volume name").fill(`${NAME}-data2.qcow2`);
     await field(dlg, "Size (GiB)").fill("1");
     await dlg.getByRole("button", { name: "Add disk" }).click();
     await expect(dlg).toBeHidden();
-    const r = row(c, `${NAME}-data2.qcow2`);
+    // disk1 is still in the pool (the previous detach kept it), so the generated name moves on
+    const r = row(c, `${NAME}-disk2.qcow2`);
     await expect(r).toBeVisible();
     await r.getByRole("button", { name: "Detach" }).click();
     const dt = dialog(page, /^Detach/);
-    await dt.getByLabel(/Also delete the volume/).check();
-    await dt.getByRole("button", { name: "Detach" }).click();
+    await dt.getByRole("button", { name: "Detach and delete", exact: true }).click();
     await expect(dt).toBeHidden();
     await expect(r).toHaveCount(0);
     const d = await api.vmDetail(vm.node, vm.uuid);
     expect(d.disks.filter((k: any) => k.device === "disk")).toHaveLength(1);
     const vols = await api.get(`/nodes/${vm.node}/pools/default/volumes`);
-    expect(vols.some((v: any) => v.name === `${NAME}-data2.qcow2`)).toBe(false);
-    await api.del(`/nodes/${vm.node}/pools/default/volumes/${NAME}-data.qcow2`);
+    expect(vols.some((v: any) => v.name === `${NAME}-disk2.qcow2`)).toBe(false);
+    await api.del(`/nodes/${vm.node}/pools/default/volumes/${NAME}-disk1.qcow2`);
   });
 
   test("start again for the NIC tests", async ({ page, api }) => {
@@ -174,20 +175,12 @@ test.describe.serial("hardware editing", () => {
     expect(d.nics).toHaveLength(1);
   });
 
-  test("boot order: put the NIC first and save", async ({ page, api }) => {
+  test("boot order: boot from the network", async ({ page, api }) => {
     await openVM(page, vm, "hardware");
     const c = card(page, "Boot order");
-    const d0 = await api.vmDetail(vm.node, vm.uuid);
-    const mac = d0.nics[0].mac;
-    // Legacy lists expand to per-device entries; make sure the NIC is in the order, then move it to the top.
-    const nicRow = row(c, mac);
-    if (await nicRow.getByRole("button", { name: "Add" }).count()) await nicRow.getByRole("button", { name: "Add" }).click();
-    await expect(c.getByRole("button", { name: "Move up" }).first()).toBeVisible();
-    const nicInOrder = row(c, mac);
-    while (await nicInOrder.getByRole("button", { name: "Move up" }).isEnabled()) await nicInOrder.getByRole("button", { name: "Move up" }).click();
-    await c.getByRole("button", { name: "Save boot order" }).click();
-    await expect(c.getByRole("button", { name: "Save boot order" })).toBeDisabled();
+    await pick(c, "Boot from", "Network");
     await expect.poll(async () => (await api.vmDetail(vm.node, vm.uuid)).nics[0].bootOrder).toBe(1);
+    await expect(c.getByRole("combobox", { name: "Boot from" })).toContainText("Network");
   });
 
 });

@@ -185,7 +185,7 @@ function ProfileDialog({ profile, onClose, onDone }: { profile?: CloudProfile; o
           </label>
         )}
         <Field label="Packages" hint="Separated by spaces or commas.">
-          <input value={packages} onChange={(e) => setPackages(e.target.value)} placeholder="qemu-guest-agent" disabled={rawSet} />
+          <input value={packages} onChange={(e) => setPackages(e.target.value)} placeholder="e.g. htop curl" disabled={rawSet} />
         </Field>
         <Field label="SSH public keys" hint="One per line. Added to the user above.">
           <textarea rows={3} value={keys} onChange={(e) => setKeys(e.target.value)} placeholder="ssh-ed25519 AAAA me@host" disabled={rawSet} spellCheck={false} />

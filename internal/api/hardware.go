@@ -482,6 +482,16 @@ type diskAddReq struct {
 	Cache     string        `json:"cache"`
 }
 
+// freeVolumeName is the first "<prefix><n>.<format>" that taken says is free.
+func freeVolumeName(prefix, format string, taken func(string) bool) string {
+	for n := 1; ; n++ {
+		name := fmt.Sprintf("%s%d.%s", prefix, n, format)
+		if n >= 1000 || !taken(name) {
+			return name
+		}
+	}
+}
+
 func usedTargets(docs ...*domxml.Doc) []string {
 	var out []string
 	for _, d := range docs {
@@ -511,6 +521,12 @@ func (s *Server) hwDiskAdd(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	if req.Bus == "" {
+		req.Bus = "virtio"
+	}
+	if nv := req.NewVolume; nv != nil && nv.Format == "" {
+		nv.Format = "qcow2"
+	}
 	prefix := map[string]string{"virtio": "vd", "sata": "sd", "scsi": "sd"}[req.Bus]
 	switch {
 	case prefix == "":
@@ -521,8 +537,8 @@ func (s *Server) hwDiskAdd(w http.ResponseWriter, r *http.Request) {
 		err = badRequest("give either an existing volume or a newVolume")
 	case !cacheModes[req.Cache]:
 		err = badRequest("unknown cache mode " + req.Cache)
-	case req.NewVolume != nil && (!volNameRE.MatchString(req.NewVolume.Name) || req.NewVolume.SizeGiB < 1 || req.NewVolume.SizeGiB > 65536 || (req.NewVolume.Format != "qcow2" && req.NewVolume.Format != "raw")):
-		err = badRequest("a new volume needs a plain name, a size of 1 GiB or more and format qcow2 or raw")
+	case req.NewVolume != nil && ((req.NewVolume.Name != "" && !volNameRE.MatchString(req.NewVolume.Name)) || req.NewVolume.SizeGiB < 1 || req.NewVolume.SizeGiB > 65536 || (req.NewVolume.Format != "qcow2" && req.NewVolume.Format != "raw")):
+		err = badRequest("a new volume needs a plain name (or none), a size of 1 GiB or more and format qcow2 or raw")
 	}
 	if err != nil {
 		fail(w, err)
@@ -532,6 +548,12 @@ func (s *Server) hwDiskAdd(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fail(w, err)
 		return
+	}
+	if nv := req.NewVolume; nv != nil && nv.Name == "" {
+		nv.Name = freeVolumeName(c.dom.Name+"-disk", nv.Format, func(n string) bool {
+			_, err := c.h.StorageVolLookupByName(pool, n)
+			return err == nil
+		})
 	}
 	var res hwResult
 	err = s.task(r, "add disk", c.dom.Name, c.h.Name, func(func(float64)) error {

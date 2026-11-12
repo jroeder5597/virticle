@@ -375,13 +375,12 @@ test.describe.serial("visual pass", () => {
       // the bridge picker
       await page.goto(vmUrl + "?tab=hardware");
       await page.getByRole("button", { name: "Add interface" }).click();
-      await page.getByRole("dialog").getByRole("button", { name: "Host bridge" }).click();
-      await page.getByRole("combobox", { name: "Bridge device" }).click();
+      await page.getByRole("dialog").getByRole("combobox", { name: "Network", exact: true }).click();
       await shot("bridge-picker", () => expect(page.getByRole("listbox").getByRole("option").first()).toBeVisible({ timeout: 30_000 }), { viewportOnly: true });
       await page.keyboard.press("Escape");
       await page.keyboard.press("Escape");
       await page.goto(vmUrl + "?tab=hardware");
-      await page.getByRole("button", { name: /^Advanced: CPU placement/ }).click();
+      await page.getByRole("button", { name: /^Advanced/ }).first().click();
       await page.getByRole("button", { name: /^Passthrough devices/ }).click();
       await shot("vm-hardware-sections-open", () => expect(page.locator("#hw-advanced-body")).toBeVisible({ timeout: 30_000 }));
       await page.evaluate(() => localStorage.removeItem("virticle.hw.open.hw-advanced"));
@@ -392,13 +391,6 @@ test.describe.serial("visual pass", () => {
       await page.getByRole("menuitem", { name: "Network interfaces", exact: true }).click();
       await shot("edit-settings-dialog", () => expect(page.getByRole("dialog", { name: "Network interfaces" }).locator("tbody tr").nth(1)).toBeVisible(), { viewportOnly: true });
       await page.keyboard.press("Escape");
-      for (const area of ["Serial console", "Clock"]) {
-        await page.locator(".head").getByRole("button", { name: "Actions", exact: true }).click();
-        await page.getByRole("menuitem", { name: "Edit Settings", exact: true }).click();
-        await page.getByRole("menuitem", { name: area, exact: true }).click();
-        await shot("edit-settings-" + area.toLowerCase().replace(/ /g, "-"), () => expect(page.getByRole("dialog", { name: area })).toBeVisible(), { viewportOnly: true });
-        await page.keyboard.press("Escape");
-      }
       await page.locator(".head").getByRole("button", { name: "Actions", exact: true }).click();
       await page.getByRole("menuitem", { name: "Snapshots", exact: true }).click();
       await page.getByRole("menuitem", { name: "Take snapshot", exact: true }).click();
