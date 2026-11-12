@@ -14,5 +14,9 @@ if [ "$1" = configure ]; then
 	elif [ -z "$2" ]; then
 		systemctl enable virticle.service 2>/dev/null || true
 	fi
+	if [ -z "$2" ]; then
+		echo "Virticle is installed. Run: sudo virticle setup"
+		echo "Then open the address it prints."
+	fi
 fi
 exit 0

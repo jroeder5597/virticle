@@ -378,8 +378,8 @@ func TestPrepareRunsStepsInOrder(t *testing.T) {
 	for _, r := range rows {
 		ids = append(ids, r.ID)
 	}
-	order := []string{"admin", "arch", "distro", "cpu", "kvm", "nested", "iommu", "space", "mac", "time", "libvirt", "controller", "packages", "account",
-		"do-packages", "do-services", "do-network", "do-pool", "do-account", "do-key", "do-nodecmd", "do-sudoers", "do-peerkey", "test-ssh", "summary"}
+	order := []string{"admin", "arch", "distro", "cpu", "kvm", "nested", "iommu", "space", "mac", "time", "libvirt", "controller", "packages", "firewall", "account",
+		"do-packages", "do-firewall", "do-services", "do-network", "do-pool", "do-account", "do-key", "do-nodecmd", "do-sudoers", "do-peerkey", "test-ssh", "summary"}
 	if strings.Join(ids, ",") != strings.Join(order, ",") {
 		t.Errorf("rows:\n%v\nwant\n%v", ids, order)
 	}

@@ -74,8 +74,31 @@ HTTPS default, one with users keeps what it has.
 | --- | --- |
 | Debian, RHEL | The service is enabled and started. An upgrade restarts it when it was running. |
 
-Check it with `systemctl status virticle`, `journalctl -u virticle` and
+The package does not touch the firewall. Run this once after installing:
+
+    sudo virticle setup
+
+It opens the web port when firewalld or ufw is active, makes sure the service
+runs, and prints the address to open. Running it again changes nothing; if you
+later change the web port, run it again and it moves the rule to the new port.
+`sudo virticle setup --check` only looks, and `sudo virticle setup --undo`
+removes the firewall rule it added (do this before you uninstall). Then open
+the address it prints.
+
+Check the service with `systemctl status virticle`, `journalctl -u virticle` and
 `virticle version`.
+
+### Ports and firewall
+
+| Where | Port | Needed for |
+| --- | --- | --- |
+| Controller | The web port, `8443` by default (set on the **Web access** page) | Browsers and the API. `virticle setup` opens it. |
+| Each node | SSH, `22` or the port you gave for the node | The controller signs in to the node. Open to the controller only if you restrict SSH. |
+| Each node, from the other nodes | TCP `49152` to `49215` | Data of live migrations. `virticle node prepare` opens it. |
+
+Consoles (VNC, serial) go through the web port and SSH and need no port of
+their own. Only firewalld and ufw are handled. With other firewall rules
+(nftables, iptables) the command tells you the ports to open yourself.
 
 ### Configuration
 
@@ -131,8 +154,9 @@ To build from source, run `make build` (needs Go and Node.js). The result is
 
 ## First run
 
-1. Open the page: `https://<address>:8443`, the address in the journal line
-   `open ... to create the administrator`.
+1. Open the address that `sudo virticle setup` printed, for example
+   `https://<address>:8443` (the journal line `open ... to create the
+   administrator` says the same).
 2. Create the administrator account. The password needs at least 10
    characters.
 3. Add nodes. If this machine will run your VMs too, choose **Set up this
@@ -239,6 +263,9 @@ Rolling back the controller does not bring back the shell script that
     sudo apt-get remove virticle      # keeps /var/lib/virticle and /etc/virticle
     sudo apt-get purge virticle       # also deletes both and the user virticle
     sudo dnf remove virticle          # keeps /var/lib/virticle and the user
+
+Run `sudo virticle setup --undo` first to remove the firewall rule that
+`virticle setup` added.
 
 The data directory is never deleted by `remove`.
 

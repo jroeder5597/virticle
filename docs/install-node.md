@@ -78,6 +78,11 @@ Prepare runs these steps in order:
    Prepare never reboots the host. If a reboot or kernel parameter is needed (for IOMMU), a row says so.
 2. **Installs packages** (see the lists below, including the guest disk tools) and enables libvirt. It starts the `default` network and defines the
    `default` pool when they are missing. Existing networks and pools are not changed.
+   **Opens the migration ports in the firewall.** When firewalld is active, it defines the service `virticle-node`
+   (TCP `49152` to `49215`) and adds it to the default zone, permanent and running. When ufw is active, it adds
+   `ufw allow 49152:49215/tcp comment 'virticle-node'`. With no firewall nothing happens. With nftables or iptables
+   rules and no firewalld or ufw, a row lists the ports for you to open. SSH rules are never touched. If a firewall
+   command fails, the row is a warning with the commands to run yourself, and prepare goes on.
 3. **Service account only: sets up the account.** Default name `virticle-node`, a system user, home
    `/var/lib/virticle-node`, shell `/bin/sh`, no password, in the groups `libvirt` and `kvm`. It asks nothing:
    - No such account: it is created.
@@ -145,8 +150,8 @@ replaces the node command and removes the old script. Steps for 0.1.0 are in
 **Nodes prepared by 0.2.0.** They have the account `virticle` (made by prepare, with the comment "virticle service
 account"). Preparing them again keeps that account. It does not make `virticle-node`.
 
-**Unprepare.** `virticle node unprepare admin@host` removes the account, key, node command and sudo rule. It leaves
-packages, VMs, pools and networks alone.
+**Unprepare.** `virticle node unprepare admin@host` removes the account, key, node command, sudo rule and the
+firewall service `virticle-node` (or the ufw rule with that comment). It leaves packages, VMs, pools and networks alone.
 
 - Without `--user` it removes the account that prepare made: `virticle-node`, or `virticle` on a node that 0.2.0
   prepared.

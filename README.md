@@ -39,7 +39,9 @@ Pick one.
 | From source (needs Go and Node.js) | `make build` then `./bin/virticle -data ./data` |
 
 Download packages from
-[Releases](https://github.com/jroeder5597/virticle/releases). A package runs
+[Releases](https://github.com/jroeder5597/virticle/releases). After installing
+a package, run `sudo virticle setup` once: it opens the web port in the
+firewall (firewalld or ufw) and prints the address to open. A package runs
 a systemd service that serves HTTPS with a self-signed certificate on port
 8443 of all interfaces. The container does the same (compose.yaml publishes it
 on `127.0.0.1`). More in
@@ -47,7 +49,7 @@ on `127.0.0.1`). More in
 
 ### 2. Create the administrator
 
-1. Open `https://<address>:8443` (the journal says which address: `journalctl -u virticle`). Your browser warns about the self-signed certificate. A source build started by hand in a data directory without users does the same.
+1. Open the address that `sudo virticle setup` printed, `https://<address>:8443` (the journal says the same: `journalctl -u virticle`). Your browser warns about the self-signed certificate. A source build started by hand in a data directory without users does the same.
 2. Choose a user name and a password of at least 10 characters.
 
 ### 3. Add a node
