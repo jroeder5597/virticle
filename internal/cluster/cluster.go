@@ -180,6 +180,18 @@ func (m *Manager) SetMaintenance(id int64, on bool) {
 	}
 }
 
+// SetMigTLSOff updates the in-memory copy of a node's "encrypted migration removed by hand" flag.
+func (m *Manager) SetMigTLSOff(id int64, off bool) {
+	m.mu.Lock()
+	n := m.nodes[id]
+	m.mu.Unlock()
+	if n != nil {
+		n.mu.Lock()
+		n.cfg.MigTLSOff = off
+		n.mu.Unlock()
+	}
+}
+
 func (m *Manager) run(ctx context.Context, n *node) {
 	backoff := time.Second
 	for ctx.Err() == nil {

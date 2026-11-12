@@ -270,7 +270,9 @@ func (s *Server) editNode(w http.ResponseWriter, r *http.Request) {
 		out.Notes = append(out.Notes, "The address changed, so the node's SSH host key is trusted on first use at the new address.")
 	}
 	if n.Addr != cur.Addr || n.MigrationAddr != cur.MigrationAddr {
-		out.Notes = append(out.Notes, "The migration certificate of this node, if it has one, no longer covers the new address; issue it again on the node page (Migration tab).")
+		if s.migAuto != nil {
+			s.migAuto.Reset(id) // the certificate is issued again for the new address when the node is back
+		}
 	}
 	if err := s.Store.UpdateNodeConnection(id, n); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {

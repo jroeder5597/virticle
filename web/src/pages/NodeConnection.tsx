@@ -1,7 +1,8 @@
 import { FormEvent, Fragment, ReactNode, useEffect, useState } from "react";
 import { ApiError, get, NodeStatus, post, put } from "../api";
 import { CheckItem, CheckList, CheckStatus, StatusLine } from "../Checks";
-import Select from "../Select";
+import DialogAdvanced from "./DialogAdvanced";
+import PrepareNode from "./PrepareNode";
 import { ErrorBox, Field, Modal, StateBadge, useAction, useConfirm } from "../ui";
 
 export interface Capability {
@@ -51,25 +52,29 @@ interface EditResponse {
   notes?: string[];
 }
 
-const PRIVILEGE_TEXT: Record<string, string> = {
-  root: "Root: the controller signs in as root and runs the node command directly",
-  helper: "Service account: the account may run the node command as root through sudo, and nothing else",
-  none: "Not prepared: no node command, features that need root are off",
-};
-
-const PRIVILEGE_NAME: Record<string, string> = { root: "Root", helper: "Service account", none: "Not prepared" };
-
 const mono = (v: ReactNode, key: string) => (
   <span className="mono" key={key}>
     {v}
   </span>
 );
 
-/** The Connection card of a node's Settings tab: how it is reached, what its login may do, and the edit actions. */
+const Facts = ({ rows }: { rows: [string, ReactNode][] }) => (
+  <dl className="connfacts">
+    {rows.map(([k, v]) => (
+      <Fragment key={k}>
+        <dt>{k}</dt>
+        <dd>{v}</dd>
+      </Fragment>
+    ))}
+  </dl>
+);
+
+/** The Connection card of a node's Settings tab: how it is reached, whether the node is prepared, and the edit actions. */
 export default function ConnectionCard({ n, admin }: { n: NodeStatus; admin: boolean }) {
   const [info, setInfo] = useState<ConnInfo | undefined>();
   const [err, setErr] = useState<string | undefined>();
   const [editing, setEditing] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [notes, setNotes] = useState<CheckItem[]>([]);
   const act = useAction();
   const confirm = useConfirm();
@@ -93,52 +98,54 @@ export default function ConnectionCard({ n, admin }: { n: NodeStatus; admin: boo
     if (ok) await act.run(() => post(`/nodes/${n.id}/forget-host-key`));
   };
 
+  // One warning: the node is not prepared (or was prepared by an older version), or else the first thing that needs root and is off.
+  const unprepared = n.state === "online" && info?.detectedPrivilege === "none";
+  const older = !!info?.privilegeNote?.includes("older version");
   const blocked = info ? Object.values(info.capabilities).filter((c) => !c.ok) : [];
-  const rows: [string, ReactNode][] = [
-    ["Address", mono(n.addr, "a")],
-    ["Reported hostname", info?.hostname ? mono(info.hostname, "h") : n.state === "online" ? "–" : "unknown while offline"],
-    ["Resolved IP", info?.resolvedIps?.length ? mono(info.resolvedIps.join(", "), "r") : "–"],
-    ["Migration address", mono(info?.effectiveMigrationAddress ?? n.addr, "m")],
-    ["SSH user", mono(n.user, "u")],
-    ["Jump host", n.jump ? mono(n.jump, "j") : "none"],
-    ["Node access", info?.privilege ? <span key="p">{PRIVILEGE_TEXT[info.privilege] ?? info.privilege}</span> : "not detected yet"],
-    ["State", <StateBadge key="s" state={n.state} />],
-  ];
+  const hostKeyError = !!n.error && n.error.includes("key mismatch");
   return (
     <div className="card">
       <h3>Connection</h3>
-      <dl className="connfacts">
-        {rows.map(([k, v]) => (
-          <Fragment key={k}>
-            <dt>{k}</dt>
-            <dd>{v}</dd>
-          </Fragment>
-        ))}
-      </dl>
+      <Facts rows={[["Address", mono(n.addr, "a")], ["SSH user", mono(n.user, "u")], ["State", <StateBadge key="s" state={n.state} />]]} />
       {n.error && <StatusLine status="error">{n.error}</StatusLine>}
-      <ErrorBox error={err} />
-      {info?.privilegeNote && <p className="muted">Detected: {info.privilegeNote}.</p>}
-      {info && info.privilege && info.detectedPrivilege && info.privilege !== info.detectedPrivilege && (
-        <StatusLine status="warning">
-          The node reports {PRIVILEGE_NAME[info.detectedPrivilege] ?? info.detectedPrivilege}, but this node is set to {PRIVILEGE_NAME[info.privilege] ?? info.privilege}.
-        </StatusLine>
+      {hostKeyError && admin && (
+        <p>
+          <button onClick={forget} disabled={act.busy} title="For a node that was reinstalled: trust the SSH host key it presents next">
+            Forget host key
+          </button>
+        </p>
       )}
-      {blocked.length > 0 ? (
-        <CheckList summary={false} label="Features that need root" items={blocked.map((c, i) => ({ key: String(i), status: "warning", detail: c.reason ?? "Unavailable" }))} />
+      <ErrorBox error={err} />
+      <details className="conndetails">
+        <summary>Details</summary>
+        <Facts
+          rows={[
+            ["Resolved IP", info?.resolvedIps?.length ? mono(info.resolvedIps.join(", "), "r") : "–"],
+            ["Reported hostname", info?.hostname ? mono(info.hostname, "h") : n.state === "online" ? "–" : "unknown while offline"],
+            ["Migration address", mono(info?.effectiveMigrationAddress ?? n.addr, "m")],
+            ["Jump host", n.jump ? mono(n.jump, "j") : "none"],
+          ]}
+        />
+      </details>
+      {unprepared ? (
+        <div className="warnrow">
+          <StatusLine status="warning">
+            {older ? "This node was prepared by an older version, so features that need root are off." : "This node is not prepared, so features that need root are off."}
+          </StatusLine>
+          {admin && <button onClick={() => setPreparing(true)}>Prepare this node</button>}
+        </div>
       ) : (
-        info && <StatusLine status="ok">All features that need root work with this login.</StatusLine>
+        blocked.length > 0 && <StatusLine status="warning">{blocked[0].reason ?? "A feature that needs root is unavailable."}</StatusLine>
       )}
       <ErrorBox error={act.error} />
       {notes.length > 0 && <CheckList summary={false} label="Result of the change" items={notes} />}
       {admin && (
         <div className="actions">
           <button onClick={() => setEditing(true)}>Edit connection</button>
-          <button onClick={forget} disabled={act.busy} title="For a node that was reinstalled: trust the SSH host key it presents next">
-            Forget host key
-          </button>
         </div>
       )}
       {confirm.dialog}
+      {preparing && <PrepareNode mode="prepare" nodeId={n.id} nodeUser={n.user} addr={n.addr} jump={n.jump ?? ""} onClose={() => setPreparing(false)} onRegistered={() => setPreparing(false)} />}
       {editing && info && (
         <EditConnection
           n={n}
@@ -162,91 +169,72 @@ function EditConnection({ n, info, onClose, onSaved }: { n: NodeStatus; info: Co
   const [addr, setAddr] = useState(n.addr);
   const [user, setUser] = useState(n.user);
   const [jump, setJump] = useState(n.jump ?? "");
-  const [priv, setPriv] = useState("keep");
   const [mig, setMig] = useState(info.migrationAddress);
-  const [force, setForce] = useState(false);
   const [publicKey, setPublicKey] = useState("");
   const [copied, setCopied] = useState(false);
   const [tested, setTested] = useState<EditResponse | undefined>();
+  const [failed, setFailed] = useState(false); // the last save was refused because the connection test failed
   const act = useAction();
   useEffect(() => {
     get<{ publicKey: string }>("/nodes").then((d) => setPublicKey(d.publicKey), () => {});
   }, []);
-  const body = () => ({
-    addr,
-    user,
-    jump,
-    migrationAddress: mig,
-    // "keep" leaves the setting unless the login changed, in which case the server detects it again.
-    ...(priv === "keep" ? {} : { privilege: priv }),
-    force,
-  });
+  // The access mode is detected by the server when the login changes; it is not sent.
+  const body = (force: boolean) => ({ addr, user, jump, migrationAddress: mig, force });
   const test = () =>
     act.run(async () => {
       setTested(undefined);
-      setTested(await post<EditResponse>(`/nodes/${n.id}/test-connection`, body()));
+      setFailed(false);
+      setTested(await post<EditResponse>(`/nodes/${n.id}/test-connection`, body(false)));
     });
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  const save = async (force: boolean) => {
     let saved: EditResponse | undefined;
     setTested(undefined);
     const ok = await act.run(async () => {
       try {
-        saved = await put<EditResponse>(`/nodes/${n.id}`, body());
+        saved = await put<EditResponse>(`/nodes/${n.id}`, body(force));
       } catch (e) {
         // A refused save carries the steps of its trial connection.
         if (e instanceof ApiError && e.data?.test?.steps) setTested({ test: e.data.test });
+        setFailed(e instanceof ApiError && !!e.data?.connection);
         throw e;
       }
     });
     if (ok) onSaved(saved ?? {});
   };
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    return save(false);
+  };
+  const steps = tested?.test?.steps;
   return (
     <Modal title="Edit connection" onClose={onClose}>
       <form onSubmit={submit}>
-        <p>
-          This server signs in with the key below. It must be in <code>~/.ssh/authorized_keys</code> of the SSH user on the node.
-        </p>
-        <div className="keybox">
-          <code>{publicKey}</code>
-          <button type="button" className="link" onClick={() => navigator.clipboard?.writeText(publicKey).then(() => setCopied(true))}>
-            {copied ? "Copied" : "Copy"}
-          </button>
-        </div>
         <div className="grid2">
-          <Field label="Address" hint="Host name or IP, optionally with :port. A new address is trusted on first use.">
+          <Field label="Address" hint="Host name or IP, optionally with :port.">
             <input value={addr} onChange={(e) => setAddr(e.target.value)} required />
           </Field>
-          <Field label="SSH user" hint="root, or a member of the libvirt group.">
+          <Field label="SSH user" hint="virticle-node, or root.">
             <input value={user} onChange={(e) => setUser(e.target.value)} required />
           </Field>
         </div>
-        <div className="grid2">
-          <Field label="Jump host (optional)" hint="user@address of a host to connect through.">
-            <input value={jump} onChange={(e) => setJump(e.target.value)} />
-          </Field>
-          <Field label="Migration address (optional)" hint="What other nodes use to reach this one: an IP or a name they can resolve. Empty: the address above.">
-            <input value={mig} onChange={(e) => setMig(e.target.value)} />
-          </Field>
-        </div>
-        <Field label="Node access" hint="How the controller runs commands that need root on this node. Keep detects it again when the user or address changes.">
-          <Select
-            label="Node access"
-            value={priv}
-            onChange={setPriv}
-            options={[
-              { value: "keep", label: `Keep (${PRIVILEGE_NAME[info.privilege] ?? "not detected yet"})` },
-              { value: "auto", label: "Detect" },
-              { value: "root", label: "Root" },
-              { value: "helper", label: "Service account" },
-              { value: "none", label: "Not prepared" },
-            ]}
-          />
-        </Field>
-        <label className="check">
-          <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> Save even if the connection test fails (for a node that is down)
-        </label>
-        {tested?.test?.steps && <CheckList sort={false} label="Connection test" items={stepItems(tested.test.steps)} />}
+        <DialogAdvanced>
+          <div className="grid2">
+            <Field label="Jump host (optional)" hint="user@address of a host to connect through.">
+              <input value={jump} onChange={(e) => setJump(e.target.value)} />
+            </Field>
+            <Field label="Migration address (optional)" hint="What other nodes use to reach this one. Empty: the address above.">
+              <input value={mig} onChange={(e) => setMig(e.target.value)} />
+            </Field>
+          </div>
+          <p className="muted">This server signs in with this key. It must be in ~/.ssh/authorized_keys of the SSH user on the node.</p>
+          <div className="keybox">
+            <code>{publicKey}</code>
+            <button type="button" className="link" onClick={() => navigator.clipboard?.writeText(publicKey).then(() => setCopied(true))}>
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+        </DialogAdvanced>
+        {steps && <CheckList sort={false} label="Connection test" items={stepItems(steps)} />}
         <ErrorBox error={act.error} />
         <footer>
           <button type="button" onClick={onClose}>
@@ -255,6 +243,11 @@ function EditConnection({ n, info, onClose, onSaved }: { n: NodeStatus; info: Co
           <button type="button" onClick={test} disabled={act.busy}>
             Test connection
           </button>
+          {failed && (
+            <button type="button" onClick={() => save(true)} disabled={act.busy} title="For a node that is down: save the settings without a working connection">
+              Save anyway
+            </button>
+          )}
           <button className="primary" disabled={act.busy}>
             Save
           </button>
@@ -263,4 +256,3 @@ function EditConnection({ n, info, onClose, onSaved }: { n: NodeStatus; info: Co
     </Modal>
   );
 }
-

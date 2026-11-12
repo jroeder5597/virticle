@@ -78,6 +78,10 @@ type migTLSInfo struct {
 	Changes   []string         `json:"changes,omitempty"` // what a setup/removal did
 	ConfEdits []string         `json:"configChanges"`     // edits to qemu.conf; always empty today
 	Note      string           `json:"note,omitempty"`
+	// Off is set when it was removed by hand, so that it is not set up again until Fix; AutoError is the last
+	// failure of the automatic setup.
+	Off       bool   `json:"off,omitempty"`
+	AutoError string `json:"autoError,omitempty"`
 	migpki.Status
 }
 
@@ -193,6 +197,12 @@ func (s *Server) migTLSStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	info.Node = id
+	if cfg, ok := s.Nodes.Config(id); ok {
+		info.Off = cfg.MigTLSOff
+	}
+	if s.migAuto != nil {
+		info.AutoError = s.migAuto.Error(id)
+	}
 	writeJSON(w, info)
 }
 
@@ -237,8 +247,21 @@ func (s *Server) migTLSSetup(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	s.setMigTLSOff(id, false) // asked for by hand: automatic upkeep applies again
 	res.Node = id
 	writeJSON(w, res)
+}
+
+// setMigTLSOff stores whether encrypted migration was removed from a node by hand.
+func (s *Server) setMigTLSOff(id int64, off bool) {
+	if err := s.Store.SetMigTLSOff(id, off); err != nil {
+		log.Printf("migration TLS: storing the choice for node %d: %v", id, err)
+		return
+	}
+	s.Nodes.SetMigTLSOff(id, off)
+	if s.migAuto != nil {
+		s.migAuto.Reset(id)
+	}
 }
 
 func (s *Server) installMigTLS(id int64, h *hostconn.Host, req migTLSReq, progress func(float64)) (migTLSInfo, error) {
@@ -434,6 +457,7 @@ func (s *Server) migTLSRemove(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	s.setMigTLSOff(id, true) // removed by hand: not set up again until Fix
 	res.Node = id
 	writeJSON(w, res)
 }

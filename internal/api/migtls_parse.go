@@ -312,7 +312,7 @@ func (in encInput) problems() []string {
 	return p
 }
 
-const setupHint = "Use \"Set up encrypted migration\" on the Nodes page for these nodes (or POST /api/nodes/{node}/migration-tls)."
+const setupHint = "Press Fix under Encrypted migration on the node's Settings tab (or POST /api/nodes/{node}/migration-tls)."
 
 // encryptionCheck decides whether the memory and disk streams are encrypted
 // and what the pre-flight check says about it.

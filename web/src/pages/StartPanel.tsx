@@ -57,7 +57,7 @@ export default function StartPanel() {
           </div>
         </>
       )}
-      {preparing && <PrepareNode own addr={local.address} jump="" onClose={() => setPreparing(false)} onRegistered={() => setPreparing(false)} />}
+      {preparing && <PrepareNode addr={local.address} jump="" onClose={() => setPreparing(false)} onRegistered={() => setPreparing(false)} />}
     </div>
   );
 }

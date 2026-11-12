@@ -9,3 +9,13 @@
 .nicbox td, .nicbox th { white-space: nowrap; }
 .nicbox .num { font-variant-numeric: tabular-nums; }
 .connfacts dd { overflow-wrap: anywhere; }
+
+/* The Advanced part of a node dialog */
+.dlgadv { padding-top: 8px; }
+.dlgadv > .field, .dlgadv > .statusline { margin-top: 8px; }
+.conndetails { margin: 8px 0; }
+.conndetails summary { cursor: pointer; font-weight: 600; }
+.warnrow { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.warnrow .statusline { margin: 6px 0; }
+.migtls details { margin: 6px 0; }
+.migtls summary { cursor: pointer; font-weight: 600; }

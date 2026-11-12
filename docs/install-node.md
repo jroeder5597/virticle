@@ -4,7 +4,7 @@ A node is a Linux host with libvirt and QEMU that the controller reaches over SS
 
 **Prepare a node before you add it.** Either way works:
 
-- In the web UI: **Nodes > Add node > Prepare this node**.
+- In the web UI: **Nodes > Add node**.
 - In a shell: `virticle node prepare admin@host`.
 
 This page tells you what prepare does, so you can check it or do the same by hand. The last part,

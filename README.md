@@ -65,17 +65,16 @@ on the machine (`sudo systemctl enable --now sshd`).
 To add another machine:
 
 A node is a Linux host with hardware virtualisation. Debian 13 and Rocky
-Linux 10 are tested. A node must be **prepared** before you add it. Preparing
+Linux 10 are tested. A node is prepared when you add it. Preparing
 installs libvirt and QEMU and sets up the access the controller needs.
 
 1. Open **Nodes**, then **Add node**.
-2. Choose **Prepare this node**.
-3. Enter the address and an administrator login for the host. It is used once
+2. Enter the address and an administrator login for the host. It is used once
    and is not stored.
-4. Choose **Check** to see what would change. It changes nothing. Then
-   choose **Prepare**. There is nothing else to tick, except **Root access
-   instead of a service account** if you want that.
-5. When prepare has finished without errors, choose **Add this node**.
+3. Choose **Check** to see what would change. It changes nothing. Then
+   choose **Add node**, which prepares the host and adds it. There is nothing
+   else to tick, except **Root access instead of a service account** if you
+   want that.
 
 ![Add node dialog](docs/img/add-node.png)
 

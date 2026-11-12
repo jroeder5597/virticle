@@ -189,7 +189,7 @@ func TestEncryptionCheck(t *testing.T) {
 		{"both ok, explicit true", func(i *encInput) { i.Src, i.Dst, i.Request = ok, ok, bptr(true) }, true, true, "info", "encrypted"},
 		{"expiring still encrypts and says so", func(i *encInput) { i.Src, i.Dst = ok, expiring }, true, true, "info", "n2 expires in 9 days"},
 		{"explicit off", func(i *encInput) { i.Src, i.Dst, i.Request = ok, ok, bptr(false) }, false, false, "warning", "unencrypted between n1 and n2"},
-		{"neither set up: warning with pointer", func(i *encInput) { i.Src, i.Dst = none, none }, false, false, "warning", "unencrypted between n1 and n2 (n1: not set up; n2: not set up). Use \"Set up encrypted migration\""},
+		{"neither set up: warning with pointer", func(i *encInput) { i.Src, i.Dst = none, none }, false, false, "warning", "unencrypted between n1 and n2 (n1: not set up; n2: not set up). Press Fix under Encrypted migration"},
 		{"one set up", func(i *encInput) { i.Src, i.Dst = ok, none }, false, false, "warning", "n2: not set up"},
 		{"mismatch explained", func(i *encInput) { i.Src, i.Dst = ok, mism }, false, false, "warning", "not this controller's CA"},
 		{"expired", func(i *encInput) { i.Src, i.Dst = expired, ok }, false, false, "warning", "n1: expired"},

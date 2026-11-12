@@ -1,22 +1,20 @@
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Alert, bytes, get, NodeInfo, NodeStatus, post, put } from "../api";
+import { Alert, bytes, get, NodeInfo, NodeStatus } from "../api";
 import { useLive } from "../live";
 import { useRole } from "../auth";
-import { ErrorBox, Field, Modal, PageTitle, StateBadge, useAction } from "../ui";
+import { ErrorBox, PageTitle, StateBadge } from "../ui";
 import { HostLoad, useHostSeries } from "../charts";
 import { AlertMarks, useAlerts } from "./Alerts";
-import Evacuate from "./Evacuate";
+import MaintenanceActions from "./Maintenance";
 import { StatusLine } from "../Checks";
 import PrepareNode from "./PrepareNode";
 
 export default function Nodes() {
   const nodes = useLive(() => get<{ nodes: NodeStatus[]; publicKey: string }>("/nodes"), "nodes");
   const [adding, setAdding] = useState(false);
-  const act = useAction();
   const admin = useRole() === "admin";
   const alerts = useAlerts();
-  const [evacuating, setEvacuating] = useState<NodeStatus | undefined>();
   return (
     <>
       <div className="head">
@@ -27,9 +25,9 @@ export default function Nodes() {
           </button>
         )}
       </div>
-      <ErrorBox error={nodes.error ?? act.error} />
+      <ErrorBox error={nodes.error} />
       {nodes.data && nodes.data.nodes.length === 0 ? (
-        <div className="empty">A node is any machine running libvirt that this server can reach over SSH. Nothing needs to be installed on it.</div>
+        <div className="empty">A node is a machine that runs your virtual machines. Add one to get started.</div>
       ) : (
         <div className="table-scroll"><table>
           <thead>
@@ -48,20 +46,18 @@ export default function Nodes() {
                 n={n}
                 canRemove={admin}
                 alerts={alerts}
-                onEvacuate={() => setEvacuating(n)}
-                onMaintenance={() => act.run(() => put(`/nodes/${n.id}/maintenance`, { on: !n.maintenance }))}
+                nodes={nodes.data?.nodes ?? []}
               />
             ))}
           </tbody>
         </table></div>
       )}
-      {evacuating && nodes.data && <Evacuate node={evacuating} nodes={nodes.data.nodes} onClose={() => setEvacuating(undefined)} />}
-      {adding && nodes.data && <AddNode onClose={() => setAdding(false)} />}
+      {adding && <PrepareNode addr="" jump="" onClose={() => setAdding(false)} onRegistered={() => setAdding(false)} />}
     </>
   );
 }
 
-function NodeRow({ n, canRemove, alerts, onEvacuate, onMaintenance }: { n: NodeStatus; canRemove: boolean; alerts: Alert[]; onEvacuate: () => void; onMaintenance: () => void }) {
+function NodeRow({ n, canRemove, alerts, nodes }: { n: NodeStatus; canRemove: boolean; alerts: Alert[]; nodes: NodeStatus[] }) {
   const [info, setInfo] = useState<NodeInfo | undefined>();
   const series = useHostSeries(n.id, n.state === "online");
   useEffect(() => {
@@ -96,65 +92,8 @@ function NodeRow({ n, canRemove, alerts, onEvacuate, onMaintenance }: { n: NodeS
         <HostLoad points={series} kind="mem" />
       </td>
       <td className="actions nodeactions">
-        {canRemove && n.state === "online" && (
-          <button onClick={onEvacuate} title="Move the virtual machines of this node to the others">
-            Evacuate
-          </button>
-        )}
-        {canRemove && (
-          <button onClick={onMaintenance} title="A node in maintenance is never chosen as a migration or evacuation target">
-            {n.maintenance ? "End maintenance" : "Maintenance"}
-          </button>
-        )}
+        {canRemove && <MaintenanceActions n={n} nodes={nodes} />}
       </td>
     </tr>
-  );
-}
-
-function AddNode({ onClose }: { onClose: () => void }) {
-  const [addr, setAddr] = useState("");
-  const [user, setUser] = useState("virticle-node");
-  const [jump, setJump] = useState("");
-  const [preparing, setPreparing] = useState(false);
-  const act = useAction();
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (await act.run(() => post("/nodes", { addr, user, jump }))) onClose();
-  };
-  return (
-    <>
-    <Modal title="Add node" onClose={onClose}>
-      <form onSubmit={submit}>
-        <p>
-          A node must be prepared before it can be added. Use Prepare this node for a new host; it installs libvirt and the node command. If the node is
-          already prepared, enter its address and the user here.
-        </p>
-        <div className="grid2">
-          <Field label="Address" hint="Host name or IP, optionally with :port.">
-            <input value={addr} onChange={(e) => setAddr(e.target.value)} required autoFocus placeholder="kvm1.example.lan" />
-          </Field>
-          <Field label="SSH user" hint="virticle-node (the account that Prepare creates), or root (Root access). A node prepared by version 0.2.0 uses virticle.">
-            <input value={user} onChange={(e) => setUser(e.target.value)} required />
-          </Field>
-        </div>
-        <Field label="Jump host (optional)" hint="user@address of a host to connect through.">
-          <input value={jump} onChange={(e) => setJump(e.target.value)} placeholder="" />
-        </Field>
-        <ErrorBox error={act.error} />
-        <footer>
-          <button type="button" onClick={() => setPreparing(true)} title="Install libvirt and install the node command on a host">
-            Prepare this node
-          </button>
-          <button type="button" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="primary" disabled={act.busy}>
-            Add
-          </button>
-        </footer>
-      </form>
-    </Modal>
-    {preparing && <PrepareNode addr={addr} jump={jump} onClose={() => setPreparing(false)} onRegistered={onClose} />}
-    </>
   );
 }
