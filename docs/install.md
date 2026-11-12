@@ -190,7 +190,9 @@ Steps:
    **Node access** row shows how the node is reached.
 
 A node that you added with full sudo, or as root without preparing it, needs
-the same step. A running controller notices a newly prepared node within about
+the same step. Nodes that 0.2.0 prepared keep their account `virticle` when you
+prepare them again; no second account is made. Newly prepared nodes use the
+account `virticle-node`. A running controller notices a newly prepared node within about
 30 seconds. Preparing again replaces the node command and removes the old
 script. VMs, networks and pools on the node are not touched.
 

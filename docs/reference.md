@@ -123,7 +123,7 @@ A node is reached in one of two ways. Both run the same program as root: the nod
 
 | Access | How to set it up | What the controller does |
 | --- | --- | --- |
-| **Service account** (recommended) | `virticle node prepare` | Signs in as `virticle` and runs the node command with `sudo -n`. The sudo rule allows that program and nothing else. |
+| **Service account** (recommended) | `virticle node prepare` | Signs in as `virticle-node` (`virticle` on a node that 0.2.0 prepared) and runs the node command with `sudo -n`. The sudo rule allows that program and nothing else. |
 | **Root** | `virticle node prepare --root` | Signs in as root and runs the node command directly. A Service account is safer. |
 
 A node that has neither is "Not prepared": the features that need root are off. A node whose account has general

@@ -19,8 +19,8 @@ import (
 )
 
 const nodeUsage = `usage:
-  virticle node prepare   [--check] [--user NAME] [--use-existing-user[=NAME]] [--confirm] [--root]
-                          [--from ADDR] [--extras guestfs,virtiofs] [--jump user@host]
+  virticle node prepare   [--check] [--minimal] [--root] [--user NAME] [--use-existing-user[=NAME]] [--confirm]
+                          [--from ADDR] [--jump user@host]
                           [--identity FILE] [--password-stdin] [--data DIR] [user@]host[:port]
   virticle node unprepare [--user NAME] [--root] [--jump user@host] [--identity FILE]
                           [--password-stdin] [--data DIR] [user@]host[:port]
@@ -28,12 +28,18 @@ const nodeUsage = `usage:
 prepare signs in as the administrator (your SSH agent, or --identity, or a password read from
 standard input), installs libvirt and QEMU, installs the node command (virticle-node) and tests
 the connection. There are two ways for the controller to reach the node:
-  Service account (default, recommended): prepare creates an account for the controller with a
-    restricted SSH key and a sudo rule that lets it run the node command as root, and nothing else.
+  Service account (default, recommended): prepare creates the account virticle-node for the
+    controller with a restricted SSH key and a sudo rule that lets it run the node command as root,
+    and nothing else. (The account virticle belongs to the controller package and is never used.
+    A node prepared by an earlier version keeps its account virticle.)
   Root (--root): the controller signs in as root and runs the node command directly. No account
     is created.
---check changes nothing. Running prepare again changes nothing. unprepare removes the account,
-key, node command and sudo rule; packages, VMs, pools and networks stay.
+Packages: libvirt, QEMU and the guest disk tools (virt-sysprep, used by "sysprep on clone").
+--minimal leaves the guest disk tools out; clone with sysprep then needs a sealed template.
+--use-existing-user (with --confirm) is for an account you manage yourself.
+--check changes nothing. Running prepare again changes nothing. unprepare removes the account
+(virticle-node, or virticle when an earlier version made it), key, node command and sudo rule;
+packages, VMs, pools and networks stay. An account that Virticle did not create is never removed.
 (--allow-root is the old name of --root.)`
 
 // useExistingFlag is a boolean flag that also accepts --use-existing-user=NAME.
@@ -66,13 +72,13 @@ func nodeCommand(args []string) int {
 	fs.Usage = func() { fmt.Fprintln(os.Stderr, nodeUsage) }
 	var (
 		check     = fs.Bool("check", false, "read-only preflight; change nothing")
-		user      = fs.String("user", "", "service account name (default virticle)")
+		user      = fs.String("user", "", "service account name (default virticle-node)")
 		existing  useExistingFlag
 		confirm   = fs.Bool("confirm", false, "with --use-existing-user: add the account to the libvirt and kvm groups and give it the sudo rule for the node command")
 		root      = fs.Bool("root", false, "Root access: the controller signs in as root instead of using a service account (a service account is safer)")
 		allowRoot = fs.Bool("allow-root", false, "")
 		from      = fs.String("from", "", "restrict the controller's key to this source address (comma-separated patterns)")
-		extras    = fs.String("extras", "", "comma-separated extra packages: guestfs, virtiofs")
+		minimal   = fs.Bool("minimal", false, "leave out the guest disk tools (virt-sysprep); clone with sysprep then needs a sealed template")
 		jump      = fs.String("jump", "", "user@host to connect through")
 		identity  = fs.String("identity", "", "administrator's private key file (the SSH agent is used as well)")
 		pwStdin   = fs.Bool("password-stdin", false, "read the administrator's password from standard input")
@@ -133,14 +139,9 @@ func nodeCommand(args []string) int {
 	renameEnv("VIRT_JUMP_PASSWORD", "VIRTICLE_JUMP_PASSWORD")
 
 	o := prepare.Options{User: *user, UseExisting: existing.on, Confirm: *confirm, AllowRoot: *root || *allowRoot,
-		From: *from, ControllerKey: pub, InstanceID: instance}
+		From: *from, Minimal: *minimal, ControllerKey: pub, InstanceID: instance}
 	if existing.name != "" {
 		o.User = existing.name
-	}
-	for _, e := range strings.Split(*extras, ",") {
-		if e = strings.TrimSpace(e); e != "" {
-			o.Extras = append(o.Extras, e)
-		}
 	}
 	if err := o.Validate(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -193,11 +194,19 @@ func nodeCommand(args []string) int {
 				printRow(rs[printed])
 				printed++
 			}
-		}, func() []prepare.Row { return prepare.Verify(mgr, addr, o.ServiceUser(), *jump) })
+		}, func() []prepare.Row { return prepare.Verify(mgr, addr, r.User, *jump) })
 		for ; printed < len(rows); printed++ {
 			printRow(rows[printed])
 		}
-		return exitCode(rows)
+		if code := exitCode(rows); code != 0 || r.User == "" {
+			return code
+		}
+		jumpArg := ""
+		if *jump != "" {
+			jumpArg = " with the jump host " + *jump
+		}
+		fmt.Printf("\nNext: add the node in the web interface (Nodes, Add node) with the address %s and the SSH user %s%s.\n", addr, r.User, jumpArg)
+		return 0
 	}
 	for _, r := range rows {
 		printRow(r)

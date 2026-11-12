@@ -29,8 +29,9 @@ export function rowItems(rows: Row[]): CheckItem[] {
 
 /**
  * Makes a host ready to be a node: libvirt installed, the node command and a service account with a restricted key and a sudo rule for
- * the node command only. The administrator's password or key is sent once and kept in memory only; the form is gone
- * (and the fields emptied) as soon as it is submitted.
+ * the node command only. The administrator's password or key is sent with each run and kept in memory only. It is never shown again
+ * and never stored; it is emptied when a real preparation starts and when the dialog closes. A Check keeps it in memory so that the
+ * Prepare button on the result needs no retyping.
  */
 export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegistered }: { addr: string; jump: string; onClose: () => void; onRegistered: () => void }) {
   const [addr, setAddr] = useState(addr0);
@@ -38,16 +39,10 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
   const [adminUser, setAdminUser] = useState("root");
   const [cred, setCred] = useState("password");
   const [secret, setSecret] = useState("");
-  const [checkOnly, setCheckOnly] = useState(true);
-  const [user, setUser] = useState("virticle");
-  const [useExisting, setUseExisting] = useState(false);
-  const [confirm, setConfirm] = useState(false);
   const [allowRoot, setAllowRoot] = useState(false);
-  const [from, setFrom] = useState("");
-  const [guestfs, setGuestfs] = useState(false);
-  const [virtiofs, setVirtiofs] = useState(false);
   const [task, setTask] = useState<number | undefined>();
   const [job, setJob] = useState<Job | undefined>();
+  const [lastCheck, setLastCheck] = useState(true);
   const act = useAction();
   const reg = useAction();
 
@@ -60,8 +55,7 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
     if (e.type === "task" && e.task?.id === task) load();
   });
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  const start = async (checkOnly: boolean) => {
     const body = {
       addr,
       jump,
@@ -69,20 +63,23 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
       password: cred === "password" ? secret : "",
       privateKey: cred === "key" ? secret : "",
       checkOnly,
-      user: allowRoot ? "" : user,
-      useExisting,
-      confirm,
       allowRoot,
-      from,
-      extras: [guestfs && "guestfs", virtiofs && "virtiofs"].filter(Boolean),
     };
     const ok = await act.run(async () => {
       const r = await post<{ task: number }>("/prepare?async=1", body);
       setJob(undefined);
+      setLastCheck(checkOnly);
       setTask(r.task);
     });
-    setSecret(""); // gone from the page whatever the answer
+    if (!checkOnly) setSecret(""); // a real run: gone from the page whatever the answer
     return ok;
+  };
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    // Enter in a field presses the first submit button, which is Check.
+    const who = (e.nativeEvent as SubmitEvent).submitter?.getAttribute("value");
+    return start(who !== "prepare");
   };
 
   const register = async () => {
@@ -93,11 +90,13 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
 
   if (task !== undefined) {
     const running = !job || !job.done;
+    const checked = !running && !!job?.checkOnly && !!job?.ok;
     return (
-      <Modal title={job?.checkOnly ?? checkOnly ? "Check node" : "Prepare node"} onClose={onClose} wide>
+      <Modal title={job?.checkOnly ?? lastCheck ? "Check node" : "Prepare node"} onClose={onClose} wide>
         {job && job.rows.length > 0 ? <CheckList sort={false} label="Preparation" items={rowItems(job.rows)} /> : <p className="muted">Starting. Progress is also in the Tasks panel.</p>}
         {running && job && job.rows.length > 0 && <p className="muted">Running. Progress is also in the Tasks panel.</p>}
-        <ErrorBox error={reg.error} />
+        {checked && <p className="muted">The check changed nothing. Press Prepare to make the changes listed above.</p>}
+        <ErrorBox error={act.error || reg.error} />
         <footer>
           {!running && (
             <button type="button" onClick={() => { setTask(undefined); setJob(undefined); }}>
@@ -107,6 +106,11 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
           <button type="button" onClick={onClose}>
             Close
           </button>
+          {checked && (
+            <button type="button" className="primary" disabled={act.busy} onClick={() => start(false)}>
+              Prepare
+            </button>
+          )}
           {!running && job?.ok && !job.checkOnly && (
             <button type="button" className="primary" disabled={reg.busy} onClick={register}>
               Add this node
@@ -122,8 +126,8 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
       <form onSubmit={submit} autoComplete="off">
         <p>
           {allowRoot
-            ? "Installs libvirt and QEMU and the node command. This server will sign in to the node as root; no service account is created."
-            : "Installs libvirt and QEMU and the node command, and creates a service account for this server. The account gets a restricted key and may run the node command as root, and nothing else."}{" "}
+            ? "Installs libvirt, QEMU and the node command. This server will sign in to the node as root; no service account is created."
+            : "Installs libvirt, QEMU and the node command, and sets up a service account for this server. The account can run the node command as root, and nothing else."}{" "}
           The credential below is used for this run only and is not stored.
         </p>
         <div className="grid2">
@@ -161,44 +165,18 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
           </Field>
         )}
         <label className="check">
-          <input type="checkbox" checked={checkOnly} onChange={(e) => setCheckOnly(e.target.checked)} /> Check only, change nothing
-        </label>
-        <label className="check">
           <input type="checkbox" checked={allowRoot} onChange={(e) => setAllowRoot(e.target.checked)} /> Root access instead of a service account
-        </label>
-        {!allowRoot && (
-          <>
-            <div className="grid2">
-              <Field label="Service account name">
-                <input value={user} onChange={(e) => setUser(e.target.value)} required />
-              </Field>
-              <Field label="Controller address (optional)" hint="Limits the key to this source address.">
-                <input value={from} onChange={(e) => setFrom(e.target.value)} />
-              </Field>
-            </div>
-            <label className="check">
-              <input type="checkbox" checked={useExisting} onChange={(e) => setUseExisting(e.target.checked)} /> The account exists already
-            </label>
-            {useExisting && (
-              <label className="check">
-                <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} /> Add it to the libvirt and kvm groups and give it the sudo rule for the node command
-              </label>
-            )}
-          </>
-        )}
-        <label className="check">
-          <input type="checkbox" checked={guestfs} onChange={(e) => setGuestfs(e.target.checked)} /> Install guest disk tools (guestfs)
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={virtiofs} onChange={(e) => setVirtiofs(e.target.checked)} /> Install virtiofsd
         </label>
         <ErrorBox error={act.error} />
         <footer>
           <button type="button" onClick={onClose}>
             Cancel
           </button>
-          <button className="primary" disabled={act.busy}>
-            {checkOnly ? "Check" : "Prepare"}
+          <button type="submit" value="check" disabled={act.busy} title="Look at the host and show what would be done; changes nothing">
+            Check
+          </button>
+          <button type="submit" value="prepare" className="primary" disabled={act.busy}>
+            Prepare
           </button>
         </footer>
       </form>

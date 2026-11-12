@@ -24,6 +24,12 @@ type Runner struct {
 	N            Node
 	SudoPassword string
 
+	// User is the account the controller will sign in as, known after Check
+	// (or Unprepare): the name given, else an account an earlier version
+	// made, else DefaultUser; "root" for root access. The node is registered
+	// with this name.
+	User string
+
 	isRoot  bool
 	useSudo bool
 }
@@ -96,38 +102,93 @@ func firstLine(s string) string {
 	return s
 }
 
+// probeAccount reads what the host knows about the account name.
+func (r *Runner) probeAccount(name string) (Account, error) {
+	out, err := r.root("set -- "+shq(name)+"\n"+accountScript, "")
+	if err != nil {
+		return Account{}, fmt.Errorf("reading the account %s: %w", name, err)
+	}
+	return ParseAccount(out), nil
+}
+
+// Marked reports whether the account was made by this tool.
+func (a Account) Marked() bool { return a.Exists && strings.Contains(a.Comment, AccountComment) }
+
+// resolveAccount settles which account is meant and reads it. A name that was
+// given is taken as it is. Without a name an account of ours that exists is
+// used (DefaultUser first, then LegacyUser from an earlier version), so that
+// running prepare again never makes a second account; otherwise DefaultUser.
+// The controller package's own account "virticle" has no marker and is never
+// chosen. root needs no account.
+func (r *Runner) resolveAccount(o Options) (Options, Account, error) {
+	if o.AllowRoot {
+		r.User = "root"
+		return o, Account{}, nil
+	}
+	if o.User == "" {
+		def, err := r.probeAccount(DefaultUser)
+		if err != nil {
+			return o, Account{}, err
+		}
+		if def.Marked() {
+			o.User = DefaultUser
+			r.User = o.User
+			return o, def, nil
+		}
+		old, err := r.probeAccount(LegacyUser)
+		if err != nil {
+			return o, Account{}, err
+		}
+		if old.Marked() {
+			o.User = LegacyUser
+			r.User = o.User
+			return o, old, nil
+		}
+		o.User = DefaultUser
+		r.User = o.User
+		return o, def, nil
+	}
+	r.User = o.User
+	a, err := r.probeAccount(o.User)
+	return o, a, err
+}
+
 // Check looks at the host and returns the check rows. It changes nothing.
+// r.User is set to the account that is meant.
 func (r *Runner) Check(o Options) ([]Row, Plan, error) {
+	rows, p, _, err := r.check(o)
+	return rows, p, err
+}
+
+// check is Check that also returns the options with the account name settled.
+func (r *Runner) check(o Options) ([]Row, Plan, Options, error) {
 	var p Plan
 	if err := o.Validate(); err != nil {
-		return nil, p, err
+		return nil, p, o, err
 	}
 	access := r.Access()
 	if access.Status == Error {
-		return []Row{access}, p, errors.New(access.Detail)
+		return []Row{access}, p, o, errors.New(access.Detail)
 	}
 	out, err := r.root(FactsScript, "")
 	if err != nil {
-		return []Row{access}, p, fmt.Errorf("reading the host's facts: %w", err)
+		return []Row{access}, p, o, fmt.Errorf("reading the host's facts: %w", err)
 	}
 	p.Facts = ParseFacts(out)
 	p.Distro = Classify(p.Facts.OSID, p.Facts.OSVersion, p.Facts.OSLike, p.Facts.OSName)
-	if !o.AllowRoot {
-		aout, err := r.root("set -- "+shq(o.ServiceUser())+"\n"+accountScript, "")
-		if err != nil {
-			return []Row{access}, p, fmt.Errorf("reading the service account: %w", err)
-		}
-		p.Account = ParseAccount(aout)
+	o, p.Account, err = r.resolveAccount(o)
+	if err != nil {
+		return []Row{access}, p, o, err
 	}
 	if p.Distro.Family != FamilyOther {
-		p.Want = PackageList(p.Distro.Family, o.Extras)
+		p.Want = PackageList(p.Distro.Family, o.Minimal)
 		mout, err := r.root(MissingScript(p.Distro.Family, p.Want), "")
 		if err != nil {
-			return []Row{access}, p, fmt.Errorf("listing installed packages: %w", err)
+			return []Row{access}, p, o, fmt.Errorf("listing installed packages: %w", err)
 		}
 		p.Missing = strings.Fields(mout)
 	}
-	return append([]Row{access}, Evaluate(p, o)...), p, nil
+	return append([]Row{access}, Evaluate(p, o)...), p, o, nil
 }
 
 // step marker protocol: a script prints its detail lines and ends with one of
@@ -187,7 +248,7 @@ func steps(o Options) []stepDef {
 // that did not run yet show as skipped. verify, when set, runs last (the
 // connection test as the service account) and its rows are appended.
 func (r *Runner) Prepare(o Options, report func([]Row), verify func() []Row) []Row {
-	rows, plan, err := r.Check(o)
+	rows, plan, o, err := r.check(o)
 	if err != nil && len(rows) == 0 {
 		rows = []Row{{ID: "check", Title: "Check", Status: Error, Detail: r.scrub(err.Error())}}
 	}
@@ -359,35 +420,51 @@ func stepPool(r *Runner, p Plan, o Options) (string, bool, error) {
 	return d, ch, nil
 }
 
+// accountCreateScript makes sure the service account $u is in order. An account
+// that carries the marker (made by an earlier run) is repaired: groups, login
+// shell and home directory. An account without the marker is left alone
+// unless $existing is 1, and then only the groups with $confirm.
 const accountCreateScript = `
-home=` + DefaultHome + `
 changed=0
+marked=0
 if id "$u" >/dev/null 2>&1; then
-  if [ "$existing" != 1 ] && ! getent passwd "$u" | grep -q "` + AccountComment + `"; then echo "an account named $u exists and was not created by this tool"; exit 1; fi
-  echo "Account $u exists"
+  getent passwd "$u" | grep -q "` + AccountComment + `" && marked=1
+  if [ "$marked" != 1 ] && [ "$existing" != 1 ]; then echo "an account named $u exists and was not made by Virticle; use another name (--user NAME)"; exit 1; fi
 elif [ "$existing" = 1 ]; then
   echo "the account $u does not exist"; exit 1
 else
   useradd --system --create-home --home-dir "$home" --shell /bin/sh --user-group --comment "` + AccountComment + `" -p '*' "$u" || exit 1
-  echo "Created account $u (home $home, shell /bin/sh, no password)"; changed=1
+  echo "Created the account $u (home $home, login shell /bin/sh, no password)"; changed=1; marked=1
 fi
-if [ "$existing" != 1 ] || [ "$confirm" = 1 ]; then
-  for g in libvirt kvm; do
-    getent group "$g" >/dev/null || continue
-    id -nG "$u" | tr ' ' '\n' | grep -qx "$g" && continue
+for g in libvirt kvm; do
+  getent group "$g" >/dev/null || continue
+  id -nG "$u" | tr ' ' '\n' | grep -qx "$g" && continue
+  if [ "$marked" = 1 ] || [ "$confirm" = 1 ]; then
     usermod -aG "$g" "$u" || exit 1
     echo "Added $u to the group $g"; changed=1
-  done
-else
-  for g in libvirt kvm; do
-    getent group "$g" >/dev/null || continue
-    id -nG "$u" | tr ' ' '\n' | grep -qx "$g" || echo "Account $u is not in the group $g (not changed without confirmation)"
-  done
+  else
+    echo "$u is not in the group $g; run again with --confirm to add it"
+  fi
+done
+if [ "$marked" = 1 ]; then
+  cur=$(getent passwd "$u" | cut -d: -f7)
+  case "$cur" in
+    ""|*/nologin|*/false) usermod -s /bin/sh "$u" || exit 1; echo "Set the login shell of $u to /bin/sh (it was ${cur:-empty})"; changed=1;;
+  esac
+  h=$(getent passwd "$u" | cut -d: -f6); g=$(id -gn "$u")
+  if [ ! -d "$h" ]; then
+    install -d -m 700 -o "$u" -g "$g" "$h" || exit 1
+    command -v restorecon >/dev/null 2>&1 && restorecon "$h" >/dev/null 2>&1
+    echo "Created the home directory $h"; changed=1
+  elif [ "$(stat -c %U "$h")" != "$u" ]; then
+    chown "$u:$g" "$h" || exit 1
+    echo "Gave the home directory $h to $u"; changed=1
+  fi
 fi
-if [ "$changed" = 1 ]; then echo @@changed; else echo @@unchanged; fi`
+if [ "$changed" = 1 ]; then echo @@changed; else echo "Account $u is already set up"; echo @@unchanged; fi`
 
 func stepAccount(r *Runner, p Plan, o Options) (string, bool, error) {
-	vars := "u=" + shq(o.ServiceUser()) + "\nexisting=" + b2s(o.UseExisting) + "\nconfirm=" + b2s(o.Confirm) + "\n"
+	vars := "u=" + shq(o.ServiceUser()) + "\nhome=" + shq(HomeFor(o.ServiceUser())) + "\nexisting=" + b2s(o.UseExisting) + "\nconfirm=" + b2s(o.Confirm) + "\n"
 	out, err := r.root(vars+accountCreateScript, "")
 	if err != nil {
 		return "", false, fmt.Errorf("%w: %s", err, firstLines(out, 6))
@@ -562,7 +639,7 @@ if [ "$u" != root ] && getent passwd "$u" | grep -q "` + AccountComment + `"; th
   pkill -KILL -u "$u" 2>/dev/null; sleep 1
   userdel -r "$u" >/dev/null 2>&1; if id "$u" >/dev/null 2>&1; then echo "the account could not be removed (is the controller still connected as $u? remove the node there first)"; exit 1; fi
   echo "account removed"; changed=1
-elif [ "$u" != root ] && id "$u" >/dev/null 2>&1; then echo "account $u kept (this tool did not create it)"; else echo "no service account"; fi
+elif [ "$u" != root ] && id "$u" >/dev/null 2>&1; then echo "the account $u was kept: Virticle did not create it"; else echo "no service account"; fi
 if [ "$changed" = 1 ]; then echo @@changed; else echo @@unchanged; fi`
 
 // Unprepare removes what Prepare added for the service account: the key, the
@@ -575,6 +652,12 @@ func (r *Runner) Unprepare(o Options) []Row {
 		return rows
 	}
 	if err := (Options{User: o.User, AllowRoot: o.AllowRoot, ControllerKey: o.ControllerKey}).Validate(); err != nil {
+		return append(rows, Row{ID: "unprepare", Title: "Remove", Status: Error, Detail: err.Error()})
+	}
+	// Without a name, remove the account of ours that exists (virticle-node,
+	// else virticle from an earlier version); never an unmarked one.
+	o, _, err := r.resolveAccount(o)
+	if err != nil {
 		return append(rows, Row{ID: "unprepare", Title: "Remove", Status: Error, Detail: err.Error()})
 	}
 	blob, _ := KeyBlob(o.ControllerKey)

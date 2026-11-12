@@ -13,6 +13,7 @@ This page tells you what prepare does, so you can check it or do the same by han
 On this page:
 
 - [The two ways to reach a node](#the-two-ways-to-reach-a-node)
+- [The controller host as a node](#the-controller-host-as-a-node)
 - [What prepare does](#what-prepare-does)
 - [Prepare options](#prepare-options)
 - [Upgrade and unprepare](#upgrade-and-unprepare)
@@ -32,10 +33,20 @@ it is done.
 
 | Access | The controller signs in as | The node command runs | Choose it |
 | --- | --- | --- | --- |
-| **Service account** | `virticle`, a user without a password | As root, through one sudo rule that allows this program and nothing else | By default. Recommended. |
+| **Service account** | `virticle-node`, a user without a password | As root, through one sudo rule that allows this program and nothing else | By default. Recommended. |
 | **Root** | `root` | Directly | When you do not want an extra account: `virticle node prepare --root` |
 
 There is no other way. A login that has general passwordless sudo but no node command is not prepared.
+
+## The controller host as a node
+
+The machine that runs the controller can also be a node. Prepare it like any other host, with its own address. The two
+accounts on that machine are separate:
+
+| Account | Made by | Used for |
+| --- | --- | --- |
+| `virticle` | The controller package | Runs the controller service. Home `/var/lib/virticle`, no login shell. Prepare never changes it. |
+| `virticle-node` | `virticle node prepare` | What the controller signs in as on a node. Home `/var/lib/virticle-node`, login shell `/bin/sh`, restricted key, one sudo rule. |
 
 ## What prepare does
 
@@ -44,7 +55,8 @@ There is no other way. A login that has general passwordless sudo but no node co
 Prepare signs in with an **administrator credential that you give for this one run**.
 
 - With the command line, use your SSH agent, or `--identity FILE`, or a password on standard input.
-- In the web dialog, enter a password or paste a private key without a passphrase. The password is also used for sudo
+- In the web dialog, enter a password or paste a private key without a passphrase. Choose **Check** to see what would
+  change, then **Prepare**; the dialog keeps the credential in memory for that, so you do not type it twice. The password is also used for sudo
   when the user is not root.
 
 The credential is used in memory only. It is not stored, not logged, and not written to the audit log or the task
@@ -52,7 +64,7 @@ record. It is separate from the controller's own key.
 
 Prepare runs these steps in order:
 
-1. **Checks the host.** This part only reads. `--check`, or **Check only** in the dialog, stops here. It looks at:
+1. **Checks the host.** This part only reads. `--check`, or the **Check** button in the dialog, stops here. It looks at:
    - CPU virtualisation flags (`vmx` or `svm`) and `/dev/kvm`
    - nested virtualisation (information, when the host is itself a VM)
    - IOMMU on or off (information, needed for device passthrough)
@@ -64,10 +76,17 @@ Prepare runs these steps in order:
    - how many VMs exist (existing VMs are left alone)
 
    Prepare never reboots the host. If a reboot or kernel parameter is needed (for IOMMU), a row says so.
-2. **Installs packages** (see the lists below) and enables libvirt. It starts the `default` network and defines the
+2. **Installs packages** (see the lists below, including the guest disk tools) and enables libvirt. It starts the `default` network and defines the
    `default` pool when they are missing. Existing networks and pools are not changed.
-3. **Service account only: creates the account.** Default name `virticle`, a system user, home `/var/lib/virticle`,
-   shell `/bin/sh`, no password, in the groups `libvirt` and `kvm`.
+3. **Service account only: sets up the account.** Default name `virticle-node`, a system user, home
+   `/var/lib/virticle-node`, shell `/bin/sh`, no password, in the groups `libvirt` and `kvm`. It asks nothing:
+   - No such account: it is created.
+   - The account exists and prepare made it: prepare checks the groups, the shell and the home directory and repairs
+     what is wrong. Nothing to repair means nothing changes.
+   - An account of that name exists and prepare did not make it: prepare stops with a message. Use another name
+     (`--user OTHERNAME`), or `--use-existing-user` if you manage that account yourself.
+   - A node prepared by 0.2.0 has the account `virticle` with the comment "virticle service account". Prepare keeps
+     using it, so no second account appears.
 4. **Installs the controller's public key** for that account (or for root) with restrictions. It also installs the node
    command and, for a Service account, the sudo rule.
 5. **Creates the node key** of the account. Nodes use it to copy files to each other (see
@@ -80,7 +99,7 @@ What is on the node afterwards:
 
 | Item | Where | Service account | Root |
 | --- | --- | --- | --- |
-| Account | `virticle`, comment "virticle service account" | Created | None (root is used) |
+| Account | `virticle-node`, comment "virticle service account" | Created | None (root is used) |
 | Controller's key | `~/.ssh/authorized_keys` of the account, with restrictions | Yes | Yes |
 | Sudo rule | `/etc/sudoers.d/virticle`: the account may run the node command as root | Yes | No |
 | Node command | `/usr/local/libexec/virticle-node`, `root:root 0755` | Yes | Yes |
@@ -92,22 +111,27 @@ rule.
 ## Prepare options
 
 ```
-virticle node prepare [--check] [--user virticle] [--use-existing-user[=NAME]] [--confirm] [--root]
-                      [--from ADDR] [--extras guestfs,virtiofs] [--jump user@host]
+virticle node prepare [--check] [--minimal] [--root] [--user NAME] [--use-existing-user[=NAME]] [--confirm]
+                      [--from ADDR] [--jump user@host]
                       [--identity FILE] [--password-stdin] [--data DIR] [user@]host[:port]
 ```
 
 | Option | Meaning |
 | --- | --- |
 | `--check` | Look and report. Change nothing. |
-| `--root` | Root access. The controller signs in as root and no account is created. The node command is installed all the same, and the controller runs it directly, without sudo. Prepare shows a warning ("Uses root; a dedicated account is safer"). `--allow-root` is the old name and still works. |
-| `--user NAME` | Name of the Service account (default `virticle`). |
-| `--use-existing-user NAME` | The account exists already. Prepare reports what is missing (groups, login shell, sudo rule). It changes nothing about the account except adding the controller's key. With `--confirm` it also adds the groups and the sudo rule. |
+| `--root` | Root access. The controller signs in as root and no account is created. The node command is installed all the same, and the controller runs it directly, without sudo. Prepare shows a warning ("The controller will sign in as root. A service account is safer"). `--allow-root` is the old name and still works. |
+| `--minimal` | Leave out the guest disk tools. Clone with sysprep then needs a sealed template. |
+| `--user NAME` | Name of the Service account (default `virticle-node`). |
+| `--use-existing-user NAME` | For an account you manage yourself. Prepare reports what is missing (groups, login shell, sudo rule). It changes nothing about the account except adding the controller's key. With `--confirm` it also adds the groups and the sudo rule. The account needs a login shell such as `/bin/sh`. |
+| `--confirm` | Only with `--use-existing-user`: add the groups and the sudo rule. |
 | `--from ADDR` | Adds `from="ADDR"` to the key, so it works only from the controller's address. |
-| `--extras guestfs,virtiofs` | Also installs guest disk tools (`guestfs`) or `virtiofsd` (`virtiofs`). |
 | `--jump user@host` | Reaches the node through a jump host. |
 | `--identity FILE`, `--password-stdin` | How you sign in as administrator (default: your SSH agent). |
 | `--data DIR` | The controller's data directory (its key, `known_hosts`, instance id). Default `data`. |
+
+The web dialog has no options except **Root access instead of a service account**. The other options are for the
+command line. `virticle node unprepare` takes `--user`, `--root`, `--jump`, `--identity`, `--password-stdin` and
+`--data`.
 
 The host key of the node is recorded in the controller's `known_hosts` the first time it is seen.
 
@@ -118,11 +142,17 @@ when the node command there reports another protocol version, or is still the ol
 replaces the node command and removes the old script. Steps for 0.1.0 are in
 [install.md](install.md#upgrading-from-010).
 
+**Nodes prepared by 0.2.0.** They have the account `virticle` (made by prepare, with the comment "virticle service
+account"). Preparing them again keeps that account. It does not make `virticle-node`.
+
 **Unprepare.** `virticle node unprepare admin@host` removes the account, key, node command and sudo rule. It leaves
 packages, VMs, pools and networks alone.
 
+- Without `--user` it removes the account that prepare made: `virticle-node`, or `virticle` on a node that 0.2.0
+  prepared.
 - It removes an account only when prepare created it (the account carries the comment "virticle service account"). For
-  an existing account it removes just the key and the rule. The group memberships stay.
+  any other account it removes just the key and the rule. The group memberships stay. The controller package's account
+  `virticle` has no such comment and is never removed.
 - It ends the account's processes first, so remove the node in the controller before you run it.
 
 ## Tested systems and packages
@@ -138,8 +168,10 @@ Package names, checked on Debian 13 and Rocky Linux 10:
 | | Debian family | RHEL family |
 | --- | --- | --- |
 | Base | `qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients dnsmasq-base ovmf swtpm swtpm-tools sudo curl ca-certificates openssh-client` | `qemu-kvm libvirt virt-install edk2-ovmf swtpm swtpm-tools sudo curl openssh-clients` |
-| Extra `guestfs` | `libguestfs-tools` | `guestfs-tools` |
-| Extra `virtiofs` | `virtiofsd` | `virtiofsd` |
+| Guest disk tools (left out by `--minimal`) | `libguestfs-tools` | `guestfs-tools` |
+
+The guest disk tools provide `virt-sysprep`, which **clone with sysprep** uses. `virtiofsd` is not installed; nothing
+in Virticle uses it.
 
 ## Preparing by hand
 
@@ -148,14 +180,14 @@ If you cannot use `virticle node prepare`, do the same steps yourself. Run these
 ```sh
 apt-get update
 apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients \
-    dnsmasq-base ovmf swtpm swtpm-tools sudo curl ca-certificates openssh-client
+    dnsmasq-base ovmf swtpm swtpm-tools sudo curl ca-certificates openssh-client libguestfs-tools
 systemctl enable --now libvirtd
 ```
 
 RHEL family (libvirt runs as modular daemons there; prepare enables the sockets):
 
 ```sh
-dnf install -y qemu-kvm libvirt virt-install edk2-ovmf swtpm swtpm-tools sudo curl openssh-clients
+dnf install -y qemu-kvm libvirt virt-install edk2-ovmf swtpm swtpm-tools sudo curl openssh-clients guestfs-tools
 systemctl enable --now virtqemud.socket virtnetworkd.socket virtstoraged.socket virtnodedevd.socket \
     virtsecretd.socket virtproxyd.socket virtlogd.socket
 ```
@@ -167,17 +199,17 @@ virsh -c qemu:///system net-start default || true         # define it first if t
 virsh -c qemu:///system pool-define-as default dir --target /var/lib/libvirt/images
 virsh -c qemu:///system pool-build default; virsh -c qemu:///system pool-autostart default; virsh -c qemu:///system pool-start default
 
-useradd --system --create-home --home-dir /var/lib/virticle --shell /bin/sh --user-group \
-    --comment 'virticle service account' -p '*' virticle
-usermod -aG libvirt,kvm virticle
-install -d -m 700 -o virticle -g virticle /var/lib/virticle/.ssh
-echo 'restrict,pty,port-forwarding ssh-ed25519 AAAA... virticle-controller' > /var/lib/virticle/.ssh/authorized_keys
-chown virticle:virticle /var/lib/virticle/.ssh/authorized_keys; chmod 600 /var/lib/virticle/.ssh/authorized_keys
-runuser -u virticle -- ssh-keygen -q -t ed25519 -N '' -C virticle-peer@$(hostname) -f /var/lib/virticle/.ssh/virticle_peer_ed25519
+useradd --system --create-home --home-dir /var/lib/virticle-node --shell /bin/sh --user-group \
+    --comment 'virticle service account' -p '*' virticle-node
+usermod -aG libvirt,kvm virticle-node
+install -d -m 700 -o virticle-node -g virticle-node /var/lib/virticle-node/.ssh
+echo 'restrict,pty,port-forwarding ssh-ed25519 AAAA... virticle-controller' > /var/lib/virticle-node/.ssh/authorized_keys
+chown virticle-node:virticle-node /var/lib/virticle-node/.ssh/authorized_keys; chmod 600 /var/lib/virticle-node/.ssh/authorized_keys
+runuser -u virticle-node -- ssh-keygen -q -t ed25519 -N '' -C virticle-peer@$(hostname) -f /var/lib/virticle-node/.ssh/virticle_peer_ed25519
 
 install -d -m 755 /usr/local/libexec
 install -m 755 -o root -g root virticle-node /usr/local/libexec/virticle-node   # see below
-printf '%s\n' 'virticle ALL=(root) NOPASSWD: /usr/local/libexec/virticle-node' > /etc/sudoers.d/virticle.new
+printf '%s\n' 'virticle-node ALL=(root) NOPASSWD: /usr/local/libexec/virticle-node' > /etc/sudoers.d/virticle.new
 visudo -cf /etc/sudoers.d/virticle.new && install -m 440 -o root -g root /etc/sudoers.d/virticle.new /etc/sudoers.d/virticle
 rm -f /etc/sudoers.d/virticle.new
 ```
@@ -185,7 +217,7 @@ rm -f /etc/sudoers.d/virticle.new
 For Root access leave out the account and the sudo rule: put the controller's key into root's `authorized_keys`, install
 the node command the same way, and create the node key as root.
 
-On SELinux hosts run `restorecon -R /var/lib/virticle/.ssh` and `restorecon /usr/local/libexec/virticle-node`
+On SELinux hosts run `restorecon -R /var/lib/virticle-node/.ssh` and `restorecon /usr/local/libexec/virticle-node`
 afterwards. The `virticle-node` file is embedded in the controller binary (linux/amd64 and linux/arm64) and
 `virticle node prepare` installs it. To get it by hand, build it from the source with `make nodebin`. The files are
 `internal/nodebin/dist/virticle-node_linux_amd64` and `_arm64`.
@@ -239,7 +271,7 @@ for:
 - **downloading** images and the image catalogue into a pool,
 - **importing** disks and OVAs,
 - **moving a disk** to another pool,
-- **cloning with guest preparation** (`virt-sysprep`, if libguestfs is installed).
+- **cloning with guest preparation** (`virt-sysprep`, from the guest disk tools; not there after `prepare --minimal`).
 
 Backup export and import stream through the controller to and from the browser.
 
@@ -269,10 +301,10 @@ Service account allows exactly this program:
 
 ```
 # /etc/sudoers.d/virticle
-virticle ALL=(root) NOPASSWD: /usr/local/libexec/virticle-node
+virticle-node ALL=(root) NOPASSWD: /usr/local/libexec/virticle-node
 ```
 
-sudoers cannot pin the arguments of a program, so the node command checks them itself.
+(On a node that 0.2.0 prepared the account is `virticle`.) sudoers cannot pin the arguments of a program, so the node command checks them itself.
 
 | | |
 | --- | --- |

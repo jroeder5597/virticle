@@ -59,8 +59,9 @@ installs libvirt and QEMU and sets up the access the controller needs.
 2. Choose **Prepare this node**.
 3. Enter the address and an administrator login for the host. It is used once
    and is not stored.
-4. **Check only** is ticked at first. Choose **Check** to see what would
-   change. Then untick it and choose **Prepare**.
+4. Choose **Check** to see what would change. It changes nothing. Then
+   choose **Prepare**. There is nothing else to tick, except **Root access
+   instead of a service account** if you want that.
 5. When prepare has finished without errors, choose **Add this node**.
 
 ![Add node dialog](docs/img/add-node.png)
@@ -72,7 +73,7 @@ Prepare gives the controller one of two kinds of access:
 
 | Access | What the controller uses | When to choose it |
 | --- | --- | --- |
-| **Service account** (default) | The account `virticle`. It may run the node command as root through one sudo rule, and nothing else. | Almost always. |
+| **Service account** (default) | The account `virticle-node`. It may run the node command as root through one sudo rule, and nothing else. | Almost always. |
 | **Root** (`--root`) | The root account. | You do not want an extra account on the node. |
 
 The node command is `virticle-node`, a small program that prepare installs on
@@ -81,7 +82,8 @@ service runs on the node. Details are in
 [docs/install-node.md](docs/install-node.md).
 
 A host that already runs libvirt is prepared the same way. Its networks,
-pools and VMs stay as they are.
+pools and VMs stay as they are. The host that runs the controller can be a
+node too; the controller's own account `virticle` is not used for that.
 
 ### 4. Create a VM
 
