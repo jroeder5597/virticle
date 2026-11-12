@@ -102,6 +102,7 @@ func (s *Server) Handler() http.Handler {
 	s.webRoutes(auth)
 
 	auth("GET /api/nodes", s.listNodes)
+	auth("GET /api/local-node", s.localNode)
 	auth("GET /api/cluster/cpu-baseline", s.cpuBaseline)
 	auth("POST /api/nodes", s.addNode)
 	auth("DELETE /api/nodes/{node}", s.deleteNode)
