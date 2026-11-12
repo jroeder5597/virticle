@@ -127,7 +127,12 @@ func TestBaselineSingleNode(t *testing.T) {
 	nodes := []nodeCPU{nodeFrom(t, 1, "n1", "domcaps-debian13.xml")}
 	calls := 0
 	res, err := chooseBaseline("x86_64", nodes, fakeProbe(nodes, &calls, nil))
-	if err != nil || res.CPU.Model != nodes[0].Host.Model || len(res.CPU.Features) != len(nodes[0].Host.Features) {
+	// Everything the host model lists except the PMU feature (see pmuFeatures).
+	want := len(nodes[0].Host.Features)
+	if nodes[0].Host.requires("pdcm") {
+		want--
+	}
+	if err != nil || res.CPU.Model != nodes[0].Host.Model || len(res.CPU.Features) != want {
 		t.Fatalf("%v %+v", err, res.CPU)
 	}
 	if _, err := chooseBaseline("x86_64", nil, baselineProbe{}); err == nil {
@@ -319,5 +324,32 @@ func TestBaselineLoweredByOlderNode(t *testing.T) {
 	}
 	if !older.accepts(with.CPU) || older.accepts(without.CPU) {
 		t.Error("the older node accepts only the lowered baseline")
+	}
+}
+
+// pdcm depends on the virtual PMU; QEMU on RHEL-family nodes takes it away
+// from a running VM, so the baseline must not ask for it.
+func TestBaselineLeavesOutPMUFeatures(t *testing.T) {
+	nodes := []nodeCPU{nodeFrom(t, 3, "n3", "domcaps-rocky10.xml")}
+	if !nodes[0].Host.requires("pdcm") {
+		t.Skip("the fixture's host model does not list pdcm")
+	}
+	calls := 0
+	res, err := chooseBaseline("x86_64", nodes, fakeProbe(nodes, &calls, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.CPU.has("pdcm") {
+		t.Error("pdcm is in the baseline")
+	}
+	if len(res.CPU.Features) != len(nodes[0].Host.Features)-1 {
+		t.Errorf("only pdcm should be left out: %d of %d features", len(res.CPU.Features), len(nodes[0].Host.Features))
+	}
+	found := false
+	for _, n := range res.Notes {
+		found = found || strings.Contains(n, "pdcm")
+	}
+	if !found {
+		t.Errorf("no note about pdcm: %v", res.Notes)
 	}
 }

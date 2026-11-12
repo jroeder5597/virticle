@@ -22,14 +22,11 @@ function required(xml: string): string[] {
   return [...cpu.matchAll(/<feature policy='require' name='([^']+)'\/>/g)].map((m) => m[1]).sort();
 }
 
-// The VM's XML carries the baseline's required features. QEMU on RHEL-family
-// nodes drops pdcm (it depends on the virtual PMU) and libvirt then takes it
-// out of a running VM's definition, so that one may be missing.
+// The VM's XML carries exactly the baseline's required features, also while it
+// runs (the baseline leaves out what QEMU would take away, such as pdcm).
 function expectBaseline(xml: string, base: Baseline) {
-  const want = base.features.filter((f) => f.policy === "require").map((f) => f.name).sort();
-  const have = required(xml);
-  expect(have.filter((f) => !want.includes(f))).toEqual([]);
-  expect(want.filter((f) => !have.includes(f) && f !== "pdcm")).toEqual([]);
+  expect(required(xml)).toEqual(base.features.filter((f) => f.policy === "require").map((f) => f.name).sort());
+  expect(base.features.map((f) => f.name)).not.toContain("pdcm");
 }
 
 test.describe.serial("cluster CPU baseline", () => {

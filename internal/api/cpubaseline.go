@@ -169,6 +169,16 @@ func (d cpuDef) without(name string) cpuDef {
 	return out
 }
 
+// requires reports whether d lists the feature with policy "require".
+func (d cpuDef) requires(name string) bool {
+	for _, f := range d.Features {
+		if f.Name == name && f.Policy == "require" {
+			return true
+		}
+	}
+	return false
+}
+
 func (d cpuDef) has(name string) bool {
 	for _, f := range d.Features {
 		if f.Name == name {
@@ -316,6 +326,26 @@ type baselineResult struct {
 // cannot run it (the model is missing from its QEMU) the newest named model
 // every node lists as usable, with the features all of them share.
 func chooseBaseline(arch string, nodes []nodeCPU, p baselineProbe) (baselineResult, error) {
+	res, err := computeBaseline(arch, nodes, p)
+	if err != nil {
+		return res, err
+	}
+	for _, f := range pmuFeatures {
+		if res.CPU.requires(f) {
+			res.CPU = res.CPU.without(f)
+			res.Notes = append(res.Notes, "left out "+f+": QEMU takes it away from a running VM unless the virtual PMU is on")
+		}
+	}
+	return res, nil
+}
+
+// pmuFeatures are CPU features that depend on the virtual PMU. The PMU is off
+// for a VM with a named CPU model, and QEMU on RHEL-family nodes then drops
+// these features at start, so the running VM would differ from the baseline
+// it was given.
+var pmuFeatures = []string{"pdcm"}
+
+func computeBaseline(arch string, nodes []nodeCPU, p baselineProbe) (baselineResult, error) {
 	if len(nodes) == 0 {
 		return baselineResult{}, fmt.Errorf("no online node")
 	}
