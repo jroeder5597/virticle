@@ -22,6 +22,16 @@ function required(xml: string): string[] {
   return [...cpu.matchAll(/<feature policy='require' name='([^']+)'\/>/g)].map((m) => m[1]).sort();
 }
 
+// The VM's XML carries the baseline's required features. QEMU on RHEL-family
+// nodes drops pdcm (it depends on the virtual PMU) and libvirt then takes it
+// out of a running VM's definition, so that one may be missing.
+function expectBaseline(xml: string, base: Baseline) {
+  const want = base.features.filter((f) => f.policy === "require").map((f) => f.name).sort();
+  const have = required(xml);
+  expect(have.filter((f) => !want.includes(f))).toEqual([]);
+  expect(want.filter((f) => !have.includes(f) && f !== "pdcm")).toEqual([]);
+}
+
 test.describe.serial("cluster CPU baseline", () => {
   let vm: { node: number; uuid: string; name: string };
   let base: Baseline;
@@ -66,7 +76,7 @@ test.describe.serial("cluster CPU baseline", () => {
     expect(t.cpuPolicy).toMatchObject({ policy: "cluster-baseline", model: base.model, relation: "same" });
     const d = await api.vmDetail(vm.node, vm.uuid);
     expect(d.cpu).toMatchObject({ policy: "cluster-baseline", model: base.model, relation: "same" });
-    expect(required(d.xml)).toEqual(base.features.filter((f) => f.policy === "require").map((f) => f.name).sort());
+    expectBaseline(d.xml, base);
     expect(d.state).toBe("running");
     // the overview says where the CPU came from
     await openVM(page, vm);
@@ -110,7 +120,7 @@ test.describe.serial("cluster CPU baseline", () => {
     t = await api.get(`/nodes/${n2}/vms/${vm.uuid}/tuning`);
     expect(t.saved.cpuModel).toBe(base.model);
     expect(t.cpuPolicy).toMatchObject({ policy: "cluster-baseline", model: base.model });
-    expect(required((await api.vmDetail(n2, vm.uuid)).xml)).toEqual(base.features.filter((f) => f.policy === "require").map((f) => f.name).sort());
+    expectBaseline((await api.vmDetail(n2, vm.uuid)).xml, base);
   });
 
   test("the create API takes host-model and host-passthrough, and refuses other values", async ({ api, n1 }) => {

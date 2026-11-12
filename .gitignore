@@ -11,3 +11,4 @@ web/dist/
 /data-helper/
 /internal/nodebin/dist/*
 !/internal/nodebin/dist/.gitkeep
+/data-rocky/

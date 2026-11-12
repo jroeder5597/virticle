@@ -51,7 +51,7 @@ test.describe.serial("prepare node, check only", () => {
       await expect(list.locator("strong", { hasText: new RegExp(`^${t}$`) })).toBeVisible();
     }
     await expect(list).toContainText("Existing VMs are left alone");
-    await expect(list).toContainText("Debian GNU/Linux 13");
+    await expect(list).toContainText(/Debian GNU\/Linux 13|Rocky Linux 10/);
     await expect(res.getByRole("button", { name: "Add this node" })).toHaveCount(0); // a check does not offer to register
     await expect(res.getByRole("img", { name: "not run" })).toHaveCount(0);
 
