@@ -151,10 +151,11 @@ test.describe.serial("snapshot tree, delete dialog, schedule, bridge picker", ()
     await dlg.getByRole("button", { name: "Select b and everything below it" }).click();
     await dlg.getByRole("button", { name: "Delete 2 snapshots" }).click();
     await expect(dlg).toBeHidden({ timeout: 60_000 });
-    expect((await snaps(api)).map((s) => s.name).sort()).toEqual(["a", "d", longName].sort());
+    // the dialog closes at once; the delete runs as one background task
+    await expect.poll(async () => (await snaps(api)).map((s) => s.name).sort(), { timeout: 60_000 }).toEqual(["a", "d", longName].sort());
     const tasks = (await api.get("/tasks")).filter((t: any) => t.kind === "snapshot delete");
     expect(tasks.length - before).toBe(1);
-    expect(tasks[0].status).toBe("ok");
+    await expect.poll(async () => (await api.get("/tasks")).filter((t: any) => t.kind === "snapshot delete")[0].status).toBe("ok");
     await expect(node(page, "b")).toHaveCount(0);
     // d kept its parent
     await expect(node(page, "d")).toHaveAttribute("aria-level", "2");

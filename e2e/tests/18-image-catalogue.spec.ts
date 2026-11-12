@@ -82,7 +82,7 @@ test.describe.serial("image catalogue", () => {
   });
 
   test("cancelling a download removes the partial file", async ({ api, n1 }) => {
-    await api.post(`${poolBase(n1)}/images`, { id: "debian-13", name: BIG_VOL });
+    await api.post(`${poolBase(n1)}/images`, { id: "debian-12", name: BIG_VOL }); // any big image; Debian 13's "latest" directory is sometimes incomplete
     const started = await api.waitFor("download running with progress", async () => (await api.get("/tasks")).find((t: any) => t.target === `${POOL}/${BIG_VOL}` && t.status === "running" && t.progress > 0.01), 90_000, 1500);
     expect((await imgs(api, n1)).running).toContain(BIG_VOL);
     await api.post(`${poolBase(n1)}/images/cancel`, { name: BIG_VOL });
