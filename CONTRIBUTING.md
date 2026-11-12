@@ -12,4 +12,5 @@ UI rules:
 - Status is a coloured dot with the word Ok, Warning or Error. No coloured text.
 - Use the themed `Select`, `ComboInput` and `Menu` components, not native ones.
 
-No licence has been chosen yet, so the terms for contributions are not settled.
+Contributions are accepted under the [Apache License 2.0](LICENSE), the
+project's licence.

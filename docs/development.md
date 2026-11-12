@@ -40,4 +40,4 @@ Needs Go (version in `go.mod`) and Node.js 20.
 
 Local dry run that publishes nothing: `make package` (needs goreleaser).
 
-Not set up yet: a container registry, package signing, a licence.
+Not set up yet: a container registry, package signing.

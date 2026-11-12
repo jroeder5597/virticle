@@ -113,4 +113,8 @@ pre-flight check names the fix.
 ## Status
 
 Early release. Tested with a controller on Linux amd64 and nodes on Debian 13
-and Rocky Linux 10. No licence has been chosen yet; see `LICENSE`.
+and Rocky Linux 10.
+
+## Licence
+
+[Apache License 2.0](LICENSE). Third-party notices are in [NOTICE](NOTICE).

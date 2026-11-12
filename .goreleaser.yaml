@@ -33,6 +33,7 @@ archives:
     files:
       - README.md
       - LICENSE
+      - NOTICE
       - docs/*.md
       - src: packaging/virticle.service
         dst: packaging/virticle.service
@@ -58,7 +59,7 @@ nfpms:
     maintainer: Virticle maintainers <root@localhost>
     description: Web controller for KVM/libvirt hosts, managed over SSH.
     homepage: https://github.com/jroeder5597/virticle
-    license: Unlicensed (owner has not chosen a licence)
+    license: Apache-2.0
     formats: [deb, rpm]
     section: admin
     contents:
@@ -76,6 +77,8 @@ nfpms:
         dst: /usr/share/doc/virticle/README.md
       - src: LICENSE
         dst: /usr/share/doc/virticle/LICENSE
+      - src: NOTICE
+        dst: /usr/share/doc/virticle/NOTICE
       - src: docs/install.md
         dst: /usr/share/doc/virticle/install.md
     overrides:

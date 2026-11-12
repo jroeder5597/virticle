@@ -4,10 +4,8 @@ Virticle is one controller program. It needs nothing on the machines it
 manages (the "nodes") except SSH access and libvirt; see `install-node.md` for
 preparing a node and `web-tls.md` for HTTPS and reverse proxies.
 
-Releases are at <https://github.com/jroeder5597/virticle/releases>. The
-repository is private, so downloading needs a GitHub login with access:
-`gh release download v1.2.3 -R jroeder5597/virticle`. Below, `RELEASES_URL` is
-`https://github.com/jroeder5597/virticle/releases/download`.
+Releases are at <https://github.com/jroeder5597/virticle/releases>. Below,
+`RELEASES_URL` is `https://github.com/jroeder5597/virticle/releases/download`.
 
 ## Supported platforms
 

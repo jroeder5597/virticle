@@ -1,0 +1,12 @@
+Virticle
+Copyright 2026 The Virticle authors
+
+This product bundles third-party software under their own licences:
+
+- go-libvirt (third_party/go-libvirt), Apache License 2.0
+- noVNC, Mozilla Public License 2.0
+- xterm.js, React, React Router, MIT License
+- Lucide, ISC License
+- Source Sans 3, JetBrains Mono, SIL Open Font License 1.1
+- Go modules listed in go.mod, under BSD, MIT, ISC, Apache 2.0 and MPL 2.0
+  licences
