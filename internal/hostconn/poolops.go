@@ -40,7 +40,7 @@ type DownloadOpts struct {
 
 const curlDownloadOpts = "curl -q -fsSL --proto '=http,https' --proto-redir '=http,https' --max-redirs 10 --connect-timeout 20"
 
-var helperPrefixRE = regexp.MustCompile(`^virticle-helper: `)
+var helperPrefixRE = regexp.MustCompile(`^virticle-(node|helper): `)
 
 func helperMessage(out string, err error) string {
 	return helperPrefixRE.ReplaceAllString(firstLineOf(out, err), "")
