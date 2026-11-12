@@ -185,6 +185,7 @@ export default function WebAccess() {
   const [checks, setChecks] = useState<Check[]>();
   const [snippets, setSnippets] = useState<Snippet[]>([]);
   const [error, setError] = useState<string>();
+  const [portChanged, setPortChanged] = useState(false);
   const act = useAction();
   const confirm = useConfirm();
   const dirty = useRef(false);
@@ -261,6 +262,9 @@ export default function WebAccess() {
     if (!yes) return;
     await act.run(async () => {
       try {
+        const sent = outgoing();
+        const o = st.settings;
+        if (sent.listen !== o.listen || sent.httpsListen !== o.httpsListen || sent.httpRedirect !== o.httpRedirect) setPortChanged(true);
         const r = await put<{ checks: Check[] }>("/web", body());
         setChecks(r.checks);
         dirty.current = false;
@@ -338,6 +342,7 @@ export default function WebAccess() {
             {pend && l.gen !== pend.gen ? " (previous)" : ""}
           </StatusLine>
         ))}
+        {(portChanged || pend || st.source === "default") && <FirewallHint />}
         {plainOpen && <StatusLine status="warning">Sign-ins travel unencrypted</StatusLine>}
         {!resp.tls && st.settings.mode !== "off" && st.settings.mode !== "proxy" && <StatusLine status="info">This page was opened over plain HTTP.</StatusLine>}
         {st.cert && (
@@ -528,6 +533,29 @@ export default function WebAccess() {
       {mode === "proxy" && snippets.map((s) => <SnippetCard key={s.id} s={s} />)}
       {confirm.dialog}
     </div>
+  );
+}
+
+/** Points at the command that opens the web port in this machine's firewall. */
+function FirewallHint() {
+  const [state, setState] = useState("");
+  const cmd = "sudo virticle setup";
+  const copy = () =>
+    copyText(cmd).then(
+      () => {
+        setState("Copied");
+        setTimeout(() => setState(""), 2000);
+      },
+      (e) => setState(String(e.message ?? e)),
+    );
+  return (
+    <p className="muted">
+      If this machine has a firewall, run: <code>{cmd}</code>{" "}
+      <button onClick={copy} aria-label="Copy the firewall command">
+        Copy
+      </button>{" "}
+      <span role="status">{state}</span>
+    </p>
   );
 }
 

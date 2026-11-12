@@ -1,7 +1,7 @@
 #!/bin/sh
 # Like the DEB: a new install enables and starts the service, an upgrade
-# restarts it when it is running. The web UI is then at https://<address>:8443
-# (see the journal: journalctl -u virticle).
+# restarts it when it is running. The firewall is not changed here: the
+# administrator runs "sudo virticle setup".
 if [ -d /run/systemd/system ]; then
 	systemctl daemon-reload || true
 	if [ "$1" -ge 2 ]; then
@@ -12,5 +12,9 @@ if [ -d /run/systemd/system ]; then
 	fi
 elif [ "$1" -lt 2 ]; then
 	systemctl enable virticle.service 2>/dev/null || true
+fi
+if [ "$1" -lt 2 ]; then
+	echo "Virticle is installed. Run: sudo virticle setup"
+	echo "Then open the address it prints."
 fi
 exit 0

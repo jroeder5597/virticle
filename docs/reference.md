@@ -6,6 +6,7 @@
 | --- | --- |
 | `virticle [flags]` | Runs the controller. |
 | `virticle version` | Prints version, commit and build date. |
+| `virticle setup [--check] [--undo]` | Run once on the controller's machine after installing, as root (`sudo virticle setup`). Opens the web port in firewalld or ufw, makes sure the service runs and prints the address to open. `--check` changes nothing; `--undo` removes the firewall rule it added. Takes `-data`. See [install.md](install.md#package-debian-ubuntu-rhel-like). |
 | `virticle node prepare\|unprepare` | Prepares a host as a node, or undoes it. See [install-node.md](install-node.md). |
 | `virticle web show\|set\|reset` | Reads or changes the stored web access settings. `show` and `reset` take only `-data`. See [web-tls.md](web-tls.md). |
 

@@ -98,7 +98,7 @@ echo "old_script=$([ -e ` + oldHelperPath + ` ] && echo yes)"
 echo "node_version=$(` + nodeCmdPath + ` version 2>/dev/null | head -n 1)"
 echo "node_sha=$(sha256sum ` + nodeCmdPath + ` 2>/dev/null | cut -d' ' -f1)"
 echo "sudoers_file=$([ -f ` + sudoersPath + ` ] && head -c 4096 ` + sudoersPath + ` | tr '\n' '|')"
-`
+` + fwProbe
 
 // accountScript prints what is known about the service account $1 (a
 // validated name). It always succeeds.
@@ -138,6 +138,7 @@ type Facts struct {
 	Controllers                                                []string // instance ids found in snapshot descriptions
 	SudoBin, VisudoBin, NodeCmdVersion, NodeCmdSHA, SudoersRaw string
 	OldScript                                                  bool // the shell script of an earlier version is still installed
+	Firewall                                                   FirewallFacts
 }
 
 // ParseFacts reads FactsScript's output.
@@ -217,6 +218,7 @@ func ParseFacts(out string) Facts {
 		f.Controllers = append(f.Controllers, id)
 	}
 	sort.Strings(f.Controllers)
+	f.Firewall = ParseFirewallFacts(out)
 	return f
 }
 

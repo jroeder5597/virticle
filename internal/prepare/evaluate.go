@@ -158,6 +158,10 @@ func Evaluate(p Plan, o Options) []Row {
 		add("packages", "Packages", Info, "To install: "+strings.Join(p.Missing, " "))
 	}
 
+	// Firewall
+	fr := FirewallCheckRow(f.Firewall, NodeFirewall())
+	rows = append(rows, fr)
+
 	// Service account
 	rows = append(rows, accountRows(p, o)...)
 	return rows

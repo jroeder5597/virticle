@@ -54,13 +54,10 @@ func chooseSettings(stored webaccess.Settings, hasStored, hasUsers bool) choice 
 	return choice{settings: webaccess.FirstRunDefaults(), source: "default", persist: true}
 }
 
-// setupHint is the journal line that says where to create the administrator;
-// empty when one exists. addrs are the addresses to offer for a wildcard
-// listener, best first.
-func setupHint(hasUsers bool, ws webaccess.Settings, addrs []string) string {
-	if hasUsers {
-		return ""
-	}
+// openURL is the address to open for ws: scheme://host:port, with the first
+// of addrs as the host for a listener on every interface. Empty when the
+// listen address cannot be read.
+func openURL(ws webaccess.Settings, addrs []string) string {
 	scheme, listen := "http", ws.Listen
 	if ws.IsTLS() {
 		scheme, listen = "https", ws.HTTPSListen
@@ -78,7 +75,21 @@ func setupHint(hasUsers bool, ws webaccess.Settings, addrs []string) string {
 	if strings.Contains(host, ":") {
 		host = "[" + host + "]"
 	}
-	return fmt.Sprintf("open %s://%s:%s to create the administrator", scheme, host, port)
+	return fmt.Sprintf("%s://%s:%s", scheme, host, port)
+}
+
+// setupHint is the journal line that says where to create the administrator;
+// empty when one exists. addrs are the addresses to offer for a wildcard
+// listener, best first.
+func setupHint(hasUsers bool, ws webaccess.Settings, addrs []string) string {
+	if hasUsers {
+		return ""
+	}
+	u := openURL(ws, addrs)
+	if u == "" {
+		return ""
+	}
+	return "open " + u + " to create the administrator"
 }
 
 // suggestedAddresses are this machine's addresses and host name, IP addresses
@@ -140,7 +151,7 @@ func warnDeprecated(logf func(string, ...any)) {
 // usage prints the help without the deprecated flags.
 func usage() {
 	out := flag.CommandLine.Output()
-	fmt.Fprint(out, "usage: virticle [flags]\n       virticle web show|set|reset [-data DIR] ...\n       virticle node prepare|unprepare ...\n\nflags:\n")
+	fmt.Fprint(out, "usage: virticle [flags]\n       virticle web show|set|reset [-data DIR] ...\n       virticle setup [--check] [--undo] [-data DIR]\n       virticle node prepare|unprepare ...\n\nflags:\n")
 	flag.VisitAll(func(f *flag.Flag) {
 		if _, hidden := deprecatedFlags[f.Name]; hidden {
 			return

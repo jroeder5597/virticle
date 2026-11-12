@@ -25,6 +25,9 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "node" {
 		os.Exit(nodeCommand(os.Args[2:])) // node.go
 	}
+	if len(os.Args) > 1 && os.Args[1] == "setup" {
+		os.Exit(setupCommand(os.Args[2:]))
+	}
 	if len(os.Args) > 1 && os.Args[1] == "web" {
 		os.Exit(webCommand(os.Args[2:]))
 	}

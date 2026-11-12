@@ -221,6 +221,7 @@ type stepDef struct {
 func steps(o Options) []stepDef {
 	list := []stepDef{
 		{id: "do-packages", title: "Install packages", run: stepPackages},
+		{id: "do-firewall", title: "Firewall", run: stepFirewall},
 		{id: "do-services", title: "Enable libvirt", run: stepServices},
 		{id: "do-network", title: "Default network", run: stepNetwork},
 		{id: "do-pool", title: "Default pool", run: stepPool},
@@ -280,7 +281,12 @@ func (r *Runner) Prepare(o Options, report func([]Row), verify func() []Row) []R
 	for i, d := range defs {
 		detail, changed, err := d.run(r, plan, o)
 		row := &rows[first+i]
+		var rowErr *statusError
 		switch {
+		case errors.As(err, &rowErr):
+			// Not a failure: the step went on, but the administrator has a
+			// thing to do or know.
+			row.Status, row.Detail = rowErr.Status, r.scrub(rowErr.Detail)
 		case err != nil:
 			row.Status, row.Detail = Error, r.scrub(err.Error())
 			failed = true
@@ -338,6 +344,22 @@ func stepPackages(r *Runner, p Plan, o Options) (string, bool, error) {
 		return "", false, fmt.Errorf("installing %s failed: %w: %s", strings.Join(p.Missing, " "), err, firstLines(out, 12))
 	}
 	return "Installed " + strings.Join(p.Missing, " "), true, nil
+}
+
+// statusError is returned by a step that did not fail but wants its row to
+// show a status other than OK (a warning or a note); the steps after it run.
+type statusError struct{ Status, Detail string }
+
+func (e *statusError) Error() string { return e.Detail }
+
+// stepFirewall opens the migration ports on the node. A firewall command that
+// fails is a warning with the commands to run by hand, never an error.
+func stepFirewall(r *Runner, p Plan, o Options) (string, bool, error) {
+	row, changed := ApplyFirewall(func(script string) (string, error) { return r.root(script, "") }, NodeFirewall())
+	if row.Status != OK {
+		return "", false, &statusError{row.Status, row.Detail}
+	}
+	return row.Detail, changed, nil
 }
 
 func firstLines(s string, n int) string {
@@ -671,6 +693,13 @@ func (r *Runner) Unprepare(o Options) []Row {
 		if part != "" {
 			rows = append(rows, Row{ID: "unprepare", Title: titleOf(part), Status: OK, Detail: part})
 		}
+	}
+	// The firewall service that prepare added. The script prints nothing when
+	// it cannot run, which then adds no row.
+	if fout, ferr := r.root(FirewallScript(FirewallSpec{Service: NodeFirewallService}), ""); ferr == nil && strings.TrimSpace(fout) != "" {
+		frow, fch := ApplyFirewall(func(string) (string, error) { return fout, nil }, FirewallSpec{Service: NodeFirewallService})
+		changed = changed || fch
+		rows = append(rows, frow)
 	}
 	if changed {
 		rows = append(rows, Row{ID: "summary", Title: "Result", Status: Info, Detail: "Controller access removed; packages, VMs, pools and networks were left alone"})
