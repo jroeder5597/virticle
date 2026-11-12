@@ -387,7 +387,8 @@ export default function Tree() {
           icon: Wrench,
           run: () => put(`/nodes/${n.id}/maintenance`, { on: !n.maintenance }).then(loadNodes, fail),
         });
-        items.push({ label: "Evacuate", icon: ArrowRightLeft, run: () => nav("/nodes") });
+        // Evacuate is offered for a node in maintenance; its page has the action.
+        if (n.maintenance && n.state === "online") items.push({ label: "Evacuate", icon: ArrowRightLeft, run: () => nav(`/node/${n.id}`) });
       }
       return items;
     },
