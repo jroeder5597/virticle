@@ -136,7 +136,9 @@ To build from source, run `make build` (needs Go and Node.js). The result is
    set.
 2. Create the administrator account. The password needs at least 10
    characters.
-3. Add nodes. Prepare each node from the **Nodes** page or with
+3. Add nodes. If this machine will run your VMs too, choose **Set up this
+   machine as a node** on the **Datacenter** page (SSH must be running on it;
+   the administrator login is used once). Otherwise prepare each node from the **Nodes** page or with
    `virticle node prepare`. [install-node.md](install-node.md) describes the
    preparation.
 

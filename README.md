@@ -51,6 +51,19 @@ self-signed certificate on `127.0.0.1:8080`. More in
 
 ### 3. Add a node
 
+**The machine the controller runs on.** If the controller is installed on the
+machine that will run your virtual machines, the **Datacenter** page offers
+**Set up this machine as a node** while there are no nodes. SSH must be running
+on the machine (`sudo systemctl enable --now sshd`).
+
+1. Open **Datacenter**.
+2. Choose **Set up this machine as a node**.
+3. Enter an administrator login for this machine (root, or a user that may use
+   sudo). It is used once and is not stored.
+4. Choose **Prepare**. When it has finished without errors the node is added.
+
+To add another machine:
+
 A node is a Linux host with hardware virtualisation. Debian 13 and Rocky
 Linux 10 are tested. A node must be **prepared** before you add it. Preparing
 installs libvirt and QEMU and sets up the access the controller needs.

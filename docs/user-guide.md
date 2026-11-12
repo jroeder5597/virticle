@@ -36,7 +36,17 @@ You can leave the page; the task keeps going.
 
 ![Nodes](img/nodes.png)
 
-A node is a host that runs your VMs. To add one:
+A node is a host that runs your VMs.
+
+**This machine as a node.** While there are no nodes, the **Datacenter** page
+offers **Set up this machine as a node** when the controller's own machine can
+run VMs. SSH must be running on it (`sudo systemctl enable --now sshd`). Choose
+the button, enter an administrator login for this machine (used once, not
+stored) and choose **Prepare**. The node is added when prepare has finished
+without errors. The page shows the machine's network address, because other
+nodes use that address for migrations; change it if they cannot reach it.
+
+To add another host:
 
 1. Open **Nodes**, then **Add node**.
 2. For a new host, choose **Prepare this node**. It installs libvirt, QEMU,

@@ -32,3 +32,6 @@
 @media (max-width: 760px) {
   .dctable td { white-space: nowrap; overflow-wrap: normal; }
 }
+.startpanel { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.startpanel > p, .startpanel .statusline { margin: 0; }
+.startpanel .actions { display: flex; flex-wrap: wrap; gap: 8px; }

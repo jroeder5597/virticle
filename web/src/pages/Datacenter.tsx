@@ -11,6 +11,7 @@ import HostInterfaces from "./HostNics";
 import Networks from "./Networks";
 import Nodes from "./Nodes";
 import Storage from "./Storage";
+import StartPanel from "./StartPanel";
 import Tasks from "./Tasks";
 import VMs from "./VMs";
 import "../datacenter.css";
@@ -119,9 +120,7 @@ function Summary() {
         <div className="card">
           <h3>Nodes</h3>
           {nodes.data && all.length === 0 ? (
-            <p className="muted">
-              No nodes yet. <Link to="/datacenter/nodes">Add a node</Link>.
-            </p>
+            <StartPanel />
           ) : (
             <table className="compact dcnodes">
               <thead>

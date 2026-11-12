@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { get, post } from "../api";
 import { useEvents } from "../live";
 import { ErrorBox, Field, Modal, useAction } from "../ui";
@@ -33,7 +33,7 @@ export function rowItems(rows: Row[]): CheckItem[] {
  * and never stored; it is emptied when a real preparation starts and when the dialog closes. A Check keeps it in memory so that the
  * Prepare button on the result needs no retyping.
  */
-export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegistered }: { addr: string; jump: string; onClose: () => void; onRegistered: () => void }) {
+export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegistered, own }: { addr: string; jump: string; onClose: () => void; onRegistered: () => void; own?: boolean }) {
   const [addr, setAddr] = useState(addr0);
   const [jump, setJump] = useState(jump0);
   const [adminUser, setAdminUser] = useState("root");
@@ -88,6 +88,15 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
     }
   };
 
+  // The controller's own machine: nothing more to decide once it is prepared, so it is added at once.
+  const autoDone = useRef(false);
+  useEffect(() => {
+    if (own && job?.done && job.ok && !job.checkOnly && !autoDone.current) {
+      autoDone.current = true;
+      register();
+    }
+  });
+
   if (task !== undefined) {
     const running = !job || !job.done;
     const checked = !running && !!job?.checkOnly && !!job?.ok;
@@ -111,7 +120,7 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
               Prepare
             </button>
           )}
-          {!running && job?.ok && !job.checkOnly && (
+          {!running && job?.ok && !job.checkOnly && !(own && !reg.error) && (
             <button type="button" className="primary" disabled={reg.busy} onClick={register}>
               Add this node
             </button>
@@ -132,7 +141,7 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
         </p>
         <div className="grid2">
           <Field label="Address" hint="Host name or IP, optionally with :port.">
-            <input value={addr} onChange={(e) => setAddr(e.target.value)} required autoFocus />
+            <input value={addr} onChange={(e) => setAddr(e.target.value)} required autoFocus={!own} />
           </Field>
           <Field label="Jump host (optional)" hint="user@address">
             <input value={jump} onChange={(e) => setJump(e.target.value)} />
@@ -157,7 +166,7 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
         </div>
         {cred === "password" ? (
           <Field label="Password" hint="Also used for sudo when the user is not root.">
-            <input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} required autoComplete="new-password" />
+            <input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} required autoComplete="new-password" autoFocus={own} />
           </Field>
         ) : (
           <Field label="Private key" hint="Paste the key. It must have no passphrase.">
