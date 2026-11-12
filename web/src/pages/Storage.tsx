@@ -344,17 +344,30 @@ function CreateVolume({ base, pool, onClose }: { base: string; pool: Pool; onClo
   );
 }
 
-const poolTypes: Record<string, string> = { dir: "Directory", netfs: "NFS share", logical: "LVM volume group", iscsi: "iSCSI target", xml: "Other (libvirt XML)" };
+const poolTypes: Record<string, string> = {
+  dir: "Directory",
+  netfs: "NFS share (untested)",
+  logical: "LVM volume group (untested)",
+  iscsi: "iSCSI target (untested)",
+  xml: "Custom (XML) (untested)",
+};
+const dirDefault = (name: string) => (name ? `/var/lib/libvirt/images/${name}` : "");
+const mountDefault = (name: string) => (name ? `/mnt/${name}` : "");
 
 function CreatePool({ node: initialNode, nodes, onClose, onDone }: { node: number; nodes?: NodeStatus[]; onClose: () => void; onDone: () => void }) {
   const [node, setNode] = useState(initialNode);
   const [type, setType] = useState("dir");
   const [f, setF] = useState({ name: "", target: "", sourceHost: "", sourcePath: "", sourceName: "", xml: "" });
+  // The directory and the NFS mount point follow the name until the user types their own.
+  const [typed, setTyped] = useState<{ dir?: string; mount?: string }>({});
+  const dir = typed.dir ?? dirDefault(f.name);
+  const mount = typed.mount ?? mountDefault(f.name);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   const act = useAction();
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const body = type === "xml" ? { xml: f.xml } : { ...f, xml: "", type };
+    const target = type === "dir" ? dir : type === "netfs" ? mount : "";
+    const body = type === "xml" ? { xml: f.xml } : { ...f, target, xml: "", type };
     if (await act.run(() => post(`/nodes/${node}/pools`, body))) {
       onDone();
       onClose();
@@ -368,9 +381,6 @@ function CreatePool({ node: initialNode, nodes, onClose, onDone }: { node: numbe
             <NodePicker nodes={nodes} value={node} onChange={setNode} />
           </Field>
         )}
-        <Field label="Type">
-          <Select label="Type" value={type} onChange={setType} options={Object.entries(poolTypes).map(([k, v]) => ({ value: k, label: v }))} />
-        </Field>
         {type !== "xml" && (
           <Field label="Name">
             <input value={f.name} onChange={set("name")} required autoFocus />
@@ -378,44 +388,60 @@ function CreatePool({ node: initialNode, nodes, onClose, onDone }: { node: numbe
         )}
         {type === "dir" && (
           <Field label="Directory on the node" hint="Created if it does not exist.">
-            <input value={f.target} onChange={set("target")} required placeholder="/var/lib/libvirt/images" />
+            <input
+              value={dir}
+              onChange={(e) => setTyped({ ...typed, dir: e.target.value })}
+              required
+              placeholder="/var/lib/libvirt/images/name"
+            />
           </Field>
         )}
-        {type === "netfs" && (
-          <>
-            <div className="grid2">
-              <Field label="NFS server">
-                <input value={f.sourceHost} onChange={set("sourceHost")} required placeholder="nas.example.lan" />
+        <details className="cloudinit">
+          <summary>Advanced</summary>
+          <Field label="Other storage types">
+            <Select label="Other storage types" value={type} onChange={setType} options={Object.entries(poolTypes).map(([k, v]) => ({ value: k, label: v }))} />
+          </Field>
+          {type === "netfs" && (
+            <>
+              <div className="grid2">
+                <Field label="NFS server">
+                  <input value={f.sourceHost} onChange={set("sourceHost")} required placeholder="nas.example.lan" />
+                </Field>
+                <Field label="Export path">
+                  <input value={f.sourcePath} onChange={set("sourcePath")} required placeholder="/export/vms" />
+                </Field>
+              </div>
+              <Field label="Mount point on the node">
+                <input
+                  value={mount}
+                  onChange={(e) => setTyped({ ...typed, mount: e.target.value })}
+                  required
+                  placeholder="/mnt/name"
+                />
               </Field>
-              <Field label="Export path">
-                <input value={f.sourcePath} onChange={set("sourcePath")} required placeholder="/export/vms" />
+            </>
+          )}
+          {type === "logical" && (
+            <Field label="Volume group" hint="An existing LVM volume group on the node.">
+              <input value={f.sourceName} onChange={set("sourceName")} required placeholder="vg0" />
+            </Field>
+          )}
+          {type === "iscsi" && (
+            <div className="grid2">
+              <Field label="iSCSI server">
+                <input value={f.sourceHost} onChange={set("sourceHost")} required placeholder="192.168.1.50" />
+              </Field>
+              <Field label="Target name">
+                <input value={f.sourcePath} onChange={set("sourcePath")} required placeholder="iqn.2026-01.lan.example:vms" />
               </Field>
             </div>
-            <Field label="Mount point on the node">
-              <input value={f.target} onChange={set("target")} required placeholder="/mnt/vms" />
+          )}
+          {type === "xml" && (
+            <Field label="Pool definition" hint="Any pool type libvirt supports: Ceph RBD, ZFS, Gluster and others.">
+              <textarea spellCheck={false} rows={10} value={f.xml} onChange={set("xml")} required placeholder="Pool definition (XML)" />
             </Field>
-          </>
-        )}
-        {type === "logical" && (
-          <Field label="Volume group" hint="An existing LVM volume group on the node.">
-            <input value={f.sourceName} onChange={set("sourceName")} required placeholder="vg0" />
-          </Field>
-        )}
-        {type === "iscsi" && (
-          <div className="grid2">
-            <Field label="Portal address">
-              <input value={f.sourceHost} onChange={set("sourceHost")} required placeholder="192.168.1.50" />
-            </Field>
-            <Field label="Target IQN">
-              <input value={f.sourcePath} onChange={set("sourcePath")} required placeholder="iqn.2026-01.lan.example:vms" />
-            </Field>
-          </div>
-        )}
-        {type === "xml" && (
-          <Field label="Pool definition" hint="Any pool type libvirt supports: Ceph RBD, ZFS, Gluster and others.">
-            <textarea spellCheck={false} rows={10} value={f.xml} onChange={set("xml")} required placeholder="Pool definition (XML)" />
-          </Field>
-        )}
+          )}
+        </details>
         <ErrorBox error={act.error} />
         <footer>
           <button type="button" onClick={onClose}>

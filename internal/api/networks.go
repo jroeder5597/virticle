@@ -357,6 +357,39 @@ func netmaskOf(bits int) string {
 	return net.IP(net.CIDRMask(bits, 32)).String()
 }
 
+// nextFreeSubnet returns the gateway address (10.77.N.1/24) of the first private
+// /24 from 10.77.1.0 upwards that overlaps no existing network.
+func nextFreeSubnet(existing []existingNet) (netip.Prefix, bool) {
+	for n := 1; n <= 254; n++ {
+		p := netip.PrefixFrom(netip.AddrFrom4([4]byte{10, 77, byte(n), 1}), 24)
+		clash := false
+		for _, e := range existing {
+			if e.Subnet.IsValid() && e.Subnet.Overlaps(p.Masked()) {
+				clash = true
+				break
+			}
+		}
+		if !clash {
+			return p, true
+		}
+	}
+	return netip.Prefix{}, false
+}
+
+// defaultDHCPRange is the whole subnet except the gateway (.2 to .254 for a gateway
+// at .1 in a /24); false when the gateway sits in the middle of the subnet.
+func defaultDHCPRange(p netip.Prefix) (start, end netip.Addr, ok bool) {
+	subnet := p.Masked()
+	first, last := nextAddr(subnet.Addr(), 1), nextAddr(broadcastOf(p), -1)
+	switch p.Addr() {
+	case first, subnet.Addr():
+		return nextAddr(first, 1), last, true
+	case last:
+		return first, nextAddr(last, -1), true
+	}
+	return first, last, false
+}
+
 // existingNet is what a new network must not collide with.
 type existingNet struct {
 	Name   string
@@ -434,10 +467,15 @@ func (q networkRequest) build(existing []existingNet) (string, error) {
 	if q.Domain != "" {
 		fmt.Fprintf(&b, "  <domain name='%s'/>\n", esc(q.Domain))
 	}
-	if q.Address == "" {
-		if q.Mode != "isolated" {
-			return "", badRequest("an IPv4 address with prefix (for example 10.77.1.1/24) is required")
+	if q.Address == "" && q.Mode != "isolated" {
+		// The UI always sends one; a script that leaves it out gets the next free private /24.
+		free, ok := nextFreeSubnet(existing)
+		if !ok {
+			return "", badRequest("no free private /24 subnet is left; give an address")
 		}
+		q.Address = free.String()
+	}
+	if q.Address == "" {
 		if q.DHCP {
 			return "", badRequest("DHCP needs an IPv4 address")
 		}
@@ -466,8 +504,7 @@ func (q networkRequest) build(existing []existingNet) (string, error) {
 	}
 	fmt.Fprintf(&b, "  <ip address='%s' netmask='%s'>\n", gw, netmaskOf(p.Bits()))
 	if q.DHCP {
-		first, last := nextAddr(subnet.Addr(), 1), nextAddr(broadcastOf(p), -1)
-		start, end := first, last
+		start, end, rangeOK := defaultDHCPRange(p)
 		if q.DHCPStart != "" || q.DHCPEnd != "" {
 			var e1, e2 error
 			start, e1 = netip.ParseAddr(q.DHCPStart)
@@ -475,11 +512,7 @@ func (q networkRequest) build(existing []existingNet) (string, error) {
 			if e1 != nil || e2 != nil || !start.Is4() || !end.Is4() {
 				return "", badRequest("DHCP range start and end must both be IPv4 addresses")
 			}
-		} else if gw == first {
-			start = nextAddr(gw, 1)
-		} else if gw == last {
-			end = nextAddr(gw, -1)
-		} else {
+		} else if !rangeOK {
 			return "", badRequest("please give the DHCP range explicitly: the gateway address is inside the subnet's middle")
 		}
 		if !subnet.Contains(start) || !subnet.Contains(end) || start == subnet.Addr() || end == broadcastOf(p) {
