@@ -29,7 +29,7 @@ func TestNetworkBuild(t *testing.T) {
 		{"range with gateway", networkRequest{Name: "n1", Mode: "nat", Address: "10.77.1.1/24", DHCP: true, DHCPStart: "10.77.1.1", DHCPEnd: "10.77.1.9"}, "gateway", true},
 		{"bad cidr", networkRequest{Name: "n1", Mode: "nat", Address: "10.77.1.1/33"}, "IPv4 address with prefix", true},
 		{"ipv6", networkRequest{Name: "n1", Mode: "nat", Address: "fd00::1/64"}, "IPv4", true},
-		{"nat needs address", networkRequest{Name: "n1", Mode: "nat"}, "required", true},
+		{"nat without address takes next free /24", networkRequest{Name: "n1", Mode: "nat", DHCP: true}, `address='10.77.1.1' netmask='255.255.255.0'`, false},
 		{"dup name", networkRequest{Name: "default", Mode: "isolated"}, "already exists", true},
 		{"bad name", networkRequest{Name: "a b", Mode: "isolated"}, "name must", true},
 		{"vlan on linux bridge", networkRequest{Name: "n1", Mode: "bridge", BridgeName: "hb", VLAN: 5}, "Open vSwitch", true},
@@ -66,5 +66,38 @@ func TestNetXMLInfo(t *testing.T) {
 	}
 	if _, idx, ok := x.dhcpIP(); !ok || idx != 0 {
 		t.Error("dhcpIP not found")
+	}
+}
+
+func TestNextFreeSubnet(t *testing.T) {
+	p := func(s string) netip.Prefix { return netip.MustParsePrefix(s) }
+	got, ok := nextFreeSubnet([]existingNet{{Subnet: p("192.168.122.1/24")}, {}})
+	if !ok || got != p("10.77.1.1/24") {
+		t.Fatalf("empty node: %v %v", got, ok)
+	}
+	got, _ = nextFreeSubnet([]existingNet{{Subnet: p("10.77.1.1/24")}, {Subnet: p("10.77.2.1/25")}, {Subnet: p("10.77.4.1/24")}})
+	if got != p("10.77.3.1/24") {
+		t.Fatalf("with gaps: %v", got)
+	}
+	got, _ = nextFreeSubnet([]existingNet{{Subnet: p("10.77.0.1/16")}})
+	if got.Addr().String() == "10.77.1.1" {
+		t.Fatalf("a /16 covering the range must be skipped, got %v", got)
+	}
+}
+
+func TestDefaultDHCPRange(t *testing.T) {
+	for _, c := range []struct {
+		addr, start, end string
+		ok               bool
+	}{
+		{"10.77.1.1/24", "10.77.1.2", "10.77.1.254", true},
+		{"10.77.1.0/24", "10.77.1.2", "10.77.1.254", true},
+		{"10.77.1.254/24", "10.77.1.1", "10.77.1.253", true},
+		{"10.77.1.100/24", "10.77.1.1", "10.77.1.254", false},
+	} {
+		s, e, ok := defaultDHCPRange(netip.MustParsePrefix(c.addr))
+		if s.String() != c.start || e.String() != c.end || ok != c.ok {
+			t.Errorf("%s: got %s-%s %v", c.addr, s, e, ok)
+		}
 	}
 }

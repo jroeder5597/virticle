@@ -98,12 +98,20 @@ type poolRequest struct {
 	XML string `json:"xml"`
 }
 
+// poolDirDefault and poolMountDefault are the places used when a request leaves the
+// directory or the NFS mount point out.
+func poolDirDefault(name string) string   { return "/var/lib/libvirt/images/" + name }
+func poolMountDefault(name string) string { return "/mnt/" + name }
+
 func (p poolRequest) xml() (string, error) {
 	if p.XML != "" {
 		return p.XML, nil
 	}
 	if p.Name == "" {
 		return "", badRequest("name is required")
+	}
+	if p.Target == "" && strings.ContainsAny(p.Name, "/\\") {
+		return "", badRequest("name must not contain slashes")
 	}
 	need := func(v, what string) error {
 		if v == "" {
@@ -113,11 +121,17 @@ func (p poolRequest) xml() (string, error) {
 	}
 	switch p.Type {
 	case "dir":
+		if p.Target == "" {
+			p.Target = poolDirDefault(p.Name)
+		}
 		if err := need(p.Target, "a directory"); err != nil {
 			return "", err
 		}
 		return fmt.Sprintf(`<pool type='dir'><name>%s</name><target><path>%s</path></target></pool>`, esc(p.Name), esc(p.Target)), nil
 	case "netfs":
+		if p.Target == "" {
+			p.Target = poolMountDefault(p.Name)
+		}
 		for _, c := range [][2]string{{p.SourceHost, "a server"}, {p.SourcePath, "an export path"}, {p.Target, "a mount point"}} {
 			if err := need(c[0], c[1]); err != nil {
 				return "", err
@@ -132,7 +146,7 @@ func (p poolRequest) xml() (string, error) {
 		return fmt.Sprintf(`<pool type='logical'><name>%s</name><source><name>%s</name></source><target><path>/dev/%s</path></target></pool>`,
 			esc(p.Name), esc(p.SourceName), esc(p.SourceName)), nil
 	case "iscsi":
-		for _, c := range [][2]string{{p.SourceHost, "a portal address"}, {p.SourcePath, "a target IQN"}} {
+		for _, c := range [][2]string{{p.SourceHost, "an iSCSI server"}, {p.SourcePath, "a target name"}} {
 			if err := need(c[0], c[1]); err != nil {
 				return "", err
 			}

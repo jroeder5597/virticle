@@ -206,18 +206,8 @@ function Detail({ base, name }: { base: string; name: string }) {
           <div className="card">
             <h3>Details</h3>
             <dl>
-              <dt>UUID</dt>
-              <dd className="mono">{n.uuid}</dd>
-              <dt>Definition</dt>
-              <dd>{n.persistent ? "Persistent" : "Transient (gone after it stops)"}</dd>
               <dt>Mode</dt>
               <dd>{modeLabel(n)}</dd>
-              {n.ovs && (
-                <>
-                  <dt>Switch</dt>
-                  <dd>Open vSwitch</dd>
-                </>
-              )}
               <dt>Bridge</dt>
               <dd className="mono">{n.bridge || "-"}</dd>
               <dt>Address</dt>
@@ -247,6 +237,21 @@ function Detail({ base, name }: { base: string; name: string }) {
                     ))}
               </dd>
             </dl>
+            <details className="cloudinit">
+              <summary>Details</summary>
+              <dl>
+                <dt>UUID</dt>
+                <dd className="mono">{n.uuid}</dd>
+                <dt>Definition</dt>
+                <dd>{n.persistent ? "Persistent" : "Transient (gone after it stops)"}</dd>
+                {n.ovs && (
+                  <>
+                    <dt>Switch</dt>
+                    <dd>Open vSwitch</dd>
+                  </>
+                )}
+              </dl>
+            </details>
           </div>
           <div className="card">
             <h3>DHCP leases</h3>
@@ -407,8 +412,10 @@ function XmlEditor({ url, n, onSaved }: { url: string; n: Network; onSaved: () =
     }
   };
   return (
-    <div className="card" style={{ gridColumn: "1 / -1" }}>
-      <h3>Definition (XML)</h3>
+    <details className="card" style={{ gridColumn: "1 / -1" }}>
+      <summary>
+        <h3 style={{ display: "inline" }}>Definition (XML)</h3>
+      </summary>
       <small>
         This is the saved definition. {n.active ? "The network is running, so edits take effect after it is stopped and started again." : "Edits apply when the network is started."} The name and UUID cannot be changed.
       </small>
@@ -423,35 +430,97 @@ function XmlEditor({ url, n, onSaved }: { url: string; n: Network; onSaved: () =
           Revert
         </button>
       </div>
-    </div>
+    </details>
   );
 }
 
 const modes: Record<string, string> = {
-  nat: "NAT: VMs reach the outside through the node",
-  isolated: "Isolated: VMs can only talk to each other and the node",
-  routed: "Routed: VMs reach the LAN without address translation",
-  open: "Open: like routed, but libvirt adds no firewall rules",
-  bridge: "Bridge: attach to an existing bridge on the node",
-  xml: "Other (libvirt XML)",
+  nat: "NAT",
+  isolated: "Isolated",
+  bridge: "Bridge to a host interface",
 };
+const otherModes: Record<string, string> = {
+  "": "Same as Type",
+  routed: "Routed",
+  open: "Open",
+  xml: "Custom (XML)",
+};
+
+interface HostNIC {
+  name: string;
+  type: string;
+  kind?: string;
+}
+
+const ip4 = (a: string) => a.split(".").reduce((n, o) => n * 256 + Number(o), 0);
+/** Whether two "a.b.c.d/bits" subnets share addresses; anything else (no address) overlaps nothing. */
+const overlaps = (a: string, b: string) => {
+  const [ai, ab] = a.split("/"), [bi, bb] = b.split("/");
+  if (!ab || !bb) return false;
+  const size = 2 ** (32 - Math.min(Number(ab), Number(bb)));
+  return Math.floor(ip4(ai) / size) === Math.floor(ip4(bi) / size);
+};
+/** The first private /24 from 10.77.1.0 upwards that no network of the node overlaps (the server picks the same). */
+export function nextFreeAddress(existing: string[]): string {
+  for (let n = 1; n <= 254; n++) {
+    const subnet = `10.77.${n}.0/24`;
+    if (!existing.some((e) => overlaps(e, subnet))) return `10.77.${n}.1/24`;
+  }
+  return "";
+}
 
 function CreateNetwork({ node: initialNode, nodes, onClose, onDone }: { node: number; nodes?: NodeStatus[]; onClose: () => void; onDone: (node: number, name: string) => void }) {
   const [node, setNode] = useState(initialNode);
   const base = `/nodes/${node}/networks`;
-  const [mode, setMode] = useState("nat");
-  const [f, setF] = useState({ name: "", bridgeName: "", address: "", dhcp: true, dhcpStart: "", dhcpEnd: "", domain: "", ovs: false, vlan: "", xml: "" });
+  const [type, setType] = useState("nat");
+  const [other, setOther] = useState("");
+  const mode = other || type;
+  const [f, setF] = useState({ name: "", bridgeName: "", bridge: "", dhcp: true, dhcpStart: "", dhcpEnd: "", domain: "", vlan: "", xml: "" });
+  const [typedAddress, setTypedAddress] = useState<string | undefined>();
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   const act = useAction();
+  // What the node already has: for the next free address, and for the bridges that can be attached.
+  const [existing, setExisting] = useState<Network[] | undefined>();
+  const [nics, setNics] = useState<HostNIC[] | undefined>();
+  const [nicError, setNicError] = useState(false);
+  useEffect(() => {
+    let live = true;
+    setExisting(undefined);
+    get<Network[]>(base).then((r) => live && setExisting(r), () => live && setExisting([]));
+    return () => {
+      live = false;
+    };
+  }, [base]);
+  useEffect(() => {
+    if (type !== "bridge") return;
+    let live = true;
+    setNics(undefined);
+    setNicError(false);
+    get<{ interfaces: HostNIC[] }>(`/nodes/${node}/interfaces`).then(
+      (r) => live && setNics(r.interfaces),
+      () => live && setNicError(true),
+    );
+    return () => {
+      live = false;
+    };
+  }, [node, type]);
+  const free = existing ? nextFreeAddress(existing.map((n) => n.address ?? "")) : "";
+  const address = typedAddress ?? free;
+  // Bridges libvirt creates for its own networks are not for sharing.
+  const bridges = (nics ?? []).filter((n) => (n.type === "bridge" || n.kind === "openvswitch") && !(existing ?? []).some((x) => x.bridge === n.name && x.forward !== "bridge"));
+  const picked = bridges.find((b) => b.name === f.bridge) ?? bridges[0];
+  const ovs = type === "bridge" && picked?.kind === "openvswitch";
   const routed = mode === "nat" || mode === "routed" || mode === "open" || mode === "isolated";
+  const dhcp = mode === "isolated" ? f.dhcp : true; // the checkbox exists for Isolated only
+  const rangeHint = (last: string) => (/^\d+\.\d+\.\d+\.\d+\/24$/.test(address) ? address.replace(/\.\d+\/\d+$/, "." + last) : "");
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const body =
       mode === "xml"
         ? { xml: f.xml }
         : mode === "bridge"
-          ? { name: f.name, mode, bridgeName: f.bridgeName, ovs: f.ovs, vlan: f.ovs && f.vlan ? Number(f.vlan) : 0 }
-          : { name: f.name, mode, bridgeName: f.bridgeName, address: f.address, dhcp: f.dhcp && f.address !== "", dhcpStart: f.dhcpStart, dhcpEnd: f.dhcpEnd, domain: f.domain };
+          ? { name: f.name, mode, bridgeName: picked?.name ?? "", ovs, vlan: ovs && f.vlan ? Number(f.vlan) : 0 }
+          : { name: f.name, mode, bridgeName: f.bridgeName, address, dhcp: dhcp && address !== "", dhcpStart: f.dhcpStart, dhcpEnd: f.dhcpEnd, domain: f.domain };
     let res: { name: string } = { name: "" };
     if (await act.run(async () => (res = await post(base, body)))) {
       onDone(node, res.name);
@@ -467,7 +536,15 @@ function CreateNetwork({ node: initialNode, nodes, onClose, onDone }: { node: nu
           </Field>
         )}
         <Field label="Type">
-          <Select label="Type" value={mode} onChange={setMode} options={Object.entries(modes).map(([k, v]) => ({ value: k, label: v }))} />
+          <Select
+            label="Type"
+            value={type}
+            onChange={(v) => {
+              setType(v);
+              setOther("");
+            }}
+            options={Object.entries(modes).map(([k, v]) => ({ value: k, label: v }))}
+          />
         </Field>
         {mode === "xml" ? (
           <Field label="Network definition" hint="Checked against libvirt's schema. A network with an existing name is refused.">
@@ -479,60 +556,75 @@ function CreateNetwork({ node: initialNode, nodes, onClose, onDone }: { node: nu
               <input value={f.name} onChange={set("name")} required autoFocus />
             </Field>
             {routed && (
-              <>
-                <div className="grid2">
-                  <Field label={mode === "isolated" ? "Address (optional)" : "Address of the node on this network"} hint="Gateway address with prefix length. The subnet must not overlap another network.">
-                    <input value={f.address} onChange={set("address")} required={mode !== "isolated"} placeholder="10.77.1.1/24" />
-                  </Field>
-                  <Field label="Bridge name (optional)" hint="Created by libvirt; automatic if empty.">
-                    <input value={f.bridgeName} onChange={set("bridgeName")} placeholder="virbr1" maxLength={15} />
-                  </Field>
-                </div>
-                <label className="check">
-                  <input type="checkbox" checked={f.dhcp} disabled={f.address === ""} onChange={(e) => setF({ ...f, dhcp: e.target.checked })} /> Hand out addresses with DHCP
-                </label>
-                {f.dhcp && f.address !== "" && (
-                  <div className="grid2">
-                    <Field label="DHCP range start" hint="Defaults to the first free address.">
-                      <input value={f.dhcpStart} onChange={set("dhcpStart")} placeholder="10.77.1.2" />
-                    </Field>
-                    <Field label="DHCP range end">
-                      <input value={f.dhcpEnd} onChange={set("dhcpEnd")} placeholder="10.77.1.254" />
-                    </Field>
-                  </div>
-                )}
-                <Field label="DNS domain (optional)">
-                  <input value={f.domain} onChange={set("domain")} placeholder="lab.example" />
-                </Field>
-              </>
+              <Field label={mode === "isolated" ? "Address (optional)" : "Address of the node on this network"} hint="For example 10.77.1.1/24">
+                <input value={address} onChange={(e) => setTypedAddress(e.target.value)} required={mode !== "isolated"} placeholder="10.77.1.1/24" />
+              </Field>
             )}
             {mode === "bridge" && (
-              <>
-                <Field label="Bridge on the node" hint="An existing bridge made outside libvirt, for example br0. Addresses come from the network behind it.">
-                  <input value={f.bridgeName} onChange={set("bridgeName")} required placeholder="br0" maxLength={15} />
-                </Field>
-                <label className="check">
-                  <input type="checkbox" checked={f.ovs} onChange={(e) => setF({ ...f, ovs: e.target.checked })} /> The bridge is an Open vSwitch bridge
-                </label>
-                {f.ovs ? (
-                  <Field label="VLAN tag (optional)" hint="VMs on this network are put on this access VLAN (1-4094).">
-                    <input type="number" min={1} max={4094} value={f.vlan} onChange={set("vlan")} />
-                  </Field>
+              <Field label="Bridge on the node">
+                {nicError ? (
+                  <div className="muted">The bridges of the node could not be read.</div>
+                ) : !nics ? (
+                  <div className="muted">Loading the bridges of the node.</div>
+                ) : bridges.length === 0 ? (
+                  <div className="muted">This node has no bridge. Create one on the node first.</div>
                 ) : (
-                  <div className="note" style={{ marginTop: 10 }}>
-                    VLAN tags are applied by libvirt only on Open vSwitch bridges. For a Linux bridge, create a VLAN sub-interface (for example eth0.20) on the node, put it in its own bridge and attach that bridge here. The host's network configuration is not managed by this tool.
-                  </div>
+                  <Select
+                    label="Bridge on the node"
+                    mono
+                    value={picked?.name ?? ""}
+                    onChange={(v) => setF({ ...f, bridge: v })}
+                    options={bridges.map((b) => ({ value: b.name, label: b.name + (b.kind === "openvswitch" ? " (Open vSwitch)" : "") }))}
+                  />
                 )}
-              </>
+              </Field>
             )}
           </>
         )}
+        <details className="cloudinit">
+          <summary>Advanced</summary>
+          <Field label="Other network types">
+            <Select label="Other network types" value={other} onChange={setOther} options={Object.entries(otherModes).map(([k, v]) => ({ value: k, label: v }))} />
+          </Field>
+          {routed && (
+            <>
+              {mode === "isolated" && (
+                <label className="check">
+                  <input type="checkbox" checked={f.dhcp} disabled={address === ""} onChange={(e) => setF({ ...f, dhcp: e.target.checked })} /> Hand out addresses with DHCP
+                </label>
+              )}
+              {dhcp && address !== "" && (
+                <div className="grid2">
+                  <Field label="DHCP range start" hint="Defaults to the first free address.">
+                    <input value={f.dhcpStart} onChange={set("dhcpStart")} placeholder={rangeHint("2")} />
+                  </Field>
+                  <Field label="DHCP range end">
+                    <input value={f.dhcpEnd} onChange={set("dhcpEnd")} placeholder={rangeHint("254")} />
+                  </Field>
+                </div>
+              )}
+              <div className="grid2">
+                <Field label="Bridge name (optional)" hint="Created by libvirt; automatic if empty.">
+                  <input value={f.bridgeName} onChange={set("bridgeName")} placeholder="virbr1" maxLength={15} />
+                </Field>
+                <Field label="DNS domain (optional)">
+                  <input value={f.domain} onChange={set("domain")} placeholder="lab.example" />
+                </Field>
+              </div>
+            </>
+          )}
+          {ovs && (
+            <Field label="VLAN tag (optional)" hint="VMs on this network are put on this access VLAN (1-4094).">
+              <input type="number" min={1} max={4094} value={f.vlan} onChange={set("vlan")} />
+            </Field>
+          )}
+        </details>
         <ErrorBox error={act.error} />
         <footer>
           <button type="button" onClick={onClose}>
             Cancel
           </button>
-          <button className="primary" disabled={act.busy}>
+          <button className="primary" disabled={act.busy || (mode === "bridge" && !picked)}>
             Create
           </button>
         </footer>
