@@ -201,7 +201,7 @@ test.describe.serial("VM page polish", () => {
     await openVM(page, vm, "hardware");
     await expect(page.locator("#hw-advanced")).toBeVisible();
     const boxes = await page.locator(".hw .card").evaluateAll((els) => els.map((e) => ({ id: e.id, ...e.getBoundingClientRect().toJSON() })));
-    expect(boxes.length).toBe(8);
+    expect(boxes.length).toBe(10);
     for (let i = 0; i < boxes.length; i++)
       for (let j = i + 1; j < boxes.length; j++) {
         const a = boxes[i], b = boxes[j];
@@ -228,7 +228,7 @@ test.describe.serial("VM page polish", () => {
     expect(gaps.length).toBeGreaterThan(4);
     for (const g of gaps) expect(Math.abs(g - gaps[0]), `gaps ${gaps}`).toBeLessThanOrEqual(1);
     // the two stacks of the top block end level: no hole under the shorter one
-    const bottoms = ["hw-firmware", "hw-cdrom"].map((id) => boxes.find((x) => x.id === id)!.bottom);
+    const bottoms = ["hw-serial", "hw-clock"].map((id) => boxes.find((x) => x.id === id)!.bottom);
     expect(Math.abs(bottoms[0] - bottoms[1])).toBeLessThan(2);
     // no card spills out of the page area
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);

@@ -110,11 +110,11 @@ export default function VMActions(props: {
 
   const items: MenuEntry[] = [
     { label: "Power", items: power, disabled: !op, title: need },
-    { label: "Guest", items: guest, disabled: !op, title: need },
     { label: "Edit Settings", items: settings, disabled: !op, title: need },
     { label: "Snapshots", items: snapshots },
     { label: "Clone", items: clone, disabled: !op, title: need },
     { label: "Template", items: template, disabled: !op, title: need },
+    { label: "Guest", items: guest, disabled: !op, title: need },
     { label: "Migrate", items: migrate, disabled: !op, title: need },
     { label: "Delete", items: remove, disabled: !op, title: need },
   ];

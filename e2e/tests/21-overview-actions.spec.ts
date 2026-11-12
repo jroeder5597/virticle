@@ -11,11 +11,11 @@ const PASS = "e2e-user-pass-123";
 
 const SUBMENUS: Record<string, string[]> = {
   Power: ["Power On", "Reboot (Graceful)", "Shutdown (graceful)", "Pause", "Resume", "Halt (Force Shutdown)", "Reset (Hard Reboot)"],
-  Guest: ["Sync guest clock"],
   "Edit Settings": ["CPU and memory", "Disks", "Network interfaces", "CD-ROM", "Boot order", "Firmware and TPM", "Advanced", "Passthrough devices", "Serial console", "Clock"],
   Snapshots: ["Take snapshot", "Manage snapshots", "Schedule"],
   Clone: ["Clone this VM", "Linked clone (from a template)"],
   Template: ["Convert to template", "Seal template"],
+  Guest: ["Sync guest clock"],
   Migrate: ["Migrate to another node", "Move a disk to another pool"],
   Delete: ["Delete VM"],
 };
