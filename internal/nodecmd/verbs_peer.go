@@ -49,6 +49,9 @@ const (
 	peerHostsName = "virticle_peer_known_hosts"
 	// PeerMark is in every authorized_keys line of a peer key.
 	PeerMark = "virticle-node peer-recv"
+	// oldPeerMark is in the peer key lines of the shell script that came
+	// before the node command.
+	oldPeerMark = "virticle-helper peer-recv"
 )
 
 // PeerLine is the authorized_keys line for a peer key: the key can run
@@ -333,6 +336,12 @@ func svcAllow(c *Ctx, home, blob, line, mark string) error {
 	var out bytes.Buffer
 	for _, l := range splitLines(old) {
 		if strings.Contains(l, blob) && strings.Contains(l, mark) {
+			continue
+		}
+		// A line written for the old shell script names a program that is
+		// gone. sshd takes the first line that matches a key, so such a line
+		// would shadow the new one for the same peer.
+		if strings.Contains(l, oldPeerMark) {
 			continue
 		}
 		out.WriteString(l + "\n")

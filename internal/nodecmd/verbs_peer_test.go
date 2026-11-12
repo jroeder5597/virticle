@@ -407,3 +407,19 @@ func fmtInt(n int) string {
 	}
 	return s
 }
+
+// A key line left by the old shell script would shadow the new line for the
+// same peer (sshd takes the first match), so peer-allow drops such lines.
+func TestPeerAllowDropsOldScriptLines(t *testing.T) {
+	n := newNode(t)
+	old := `restrict,command="sudo -n /usr/local/libexec/virticle-helper peer-recv" ssh-ed25519 ` + peerBlob + " virticle-peer\n"
+	ak := n.put("home/svc/.ssh/authorized_keys", old+ctrlLine)
+	n.ok(peerKey+"\n", "peer-allow")
+	b, _ := os.ReadFile(ak)
+	if strings.Contains(string(b), "virticle-helper") {
+		t.Fatalf("the old line is still there:\n%s", b)
+	}
+	if !strings.Contains(string(b), "virticle-controller") || strings.Count(string(b), peerBlob) != 1 {
+		t.Fatalf("authorized_keys:\n%s", b)
+	}
+}
