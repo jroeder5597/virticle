@@ -48,7 +48,7 @@ func (f FileStat) Allocated() uint64 { return f.Blocks * f.BlockSize }
 
 // Stat inspects paths (symbolic links are followed). A path that does not
 // exist is reported with Exists false; a path the node refuses (outside the
-// pools in helper mode) is an error.
+// pools in service account mode) is an error.
 func (h *Host) Stat(paths ...string) ([]FileStat, error) {
 	if len(paths) == 0 {
 		return nil, nil

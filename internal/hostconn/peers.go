@@ -88,7 +88,7 @@ func (h *Host) PeerList() ([]string, error) {
 }
 
 // PeerPing checks, from this node, that user@host:port accepts its peer key,
-// that the recorded host key matches and that the helper on the far side
+// that the recorded host key matches and that the node command on the far side
 // answers. The error carries ssh's own message.
 func (h *Host) PeerPing(host, port, user string) error {
 	out, err := h.RunNode("peer-ping", host, port, user)
@@ -99,7 +99,7 @@ func (h *Host) PeerPing(host, port, user string) error {
 }
 
 // PeerSend sends the file src of this node to user@host:port, where the
-// helper there creates dst (which must not exist) with the given mode (three
+// node command there creates dst (which must not exist) with the given mode (three
 // octal digits). progress, when set, is called with bytes sent and total.
 func (h *Host) PeerSend(ctx context.Context, host, port, user, src, dst, mode string, progress func(done, total uint64)) error {
 	var tail []string
@@ -129,7 +129,7 @@ func (h *Host) PeerSend(ctx context.Context, host, port, user, src, dst, mode st
 	if err != nil || !done {
 		msg := strings.Join(tail, "; ")
 		if msg == "" {
-			msg = "no confirmation from the helper"
+			msg = "no confirmation from the node command"
 		}
 		if err == nil {
 			err = errors.New("incomplete")

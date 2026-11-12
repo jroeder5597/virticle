@@ -61,7 +61,7 @@ func testPlan(cfg store.Node) [][2]string {
 		[2]string{"hostkey", "SSH host key"},
 		[2]string{"ssh", "SSH sign-in as " + cfg.User},
 		[2]string{"libvirt", "libvirt reachable"},
-		[2]string{"privilege", "Root access"},
+		[2]string{"privilege", "Node access"},
 		[2]string{"migration", "Migration address"},
 	)
 }
@@ -242,9 +242,9 @@ func (m *Manager) TestConnect(cfg store.Node, timeout time.Duration) (res TestRe
 	case hostconn.PrivNone:
 		st.add("privilege", StepWarning, note+"; features that need root are off")
 	case hostconn.PrivService:
-		st.add("privilege", StepOK, "Scoped access (helper): "+note)
+		st.add("privilege", StepOK, "Service account: "+note)
 	default:
-		st.add("privilege", StepOK, string(p)+": "+note)
+		st.add("privilege", StepOK, "Root: "+note)
 	}
 	status, detail := migrationStep(h, cfg)
 	st.add("migration", status, detail)

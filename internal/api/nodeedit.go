@@ -25,7 +25,7 @@ type nodeEditReq struct {
 	Addr             *string `json:"addr"`
 	User             *string `json:"user"`
 	Jump             *string `json:"jump"`
-	Privilege        *string `json:"privilege"` // root | helper | none | auto (detect)
+	Privilege        *string `json:"privilege"` // root | helper (the service account) | none | auto (detect)
 	MigrationAddress *string `json:"migrationAddress"`
 	// Force saves without a successful trial connection, to fix a node that
 	// is down.
@@ -75,7 +75,7 @@ func mergeNodeEdit(cur store.Node, req nodeEditReq) (n store.Node, detect bool, 
 	switch {
 	case req.Privilege != nil && *req.Privilege != "auto" && *req.Privilege != "":
 		if !hostconn.Privilege(*req.Privilege).Valid() {
-			return n, false, badRequest("privilege must be root, helper, none or auto")
+			return n, false, badRequest(accessModeMessage)
 		}
 		n.Privilege = *req.Privilege
 	case req.Privilege != nil || connChanged || cur.Privilege == "":
@@ -196,7 +196,7 @@ func privilegeWarnings(n store.Node, res *cluster.TestResult) []string {
 	}
 	rank := map[string]int{"none": 0, "helper": 1, "root": 2}
 	if rank[n.Privilege] > rank[res.Privilege] {
-		return []string{fmt.Sprintf("Privilege is set to %s but the node reports: %s. Commands that need root will fail.", n.Privilege, res.PrivilegeNote)}
+		return []string{fmt.Sprintf("Access is set to %s but the node reports: %s. Commands that need root will fail.", accessName(n.Privilege), res.PrivilegeNote)}
 	}
 	return nil
 }
@@ -325,4 +325,19 @@ func (s *Server) forgetHostKey(w http.ResponseWriter, r *http.Request) {
 	log.Printf("node %d (%s): host key forgotten by %s (%d entries)", id, cur.Addr, userOf(r), n)
 	s.Nodes.Reconnect(id)
 	writeJSON(w, map[string]any{"removed": n})
+}
+
+// accessModeMessage is the answer to an access mode that is not one of the
+// settings. The submitted value "helper" is the service account.
+const accessModeMessage = `access must be "root", "helper" (the service account), "none" or "auto"`
+
+// accessName is a stored access setting in the words the UI uses.
+func accessName(p string) string {
+	switch p {
+	case "helper":
+		return "Service account"
+	case "root":
+		return "Root"
+	}
+	return p
 }

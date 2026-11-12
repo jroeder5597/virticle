@@ -12,15 +12,15 @@ test.describe.serial("node connection", () => {
     await cleanVMs(api, VM);
   });
 
-  test("the Settings tab shows address, hostname, resolved IP, migration address and the root access", async ({ page, api, n1 }) => {
+  test("the Settings tab shows address, hostname, resolved IP, migration address and the node access", async ({ page, api, n1 }) => {
     const node = (await api.nodes()).find((n) => n.id === n1)!;
     await page.goto(`/node/${n1}/settings`);
     const card = page.locator(".card", { has: page.getByRole("heading", { name: "Connection", exact: true }) });
     await expect(card).toBeVisible();
     await expect(card.locator("dt", { hasText: /^Address$/ })).toBeVisible();
     await expect(card).toContainText(node.addr);
-    for (const k of ["Reported hostname", "Resolved IP", "Migration address", "SSH user", "Jump host", "Root access"]) await expect(card.locator("dt", { hasText: new RegExp(`^${k}$`) })).toBeVisible();
-    await expect(card).toContainText(/root: the SSH user is root|helper: scoped sudo|none: nothing runs/);
+    for (const k of ["Reported hostname", "Resolved IP", "Migration address", "SSH user", "Jump host", "Node access"]) await expect(card.locator("dt", { hasText: new RegExp(`^${k}$`) })).toBeVisible();
+    await expect(card).toContainText(/Root: the controller signs in as root|Service account: the account may run|Not prepared: no node command/);
     const info = await api.get(`/nodes/${n1}`);
     expect(["root", "helper", "none"]).toContain(info.privilege);
     expect(info.hostUuid).toMatch(/^[0-9a-f-]{36}$/);
@@ -60,7 +60,7 @@ test.describe.serial("node connection", () => {
     await field(dlg, "Jump host (optional)").fill(before.jump ?? "");
     await field(dlg, "Migration address (optional)").fill(before.addr);
     await dlg.getByRole("button", { name: "Test connection" }).click();
-    await expect(dlg.locator("ul.checklist")).toContainText("Root access", { timeout: 30_000 });
+    await expect(dlg.locator("ul.checklist")).toContainText("Node access", { timeout: 30_000 });
     await expect(dlg.getByRole("img", { name: "failed" })).toHaveCount(0);
     await dlg.getByRole("button", { name: "Save" }).click();
     await expect(dlg).toBeHidden({ timeout: 30_000 });

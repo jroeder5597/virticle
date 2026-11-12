@@ -25,10 +25,10 @@ func TestSudoersLine(t *testing.T) {
 }
 
 func TestProtocolAgreesWithTheNodeCommand(t *testing.T) {
-	if HelperVersion != nodecmd.Version || HelperPath != nodecmd.NodePath {
-		t.Errorf("controller %s %s, node command %s %s", HelperVersion, HelperPath, nodecmd.Version, nodecmd.NodePath)
+	if NodeCmdVersion != nodecmd.Version || NodeCmdPath != nodecmd.NodePath {
+		t.Errorf("controller %s %s, node command %s %s", NodeCmdVersion, NodeCmdPath, nodecmd.Version, nodecmd.NodePath)
 	}
-	if HelperPath == OldHelperPath {
+	if NodeCmdPath == OldHelperPath {
 		t.Error("the node command must not live at the old script's path")
 	}
 }
@@ -56,22 +56,22 @@ func TestNodeCmdByPrivilege(t *testing.T) {
 }
 
 func TestPrivilegeDetection(t *testing.T) {
-	v := HelperVersion
+	v := NodeCmdVersion
 	cases := []struct {
 		name, in string
 		want     Privilege
 		note     string
 	}{
-		{"root with the node command", "uid=0\nhelper=" + v + "\nuser=root", PrivRoot, "node command"},
+		{"root with the node command", "uid=0\nnode=" + v + "\nuser=root", PrivRoot, "node command"},
 		{"root without the node command", "uid=0\nuser=root", PrivNone, NoNodeCommandMessage},
-		{"root, other protocol", "uid=0\nhelper=0\nuser=root", PrivNone, "virticle node prepare"},
-		{"service account", "uid=998\nhelper=" + v + "\nuser=virticle", PrivService, "node command"},
-		{"service account, other protocol", "uid=998\nhelper=0\nuser=virticle", PrivNone, "ships"},
-		{"node command does not answer", "uid=998\nhelper=\nuser=virticle", PrivNone, "sudoers"},
-		{"old script", "uid=998\noldhelper=yes\nuser=virticle", PrivNone, OlderVersionMessage},
-		{"old script, root", "uid=0\noldhelper=yes\nuser=root", PrivNone, OlderVersionMessage},
-		{"old script next to a current node command", "uid=998\nhelper=" + v + "\noldhelper=yes\nuser=virticle", PrivService, "node command"},
-		{"full sudo but no node command is not prepared", "uid=1000\nsudo=yes\nuser=admin", PrivNone, NoNodeCommandMessage},
+		{"root, other protocol", "uid=0\nnode=0\nuser=root", PrivNone, "virticle node prepare"},
+		{"service account", "uid=998\nnode=" + v + "\nuser=virticle", PrivService, "node command"},
+		{"service account, other protocol", "uid=998\nnode=0\nuser=virticle", PrivNone, "ships"},
+		{"node command does not answer", "uid=998\nnode=\nuser=virticle", PrivNone, "sudoers"},
+		{"old script", "uid=998\noldscript=yes\nuser=virticle", PrivNone, OlderVersionMessage},
+		{"old script, root", "uid=0\noldscript=yes\nuser=root", PrivNone, OlderVersionMessage},
+		{"old script next to a current node command", "uid=998\nnode=" + v + "\noldscript=yes\nuser=virticle", PrivService, "node command"},
+		{"general sudo but no node command is not prepared", "uid=1000\nsudo=yes\nuser=admin", PrivNone, NoNodeCommandMessage},
 		{"nothing", "uid=1000\nuser=admin", PrivNone, NoNodeCommandMessage},
 		{"empty", "", PrivNone, NoNodeCommandMessage},
 	}
@@ -81,14 +81,14 @@ func TestPrivilegeDetection(t *testing.T) {
 			t.Errorf("%s: %s %q, want %s containing %q", c.name, got, note, c.want, c.note)
 		}
 	}
-	if !strings.Contains(DetectScript, HelperPath+" version") {
+	if !strings.Contains(DetectScript, NodeCmdPath+" version") {
 		t.Error("DetectScript does not ask the node command for its version")
 	}
 	if !strings.Contains(DetectScript, OldHelperPath) {
-		t.Error("DetectScript does not look for the old helper script")
+		t.Error("DetectScript does not look for the old shell script")
 	}
 	if strings.Contains(DetectScript, "sudo -n true") {
-		t.Error("DetectScript still probes for broad sudo")
+		t.Error("DetectScript still probes for general sudo")
 	}
 	if !PrivService.Valid() {
 		t.Error("the service account is not a valid setting")

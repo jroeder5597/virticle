@@ -26,7 +26,7 @@ The controller is pure Go (no CGO, no C libraries), so the binary is static.
 
 ## Package (Debian, Ubuntu, RHEL-like)
 
-With the helper script (it downloads the package, checks its SHA-256 against
+With the install script (it downloads the package, checks its SHA-256 against
 `checksums.txt` and calls `apt-get` or `dnf`; read it first, `--dry-run` shows
 what it would do):
 

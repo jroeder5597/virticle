@@ -1,9 +1,10 @@
 # Objectives
 
 A web front end for KVM/QEMU/libvirt that stays fully compatible with `virsh`.
-One Go binary, no agent on the nodes: everything goes over SSH to each node's
-libvirt socket. Libvirt is the source of truth; the app keeps only users, the
-node list and task history.
+One Go binary, no service on the nodes: everything goes over SSH to each node's
+libvirt socket, and the few things that need root run through one small program,
+the node command (`virticle-node`), which the controller starts on demand.
+Libvirt is the source of truth; the app keeps only users, the node list and task history.
 
 Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
 
@@ -50,7 +51,9 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
 - [~] Virtual network editor: NAT, isolated, routed, open, bridged, DHCP reservations (done); VLAN tags only for Open vSwitch bridges, untested on real OVS
 
 ## Multi-node
-- [x] Live migration with pre-flight checks (CPU, networks, free space, passthrough, SSH trust, name clashes); UEFI and TPM guests verified
+- [~] Node command and two ways to reach a node: Service account (sudo rule for the node command only) or Root. `virticle node prepare` installs it, upgrades it when the controller reports an older version, and `unprepare` removes it. Built and unit-tested; lab run pending (the earlier shell script version and its lab results predate this change)
+- [~] Direct node-to-node file transfer with a restricted node key (migration with local disks, restores on another node) and live migration coordinated by the controller, for any pair of Service account and Root nodes. Built, lab run pending
+- [x] Live migration with pre-flight checks (CPU, networks, free space, passthrough, name clashes, node-to-node path); UEFI and TPM guests verified before the node command replaced the shell script; re-run pending
 - [x] Migration with disk copy; snapshot-preserving migration (external snapshots); source disk cleanup; cancel
 - [~] Offline migration (done, carries internal snapshots too); UEFI/NVRAM and TPM paths untested
 - [x] Encrypted migration streams (QEMU TLS for memory and disk mirror; controller-managed CA, per-node setup/removal, pre-flight warning when unencrypted). Certificate install verified on Debian and Rocky; an encrypted migration between two RHEL-family nodes is untested
@@ -63,11 +66,12 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
 ## Operations
 - [x] HTTPS for the web UI (self-signed certificate generated for non-loopback listeners, or your own with `-tls-cert`/`-tls-key`)
 - [x] Bulk actions and tags (tags stored in libvirt `<metadata>`; bulk actions fan out from the browser)
+- [x] Released under the Apache License 2.0 (`LICENSE`, `NOTICE` with third-party licences); release packages are not signed yet
 - [x] Users and roles (admin, operator, viewer), API tokens, audit log, login rate limiting
 - [x] Alerts: pool full, node down, host memory, failed scheduled job, VM crashed or paused on I/O error, certificate expiry; optional webhook (`-alert-webhook`)
 - [x] Resource tree (Datacenter → nodes → VMs, storage, networks, host NICs) with quick actions; node page with tabs (summary, VMs, storage, network, updates, settings)
 - [x] Theme from the user's DESIGN.md: dark by default, light option, bundled fonts, no animation. Idle cost measured: 0 running animations, at most one stats request per shown host every 5 s, none on pages without charts
-- [x] Browser suite (`make e2e`, 109 tests) including a no-ellipsis check and a fit check: no element cut off or spilling out of its card at 1280 and 1440 px, both themes, plus phone width
+- [x] Browser suite (`make e2e`, 35 spec files with 217 `test(` declarations counted from the source; not re-run since the node command) including a no-ellipsis check and a fit check: no element cut off or spilling out of its card at 1280 and 1440 px, both themes, plus phone width
 - [x] Move a disk to another pool: live (block copy and pivot) or offline, with pre-flight checks, progress and cancel. Verified on Debian and Rocky; not tested under guest writes; dir pools only tested
 - [x] Image catalogue: ten built-in cloud images, downloaded by the node and verified by checksum (same-origin checksum: catches corruption, not a compromised mirror); `<data>/images.json` adds or overrides entries
 - [x] Cloud-init profiles (stored in the controller database, passwords as hashes only), selectable when creating and cloning
@@ -123,5 +127,6 @@ The project is called Virticle (working name until then: `virt-proj`).
     ./bin/virticle -listen 127.0.0.1:8080 -data ./data
 
 The first visit creates the administrator account. `data/` holds the SQLite
-database and the controller's SSH key; its public half is shown in the
-"Add node" dialog and must be added to `authorized_keys` on each node.
+database and the controller's SSH key. Prepare each node from the Nodes page
+(**Prepare this node**) or with `virticle node prepare`; it installs the node
+command and the controller's key. See `docs/install-node.md`.

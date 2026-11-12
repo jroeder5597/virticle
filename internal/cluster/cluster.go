@@ -230,8 +230,8 @@ func (m *Manager) session(ctx context.Context, n *node) error {
 	n.mu.Lock()
 	cfg := n.cfg
 	n.mu.Unlock()
-	// A stored value that is not a current setting (empty, or "sudo" from a
-	// version that had broad sudo) is detected again and stored; so is "none",
+	// A stored value that is not a current setting (empty, or "sudo" from an
+	// older version) is detected again and stored; so is "none",
 	// so that preparing a node takes effect without editing it.
 	priv := hostconn.ParsePrivilege(cfg.Privilege)
 	if priv == hostconn.PrivNone {

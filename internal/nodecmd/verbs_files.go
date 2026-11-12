@@ -494,7 +494,7 @@ func verbQemuImgInfo(c *Ctx) error {
 	return nil
 }
 
-// builtinTools are the tools the old helper needed that this program does
+// builtinTools are the tools the old shell script needed that this program does
 // itself, so they are never missing.
 var builtinTools = map[string]bool{"tar": true, "sha256sum": true}
 

@@ -28,8 +28,8 @@ export function rowItems(rows: Row[]): CheckItem[] {
 }
 
 /**
- * Makes a host ready to be a node: libvirt installed, a service account with a restricted key and a sudo right for
- * the helper only. The administrator's password or key is sent once and kept in memory only; the form is gone
+ * Makes a host ready to be a node: libvirt installed, the node command and a service account with a restricted key and a sudo rule for
+ * the node command only. The administrator's password or key is sent once and kept in memory only; the form is gone
  * (and the fields emptied) as soon as it is submitted.
  */
 export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegistered }: { addr: string; jump: string; onClose: () => void; onRegistered: () => void }) {
@@ -121,7 +121,7 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
     <Modal title="Prepare node" onClose={onClose} wide>
       <form onSubmit={submit} autoComplete="off">
         <p>
-          Installs libvirt and QEMU, creates an account for this server with a restricted key, and lets it run one helper as root. The credential below is used for this run only and is not stored.
+          Installs libvirt and QEMU, installs the node command, and creates a service account for this server with a restricted key and a sudo rule that lets it run the node command as root, and nothing else. The credential below is used for this run only and is not stored.
         </p>
         <div className="grid2">
           <Field label="Address" hint="Host name or IP, optionally with :port.">
@@ -161,12 +161,12 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
           <input type="checkbox" checked={checkOnly} onChange={(e) => setCheckOnly(e.target.checked)} /> Check only, change nothing
         </label>
         <label className="check">
-          <input type="checkbox" checked={allowRoot} onChange={(e) => setAllowRoot(e.target.checked)} /> Use root as the service account
+          <input type="checkbox" checked={allowRoot} onChange={(e) => setAllowRoot(e.target.checked)} /> Use Root access: the controller signs in as root and no service account is created
         </label>
         {!allowRoot && (
           <>
             <div className="grid2">
-              <Field label="Service account">
+              <Field label="Service account name">
                 <input value={user} onChange={(e) => setUser(e.target.value)} required />
               </Field>
               <Field label="Controller address (optional)" hint="Limits the key to this source address.">
@@ -178,7 +178,7 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
             </label>
             {useExisting && (
               <label className="check">
-                <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} /> Add it to the libvirt and kvm groups and give it the helper's sudo rule
+                <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} /> Add it to the libvirt and kvm groups and give it the sudo rule for the node command
               </label>
             )}
           </>

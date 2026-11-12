@@ -3,7 +3,7 @@ package hostconn
 // How a node's login user reaches the node command.
 //
 // Everything privileged the controller does on a node goes through one root
-// program, the node command (helper.go). A service account runs it with
+// program, the node command (nodecmd.go). A service account runs it with
 // "sudo -n", a root login runs it directly. Feature code never writes "sudo"
 // and never sends a free-form command as root: it calls the typed operations
 // in nodeops.go and the like, or RunNode with a verb.
@@ -61,9 +61,9 @@ func (h *Host) CanRoot() bool { return h.priv != PrivNone }
 
 // DetectScript prints what ParseDetect reads: the uid, the version the node
 // command reports (through sudo for a service account, directly for root), and
-// whether the old helper script of an earlier version is still there. It
+// whether the old shell script of an earlier version is still there. It
 // always succeeds.
-const DetectScript = `echo "uid=$(id -u)"; if [ -x ` + HelperPath + ` ]; then if [ "$(id -u)" = 0 ]; then echo "helper=$(` + HelperPath + ` version 2>/dev/null | head -n 1)"; else echo "helper=$(sudo -n ` + HelperPath + ` version 2>/dev/null | head -n 1)"; fi; fi; if [ -e ` + OldHelperPath + ` ]; then echo oldhelper=yes; fi; echo "user=$(id -un)"`
+const DetectScript = `echo "uid=$(id -u)"; if [ -x ` + NodeCmdPath + ` ]; then if [ "$(id -u)" = 0 ]; then echo "node=$(` + NodeCmdPath + ` version 2>/dev/null | head -n 1)"; else echo "node=$(sudo -n ` + NodeCmdPath + ` version 2>/dev/null | head -n 1)"; fi; fi; if [ -e ` + OldHelperPath + ` ]; then echo oldscript=yes; fi; echo "user=$(id -un)"`
 
 // DetectPrivilege runs DetectScript and decides: a node command of this
 // version that answers is root (uid 0) or the service account, anything else
@@ -87,21 +87,21 @@ func ParseDetect(out string) (Privilege, string) {
 	}
 	user := kv["user"]
 	isRoot := kv["uid"] == "0"
-	hv, hasNode := kv["helper"]
-	old := kv["oldhelper"] == "yes" && !hasNode
+	hv, hasNode := kv["node"]
+	old := kv["oldscript"] == "yes" && !hasNode
 	switch {
-	case hasNode && hv == HelperVersion:
+	case hasNode && hv == NodeCmdVersion:
 		if isRoot {
 			return PrivRoot, "logged in as root; the virticle node command (version " + hv + ") is installed"
 		}
 		return PrivService, user + " may run the virticle node command (version " + hv + ") as root, and nothing else"
 	case hasNode && hv != "":
-		return PrivNone, user + ": the installed node command is version " + hv + " and this controller ships " + HelperVersion + ": run \"virticle node prepare\" to update it"
+		return PrivNone, user + ": the installed node command is version " + hv + " and this controller ships " + NodeCmdVersion + ": run \"virticle node prepare\" to update it"
 	case hasNode:
 		if isRoot {
-			return PrivNone, "the node command in " + HelperPath + " does not answer"
+			return PrivNone, "the node command in " + NodeCmdPath + " does not answer"
 		}
-		return PrivNone, user + " cannot run the node command in " + HelperPath + " through sudo (check " + SudoersPath + ")"
+		return PrivNone, user + " cannot run the node command in " + NodeCmdPath + " through sudo (check " + SudoersPath + ")"
 	case old:
 		return PrivNone, "this node was " + OlderVersionMessage
 	}

@@ -346,8 +346,8 @@ func hostOnDebian(changed bool, extra func(cmd, stdin string) (string, bool, err
 			return debian13Facts, true, nil
 		case strings.Contains(cmd, "getent passwd \"$u\""):
 			return "", true, nil
-		case strings.Contains(cmd, hostconn.HelperPath+" version") && !strings.Contains(cmd, "os_id="):
-			return hostconn.HelperVersion, true, nil
+		case strings.Contains(cmd, hostconn.NodeCmdPath+" version") && !strings.Contains(cmd, "os_id="):
+			return hostconn.NodeCmdVersion, true, nil
 		case strings.Contains(cmd, "dpkg -s"):
 			if changed {
 				return "libvirt-daemon-system\nqemu-system-x86", true, nil
@@ -371,7 +371,7 @@ func TestPrepareRunsStepsInOrder(t *testing.T) {
 		ids = append(ids, r.ID)
 	}
 	order := []string{"admin", "arch", "distro", "cpu", "kvm", "nested", "iommu", "space", "mac", "time", "libvirt", "controller", "packages", "account",
-		"do-packages", "do-services", "do-network", "do-pool", "do-account", "do-key", "do-helper", "do-sudoers", "do-peerkey", "test-ssh", "summary"}
+		"do-packages", "do-services", "do-network", "do-pool", "do-account", "do-key", "do-nodecmd", "do-sudoers", "do-peerkey", "test-ssh", "summary"}
 	if strings.Join(ids, ",") != strings.Join(order, ",") {
 		t.Errorf("rows:\n%v\nwant\n%v", ids, order)
 	}
@@ -403,7 +403,7 @@ func TestPrepareSecondRunChangesNothing(t *testing.T) {
 	if r := find(rows, "summary"); !strings.Contains(r.Detail, "Nothing changed") {
 		t.Errorf("summary: %+v", r)
 	}
-	for _, id := range []string{"do-packages", "do-services", "do-key", "do-helper", "do-sudoers"} {
+	for _, id := range []string{"do-packages", "do-services", "do-key", "do-nodecmd", "do-sudoers"} {
 		if r := find(rows, id); r.Status != OK || !strings.HasPrefix(r.Detail, "Already in place") {
 			t.Errorf("%s: %+v", id, r)
 		}
@@ -421,7 +421,7 @@ func TestPrepareStopsAtFirstFailure(t *testing.T) {
 	if r := find(rows, "do-network"); r.Status != Error {
 		t.Errorf("network: %+v", r)
 	}
-	for _, id := range []string{"do-pool", "do-account", "do-key", "do-helper", "do-sudoers", "do-test"} {
+	for _, id := range []string{"do-pool", "do-account", "do-key", "do-nodecmd", "do-sudoers", "do-test"} {
 		if r := find(rows, id); r.Status != Skipped || r.Detail != "Not run" {
 			t.Errorf("%s should be Not run: %+v", id, r)
 		}
@@ -478,7 +478,7 @@ func TestAllowRootHasNoAccountOrSudoersButTheNodeCommandAndKey(t *testing.T) {
 			t.Errorf("%s with root", id)
 		}
 	}
-	for _, id := range []string{"do-helper", "do-peerkey"} {
+	for _, id := range []string{"do-nodecmd", "do-peerkey"} {
 		if r := find(rows, id); r.Status != OK {
 			t.Errorf("%s with root: %+v", id, r)
 		}
@@ -595,7 +595,7 @@ func TestExistingAccountSudoRuleAndConfirm(t *testing.T) {
 	if r := find(Evaluate(base, o), "sudo"); r.ID != "" {
 		t.Errorf("a rule exists, nothing to report: %+v", r)
 	}
-	// Without confirmation an existing account gets the key (and the helper file) but no sudo rule.
+	// Without confirmation an existing account gets the key (and the node command) but no sudo rule.
 	withSvc := func(cmd, stdin string) (string, bool, error) {
 		if strings.Contains(cmd, "acct_groups") {
 			return "acct=svc:x:1000:1000::/home/svc:/bin/bash\nacct_groups=svc libvirt kvm\ngroup_libvirt=yes\ngroup_kvm=yes", true, nil
@@ -638,11 +638,11 @@ func TestUnprepareRows(t *testing.T) {
 
 // The node command is uploaded as the matching architecture's binary and
 // installed under the new name; the old script is removed.
-func TestStepHelperInstallsTheNodeCommandAndRemovesTheOldScript(t *testing.T) {
+func TestStepNodeCommandInstallsTheNodeCommandAndRemovesTheOldScript(t *testing.T) {
 	n := hostOnDebian(true, nil)
 	rows := (&Runner{N: n}).Prepare(Options{ControllerKey: testKey}, nil, nil)
-	if r := find(rows, "do-helper"); r.Status != OK || !strings.Contains(r.Detail, "version "+hostconn.HelperVersion) {
-		t.Errorf("do-helper: %+v", r)
+	if r := find(rows, "do-nodecmd"); r.Status != OK || !strings.Contains(r.Detail, "version "+hostconn.NodeCmdVersion) {
+		t.Errorf("do-nodecmd: %+v", r)
 	}
 	all := strings.Join(n.log, "\n")
 	for _, want := range []string{"fake node command for x86_64", "dest=", "/usr/local/libexec/virticle-node", "rm -f /usr/local/libexec/virticle-helper"} {
@@ -656,7 +656,7 @@ func TestStepHelperInstallsTheNodeCommandAndRemovesTheOldScript(t *testing.T) {
 	}
 }
 
-func TestStepHelperUsesTheNodesArchitecture(t *testing.T) {
+func TestStepNodeCommandUsesTheNodesArchitecture(t *testing.T) {
 	var seen string
 	old := nodeBinary
 	defer func() { nodeBinary = old }()
@@ -674,12 +674,12 @@ func TestStepHelperUsesTheNodesArchitecture(t *testing.T) {
 	}
 }
 
-func TestStepHelperWithoutBinaryAndWithBrokenBinary(t *testing.T) {
+func TestStepNodeCommandWithoutBinaryAndWithBrokenBinary(t *testing.T) {
 	old := nodeBinary
 	defer func() { nodeBinary = old }()
 	nodeBinary = func(string) ([]byte, error) { return nil, errors.New("built without the node command") }
 	rows := (&Runner{N: hostOnDebian(true, nil)}).Prepare(Options{ControllerKey: testKey}, nil, nil)
-	if r := find(rows, "do-helper"); r.Status != Error || !strings.Contains(r.Detail, "built without") {
+	if r := find(rows, "do-nodecmd"); r.Status != Error || !strings.Contains(r.Detail, "built without") {
 		t.Errorf("no binary: %+v", r)
 	}
 	if r := find(rows, "do-sudoers"); r.Status != Skipped {
@@ -693,17 +693,17 @@ func TestStepHelperWithoutBinaryAndWithBrokenBinary(t *testing.T) {
 		return "", false, nil
 	})
 	rows = (&Runner{N: n}).Prepare(Options{ControllerKey: testKey}, nil, nil)
-	if r := find(rows, "do-helper"); r.Status != Error || !strings.Contains(r.Detail, "does not run") {
+	if r := find(rows, "do-nodecmd"); r.Status != Error || !strings.Contains(r.Detail, "does not run") {
 		t.Errorf("a binary that does not run: %+v", r)
 	}
 }
 
-func TestOldHelperIsReportedInFacts(t *testing.T) {
-	f := ParseFacts("old_helper=yes\nhelper_version=\n")
-	if !f.OldHelper {
+func TestOldScriptIsReportedInFacts(t *testing.T) {
+	f := ParseFacts("old_script=yes\nnode_version=\n")
+	if !f.OldScript {
 		t.Error("the old script was not noticed")
 	}
-	if ParseFacts("old_helper=\n").OldHelper {
+	if ParseFacts("old_script=\n").OldScript {
 		t.Error("no old script")
 	}
 }
