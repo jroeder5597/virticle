@@ -17,6 +17,7 @@ package api
 //     the same amount of code and each step can be rolled back.
 
 import (
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -207,8 +208,16 @@ func buildPlan(src *hostconn.Host, dom libvirt.Domain, mode string, c *checkList
 	}
 
 	// Tools used on the source node.
-	if out, err := src.RunRoot(`for t in qemu-img scp ssh; do command -v "$t" >/dev/null 2>&1 || echo "$t"; done`); err != nil || out != "" {
-		c.bad("Tools on source", "missing on the source node: "+strings.Join(strings.Fields(out), ", ")+" (qemu-img, scp and ssh are required)")
+	tools := []string{"qemu-img", "scp", "ssh"}
+	if src.Privilege() == hostconn.PrivHelper {
+		tools = []string{"qemu-img", "ssh"} // files travel by the helper's peer transfer, not scp
+	}
+	if miss, err := src.MissingTools(tools...); err != nil || len(miss) > 0 {
+		if err != nil {
+			c.bad("Tools on source", "cannot check the source node: "+err.Error())
+		} else {
+			c.bad("Tools on source", "missing on the source node: "+strings.Join(miss, ", ")+" ("+strings.Join(tools, ", ")+" are required)")
+		}
 		return nil
 	}
 
@@ -255,7 +264,7 @@ func buildPlan(src *hostconn.Host, dom libvirt.Domain, mode string, c *checkList
 			c.bad(label, "has device type "+d.Device+" which cannot be moved")
 			failed = true
 		default:
-			out, err := src.RunRoot("qemu-img info -U --backing-chain --output=json -- " + shq(d.Path))
+			out, err := src.QemuInfo(d.Path, true)
 			if err != nil {
 				c.bad(label, "qemu-img could not inspect "+d.Path+": "+out)
 				failed = true
@@ -319,26 +328,17 @@ func buildPlan(src *hostconn.Host, dom libvirt.Domain, mode string, c *checkList
 	if failed {
 		return nil
 	}
-	var script strings.Builder
-	script.WriteString("for f in")
-	for _, f := range all {
-		script.WriteString(" " + shq(f.Path))
+	allPaths := make([]string, len(all))
+	for i, f := range all {
+		allPaths[i] = f.Path
 	}
-	script.WriteString(`; do stat -L -c '%b %B %a' -- "$f" 2>/dev/null || echo MISSING; done`)
-	out, err := src.RunRoot(script.String())
+	stats, err := src.Stat(allPaths...)
 	if err != nil {
-		c.bad("Source files", "cannot inspect files on the source node: "+out)
-		return nil
-	}
-	lines := strings.Split(out, "\n")
-	if len(lines) != len(all) {
-		c.bad("Source files", "unexpected output while inspecting files: "+out)
+		c.bad("Source files", "cannot inspect files on the source node: "+err.Error())
 		return nil
 	}
 	for i, f := range all {
-		var blocks, bsize uint64
-		var mode string
-		if _, err := fmt.Sscanf(lines[i], "%d %d %s", &blocks, &bsize, &mode); err != nil {
+		if !stats[i].Exists {
 			if critical[f.Path] || f == p.NVRAM {
 				c.bad("Source files", f.Path+" does not exist on the source node")
 				failed = true
@@ -350,7 +350,7 @@ func buildPlan(src *hostconn.Host, dom libvirt.Domain, mode string, c *checkList
 			}
 			continue
 		}
-		f.Size, f.Mode = blocks*bsize, mode
+		f.Size, f.Mode = stats[i].Allocated(), stats[i].Mode
 	}
 	if failed {
 		return nil
@@ -557,8 +557,12 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 	for _, m := range plan.Media {
 		if !safePathRE.MatchString(m) {
 			c.bad("Media "+m, "unsupported characters in path")
-		} else if _, err := dst.RunRoot("test -e " + shq(m)); err != nil {
-			c.bad("Media "+m, "the image does not exist on "+dst.Name+"; copy it to the same path or eject it from the VM first")
+		} else if ex, err := dst.Exists(m); err != nil || !ex[m] {
+			why := "the image does not exist on " + dst.Name
+			if err != nil {
+				why = "the image cannot be checked on " + dst.Name + " (" + err.Error() + ")"
+			}
+			c.bad("Media "+m, why+"; copy it to the same path or eject it from the VM first")
 		} else {
 			c.pass("Media "+m, "exists on "+dst.Name)
 		}
@@ -567,7 +571,11 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 	s.checkTargetFiles(dst, plan, &c)
 
 	// Node to node SSH.
-	s.checkSSHTrust(src, dst, dstNode.Node, &c)
+	if anyHelper(src, dst) {
+		s.checkNodeTransfer(src, dst, dstNode.Node, plan, &c)
+	} else {
+		s.checkSSHTrust(src, dst, dstNode.Node, &c)
+	}
 
 	// Encryption of the migration streams.
 	s.checkEncryption(srcID, src, req.Target, dst, plan, req, &c)
@@ -625,20 +633,14 @@ func (s *Server) checkTargetFiles(dst *hostconn.Host, plan *migPlan, c *checkLis
 	if len(files) == 0 {
 		return
 	}
-	var script strings.Builder
-	script.WriteString("for f in")
-	for _, f := range files {
-		script.WriteString(" " + shq(f.Path))
+	filePaths := make([]string, len(files))
+	for i, f := range files {
+		filePaths[i] = f.Path
 	}
-	script.WriteString(`; do [ -e "$f" ] && echo "$f"; done; true`)
-	out, err := dst.RunRoot(script.String())
+	exists, err := dst.Exists(filePaths...)
 	if err != nil {
-		c.bad("Files on target", "cannot inspect the target: "+out)
+		c.bad("Files on target", "cannot inspect the target: "+err.Error())
 		return
-	}
-	exists := map[string]bool{}
-	for _, l := range strings.Split(out, "\n") {
-		exists[strings.TrimSpace(l)] = true
 	}
 	clash := false
 	for _, f := range files {
@@ -688,7 +690,7 @@ func (s *Server) checkTargetFiles(dst *hostconn.Host, plan *migPlan, c *checkLis
 		}
 	}
 	if plan.NVRAM != nil && !exists[path.Dir(plan.NVRAM.Path)] {
-		if _, err := dst.RunRoot("test -d " + shq(path.Dir(plan.NVRAM.Path))); err != nil {
+		if st, err := dst.Stat(path.Dir(plan.NVRAM.Path)); err != nil || !st[0].Exists || st[0].Kind != "dir" {
 			c.bad("NVRAM", "the directory "+path.Dir(plan.NVRAM.Path)+" does not exist on "+dst.Name)
 		}
 	}
@@ -903,6 +905,7 @@ func (s *Server) migrateCancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m.cancelled.Store(true)
+	m.cancelCopy()
 	if m.inJob.Load() {
 		if err := m.src.DomainAbortJob(m.dom); err != nil {
 			// The poll loop retries; report only that cancelling was requested.
@@ -927,6 +930,23 @@ type migRun struct {
 	cancelled atomic.Bool
 	inJob     atomic.Bool
 	created   []string // paths created on the target, for rollback
+
+	copyMu     sync.Mutex
+	copyCancel context.CancelFunc // ends the file copy in flight
+}
+
+func (m *migRun) setCopyCancel(f context.CancelFunc) {
+	m.copyMu.Lock()
+	m.copyCancel = f
+	m.copyMu.Unlock()
+}
+
+func (m *migRun) cancelCopy() {
+	m.copyMu.Lock()
+	if m.copyCancel != nil {
+		m.copyCancel()
+	}
+	m.copyMu.Unlock()
 }
 
 var errCancelled = fmt.Errorf("migration cancelled")
@@ -976,12 +996,22 @@ func (m *migRun) copyFiles(lo, hi float64) error {
 			return err
 		}
 		m.created = append(m.created, f.Path) // recorded first: a half-written file must be removed too
-		cmd, err := nodeCopyCmd(m.dst, m.ep, f.Path, f.Path, f.Mode)
+		ctx, cancel := context.WithCancel(context.Background())
+		m.setCopyCancel(cancel)
+		base := done
+		err := copyToNode(ctx, m.src, m.dst, m.ep, f.Path, f.Path, f.Mode, func(sent uint64) {
+			if sent > f.Size {
+				sent = f.Size
+			}
+			m.spread(lo, hi, float64(base+sent)/float64(total))
+		})
+		m.setCopyCancel(nil)
+		cancel()
 		if err != nil {
-			return err
-		}
-		if out, err := m.src.RunRoot(cmd); err != nil {
-			return fmt.Errorf("copying %s to %s failed: %w: %s", f.Path, m.dst.Name, err, out)
+			if m.cancelled.Load() {
+				return errCancelled
+			}
+			return fmt.Errorf("copying %s to %s failed: %w", f.Path, m.dst.Name, err)
 		}
 		done += f.Size
 		m.spread(lo, hi, float64(done)/float64(total))
@@ -1039,8 +1069,8 @@ func (m *migRun) rollbackDst() string {
 				continue
 			}
 		}
-		if out, err := m.dst.RunRoot("rm -f -- " + shq(p)); err != nil {
-			left = append(left, p+" ("+out+")")
+		if err := m.dst.Remove(p); err != nil {
+			left = append(left, p+" ("+err.Error()+")")
 		}
 	}
 	m.created = nil
@@ -1198,6 +1228,10 @@ func (m *migRun) perform(flags libvirt.DomainMigrateFlags, lo, hi float64) error
 	defer m.inJob.Store(false)
 	done := make(chan error, 1)
 	go func() {
+		if anyHelper(m.src, m.dst) {
+			done <- m.performFromController(flags, params)
+			return
+		}
 		_, err := m.src.DomainMigratePerform3Params(m.dom, libvirt.OptString{m.uri}, params, nil, flags)
 		done <- err
 	}()
@@ -1310,8 +1344,8 @@ func (m *migRun) cleanSource() error {
 	// A live migration recreates the UEFI variable store on the target, but
 	// undefining the source leaves its file behind.
 	if nv := path.Clean(m.plan.Dom.NVRAM); m.plan.active() && strings.HasPrefix(nv, "/var/lib/libvirt/qemu/nvram/") && safePathRE.MatchString(nv) {
-		if out, err := m.src.RunRoot("rm -f -- " + shq(nv)); err != nil {
-			log.Printf("migrate %s: could not remove %s on %s: %v %s", m.plan.Name, nv, m.src.Name, err, out)
+		if err := m.src.Remove(nv); err != nil {
+			log.Printf("migrate %s: could not remove %s on %s: %v", m.plan.Name, nv, m.src.Name, err)
 		}
 	}
 	var others []string

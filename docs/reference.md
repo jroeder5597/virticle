@@ -120,7 +120,7 @@ backup restores as a new VM or as the original, and exports to one
 
 | Level | How | Limits |
 | --- | --- | --- |
-| Helper | `virticle node prepare` (default) | Backups, migration, image download and import, disk move and clone-with-sysprep are disabled. |
+| Helper | `virticle node prepare` (default) | Backups, image download and import, disk move and clone-with-sysprep are disabled. Migration works between two helper nodes (files go node to node, live migration is coordinated by the controller); a helper node and a root/sudo node can migrate only VMs that need no file copy. |
 | Broad sudo | `virticle node prepare --broad-sudo`, or an account with passwordless sudo | None. |
 | Root | SSH as root | None. Discouraged. |
 

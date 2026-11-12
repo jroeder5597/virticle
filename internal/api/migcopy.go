@@ -137,3 +137,44 @@ func (s *Server) checkSSHTrust(src, dst *hostconn.Host, n store.Node, c *checkLi
 		c.pass("Migration ports", fmt.Sprintf("%s can reach %s on the migration port range (tested 49152)", src.Name, ep.Host))
 	}
 }
+
+// checkNodeTransfer is the "SSH between nodes" check for a pair of which at
+// least one node is in helper mode (see peertrust.go and migclient.go).
+//   - Live migration is coordinated by the controller: no SSH between the
+//     nodes is needed for it.
+//   - Files that must be copied travel from node to node with the helper's
+//     peer transfer. The trust for that is set up here, idempotently, and
+//     tested with a real connection.
+//   - A pair of different kinds can migrate when no file needs copying.
+func (s *Server) checkNodeTransfer(src, dst *hostconn.Host, n store.Node, plan *migPlan, c *checkList) {
+	ep, err := endpointFor(n)
+	if err != nil {
+		c.bad("SSH between nodes", err.Error())
+		return
+	}
+	copies := len(plan.copyList())
+	switch {
+	case copies == 0:
+		c.pass("SSH between nodes", "no file has to be copied between the nodes, and the controller coordinates the migration itself: no SSH between "+src.Name+" and "+dst.Name+" is needed")
+	case !bothHelper(src, dst):
+		c.bad("SSH between nodes", fmt.Sprintf("%d file(s) have to be copied, but %s and %s are set up differently (one uses the scoped helper account, the other root or sudo), and files cannot be copied between such nodes. Prepare both nodes the same way, or migrate a VM that needs no file copy", copies, src.Name, dst.Name))
+		return
+	default:
+		port := ep.port()
+		if _, err := src.Run(reachCmd(ep.Host, port)); err != nil {
+			c.bad("SSH between nodes", fmt.Sprintf("%s cannot open a TCP connection to %s port %s. Nodes reach each other by the IP address or name configured in the node's settings (migration address); check that it is right and that no firewall blocks the SSH port.", src.Name, ep.Host, port))
+			return
+		}
+		if err := s.ensurePeerTrust(src, dst, n, ep); err != nil {
+			c.bad("SSH between nodes", err.Error())
+			return
+		}
+		c.pass("SSH between nodes", fmt.Sprintf("%s sends files straight to %s as %s with its own node key (restricted to delivering files into storage pools), host key checked; the file data does not pass through the controller", src.Name, ep.String(), ep.User))
+	}
+
+	if _, err := src.Run(reachCmd(ep.Host, "49152")); err != nil && strings.Contains(err.Error(), "124") {
+		c.warn("Migration ports", fmt.Sprintf("%s does not answer on %s:49152. The migration data connection uses TCP ports 49152-49215 on the target; open them in the target's firewall, or a live migration will hang.", src.Name, ep.Host))
+	} else {
+		c.pass("Migration ports", fmt.Sprintf("%s can reach %s on the migration port range (tested 49152)", src.Name, ep.Host))
+	}
+}

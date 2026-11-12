@@ -16,6 +16,7 @@ type fakeNode struct {
 	t    *testing.T
 	root string
 	sh   string
+	env  []string // extra environment of the helper process
 }
 
 func newFakeNode(t *testing.T) *fakeNode {
@@ -58,7 +59,7 @@ func (n *fakeNode) run(stdin string, args ...string) (string, int) {
 		argv = append([]string{"setpriv", "--reuid=65534", "--regid=65534", "--clear-groups"}, argv...)
 	}
 	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Env = []string{"VIRTICLE_HELPER_ROOT=" + n.root, "PATH=/usr/bin:/bin", "HOME=" + n.root}
+	cmd.Env = append([]string{"VIRTICLE_HELPER_ROOT=" + n.root, "PATH=/usr/bin:/bin", "HOME=" + n.root}, n.env...)
 	cmd.Stdin = strings.NewReader(stdin)
 	out, err := cmd.CombinedOutput()
 	code := 0

@@ -9,10 +9,12 @@ import (
 
 func TestCapabilitiesUnderTheHelper(t *testing.T) {
 	c := nodeCapabilities("helper")
-	if !c["installTLS"].OK {
-		t.Errorf("encrypted migration setup goes through the helper: %+v", c["installTLS"])
+	for _, k := range []string{"installTLS", "migration"} {
+		if !c[k].OK {
+			t.Errorf("%s goes through the helper: %+v", k, c[k])
+		}
 	}
-	for _, k := range []string{"writePools", "backups", "migration", "diskMove", "clone"} {
+	for _, k := range []string{"writePools", "backups", "diskMove", "clone"} {
 		if c[k].OK || !strings.Contains(c[k].Reason, "broad sudo") {
 			t.Errorf("%s under the helper: %+v", k, c[k])
 		}
