@@ -24,6 +24,11 @@ COPY cmd ./cmd
 COPY internal ./internal
 COPY web/embed.go ./web/embed.go
 COPY --from=web /src/web/dist ./web/dist
+# The node command for both node architectures, embedded by internal/nodebin.
+RUN for a in amd64 arm64; do \
+      CGO_ENABLED=0 GOOS=linux GOARCH=$a go build -trimpath -ldflags "-s -w" \
+        -o internal/nodebin/dist/virticle-node_linux_$a ./cmd/virticle-node || exit 1; \
+    done
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
     -ldflags "-s -w -X virticle/internal/buildinfo.Version=$VERSION -X virticle/internal/buildinfo.Commit=$COMMIT -X virticle/internal/buildinfo.Date=$DATE" \
     -o /out/virticle ./cmd/virticle

@@ -5,7 +5,10 @@
 | Path | Holds |
 | --- | --- |
 | `cmd/virticle` | Entry point and subcommands. |
+| `cmd/virticle-node` | The node command: the one program a node lets the controller run as root. Tiny main. |
 | `internal/` | API, libvirt access over SSH, scheduler, store (SQLite, pure Go). |
+| `internal/nodecmd` | All node-side code (verbs, path confinement). Standard library and `x/sys` only; it must not import the controller packages. Start with its `doc.go`. |
+| `internal/nodebin` | Embeds the built node command for linux/amd64 and linux/arm64. |
 | `web/` | React and TypeScript UI, embedded into the binary from `web/dist`. |
 | `third_party/go-libvirt` | Vendored libvirt RPC client. |
 | `e2e/` | Playwright browser suite. See [e2e/README.md](../e2e/README.md). |
@@ -16,12 +19,23 @@
 
 Needs Go (version in `go.mod`) and Node.js 20.
 
-    make build      # web UI, then bin/virticle
+    make build      # web UI and node command, then bin/virticle
+    make nodebin    # only the node command, for both architectures
     make test       # go vet and unit tests
     make check      # the above plus the web type-check build
     make e2e        # browser suite; needs a running controller and a lab
 
 `go build` alone fails until the web UI has been built once.
+
+The node command is built by `make nodebin` into `internal/nodebin/dist/`
+(`virticle-node_linux_amd64`, `virticle-node_linux_arm64`; not committed) and
+embedded into the controller. `go vet` and `go test` work without it; a
+controller built without it reports "built without the node command" when
+`virticle node prepare` needs the binary. `node prepare` detects the node's
+architecture with `uname -m` and uploads the matching file to
+`/usr/local/libexec/virticle-node`. The release build (goreleaser) and the
+container build run the same step first. Raise `internal/nodeproto.Version`
+when a verb changes in a way an older controller or node cannot use.
 
 ## Container image
 

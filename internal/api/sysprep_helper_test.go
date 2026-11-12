@@ -1,10 +1,9 @@
 package api
 
 import (
+	"os"
 	"strings"
 	"testing"
-
-	"virticle/internal/hostconn"
 )
 
 // The helper carries its own copy of the first-boot script it hands to
@@ -12,7 +11,14 @@ import (
 // the controller's copy that root and sudo nodes run.
 func TestHelperSysprepScriptMatches(t *testing.T) {
 	const begin, end = "<<'FIXUPS_END'\n", "\nFIXUPS_END\n"
-	s := hostconn.HelperScript
+	// TODO(pool verbs port): the script is no longer embedded; it is read from
+	// the tree until the sysprep verb moves to internal/nodecmd, which then
+	// compares its own copy of the script instead.
+	raw, err := os.ReadFile("../hostconn/virticle-helper.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
 	a := strings.Index(s, begin)
 	b := strings.Index(s, end)
 	if a < 0 || b < a {

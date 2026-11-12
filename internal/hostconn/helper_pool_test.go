@@ -1,3 +1,11 @@
+//go:build oldhelpertests
+
+// Excluded from the build: this file tests the old shell script helper
+// (virticle-helper.sh) through a fake node that no longer exists here. It is
+// kept for the port of these verbs to internal/nodecmd. The old fake node is in
+// the repository history (commit cbb9eef: helper_test.go and
+// helper_files_test.go). Delete this file when the port is done.
+
 package hostconn
 
 import (

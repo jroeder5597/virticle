@@ -4,7 +4,14 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"virticle/internal/hostconn"
 )
+
+func init() {
+	// The tests do not need the built node command ("make nodebin").
+	nodeBinary = func(arch string) ([]byte, error) { return []byte("\x7fELF fake node command for " + arch), nil }
+}
 
 const testKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholderPlaceholderPlaceholder0000 virticle-controller"
 
@@ -340,6 +347,8 @@ func hostOnDebian(changed bool, extra func(cmd, stdin string) (string, bool, err
 			return debian13Facts, true, nil
 		case strings.Contains(cmd, "getent passwd \"$u\""):
 			return "", true, nil
+		case strings.Contains(cmd, hostconn.HelperPath+" version") && !strings.Contains(cmd, "os_id="):
+			return hostconn.HelperVersion, true, nil
 		case strings.Contains(cmd, "dpkg -s"):
 			if changed {
 				return "libvirt-daemon-system\nqemu-system-x86", true, nil
@@ -376,9 +385,9 @@ func TestPrepareRunsStepsInOrder(t *testing.T) {
 	if reports < 8 {
 		t.Errorf("progress was reported %d times", reports)
 	}
-	// The sudo rule carries the helper path only, the key line the restrictions.
+	// The sudo rule carries the node command path only, the key line the restrictions.
 	all := strings.Join(n.log, "\n")
-	if !strings.Contains(all, "virticle ALL=(root) NOPASSWD: /usr/local/libexec/virticle-helper\n") {
+	if !strings.Contains(all, "virticle ALL=(root) NOPASSWD: /usr/local/libexec/virticle-node\n") {
 		t.Error("the sudoers rule was not sent")
 	}
 	if !strings.Contains(all, "restrict,pty,port-forwarding ssh-ed25519 ") {
@@ -473,12 +482,17 @@ func TestBroadSudoSkipsTheHelper(t *testing.T) {
 	}
 }
 
-func TestAllowRootHasNoAccountSudoersOrHelper(t *testing.T) {
+func TestAllowRootHasNoAccountOrSudoersButTheNodeCommandAndKey(t *testing.T) {
 	n := hostOnDebian(true, nil)
 	rows := (&Runner{N: n}).Prepare(Options{ControllerKey: testKey, AllowRoot: true}, nil, nil)
-	for _, id := range []string{"do-account", "do-helper", "do-sudoers"} {
+	for _, id := range []string{"do-account", "do-sudoers"} {
 		if find(rows, id).ID != "" {
 			t.Errorf("%s with root", id)
+		}
+	}
+	for _, id := range []string{"do-helper", "do-peerkey"} {
+		if r := find(rows, id); r.Status != OK {
+			t.Errorf("%s with root: %+v", id, r)
 		}
 	}
 	if r := find(rows, "account"); r.Status != Warning {
@@ -589,7 +603,7 @@ func TestExistingAccountSudoRuleAndConfirm(t *testing.T) {
 	if r := find(Evaluate(base, o), "sudo"); r.Status != Warning || !strings.Contains(r.Detail, "confirm") {
 		t.Errorf("no rule yet: %+v", r)
 	}
-	base.Facts.SudoersRaw = "# x|svc ALL=(root) NOPASSWD: /usr/local/libexec/virticle-helper|"
+	base.Facts.SudoersRaw = "# x|svc ALL=(root) NOPASSWD: /usr/local/libexec/virticle-node|"
 	if r := find(Evaluate(base, o), "sudo"); r.ID != "" {
 		t.Errorf("a rule exists, nothing to report: %+v", r)
 	}
@@ -619,7 +633,7 @@ func TestUnprepareRows(t *testing.T) {
 		case strings.Contains(cmd, "echo uid=$(id -u); echo user"):
 			return "uid=0\nuser=root", true, nil
 		case strings.Contains(cmd, "userdel"):
-			return "key removed\nsudo rule removed\nhelper removed\naccount removed\n@@changed", true, nil
+			return "key removed\nsudo rule removed\nnode command removed\naccount removed\n@@changed", true, nil
 		}
 		return "", true, nil
 	})
@@ -629,7 +643,87 @@ func TestUnprepareRows(t *testing.T) {
 		titles = append(titles, r.Title)
 	}
 	got := strings.Join(titles, ",")
-	if got != "Administrator access,SSH key,Sudo rule,Helper,Service account,Result" {
+	if got != "Administrator access,SSH key,Sudo rule,Node command,Service account,Result" {
 		t.Errorf("rows: %s", got)
+	}
+}
+
+// The node command is uploaded as the matching architecture's binary and
+// installed under the new name; the old script is removed.
+func TestStepHelperInstallsTheNodeCommandAndRemovesTheOldScript(t *testing.T) {
+	n := hostOnDebian(true, nil)
+	rows := (&Runner{N: n}).Prepare(Options{ControllerKey: testKey}, nil, nil)
+	if r := find(rows, "do-helper"); r.Status != OK || !strings.Contains(r.Detail, "version "+hostconn.HelperVersion) {
+		t.Errorf("do-helper: %+v", r)
+	}
+	all := strings.Join(n.log, "\n")
+	for _, want := range []string{"fake node command for x86_64", "dest=", "/usr/local/libexec/virticle-node", "rm -f /usr/local/libexec/virticle-helper"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("the install lacks %q", want)
+		}
+	}
+	// The sudo rule is checked as the service account.
+	if !strings.Contains(all, "runuser -u") && strings.Contains(all, "sudo -n /usr/local/libexec/virticle-node version") {
+		t.Error("the sudo rule was not tried as the service account")
+	}
+}
+
+func TestStepHelperUsesTheNodesArchitecture(t *testing.T) {
+	var seen string
+	old := nodeBinary
+	defer func() { nodeBinary = old }()
+	nodeBinary = func(arch string) ([]byte, error) { seen = arch; return []byte("bin"), nil }
+	facts := strings.Replace(debian13Facts, "arch=x86_64", "arch=aarch64", 1)
+	n := hostOnDebian(true, func(cmd, stdin string) (string, bool, error) {
+		if strings.Contains(cmd, "os_id=") {
+			return facts, true, nil
+		}
+		return "", false, nil
+	})
+	(&Runner{N: n}).Prepare(Options{ControllerKey: testKey}, nil, nil)
+	if seen != "aarch64" {
+		t.Errorf("binary asked for %q", seen)
+	}
+}
+
+func TestStepHelperWithoutBinaryAndWithBrokenBinary(t *testing.T) {
+	old := nodeBinary
+	defer func() { nodeBinary = old }()
+	nodeBinary = func(string) ([]byte, error) { return nil, errors.New("built without the node command") }
+	rows := (&Runner{N: hostOnDebian(true, nil)}).Prepare(Options{ControllerKey: testKey}, nil, nil)
+	if r := find(rows, "do-helper"); r.Status != Error || !strings.Contains(r.Detail, "built without") {
+		t.Errorf("no binary: %+v", r)
+	}
+	if r := find(rows, "do-sudoers"); r.Status != Skipped {
+		t.Errorf("nothing runs after the failed step: %+v", r)
+	}
+	nodeBinary = func(string) ([]byte, error) { return []byte("x"), nil }
+	n := hostOnDebian(true, func(cmd, stdin string) (string, bool, error) {
+		if strings.Contains(cmd, "sh -c '/usr/local/libexec/virticle-node version'") {
+			return "exec format error", true, errors.New("exit status 126")
+		}
+		return "", false, nil
+	})
+	rows = (&Runner{N: n}).Prepare(Options{ControllerKey: testKey}, nil, nil)
+	if r := find(rows, "do-helper"); r.Status != Error || !strings.Contains(r.Detail, "does not run") {
+		t.Errorf("a binary that does not run: %+v", r)
+	}
+}
+
+func TestOldHelperIsReportedInFacts(t *testing.T) {
+	f := ParseFacts("old_helper=yes\nhelper_version=\n")
+	if !f.OldHelper {
+		t.Error("the old script was not noticed")
+	}
+	if ParseFacts("old_helper=\n").OldHelper {
+		t.Error("no old script")
+	}
+}
+
+func TestUnprepareScriptRemovesBothNames(t *testing.T) {
+	for _, must := range []string{"/usr/local/libexec/virticle-node", "/usr/local/libexec/virticle-helper", "virticle-node peer-recv", "virticle-helper peer-recv"} {
+		if !strings.Contains(unprepareScript, must) {
+			t.Errorf("the removal script lacks %q", must)
+		}
 	}
 }

@@ -1,7 +1,7 @@
 // Package prepare makes a Linux host ready to be managed by the controller:
 // libvirt and QEMU installed, a dedicated service account with a restricted
-// SSH key, and a helper through which that account may act as root, and
-// nothing else. It runs over an administrator's SSH connection that exists for
+// SSH key, and the node command through which that account may act as root,
+// and nothing else. It runs over an administrator's SSH connection that exists for
 // one run only (the credential is never stored).
 //
 // Everything here is pure Go around shell snippets: Evaluate turns a host's
@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"virticle/internal/nodeproto"
 	"virticle/internal/snapsched"
 )
 
@@ -84,6 +85,7 @@ if command -v virsh >/dev/null 2>&1; then
 fi
 echo "sudo_bin=$(command -v sudo 2>/dev/null)"
 echo "visudo_bin=$(command -v visudo 2>/dev/null)"
+echo "old_helper=$([ -e ` + oldHelperPath + ` ] && echo yes)"
 echo "helper_version=$(` + helperPath + ` version 2>/dev/null | head -n 1)"
 echo "helper_sha=$(sha256sum ` + helperPath + ` 2>/dev/null | cut -d' ' -f1)"
 echo "sudoers_file=$([ -f ` + sudoersPath + ` ] && head -c 4096 ` + sudoersPath + ` | tr '\n' '|')"
@@ -106,8 +108,9 @@ getent group kvm >/dev/null && echo group_kvm=yes
 true`
 
 const (
-	helperPath  = "/usr/local/libexec/virticle-helper"
-	sudoersPath = "/etc/sudoers.d/virticle"
+	helperPath    = nodeproto.Path
+	oldHelperPath = "/usr/local/libexec/virticle-helper"
+	sudoersPath   = "/etc/sudoers.d/virticle"
 )
 
 // Facts are the parsed lines of FactsScript.
@@ -124,6 +127,7 @@ type Facts struct {
 	Domains                                                  int
 	Controllers                                              []string // instance ids found in snapshot descriptions
 	SudoBin, VisudoBin, HelperVersion, HelperSHA, SudoersRaw string
+	OldHelper                                                bool // the shell script of an earlier version is still installed
 }
 
 // ParseFacts reads FactsScript's output.
@@ -189,6 +193,8 @@ func ParseFacts(out string) Facts {
 			f.SudoBin = v
 		case "visudo_bin":
 			f.VisudoBin = v
+		case "old_helper":
+			f.OldHelper = v == "yes"
 		case "helper_version":
 			f.HelperVersion = v
 		case "helper_sha":
