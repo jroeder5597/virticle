@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,6 +43,60 @@ func ValidateWebhookURL(raw string) error {
 	return nil
 }
 
+// webhookKey is where the webhook URL set in the UI is kept.
+const webhookKey = "alert.webhook"
+
+// webhookURL is the address alerts are POSTed to: the -alert-webhook flag when
+// given (then the UI cannot change it), else the one stored in the database.
+func (s *Server) webhookURL() (url string, fromFlag bool) {
+	if s.Alerts.Webhook != "" {
+		return s.Alerts.Webhook, true
+	}
+	if s.Store != nil {
+		if v, ok, err := s.Store.WebSetting(webhookKey); err == nil && ok {
+			return v, false
+		}
+	}
+	return "", false
+}
+
+func (s *Server) getAlertSettings(w http.ResponseWriter, r *http.Request) {
+	u, flag := s.webhookURL()
+	writeJSON(w, map[string]any{"webhook": u, "fromFlag": flag})
+}
+
+func (s *Server) putAlertSettings(w http.ResponseWriter, r *http.Request) {
+	var q struct {
+		Webhook string `json:"webhook"`
+	}
+	if err := readJSON(r, &q); err != nil {
+		fail(w, err)
+		return
+	}
+	if _, flag := s.webhookURL(); flag {
+		fail(w, badRequest("the webhook is set by the -alert-webhook flag; remove the flag to change it here"))
+		return
+	}
+	q.Webhook = strings.TrimSpace(q.Webhook)
+	if q.Webhook != "" {
+		if err := ValidateWebhookURL(q.Webhook); err != nil {
+			fail(w, badRequest(err.Error()))
+			return
+		}
+	}
+	var err error
+	if q.Webhook == "" {
+		err = s.Store.DeleteWebSetting(webhookKey)
+	} else {
+		err = s.Store.SetWebSetting(webhookKey, q.Webhook)
+	}
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"webhook": q.Webhook, "fromFlag": false})
+}
+
 const alertEvery = 60 * time.Second
 
 var (
@@ -59,9 +114,12 @@ func (s *Server) startAlerts() {
 func (s *Server) runAlerts(ctx context.Context, every, first time.Duration) {
 	tr := newAlertTracker(alertConfig{PoolWarn: s.Alerts.PoolWarn, PoolCrit: s.Alerts.PoolCrit, Mem: s.Alerts.Mem, CertDays: s.Alerts.CertDays})
 	var wh *webhook
-	if s.Alerts.Webhook != "" {
-		wh = newWebhook(s.Alerts.Webhook)
-	}
+	whURL := ""
+	defer func() {
+		if wh != nil {
+			wh.stop()
+		}
+	}()
 	wait := first
 	for {
 		select {
@@ -70,6 +128,16 @@ func (s *Server) runAlerts(ctx context.Context, every, first time.Duration) {
 		case <-time.After(wait):
 		}
 		wait = every
+		// The webhook can be changed on the Alerts page at any time.
+		if u, _ := s.webhookURL(); u != whURL {
+			if wh != nil {
+				wh.stop()
+				wh = nil
+			}
+			if whURL = u; u != "" {
+				wh = newWebhook(u)
+			}
+		}
 		raised, cleared, all := tr.step(s.gatherAlertInput(time.Now()), time.Now())
 		alertHub.Lock()
 		alertHub.list = all
@@ -251,6 +319,10 @@ func (w *webhook) send(event string, a Alert) {
 		}
 	}
 }
+
+// stop ends the delivery goroutine after the queued messages. Only the
+// goroutine that calls send may call it.
+func (w *webhook) stop() { close(w.queue) }
 
 func (w *webhook) run() {
 	for m := range w.queue {

@@ -84,7 +84,12 @@ func startWeb(srv *api.Server, st *store.Store, data string, f flagListen, nodes
 	srv.Web = m
 	m.Handler = srv.Handler()
 
+	users, err := st.UserCount()
+	if err != nil {
+		log.Fatalf("database: %v", err)
+	}
 	var ws webaccess.Settings
+	persist := false
 	if flagsGiven() {
 		ws, m.Source = settingsFromFlags(f), "flags"
 		m.Locked = "The listener is set by command-line flags or VIRTICLE_* environment variables (-listen, -tls-cert, -tls-key, -insecure-http, -trusted-proxy). Remove them to manage it here."
@@ -93,19 +98,30 @@ func startWeb(srv *api.Server, st *store.Store, data string, f flagListen, nodes
 		if err != nil {
 			log.Fatalf("web access settings: %v", err)
 		}
-		ws = webaccess.Defaults()
-		if ok {
-			ws, m.Source = stored, "stored"
-		}
+		c := chooseSettings(stored, ok, users > 0)
+		ws, m.Source, m.Notice, persist = c.settings, c.source, c.notice, c.persist
 	}
-	if err := m.Start(ws); err != nil {
-		if m.Source == "stored" {
-			log.Printf("ERROR: the stored web access settings cannot be used (%v); serving plain HTTP on %s instead. Fix them in Settings, or run: virticle web reset", err, webaccess.DefaultListen)
+	used, warning, err := m.StartOrFallBack(ws)
+	if warning != "" {
+		log.Printf("WARNING: %s", warning)
+		m.Notice = warning
+	}
+	ws = used
+	if err != nil {
+		if m.Source == "stored" || persist {
+			log.Printf("ERROR: the web access settings cannot be used (%v); serving plain HTTP on %s instead. Fix them in Settings, or run: virticle web reset", err, webaccess.DefaultListen)
+			persist = false
 			ws = webaccess.Defaults()
 			err = m.Start(ws)
 		}
 		if err != nil {
 			log.Fatalf("listen: %v", err)
+		}
+	}
+	if persist {
+		b, _ := json.Marshal(ws)
+		if err := st.SetWebSetting("web", string(b)); err != nil {
+			log.Printf("WARNING: could not store the web access settings: %v", err)
 		}
 	}
 	for _, l := range m.Status("").Listeners {
@@ -125,6 +141,9 @@ func startWeb(srv *api.Server, st *store.Store, data string, f flagListen, nodes
 			log.Printf("TLS certificate %s SHA-256 fingerprint %s", cf, fp)
 		}
 	}
+	if hint := setupHint(users > 0, ws, suggestedAddresses()); hint != "" {
+		log.Printf("%s", hint)
+	}
 	if ws.Mode == webaccess.ModeOff && !tlscert.IsLoopback(ws.Listen) {
 		log.Printf("WARNING: serving plain HTTP on %s: passwords and sessions are not encrypted", ws.Listen)
 	}
@@ -137,15 +156,16 @@ func startWeb(srv *api.Server, st *store.Store, data string, f flagListen, nodes
 
 const webUsage = `usage: virticle web <command> [-data DIR] [options]
 
-  show    print the stored web access settings as JSON
+  show    print the stored web access settings as JSON (takes only -data)
   reset   put the web UI back on plain HTTP at 127.0.0.1:8080 (for a locked-out admin)
   set     change stored settings: -mode off|selfsigned|own|acme|proxy, -listen, -https-listen,
           -http-redirect, -public-url, -names a,b, -cert FILE -key FILE, -acme-domains a,b,
           -acme-email, -acme-directory, -acme-accept-terms, -trusted-proxy a,b, -hsts
 
 These edit the database; restart the controller (it re-reads them at start).
-Command-line flags -listen, -tls-cert, -tls-key, -insecure-http and -trusted-proxy
-override stored settings; "reset" does not remove them from the service file.
+-data defaults to /var/lib/virticle on an installed machine, else ./data.
+A -listen flag (or the older -tls-cert, -tls-key, -insecure-http, -trusted-proxy flags)
+overrides stored settings; "reset" does not remove them from the service file.
 `
 
 // webCommand implements "virticle web ...".
@@ -156,21 +176,34 @@ func webCommand(args []string) int {
 	}
 	cmd := args[0]
 	fs := flag.NewFlagSet("web "+cmd, flag.ExitOnError)
-	data := fs.String("data", "data", "controller data directory")
-	mode := fs.String("mode", "", "off, selfsigned, own, acme or proxy")
-	listen := fs.String("listen", "", "plain HTTP address (modes off and proxy)")
-	httpsListen := fs.String("https-listen", "", "HTTPS address (modes selfsigned, own, acme)")
-	redirect := fs.String("http-redirect", "", "address of an HTTP listener that only redirects to HTTPS")
-	public := fs.String("public-url", "", "address users type, e.g. https://virticle.example.org")
-	names := fs.String("names", "", "comma-separated names for a self-signed certificate")
-	cert := fs.String("cert", "", "certificate chain file (mode own)")
-	key := fs.String("key", "", "private key file (mode own)")
-	domains := fs.String("acme-domains", "", "comma-separated domain names (mode acme)")
-	email := fs.String("acme-email", "", "ACME contact e-mail")
-	dir := fs.String("acme-directory", "", "ACME directory URL (default Let's Encrypt)")
-	terms := fs.Bool("acme-accept-terms", false, "accept the ACME provider's terms of service")
-	trusted := fs.String("trusted-proxy", "", "comma-separated proxy IPs/CIDRs (mode proxy)")
-	hsts := fs.Bool("hsts", false, "send Strict-Transport-Security")
+	data := fs.String("data", defaultDataDir(), "controller data directory")
+	// Only "set" has the settings flags: show and reset take just -data.
+	str := func(name, def, usage string) *string {
+		if cmd == "set" {
+			return fs.String(name, def, usage)
+		}
+		return new(string)
+	}
+	boolean := func(name string, usage string) *bool {
+		if cmd == "set" {
+			return fs.Bool(name, false, usage)
+		}
+		return new(bool)
+	}
+	mode := str("mode", "", "off, selfsigned, own, acme or proxy")
+	listen := str("listen", "", "plain HTTP address (modes off and proxy)")
+	httpsListen := str("https-listen", "", "HTTPS address (modes selfsigned, own, acme)")
+	redirect := str("http-redirect", "", "address of an HTTP listener that only redirects to HTTPS")
+	public := str("public-url", "", "address users type, e.g. https://virticle.example.org")
+	names := str("names", "", "comma-separated names for a self-signed certificate")
+	cert := str("cert", "", "certificate chain file (mode own)")
+	key := str("key", "", "private key file (mode own)")
+	domains := str("acme-domains", "", "comma-separated domain names (mode acme)")
+	email := str("acme-email", "", "ACME contact e-mail")
+	dir := str("acme-directory", "", "ACME directory URL (default Let's Encrypt)")
+	terms := boolean("acme-accept-terms", "accept the ACME provider's terms of service")
+	trusted := str("trusted-proxy", "", "comma-separated proxy IPs/CIDRs (mode proxy)")
+	hsts := boolean("hsts", "send Strict-Transport-Security")
 	fs.Parse(args[1:])
 	given := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { given[f.Name] = true })

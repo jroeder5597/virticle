@@ -74,6 +74,7 @@ test.describe.serial("users and roles", () => {
     const nav = page.locator(".topbar");
     await expect(nav.getByRole("link", { name: "Users" })).toHaveCount(0);
     await expect(nav.getByRole("link", { name: "Audit" })).toHaveCount(0);
+    await expect(nav.getByRole("button", { name: "Settings" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "New VM" })).toBeHidden();
     await expect(row(page, VM).getByRole("button", { name: "Power On" })).toBeHidden();
 
@@ -166,6 +167,7 @@ test.describe.serial("users and roles", () => {
     autoDialogs(page);
     await page.goto("/account");
     const tokName = `${P}tok`;
+    await page.getByRole("button", { name: /^API tokens/ }).click(); // collapsed until opened or tokens exist
     const card = page.locator(".card", { hasText: "API tokens" });
     await field(card, "Name").fill(tokName);
     await pick(card, "Role", "viewer");
@@ -187,6 +189,14 @@ test.describe.serial("users and roles", () => {
     await expect(row(card, tokName)).toHaveCount(0);
     expect((await tok.get("/api/vms")).status()).toBe(401);
     await tok.dispose();
+  });
+
+  test("Settings menu holds Users, Audit, Web access and Alerts", async ({ page }) => {
+    await page.goto("/");
+    await page.locator(".topbar").getByRole("button", { name: "Settings" }).click();
+    for (const n of ["Users", "Audit", "Web access", "Alerts"]) await expect(page.getByRole("menuitem", { name: n, exact: true })).toBeVisible();
+    await page.getByRole("menuitem", { name: "Web access", exact: true }).click();
+    await expect(page).toHaveURL(/\/web-access$/);
   });
 
   test("Audit page lists the actions of this run", async ({ page }) => {

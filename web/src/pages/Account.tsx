@@ -1,10 +1,10 @@
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiToken, del, get, post, Role } from "../api";
 import { atLeast, useRole } from "../auth";
 import Select from "../Select";
 import { ErrorBox, Field, useAction, useConfirm } from "../ui";
-import { ConsolePrefCard } from "./ConsolePreview";
 
 const when = (unix?: number) => (unix ? new Date(unix * 1000).toLocaleString() : "");
 
@@ -26,7 +26,6 @@ export default function Account() {
             <Link to="/cloudinit-profiles">Manage profiles</Link>
           </div>
         )}
-        <ConsolePrefCard />
       </div>
       <VersionLine />
     </>
@@ -86,7 +85,15 @@ function Tokens({ role }: { role: Role }) {
   const [copied, setCopied] = useState(false);
   const act = useAction();
   const confirm = useConfirm();
-  const reload = useCallback(() => get<ApiToken[]>("/account/tokens").then(setTokens, () => {}), []);
+  const [open, setOpen] = useState(false);
+  const reload = useCallback(
+    () =>
+      get<ApiToken[]>("/account/tokens").then((t) => {
+        setTokens(t);
+        if (t.length > 0) setOpen(true); // tokens exist: show them
+      }, () => {}),
+    [],
+  );
   useEffect(() => {
     reload();
   }, [reload]);
@@ -101,6 +108,17 @@ function Tokens({ role }: { role: Role }) {
       reload();
     }
   };
+  const Chevron = open ? ChevronDown : ChevronRight;
+  if (!open)
+    return (
+      <section className="card disc-card" aria-label="API tokens">
+        <button className="disc-head" aria-expanded={false} onClick={() => setOpen(true)}>
+          <Chevron size={16} aria-hidden="true" />
+          <span className="disc-title">API tokens</span>
+          <span className="disc-sum">None yet</span>
+        </button>
+      </section>
+    );
   return (
     <div className="card">
       <h2>API tokens</h2>

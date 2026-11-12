@@ -8,8 +8,8 @@ Wants=network-online.target
 Type=simple
 User=virticle
 Group=virticle
-# Extra flags (for example -listen, -tls-cert, -tls-key, -trusted-proxy) and
-# secrets (VIRTICLE_JUMP_PASSWORD) go in this file; see its comments.
+# Extra flags and secrets (VIRTICLE_JUMP_PASSWORD) go in this file; see its
+# comments. The web address is set on the Web access page.
 EnvironmentFile=-/etc/virticle/virticle.env
 ExecStart=/usr/bin/virticle -data /var/lib/virticle $VIRTICLE_ARGS
 Restart=on-failure
@@ -43,12 +43,10 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources
-# No capabilities. To listen on a port below 1024 (80, 443), add a drop-in with
-# "systemctl edit virticle":
-#   [Service]
-#   CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-#   AmbientCapabilities=CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=
+# Only the right to listen on ports below 1024 (443 and 80), so that the Web
+# access page can use them. Nothing else.
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target

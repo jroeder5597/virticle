@@ -86,6 +86,8 @@ func (s *Server) Handler() http.Handler {
 	auth("GET /api/version", s.version)
 	auth("GET /api/events", s.events)
 	auth("GET /api/alerts", s.listAlerts)
+	auth("GET /api/alerts/settings", s.getAlertSettings)
+	auth("PUT /api/alerts/settings", s.putAlertSettings)
 	auth("GET /api/tasks", s.tasks)
 
 	auth("GET /api/users", s.listUsers)

@@ -39,8 +39,7 @@ Packages: libvirt, QEMU and the guest disk tools (virt-sysprep, used by "sysprep
 --use-existing-user (with --confirm) is for an account you manage yourself.
 --check changes nothing. Running prepare again changes nothing. unprepare removes the account
 (virticle-node, or virticle when an earlier version made it), key, node command and sudo rule;
-packages, VMs, pools and networks stay. An account that Virticle did not create is never removed.
-(--allow-root is the old name of --root.)`
+packages, VMs, pools and networks stay. An account that Virticle did not create is never removed.`
 
 // useExistingFlag is a boolean flag that also accepts --use-existing-user=NAME.
 type useExistingFlag struct {
@@ -71,18 +70,17 @@ func nodeCommand(args []string) int {
 	fs := flag.NewFlagSet("node "+args[0], flag.ContinueOnError)
 	fs.Usage = func() { fmt.Fprintln(os.Stderr, nodeUsage) }
 	var (
-		check     = fs.Bool("check", false, "read-only preflight; change nothing")
-		user      = fs.String("user", "", "service account name (default virticle-node)")
-		existing  useExistingFlag
-		confirm   = fs.Bool("confirm", false, "with --use-existing-user: add the account to the libvirt and kvm groups and give it the sudo rule for the node command")
-		root      = fs.Bool("root", false, "Root access: the controller signs in as root instead of using a service account (a service account is safer)")
-		allowRoot = fs.Bool("allow-root", false, "")
-		from      = fs.String("from", "", "restrict the controller's key to this source address (comma-separated patterns)")
-		minimal   = fs.Bool("minimal", false, "leave out the guest disk tools (virt-sysprep); clone with sysprep then needs a sealed template")
-		jump      = fs.String("jump", "", "user@host to connect through")
-		identity  = fs.String("identity", "", "administrator's private key file (the SSH agent is used as well)")
-		pwStdin   = fs.Bool("password-stdin", false, "read the administrator's password from standard input")
-		data      = fs.String("data", "data", "the controller's data directory (its key and known_hosts)")
+		check    = fs.Bool("check", false, "read-only preflight; change nothing")
+		user     = fs.String("user", "", "service account name (default virticle-node)")
+		existing useExistingFlag
+		confirm  = fs.Bool("confirm", false, "with --use-existing-user: add the account to the libvirt and kvm groups and give it the sudo rule for the node command")
+		root     = fs.Bool("root", false, "Root access: the controller signs in as root instead of using a service account (a service account is safer)")
+		from     = fs.String("from", "", "restrict the controller's key to this source address (comma-separated patterns)")
+		minimal  = fs.Bool("minimal", false, "leave out the guest disk tools (virt-sysprep); clone with sysprep then needs a sealed template")
+		jump     = fs.String("jump", "", "user@host to connect through")
+		identity = fs.String("identity", "", "administrator's private key file (the SSH agent is used as well)")
+		pwStdin  = fs.Bool("password-stdin", false, "read the administrator's password from standard input")
+		data     = fs.String("data", defaultDataDir(), "the controller's data directory (its key and known_hosts)")
 	)
 	fs.Var(&existing, "use-existing-user", "the account already exists: only add the key (and with --confirm groups and the sudo rule)")
 
@@ -136,9 +134,8 @@ func nodeCommand(args []string) int {
 	if b, err := os.ReadFile(filepath.Join(*data, "instance-id")); err == nil {
 		instance = strings.TrimSpace(string(b))
 	}
-	renameEnv("VIRT_JUMP_PASSWORD", "VIRTICLE_JUMP_PASSWORD")
 
-	o := prepare.Options{User: *user, UseExisting: existing.on, Confirm: *confirm, AllowRoot: *root || *allowRoot,
+	o := prepare.Options{User: *user, UseExisting: existing.on, Confirm: *confirm, AllowRoot: *root,
 		From: *from, Minimal: *minimal, ControllerKey: pub, InstanceID: instance}
 	if existing.name != "" {
 		o.User = existing.name

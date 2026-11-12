@@ -1,11 +1,16 @@
 #!/bin/sh
-# RPM convention: a new install does not start or enable the service; the
-# administrator does that after reading /etc/virticle/virticle.env. An upgrade
-# restarts a running service.
+# Like the DEB: a new install enables and starts the service, an upgrade
+# restarts it when it is running. The web UI is then at https://<address>:8443
+# (see the journal: journalctl -u virticle).
 if [ -d /run/systemd/system ]; then
 	systemctl daemon-reload || true
 	if [ "$1" -ge 2 ]; then
 		systemctl try-restart virticle.service || true
+	else
+		systemctl enable virticle.service || true
+		systemctl start virticle.service || true
 	fi
+elif [ "$1" -lt 2 ]; then
+	systemctl enable virticle.service 2>/dev/null || true
 fi
 exit 0

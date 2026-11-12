@@ -7,37 +7,38 @@
 | `virticle [flags]` | Runs the controller. |
 | `virticle version` | Prints version, commit and build date. |
 | `virticle node prepare\|unprepare` | Prepares a host as a node, or undoes it. See [install-node.md](install-node.md). |
-| `virticle web show\|set\|reset` | Reads or changes the stored web access settings. See [web-tls.md](web-tls.md). |
+| `virticle web show\|set\|reset` | Reads or changes the stored web access settings. `show` and `reset` take only `-data`. See [web-tls.md](web-tls.md). |
 
 ## Flags
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `-listen` | `127.0.0.1:8080` | Address of the web UI and API. |
-| `-data` | `data` | Directory for the database and the controller's SSH key. |
-| `-tls-cert`, `-tls-key` | empty | PEM certificate and key for HTTPS. Both or neither. |
-| `-insecure-http` | off | Plain HTTP on a non-loopback address. Sign-ins travel unencrypted. |
-| `-trusted-proxy` | empty | IPs or CIDRs of reverse proxies whose `X-Forwarded-*` headers are believed. |
+| `-data` | `/var/lib/virticle` if it exists and holds a database, else `data` | Directory for the database and the controller's SSH key. Also for `virticle web` and `virticle node`. |
+| `-listen` | none | Address of the web UI and API. Given, it overrides what the **Web access** page stores and makes that page read-only. Leave it out to manage web access from the UI. |
 | `-no-scheduler` | off | Do not run scheduled snapshots and backups from this controller. |
-| `-alert-pool-warn` | `85` | Pool usage in percent that raises a warning. |
-| `-alert-pool-critical` | `95` | Pool usage in percent that raises a critical alert. |
-| `-alert-memory` | `90` | Host memory use in percent that raises an alert. |
-| `-alert-cert-days` | `30` | Alert when the web certificate expires within this many days. |
-| `-alert-webhook` | empty | URL that receives a JSON POST when an alert is raised or cleared. |
+| `-alert-webhook` | empty | URL that receives a JSON POST when an alert is raised or cleared. Given, it wins over the **Alerts** page and makes its field read-only. |
 
-The web flags (`-listen`, `-tls-cert`, `-tls-key`, `-insecure-http`,
-`-trusted-proxy`) override what the **Web access** page stores and make that
-page read-only. Leave them out to manage web access from the UI.
+Without `-listen` and without stored web settings, a data directory with no
+users serves HTTPS with a self-signed certificate on port 8443 of all
+interfaces; one that already has users keeps plain HTTP on `127.0.0.1:8080`.
+
+Deprecated, hidden from `-help`, and still working with a notice in the log:
+`-tls-cert`, `-tls-key`, `-insecure-http`, `-trusted-proxy` (use the **Web
+access** page or `virticle web set`), and `-alert-pool-warn` (85),
+`-alert-pool-critical` (95), `-alert-memory` (90), `-alert-cert-days` (30),
+whose defaults stay.
 
 ## Environment
 
 | Variable | Meaning |
 | --- | --- |
-| `VIRTICLE_LISTEN`, `VIRTICLE_TLS_CERT`, `VIRTICLE_TLS_KEY`, `VIRTICLE_INSECURE_HTTP`, `VIRTICLE_TRUSTED_PROXY` | Defaults for the flags of the same name. |
+| `VIRTICLE_LISTEN` | Default for `-listen`. |
 | `VIRTICLE_JUMP_PASSWORD` | Password for node jump hosts. |
-| `VIRTICLE_VIRTIO_WIN_PATTERN` | Volume name pattern that counts as the virtio-win ISO. |
 
-The package reads these from `/etc/virticle/virticle.env`.
+The package reads these from `/etc/virticle/virticle.env`. Deprecated like
+their flags: `VIRTICLE_TLS_CERT`, `VIRTICLE_TLS_KEY`, `VIRTICLE_INSECURE_HTTP`,
+`VIRTICLE_TRUSTED_PROXY`, and `VIRTICLE_VIRTIO_WIN_PATTERN` (volume name
+pattern that counts as the virtio-win ISO).
 
 ## Roles
 
@@ -147,6 +148,6 @@ passwordless sudo but no node command is also not prepared.
 Replace the binary and start it with the same `-data` directory.
 
 - `virt-proj.db` is renamed to `virticle.db` at start.
-- `VIRT_JUMP_PASSWORD` and `VIRT_VIRTIO_WIN_PATTERN` still work and log a
-  deprecation line.
+- The old `VIRT_JUMP_PASSWORD` and `VIRT_VIRTIO_WIN_PATTERN` names no longer
+  work; use the `VIRTICLE_` names.
 - Per-VM metadata in the old namespace is read and moved on the next write.

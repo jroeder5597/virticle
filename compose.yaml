@@ -1,6 +1,6 @@
 # Example. Build from source with "docker compose up -d --build", or replace
 # "build" with an image from your registry. The UI is then at
-# https://127.0.0.1:8080 (self-signed certificate; create the administrator
+# https://127.0.0.1:8443 (self-signed certificate; create the administrator
 # account on the first visit).
 services:
   virticle:
@@ -8,9 +8,9 @@ services:
     image: virticle:local
     restart: unless-stopped
     ports:
-      # Loopback only. Put a reverse proxy in front, or change the address on
-      # purpose.
-      - "127.0.0.1:8080:8080"
+      # Loopback only. Publish it on other addresses on purpose, or put a
+      # reverse proxy in front.
+      - "127.0.0.1:8443:8443"
     volumes:
       - virticle-data:/data
     # Optional: jump host password, in a file next to this one.

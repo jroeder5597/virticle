@@ -226,8 +226,13 @@ func ownChecks(s Settings, env CheckEnv, pub *url.URL) []Check {
 			add("ok", "Public URL", "the certificate covers %s", pub.Hostname())
 		}
 	}
-	if len(s.Names) == 0 && pub == nil {
-		add("info", "Names", "no names listed; list the names clients use to have them checked")
+	if len(s.Names) == 0 {
+		// No names asked for: show the ones the certificate itself carries.
+		if names := CertNames(leaf); len(names) > 0 {
+			add("ok", "Names", "the certificate covers %s", strings.Join(names, ", "))
+		} else {
+			add("warning", "Names", "the certificate names no host or address; browsers will refuse it")
+		}
 	}
 	if len(env.OwnCertPEM) == 0 && s.Own.CertFile != "" {
 		add("info", "Files", "re-read when they change and on SIGHUP")

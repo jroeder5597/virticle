@@ -222,11 +222,11 @@ test.describe.serial("visual pass", () => {
       // Settings > Web access: the form, and the proxy mode with its five configuration snippets
       await page.goto("/web-access");
       await shot("web-access", () => expect(page.getByRole("heading", { name: "Web access" })).toBeVisible());
-      await page.getByRole("combobox", { name: "Mode", exact: true }).click();
-      await page.getByRole("option", { name: "Behind a reverse proxy" }).click();
+      // Advanced holds the plain HTTP and reverse proxy choices
+      await page.getByRole("button", { name: /^Advanced/ }).click();
+      await page.getByRole("radio", { name: "Behind a reverse proxy", exact: true }).check();
       await shot("web-access-proxy", () => expect(page.getByRole("heading", { name: "HAProxy" })).toBeVisible());
-      await page.getByRole("combobox", { name: "Mode", exact: true }).click();
-      await page.getByRole("option", { name: "ACME (Let's Encrypt)" }).click();
+      await page.getByRole("radio", { name: "My domain, with a Let's Encrypt certificate", exact: true }).check();
       await shot("web-access-acme", () => expect(page.getByLabel("Domain names")).toBeVisible());
 
       await page.goto(vmUrl);

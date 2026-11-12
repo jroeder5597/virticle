@@ -10,6 +10,6 @@ COPY $TARGETPLATFORM/virticle /usr/bin/virticle
 COPY --from=data --chown=65532:65532 /data /data
 USER 65532:65532
 VOLUME /data
-EXPOSE 8080
+EXPOSE 8443
 ENTRYPOINT ["/usr/bin/virticle"]
-CMD ["-listen", "0.0.0.0:8080", "-data", "/data"]
+CMD ["-data", "/data"]

@@ -1,7 +1,7 @@
 # Multi-stage build: web UI, then the Go binary (pure Go, no CGO), then a
 # distroless static image that runs as a non-root user.
 #   docker build -t virticle .
-#   docker run -p 127.0.0.1:8080:8080 -v virticle-data:/data virticle
+#   docker run -p 8443:8443 -v virticle-data:/data virticle
 
 FROM --platform=$BUILDPLATFORM node:20-alpine AS web
 WORKDIR /src/web
@@ -40,9 +40,9 @@ COPY --from=build /out/virticle /usr/bin/virticle
 COPY --from=build --chown=65532:65532 /out/data /data
 USER 65532:65532
 VOLUME /data
-EXPOSE 8080
-# A non-loopback address makes the controller serve HTTPS with a generated
-# self-signed certificate (kept in /data). Behind a reverse proxy add
-# "-trusted-proxy <proxy address>" and use plain HTTP on a private address.
+EXPOSE 8443
+# No -listen: the controller serves HTTPS with a generated self-signed
+# certificate (kept in /data) on port 8443 until the Web access page says
+# otherwise.
 ENTRYPOINT ["/usr/bin/virticle"]
-CMD ["-listen", "0.0.0.0:8080", "-data", "/data"]
+CMD ["-data", "/data"]

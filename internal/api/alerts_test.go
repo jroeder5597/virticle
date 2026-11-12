@@ -219,3 +219,42 @@ func TestValidateWebhookURL(t *testing.T) {
 		}
 	}
 }
+
+// The webhook set in the UI is stored and read back; the -alert-webhook flag
+// wins and makes it read-only. Only admins may change it.
+func TestAlertWebhookSetting(t *testing.T) {
+	e := newEnv(t)
+	e.user("root", "admin")
+	e.user("eve", "operator")
+
+	if w := e.do("PUT", "/api/alerts/settings", map[string]string{"webhook": "http://hook.example/x"}, cookieOf(e, "eve")); w.Code != 403 {
+		t.Errorf("operator changed the webhook: %d", w.Code)
+	}
+	if w := e.do("PUT", "/api/alerts/settings", map[string]string{"webhook": "ftp://hook.example"}, cookieOf(e, "root")); w.Code != 400 {
+		t.Errorf("bad scheme accepted: %d", w.Code)
+	}
+	if w := e.do("PUT", "/api/alerts/settings", map[string]string{"webhook": " https://hook.example/x "}, cookieOf(e, "root")); w.Code != 200 {
+		t.Fatalf("put: %d %s", w.Code, w.Body)
+	}
+	if u, flag := e.srv.webhookURL(); u != "https://hook.example/x" || flag {
+		t.Errorf("stored webhook = %q, flag %v", u, flag)
+	}
+
+	// The flag wins and the field is read-only.
+	e.srv.Alerts.Webhook = "http://flag.example/y"
+	if u, flag := e.srv.webhookURL(); u != "http://flag.example/y" || !flag {
+		t.Errorf("flag webhook = %q, flag %v", u, flag)
+	}
+	if w := e.do("PUT", "/api/alerts/settings", map[string]string{"webhook": ""}, cookieOf(e, "root")); w.Code != 400 {
+		t.Errorf("flag-set webhook changed: %d", w.Code)
+	}
+	e.srv.Alerts.Webhook = ""
+
+	// Cleared again.
+	if w := e.do("PUT", "/api/alerts/settings", map[string]string{"webhook": ""}, cookieOf(e, "root")); w.Code != 200 {
+		t.Fatalf("clear: %d", w.Code)
+	}
+	if u, _ := e.srv.webhookURL(); u != "" {
+		t.Errorf("webhook after clearing = %q", u)
+	}
+}

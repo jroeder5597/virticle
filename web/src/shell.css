@@ -15,6 +15,9 @@ body { overflow-x: hidden; }
 .topbar .spacer { flex: 1; }
 .toplinks { display: flex; gap: 2px; min-width: 0; overflow: hidden; }
 .toplinks a, .drawer-links a { color: var(--muted); padding: 6px 10px; border-radius: var(--radius, 8px); white-space: nowrap; font-weight: 500; border-bottom: 2px solid transparent; transition: color 100ms, background-color 100ms; }
+.toplinks .settings-menu { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: var(--radius, 8px); color: var(--muted); padding: 6px 10px; font: inherit; font-weight: 500; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.toplinks .settings-menu:hover { background: var(--hover); color: var(--text); }
+.toplinks .settings-menu.active { color: var(--text); border-bottom-color: var(--accent); }
 .toplinks a:hover, .drawer-links a:hover { background: var(--hover); color: var(--text); text-decoration: none; }
 .toplinks a.active, .drawer-links a.active { color: var(--text); border-bottom-color: var(--accent); }
 .topbar .acct, .topbar .signout, .topbar .bell, .topbar .menu-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 0; border-radius: var(--radius, 8px); background: none; color: var(--muted); font: inherit; font-weight: 500; cursor: pointer; width: auto; white-space: nowrap; transition: color 100ms, background-color 100ms; }
