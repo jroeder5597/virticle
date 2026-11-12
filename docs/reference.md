@@ -91,7 +91,7 @@ session, not a token.
 - **Clock** (Linux): `rtc` catch-up, `pit` delay, `hpet` off, `kvmclock` on.
   The guest clock is synced after resume, snapshot revert and live migration
   when the guest agent runs.
-- **Serial console**: optional at creation; add or remove later under Hardware.
+- **Serial console**: added to every new VM; the Console tab adds one to a VM that has none.
 
 ## Schedules
 

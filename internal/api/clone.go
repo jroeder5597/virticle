@@ -94,6 +94,7 @@ func buildSeed(guest, cloneName string, c cloneCustomize) ([]byte, error) {
 		return img, nil
 	}
 	cfg := cloudinit.Config{Hostname: host, User: c.User, Password: c.Password, SSHKeys: c.SSHKeys, Packages: c.Packages, RawUserData: c.RawUserData, PasswordHash: c.passwordHash}
+	cfg.EnsureGuestAgent()
 	img, err := cfg.Seed()
 	if err != nil {
 		return nil, badRequest("cloud-init: " + err.Error())

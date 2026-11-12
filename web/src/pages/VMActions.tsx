@@ -1,4 +1,4 @@
-// The "Actions" menu of the VM page: power, hardware, snapshots, clone, template, migrate, delete.
+// The "Actions" menu of the VM page: power, hardware, snapshots, clone, template, migrate, XML, delete.
 // Entries that do not apply to the VM's state are disabled with a reason, never hidden, so the
 // menu keeps its shape. Destructive power actions ask for confirmation first.
 import { useState } from "react";
@@ -8,7 +8,7 @@ import { atLeast, useRole } from "../auth";
 import { DropdownMenu, MenuEntry } from "../Menu";
 import { powerConfirm, powerLabel } from "../power";
 import { ErrorBox, Modal, useAction, useConfirm } from "../ui";
-import { CloneDialog, SealDialog } from "./Clone";
+import { CloneDialog, ConvertDialog } from "./Clone";
 import MigrateDialog from "./Migrate";
 import { HardwareDialog, HwArea } from "./Hardware";
 import { TakeSnapshot } from "./Snapshots";
@@ -21,10 +21,7 @@ export const hardwareAreas: [string, HwArea][] = [
   ["CD-ROM", "cdrom"],
   ["Boot order", "boot"],
   ["Firmware and TPM", "firmware"],
-  ["Advanced", "advanced"],
   ["Passthrough devices", "passthrough"],
-  ["Serial console", "serial"],
-  ["Clock", "clock"],
 ];
 
 export default function VMActions(props: {
@@ -41,8 +38,8 @@ export default function VMActions(props: {
   const nav = useNavigate();
   const op = atLeast(useRole(), "operator");
   const confirm = useConfirm();
-  const [cloning, setCloning] = useState<{ linked: boolean }>();
-  const [sealing, setSealing] = useState(false);
+  const [cloning, setCloning] = useState(false);
+  const [converting, setConverting] = useState(false);
   const [taking, setTaking] = useState(false);
   const [migrating, setMigrating] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -70,8 +67,7 @@ export default function VMActions(props: {
     "sep",
     { label: powerLabel.poweroff, danger: true, run: () => act("poweroff"), ...when(!off, stateNow) },
     { label: powerLabel.reset, danger: true, run: () => act("reset"), ...when(!off, stateNow) },
-  ];
-  const guest: MenuEntry[] = [
+    "sep",
     { label: "Sync guest clock", run: () => run(() => post(`${base}/clock/sync`)), ...when(running && d.agent === "connected", !running ? stateNow : "Needs the guest agent to be connected") },
   ];
   const settings: MenuEntry[] = hardwareAreas.map(([label, area]) => ({ label, run: () => setEditing([label, area]) }));
@@ -80,43 +76,28 @@ export default function VMActions(props: {
     { label: "Manage snapshots", run: () => goto("snapshots") },
     { label: "Schedule", run: () => goto("snapshots", "snap-schedule") },
   ];
-  const clone: MenuEntry[] = [
-    { label: "Clone this VM", run: () => setCloning({ linked: false }), ...when(off, "Shut the VM down to clone it") },
-    {
-      label: "Linked clone (from a template)",
-      run: () => setCloning({ linked: true }),
-      ...when(off && d.template, !d.template ? "A linked clone needs a template as its source. Use Template, Convert to template first." : "Shut the VM down to clone it"),
-    },
-  ];
-  const template: MenuEntry[] = [
-    d.template
-      ? { label: "Convert back to a VM", run: () => run(async () => { await put(`${base}/template`, { template: false }); props.onChanged(); }), ...when(off, "Shut the VM down first") }
-      : {
-          label: "Convert to template",
-          run: () => run(async () => { await put(`${base}/template`, { template: true }); props.onChanged(); }),
-          ...when(off, "Shut the VM down first. A template can be cloned (also linked) but not started."),
-        },
-    {
-      label: "Seal template",
-      run: () => setSealing(true),
-      ...when(running && d.agent === "connected" && !d.template, d.template ? "This VM is already a template" : !running ? "Needs a running VM with the guest agent connected" : "Needs the guest agent to be connected"),
-    },
-  ];
+  const convertBack = () => run(async () => { await put(`${base}/template`, { template: false }); props.onChanged(); });
+  const canConvert = off || (running && d.agent === "connected");
   const migrate: MenuEntry[] = [
     { label: "Migrate to another node", run: () => setMigrating(true), disabled: !op, title: need },
     { label: "Move a disk to another pool", run: () => goto("hardware", "hw-disks"), disabled: !op, title: need },
   ];
-  const remove: MenuEntry[] = [{ label: "Delete VM", danger: true, run: () => setDeleting(true), ...when(off, "Shut the VM down first") }];
+  const more: MenuEntry[] = [
+    { label: "Edit XML", run: () => goto("xml") },
+    "sep",
+    { label: "Delete VM", danger: true, run: () => setDeleting(true), ...when(off, "Shut the VM down first") },
+  ];
 
   const items: MenuEntry[] = [
     { label: "Power", items: power, disabled: !op, title: need },
     { label: "Edit Settings", items: settings, disabled: !op, title: need },
     { label: "Snapshots", items: snapshots },
-    { label: "Clone", items: clone, disabled: !op, title: need },
-    { label: "Template", items: template, disabled: !op, title: need },
-    { label: "Guest", items: guest, disabled: !op, title: need },
+    { label: "Clone", run: () => setCloning(true), ...when(off, "Shut the VM down to clone it") },
+    d.template
+      ? { label: "Convert back to a VM", run: convertBack, ...when(off, "Shut the VM down first") }
+      : { label: "Convert to template", run: () => setConverting(true), ...when(canConvert, "Shut the VM down first, or start it with the guest agent connected") },
     { label: "Migrate", items: migrate, disabled: !op, title: need },
-    { label: "Delete", items: remove, disabled: !op, title: need },
+    { label: "More", items: more },
   ];
 
   return (
@@ -124,8 +105,8 @@ export default function VMActions(props: {
       <DropdownMenu label="Actions" items={items} className="primary" />
       {confirm.dialog}
       {editing && <HardwareDialog area={editing[1]} title={editing[0]} d={d} base={base} onChanged={props.onChanged} onClose={() => setEditing(undefined)} />}
-      {cloning && <CloneDialog d={d} base={base} linked={cloning.linked} onClose={() => setCloning(undefined)} />}
-      {sealing && <SealDialog d={d} base={base} onClose={() => setSealing(false)} onDone={props.onChanged} />}
+      {cloning && <CloneDialog d={d} base={base} onClose={() => setCloning(false)} />}
+      {converting && <ConvertDialog d={d} base={base} onClose={() => setConverting(false)} onDone={props.onChanged} />}
       {taking && <TakeSnapshot d={d} base={base} onClose={() => setTaking(false)} onDone={props.onChanged} />}
       {migrating && <MigrateDialog d={d} onClose={() => setMigrating(false)} />}
       {deleting && <DeleteVM d={d} base={base} onClose={() => setDeleting(false)} onDeleted={() => nav("/datacenter/vms")} />}
@@ -135,7 +116,7 @@ export default function VMActions(props: {
 
 function DeleteVM(props: { d: VMDetail; base: string; onClose: () => void; onDeleted: () => void }) {
   const { d } = props;
-  const [disks, setDisks] = useState(false);
+  const [disks, setDisks] = useState(true);
   const act = useAction();
   const [leftDisks, setLeftDisks] = useState<string[]>();
   const owned = d.disks.filter((k) => k.device === "disk" && !k.readOnly && k.source);

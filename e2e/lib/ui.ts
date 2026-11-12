@@ -47,10 +47,11 @@ export function autoDialogs(page: Page, promptAnswer?: string) {
 /** A row of the first table on the page (or inside scope) that contains the text. */
 export const row = (scope: Locator | Page, text: string | RegExp) => scope.locator("tbody tr").filter({ hasText: text });
 
-/** Opens the VM page's Actions menu and clicks Group, then Item (a submenu entry). */
-export async function vmAction(page: Page, group: string, item: string) {
+/** Opens the VM page's Actions menu and clicks Group, then Item (a submenu entry). Without Item, Group is a single entry (Clone, Convert to template). */
+export async function vmAction(page: Page, group: string, item?: string) {
   const btn = page.locator(".head").getByRole("button", { name: "Actions", exact: true });
   if ((await btn.getAttribute("aria-expanded")) !== "true") await btn.click();
+  if (item === undefined) return void (await page.getByRole("menuitem", { name: group, exact: true }).click());
   const parent = page.getByRole("menuitem", { name: group, exact: true });
   if ((await parent.getAttribute("aria-expanded")) !== "true") await parent.click();
   await page.getByRole("menuitem", { name: item, exact: true }).click();

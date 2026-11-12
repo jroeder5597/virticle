@@ -59,6 +59,7 @@ test.describe.serial("cluster CPU baseline", () => {
     await dlg.getByRole("button", { name: "Disk image" }).click();
     await pick(dlg, "Base image", new RegExp("^" + env.cirros.replace(/\./g, "\\.")));
     await field(dlg, "Disk size (GiB)").fill("1");
+    await dlg.getByRole("button", { name: "Advanced" }).click();
     await expect(field(dlg, "CPU type")).toContainText(`Cluster baseline (${base.model})`);
     await dlg.getByRole("button", { name: "Create" }).click();
     await expect(dlg).toBeHidden();
@@ -100,7 +101,7 @@ test.describe.serial("cluster CPU baseline", () => {
 
   test("Advanced switches the VM to host-model and back to the baseline", async ({ page, api, n2 }) => {
     await openVM(page, { ...vm, node: n2 }, "hardware");
-    const open = () => page.getByRole("button", { name: /^Advanced: CPU placement/ }).click();
+    const open = () => page.getByRole("button", { name: /^Advanced/ }).first().click();
     await open();
     await expect(page.getByRole("combobox", { name: "CPU mode", exact: true })).toContainText(`Cluster baseline (${base.model})`);
     await pick(page, "CPU mode", "host-model");

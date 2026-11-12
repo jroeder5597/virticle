@@ -33,8 +33,8 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     await dlg.locator("summary", { hasText: "Cloud-init" }).click();
     await field(dlg, "User").fill(USER);
     await field(dlg, "Password").fill(PASS);
-    await field(dlg, "Packages").fill("qemu-guest-agent");
-    await expect(dlg.locator("summary")).toContainText("configured");
+    // no package is entered: the guest agent is installed by default
+    await expect(dlg.locator("summary", { hasText: "Cloud-init" })).toContainText("configured");
     await dlg.getByRole("button", { name: "Create" }).click();
     await expect(dlg).toBeHidden({ timeout: 120_000 });
     await expect(page.getByRole("heading", { level: 1, name: NAME })).toBeVisible();
@@ -92,10 +92,10 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
   test("seal and convert to a template through the dialog", async ({ page, api }) => {
     test.setTimeout(240_000);
     await openVM(page, vm);
-    await vmAction(page, "Template", "Seal template");
-    const dlg = dialog(page, `Seal ${NAME}`);
-    await expect(dlg).toContainText("machine-id");
-    await dlg.getByRole("button", { name: "Seal and convert" }).click();
+    await vmAction(page, "Convert to template");
+    const dlg = dialog(page, `Convert ${NAME} to a template`);
+    await expect(dlg.getByLabel("Also reset its identity")).toBeChecked();
+    await dlg.getByRole("button", { name: "Convert to template", exact: true }).click();
     await expect(dlg).toBeHidden({ timeout: 180_000 });
     await expectBadge(page.locator(".head"), "shutoff");
     await expect(page.locator(".head .badge", { hasText: "Template" })).toBeVisible();
@@ -114,11 +114,10 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
   test("linked clone with credentials through the Clone dialog", async ({ page, api }) => {
     test.setTimeout(120_000);
     await openVM(page, vm);
-    await vmAction(page, "Clone", "Linked clone (from a template)");
+    await vmAction(page, "Clone"); // a template is cloned linked
     const dlg = dialog(page, `Clone ${NAME}`);
     await expect(field(dlg, "Name of the clone")).toBeFocused();
     await field(dlg, "Name of the clone").fill(CLONE);
-    await dlg.getByLabel(/Linked clone/).check();
     await dlg.locator("summary", { hasText: "Cloud-init" }).click();
     await field(dlg, "User").fill(USER);
     await field(dlg, "Password").fill(PASS);
@@ -153,16 +152,16 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     await api.post(`/nodes/${clone.node}/vms/${clone.uuid}/action`, { action: "poweroff" });
     await api.waitFor("clone off", async () => (await api.vmDetail(clone.node, clone.uuid)).state === "shutoff");
     await openVM(page, clone);
-    await vmAction(page, "Delete", "Delete VM");
+    await vmAction(page, "More", "Delete VM");
     const dlg = dialog(page, `Delete ${CLONE}?`);
     await dlg.getByLabel(/Also delete its disk/).check();
     await dlg.getByRole("button", { name: "Delete VM" }).click();
     await expect(page).toHaveURL(/\/datacenter\/vms$/);
     expect(await api.vmByName(CLONE)).toBeUndefined();
     await openVM(page, vm);
-    await vmAction(page, "Template", "Convert back to a VM");
+    await vmAction(page, "Convert back to a VM");
     await expect(page.locator(".head .badge", { hasText: "Template" })).toHaveCount(0);
-    await vmAction(page, "Delete", "Delete VM");
+    await vmAction(page, "More", "Delete VM");
     const d2 = dialog(page, `Delete ${NAME}?`);
     await d2.getByLabel(/Also delete its disk/).check();
     await d2.getByRole("button", { name: "Delete VM" }).click();

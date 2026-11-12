@@ -40,7 +40,7 @@ func TestMergeProfile(t *testing.T) {
 		t.Errorf("raw override: %q", c.RawUserData)
 	}
 	// No profile: the input passes through, and the profile is never modified.
-	if c = mergeProfile(nil, ciInput{User: "x", Packages: []string{"a"}}); c.User != "x" || len(c.Packages) != 1 {
+	if c = mergeProfile(nil, ciInput{User: "x", Packages: []string{"a"}}); c.User != "x" || !reflect.DeepEqual(c.Packages, []string{"a", "qemu-guest-agent"}) {
 		t.Errorf("nil: %+v", c)
 	}
 	if len(p.SSHKeys) != 1 || len(p.Packages) != 2 {
@@ -101,5 +101,51 @@ func TestProfileViewHidesHash(t *testing.T) {
 	v := view(store.CloudProfile{ID: 1, Name: "x", PwHash: "$6$salt$abc"})
 	if !v.HasPassword {
 		t.Error("hasPassword")
+	}
+}
+
+// Any cloud-init configuration installs the guest agent, unless raw user-data replaces everything.
+func TestMergeProfileInstallsGuestAgent(t *testing.T) {
+	c := mergeProfile(nil, ciInput{Hostname: "vm1"})
+	if !reflect.DeepEqual(c.Packages, []string{"qemu-guest-agent"}) {
+		t.Errorf("packages: %v", c.Packages)
+	}
+	ud, err := c.UserData()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"packages:\n  - \"qemu-guest-agent\"\n", "systemctl, start, qemu-guest-agent"} {
+		if !strings.Contains(ud, want) {
+			t.Errorf("user-data lacks %q:\n%s", want, ud)
+		}
+	}
+	// A profile without the package gets it added once; one that has it is not doubled.
+	c = mergeProfile(&store.CloudProfile{User: "ops", Packages: []string{"curl"}}, ciInput{})
+	if !reflect.DeepEqual(c.Packages, []string{"curl", "qemu-guest-agent"}) {
+		t.Errorf("profile packages: %v", c.Packages)
+	}
+	c = mergeProfile(&store.CloudProfile{Packages: []string{"qemu-guest-agent"}}, ciInput{Packages: []string{"qemu-guest-agent"}})
+	if !reflect.DeepEqual(c.Packages, []string{"qemu-guest-agent"}) {
+		t.Errorf("doubled: %v", c.Packages)
+	}
+	// Raw user-data (own or the profile's) is used as it is.
+	c = mergeProfile(nil, ciInput{RawUserData: "#cloud-config\nfoo: 1\n"})
+	if len(c.Packages) != 0 {
+		t.Errorf("raw user-data got packages: %v", c.Packages)
+	}
+	c = mergeProfile(&store.CloudProfile{RawUserData: "#!/bin/sh\n"}, ciInput{})
+	if len(c.Packages) != 0 {
+		t.Errorf("profile raw user-data got packages: %v", c.Packages)
+	}
+}
+
+// The seed of a clone carries the agent too.
+func TestBuildSeedInstallsGuestAgent(t *testing.T) {
+	img, err := buildSeed("linux", "c1", cloneCustomize{User: "ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(img), "qemu-guest-agent") {
+		t.Error("clone seed lacks the guest agent package")
 	}
 }

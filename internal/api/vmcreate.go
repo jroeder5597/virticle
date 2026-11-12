@@ -13,6 +13,11 @@ import (
 	"virticle/internal/store"
 )
 
+// defaultLinuxFirmware is the firmware a Linux guest gets when the request
+// names none. The web UI has the same constant (defaultLinuxFirmware in
+// web/src/pages/Firmware.tsx); change both to switch the default to "uefi".
+const defaultLinuxFirmware = "bios"
+
 type createVMRequest struct {
 	Name      string `json:"name"`
 	VCPUs     int    `json:"vcpus"`
@@ -46,9 +51,11 @@ type createVMRequest struct {
 	// CPU is baseline (the default: the best model every node can run),
 	// host-model or host-passthrough.
 	CPU string `json:"cpu"`
-	// Serial adds a serial console (pty) and its console alias; absent means yes.
+	// Serial adds a serial console (pty) and its console alias; absent means
+	// yes, and the web UI no longer sends it.
 	Serial *bool `json:"serial"`
 
+	fwDefaulted bool // Firmware came from defaultLinuxFirmware, not from the caller
 	seedPath   string // set while creating, once the seed volume exists
 	diskFormat string // driver type of the disk; qcow2 unless an existing volume says otherwise
 	tpmModel   string
@@ -80,6 +87,9 @@ func (q *createVMRequest) normalize() error {
 		return badRequest("osType must be linux or windows")
 	}
 	win := q.OSType == "windows"
+	if q.Firmware == "" && !win {
+		q.Firmware, q.fwDefaulted = defaultLinuxFirmware, true
+	}
 	if q.DiskBus == "" {
 		q.DiskBus = map[bool]string{true: "sata", false: "virtio"}[win]
 	}
@@ -226,6 +236,7 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 	if q.Firmware == "uefi" || q.TPM || q.SecureBoot {
 		caps, err := nodeFwCaps(h)
 		if err == nil {
+			q.fallBackToBIOS(caps)
 			err = q.checkFirmware(caps)
 		}
 		if err != nil {

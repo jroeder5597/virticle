@@ -58,7 +58,7 @@ func build(t *testing.T, q createVMRequest) string {
 }
 
 func TestDomainXMLFirmware(t *testing.T) {
-	base := createVMRequest{Name: "x", VCPUs: 1, MemoryMiB: 128, Network: "default", ISO: "/i.iso"}
+	base := createVMRequest{Name: "x", VCPUs: 1, MemoryMiB: 128, Network: "default", ISO: "/i.iso", Firmware: "bios"}
 	bios := build(t, base)
 	for _, no := range []string{"firmware='efi'", "<tpm", "smm", "hyperv"} {
 		if strings.Contains(bios, no) {

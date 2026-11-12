@@ -9,15 +9,14 @@ const NAME = `${P}ov1`;
 const VIEWER = `${P}ovviewer`;
 const PASS = "e2e-user-pass-123";
 
+// Clone and Convert to template are single entries; the others open a submenu.
+const TOP = ["Power", "Edit Settings", "Snapshots", "Clone", "Convert to template", "Migrate", "More"];
 const SUBMENUS: Record<string, string[]> = {
-  Power: ["Power On", "Reboot (Graceful)", "Shutdown (graceful)", "Pause", "Resume", "Halt (Force Shutdown)", "Reset (Hard Reboot)"],
-  "Edit Settings": ["CPU and memory", "Disks", "Network interfaces", "CD-ROM", "Boot order", "Firmware and TPM", "Advanced", "Passthrough devices", "Serial console", "Clock"],
+  Power: ["Power On", "Reboot (Graceful)", "Shutdown (graceful)", "Pause", "Resume", "Halt (Force Shutdown)", "Reset (Hard Reboot)", "Sync guest clock"],
+  "Edit Settings": ["CPU and memory", "Disks", "Network interfaces", "CD-ROM", "Boot order", "Firmware and TPM", "Passthrough devices"],
   Snapshots: ["Take snapshot", "Manage snapshots", "Schedule"],
-  Clone: ["Clone this VM", "Linked clone (from a template)"],
-  Template: ["Convert to template", "Seal template"],
-  Guest: ["Sync guest clock"],
   Migrate: ["Migrate to another node", "Move a disk to another pool"],
-  Delete: ["Delete VM"],
+  More: ["Edit XML", "Delete VM"],
 };
 
 async function signInAs(browser: Browser, user: string, pass: string) {
@@ -94,7 +93,7 @@ test.describe.serial("overview and actions", () => {
     await actions(page).click();
     await expect(actions(page)).toHaveAttribute("aria-expanded", "true");
     const top = await page.getByRole("menu").first().locator(":scope > .mi > button").allTextContents();
-    expect(top).toEqual(Object.keys(SUBMENUS));
+    expect(top).toEqual(TOP);
     for (const [group, labels] of Object.entries(SUBMENUS)) {
       const parent = item(page, group);
       await expect(parent).toHaveAttribute("aria-haspopup", "menu");
@@ -115,12 +114,13 @@ test.describe.serial("overview and actions", () => {
     await expect(item(page, "Power On")).toBeDisabled();
     await expect(item(page, "Resume")).toBeDisabled();
     await expect(item(page, "Halt (Force Shutdown)")).toBeEnabled();
-    await item(page, "Delete").click();
+    await item(page, "More").click();
     await expect(item(page, "Delete VM")).toBeDisabled();
     await expect(item(page, "Delete VM")).toHaveAttribute("title", /Shut the VM down/);
-    await item(page, "Clone").click();
-    await expect(item(page, "Clone this VM")).toBeDisabled();
-    await expect(item(page, "Clone this VM")).toHaveAttribute("title", /Shut the VM down to clone/);
+    await expect(item(page, "Clone")).toBeDisabled();
+    await expect(item(page, "Clone")).toHaveAttribute("title", /Shut the VM down to clone/);
+    // a running VM without the guest agent cannot reset its identity, so it cannot be converted either
+    await expect(item(page, "Convert to template")).toBeDisabled();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
   });
@@ -145,6 +145,16 @@ test.describe.serial("overview and actions", () => {
     await page.keyboard.press("Escape");
     await vmActionOnPage(page, "Snapshots", "Manage snapshots");
     await expect(page).toHaveURL(/tab=snapshots/);
+  });
+
+  test("the XML editor is not a tab; Actions, More, Edit XML opens it and the old link works", async ({ page }) => {
+    await openVM(page, vm);
+    await expect(page.locator(".tabs").getByRole("button", { name: "XML" })).toHaveCount(0);
+    await vmActionOnPage(page, "More", "Edit XML");
+    await expect(page).toHaveURL(/tab=xml/);
+    await expect(page.getByLabel("Domain XML")).toBeVisible();
+    await page.goto(`/vm/${vm.node}/${vm.uuid}?tab=xml`);
+    await expect(page.getByLabel("Domain XML")).toBeVisible();
   });
 
   test("keyboard: Enter opens, arrows move, Right opens a submenu, Left and Escape close, focus returns", async ({ page }) => {
@@ -225,8 +235,10 @@ test.describe.serial("overview and actions", () => {
     await item(page, "Power").click();
     await expect(item(page, "Power On")).toBeEnabled();
     await expect(item(page, "Halt (Force Shutdown)")).toBeDisabled();
-    await item(page, "Delete").click();
+    await item(page, "More").click();
     await expect(item(page, "Delete VM")).toBeEnabled();
+    await expect(item(page, "Clone")).toBeEnabled();
+    await expect(item(page, "Convert to template")).toBeEnabled();
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     // the overview of a shut-off VM keeps its band
@@ -240,7 +252,12 @@ test.describe.serial("overview and actions", () => {
     await page.goto(`/vm/${vm.node}/${vm.uuid}`);
     await expect(page.getByRole("heading", { level: 1, name: NAME })).toBeVisible();
     await actions(page).click();
-    for (const g of ["Power", "Edit Settings", "Clone", "Template", "Migrate", "Delete"]) await expect(item(page, g)).toBeDisabled();
+    for (const g of ["Power", "Edit Settings", "Clone", "Convert to template", "Migrate"]) await expect(item(page, g)).toBeDisabled();
+    await item(page, "More").click();
+    await expect(item(page, "Edit XML")).toBeEnabled();
+    await expect(item(page, "Delete VM")).toBeDisabled();
+    await page.keyboard.press("Escape");
+    await actions(page).click();
     await item(page, "Snapshots").click();
     await expect(item(page, "Take snapshot")).toBeDisabled();
     await expect(item(page, "Manage snapshots")).toBeEnabled();

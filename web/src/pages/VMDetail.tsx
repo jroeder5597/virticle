@@ -67,7 +67,6 @@ export default function VMDetailPage() {
     ["console", "Console"],
     ["snapshots", "Snapshots"],
     ["backups", "Backups"],
-    ["xml", "XML"],
   ].filter(([id]) => id !== "console" || role !== "viewer"); // a console is control
 
   return (

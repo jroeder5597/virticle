@@ -124,6 +124,14 @@ func (q createVMRequest) checkFirmware(c fwCaps) error {
 	return nil
 }
 
+// fallBackToBIOS drops a firmware that only came from the server default when
+// the node cannot run it, so an omitted field never fails on an older node.
+func (q *createVMRequest) fallBackToBIOS(c fwCaps) {
+	if q.fwDefaulted && q.Firmware == "uefi" && !c.UEFI && !q.SecureBoot {
+		q.Firmware = "bios"
+	}
+}
+
 // tpmModel picks the device model: tpm-crb where the node has it.
 func (c fwCaps) tpmModel() string {
 	if len(c.TPMModels) > 0 {

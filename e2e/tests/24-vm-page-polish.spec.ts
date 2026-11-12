@@ -8,7 +8,7 @@ import { poolLevel } from "../../web/src/poolLevel";
 const NAME = `${P}pp1`;
 const POOL = `${P}pool24`;
 
-const AREAS = ["CPU and memory", "Disks", "Network interfaces", "CD-ROM", "Boot order", "Firmware and TPM", "Advanced", "Passthrough devices"];
+const AREAS = ["CPU and memory", "Disks", "Network interfaces", "CD-ROM", "Boot order", "Firmware and TPM", "Passthrough devices"];
 
 test.describe("pool level (pure)", () => {
   test("below warn, between, at and above critical, zero capacity", () => {
@@ -43,7 +43,7 @@ test.describe.serial("VM page polish", () => {
   test.afterAll(async ({ api, n1 }) => {
     await cleanVMs(api, NAME);
     for (const v of await api.get(`/nodes/${n1}/pools/${POOL}/volumes`).catch(() => [])) await api.del(`/nodes/${n1}/pools/${POOL}/volumes/${encodeURIComponent(v.name)}`).catch(() => {});
-    await api.del(`/nodes/${n1}/pools/default/volumes/${NAME}-d1.qcow2`).catch(() => {});
+    await api.del(`/nodes/${n1}/pools/default/volumes/${NAME}-disk1.qcow2`).catch(() => {});
     await api.post(`/nodes/${n1}/pools/${POOL}/action`, { action: "remove" }).catch(() => {});
   });
 
@@ -73,8 +73,9 @@ test.describe.serial("VM page polish", () => {
     await openVM(page, vm, "hardware");
     await edit(page, "CPU and memory");
     const dlg = dialog(page, "CPU and memory");
+    await field(dlg, "Memory (MiB)").fill("192");
+    await dlg.getByRole("button", { name: "Advanced" }).click();
     await field(dlg, "Maximum memory (MiB)").fill("256");
-    await field(dlg, "Memory now (MiB)").fill("192");
     await dlg.getByRole("button", { name: "Apply" }).click();
     await expect(dlg).toContainText("Saved.");
     await expect(card(page, "CPU and memory")).toContainText("192 MiB"); // the tab, behind the dialog, without a reload
@@ -87,11 +88,11 @@ test.describe.serial("VM page polish", () => {
     await page.locator(".tabs").getByRole("button", { name: "Hardware" }).click();
     const c = card(page, "CPU and memory");
     await c.getByRole("button", { name: "Edit" }).click();
-    await field(c, "Memory now (MiB)").fill("224");
+    await field(c, "Memory (MiB)").fill("224");
     await c.getByRole("button", { name: "Apply" }).click();
     await expect(c).toContainText("224 MiB");
     await edit(page, "CPU and memory");
-    await expect(field(dialog(page, "CPU and memory"), "Memory now (MiB)")).toHaveValue("224");
+    await expect(field(dialog(page, "CPU and memory"), "Memory (MiB)")).toHaveValue("224");
     await page.keyboard.press("Escape");
   });
 
@@ -106,15 +107,15 @@ test.describe.serial("VM page polish", () => {
     await expect(disks).toBeVisible();
     await disks.getByRole("button", { name: "Add disk" }).click();
     const add = dialog(page, "Add disk");
-    await field(add, "Volume name").fill(`${NAME}-d1.qcow2`);
     await field(add, "Size (GiB)").fill("1");
     await add.getByRole("button", { name: "Add disk" }).click();
     await expect(add).toBeHidden();
-    await expect(disks.locator("tbody tr", { hasText: `${NAME}-d1.qcow2` })).toBeVisible();
-    await expect(card(page, "Disks").locator("tbody tr", { hasText: `${NAME}-d1.qcow2` })).toBeVisible();
+    // the volume name is generated
+    await expect(disks.locator("tbody tr", { hasText: `${NAME}-disk1.qcow2` })).toBeVisible();
+    await expect(card(page, "Disks").locator("tbody tr", { hasText: `${NAME}-disk1.qcow2` })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(dialog(page)).toHaveCount(0);
-    expect((await api.vmDetail(vm.node, vm.uuid)).disks.some((k: any) => k.source?.endsWith(`${NAME}-d1.qcow2`))).toBe(true);
+    expect((await api.vmDetail(vm.node, vm.uuid)).disks.some((k: any) => k.source?.endsWith(`${NAME}-disk1.qcow2`))).toBe(true);
   });
 
   test("pool picker: percent, used of size and a bar per pool; keyboard choice is what the request sends", async ({ page }) => {
@@ -155,7 +156,6 @@ test.describe.serial("VM page polish", () => {
     await expect(page.getByRole("listbox")).toHaveCount(0);
     await expect(combo).toContainText(POOL);
     // a size no pool has room for is called out, and the pool stays selectable
-    await field(dlg, "Volume name").fill(`${NAME}-d2.qcow2`);
     await field(dlg, "Size (GiB)").fill("60000");
     await expect(combo).toContainText("not enough free space");
     await field(dlg, "Size (GiB)").fill("1");
@@ -164,17 +164,17 @@ test.describe.serial("VM page polish", () => {
     await dlg.getByRole("button", { name: "Add disk" }).click();
     expect((await req).postDataJSON().pool).toBe(POOL);
     await expect(dlg).toBeHidden();
-    await expect(card(page, "Disks").locator("tbody tr", { hasText: `${POOL}/${NAME}-d2.qcow2` })).toBeVisible();
+    await expect(card(page, "Disks").locator("tbody tr", { hasText: `${POOL}/${NAME}-disk1.qcow2` })).toBeVisible();
   });
 
-  test("the Power submenu has the nine entries and separators in the requested order", async ({ page }) => {
+  test("the Power submenu has its entries and separators in the requested order", async ({ page }) => {
     await openVM(page, vm);
     await actions(page).click();
     const parent = item(page, "Power");
     await parent.click();
     const sub = page.locator(".mi", { has: parent }).getByRole("menu");
     const got = await sub.locator(":scope > *").evaluateAll((els) => els.map((e) => (e.getAttribute("role") === "separator" ? "-" : (e.textContent ?? "").trim())));
-    expect(got).toEqual(["Power On", "Reboot (Graceful)", "Shutdown (graceful)", "-", "Pause", "Resume", "-", "Halt (Force Shutdown)", "Reset (Hard Reboot)"]);
+    expect(got).toEqual(["Power On", "Reboot (Graceful)", "Shutdown (graceful)", "-", "Pause", "Resume", "-", "Halt (Force Shutdown)", "Reset (Hard Reboot)", "-", "Sync guest clock"]);
     expect(got.join("|")).not.toContain("force off after");
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
@@ -201,7 +201,7 @@ test.describe.serial("VM page polish", () => {
     await openVM(page, vm, "hardware");
     await expect(page.locator("#hw-advanced")).toBeVisible();
     const boxes = await page.locator(".hw .card").evaluateAll((els) => els.map((e) => ({ id: e.id, ...e.getBoundingClientRect().toJSON() })));
-    expect(boxes.length).toBe(10);
+    expect(boxes.length).toBe(8);
     for (let i = 0; i < boxes.length; i++)
       for (let j = i + 1; j < boxes.length; j++) {
         const a = boxes[i], b = boxes[j];
@@ -228,7 +228,7 @@ test.describe.serial("VM page polish", () => {
     expect(gaps.length).toBeGreaterThan(4);
     for (const g of gaps) expect(Math.abs(g - gaps[0]), `gaps ${gaps}`).toBeLessThanOrEqual(1);
     // the two stacks of the top block end level: no hole under the shorter one
-    const bottoms = ["hw-serial", "hw-clock"].map((id) => boxes.find((x) => x.id === id)!.bottom);
+    const bottoms = ["hw-firmware", "hw-cdrom"].map((id) => boxes.find((x) => x.id === id)!.bottom);
     expect(Math.abs(bottoms[0] - bottoms[1])).toBeLessThan(2);
     // no card spills out of the page area
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
@@ -238,7 +238,7 @@ test.describe.serial("VM page polish", () => {
     await openVM(page, vm, "hardware");
     const adv = page.locator("#hw-advanced");
     const pass = page.locator("#hw-passthrough");
-    await expect(adv).toContainText("No pinning, ordinary pages, default NUMA policy");
+    await expect(adv).toContainText("No pinning, ordinary pages");
     await expect(pass).toContainText("No host devices");
     await expect(page.locator("#hw-advanced-body")).toHaveCount(0);
     await adv.getByRole("button").first().click();
@@ -254,10 +254,12 @@ test.describe.serial("VM page polish", () => {
     await expect(page.locator("#hw-advanced-body")).toHaveCount(0);
   });
 
-  test("the Advanced and Passthrough dialogs show their content without a collapsed header", async ({ page }) => {
+  test("the Passthrough dialog shows its content without a collapsed header; Advanced is only a card on the tab", async ({ page }) => {
     await openVM(page, vm);
-    await edit(page, "Advanced");
-    await expect(dialog(page, "Advanced")).toContainText("vCPU pinning");
+    await actions(page).click();
+    await item(page, "Edit Settings").click();
+    await expect(item(page, "Advanced")).toHaveCount(0);
+    await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await edit(page, "Passthrough devices");
     await expect(dialog(page, "Passthrough devices")).toContainText("No host devices");

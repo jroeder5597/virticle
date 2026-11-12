@@ -9,7 +9,8 @@ import Select from "../Select";
 import { ErrorBox, Field, Modal, NodePicker, PageTitle, StateBadge, useAction, useConfirm } from "../ui";
 import { powerConfirm, powerLabel } from "../power";
 import { BulkBar } from "./Bulk";
-import { emptyFw, FirmwareFields, fwPayload, FwValues } from "./Firmware";
+import { emptyFw, FirmwareFields, fwPayload, FwValues, limitToCaps, OsTypeField, useFwCaps } from "./Firmware";
+import { AdvancedSection } from "./Disclosure";
 import { TagChips } from "./Tags";
 import { Meter, pct, useAllStats, VMPoint } from "../charts";
 import { baselineLabel, useCpuBaseline } from "../cpu";
@@ -204,6 +205,7 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
   const [vcpus, setVcpus] = useState(2);
   const [memoryMiB, setMemory] = useState(2048);
   const [fw, setFw] = useState<FwValues>(emptyFw);
+  const { caps, error: capsError } = useFwCaps(node);
   const [cpu, setCpu] = useState("baseline");
   const baseline = useCpuBaseline();
   const [source, setSource] = useState<"iso" | "image" | "empty" | "existing">(preset ? "image" : "iso");
@@ -214,11 +216,15 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
   const [media, setMedia] = useState("");
   const [network, setNetwork] = useState("");
   const [start, setStart] = useState(true);
-  const [serial, setSerial] = useState(true);
   const [ci, setCi] = useState<CloudInitValues>(emptyCloudInit);
   const [pools, setPools] = useState<Pool[]>([]);
   const [networks, setNetworks] = useState<Network[]>([]);
   const [volumes, setVolumes] = useState<(Volume & { pool: string })[]>([]);
+
+  // A default the node cannot honour (UEFI, say) is dropped as soon as the node's abilities are known.
+  useEffect(() => {
+    if (caps) setFw((v) => limitToCaps(v, caps));
+  }, [caps]);
 
   // The suggested disk size fits the chosen pool: 20 GiB, or what is free
   // when the pool has less.
@@ -271,7 +277,6 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
         diskGiB,
         network,
         start,
-        serial,
         iso: source === "iso" ? media : "",
         baseVolume: source === "image" ? media : "",
         existingVolume: source === "existing" ? media : "",
@@ -291,9 +296,11 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
           <Field label="Name">
             <input value={name} onChange={(e) => setName(e.target.value)} required autoFocus pattern="[A-Za-z0-9][A-Za-z0-9._\-]*" />
           </Field>
-          <Field label="Node">
-            <NodePicker nodes={nodes} value={node} onChange={setNode} />
-          </Field>
+          {nodes.length > 1 && (
+            <Field label="Node">
+              <NodePicker nodes={nodes} value={node} onChange={setNode} />
+            </Field>
+          )}
           <Field label="vCPUs">
             <input type="number" min={1} value={vcpus} onChange={(e) => setVcpus(Number(e.target.value))} />
           </Field>
@@ -301,6 +308,8 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
             <input type="number" min={64} step={64} value={memoryMiB} onChange={(e) => setMemory(Number(e.target.value))} />
           </Field>
         </div>
+        <ErrorBox error={capsError} />
+        <OsTypeField value={fw} caps={caps} onChange={setFw} />
         <Field label="Install from" group>
           <div className="segmented">
             {(
@@ -308,7 +317,6 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
                 ["iso", "Installer ISO"],
                 ["image", "Disk image"],
                 ["empty", "Empty disk"],
-                ["existing", "Existing volume"],
               ] as const
             ).map(([v, label]) => (
               <button
@@ -340,15 +348,12 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
             No images in this pool. <Link to={`/node/${node}/storage?pool=${encodeURIComponent(pool)}&catalogue=1`}>Get a cloud image from the catalogue</Link>.
           </p>
         )}
-        {source === "existing" && (
-          <Field label="Volume" hint="Used as the VM's disk as it is, not copied (an imported disk, say). Import other formats under Storage first.">
-            <Select label="Volume" value={media} onChange={setMedia} placeholder="Choose a volume" options={images.map((v) => ({ value: v.name, label: `${v.name} (${bytes(v.capacity)})` }))} />
-          </Field>
-        )}
         <div className="grid2">
-          <Field label="Storage pool">
-            <PoolSelect label="Storage pool" pools={pools} value={pool} onChange={setPool} needBytes={source === "existing" ? undefined : diskGiB * 2 ** 30} />
-          </Field>
+          {pools.length !== 1 && (
+            <Field label="Storage pool">
+              <PoolSelect label="Storage pool" pools={pools} value={pool} onChange={setPool} needBytes={source === "existing" ? undefined : diskGiB * 2 ** 30} />
+            </Field>
+          )}
           {source !== "existing" && (
             <Field label="Disk size (GiB)">
               <input
@@ -366,26 +371,36 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
             <Select label="Network" value={network} onChange={setNetwork} options={[{ value: "", label: "None" }, ...networks.map((n) => ({ value: n.name, label: `${n.name} (${n.forward})` }))]} />
           </Field>
         </div>
-        <Field label="CPU type" hint={CPU_HINT[cpu]}>
-          <Select
-            label="CPU type"
-            value={cpu}
-            onChange={setCpu}
-            options={[
-              { value: "baseline", label: baselineLabel(baseline) },
-              { value: "host-model", label: "Host model (this node)" },
-              { value: "host-passthrough", label: "Host passthrough (no live migration to different CPUs)" },
-            ]}
-          />
-        </Field>
-        <FirmwareFields node={node} value={fw} onChange={setFw} />
-        {source === "image" && <CloudInitFields vmName={name} value={ci} onChange={setCi} canSave preselect />}
+        {source === "image" && <CloudInitFields value={ci} onChange={setCi} preselect />}
         <label className="check">
           <input type="checkbox" checked={start} onChange={(e) => setStart(e.target.checked)} /> Start after creating
         </label>
-        <label className="check">
-          <input type="checkbox" checked={serial} onChange={(e) => setSerial(e.target.checked)} /> Serial console
-        </label>
+        <AdvancedSection>
+          <Field label="CPU type" hint={CPU_HINT[cpu]}>
+            <Select
+              label="CPU type"
+              value={cpu}
+              onChange={setCpu}
+              options={[
+                { value: "baseline", label: baselineLabel(baseline) },
+                { value: "host-model", label: "Host model (this node)" },
+                { value: "host-passthrough", label: "Host passthrough (no live migration to different CPUs)" },
+              ]}
+            />
+          </Field>
+          <FirmwareFields value={fw} caps={caps} onChange={setFw} />
+          <Field label="Existing volume" hint="Use a volume of the chosen pool as the disk as it is, not copied.">
+            <Select
+              label="Existing volume"
+              value={source === "existing" ? media : ""}
+              onChange={(v) => {
+                setSource(v ? "existing" : "iso");
+                setMedia(v);
+              }}
+              options={[{ value: "", label: "None" }, ...images.map((v) => ({ value: v.name, label: `${v.name} (${bytes(v.capacity)})` }))]}
+            />
+          </Field>
+        </AdvancedSection>
         <ErrorBox error={act.error} />
         <footer>
           <button type="button" onClick={onClose}>

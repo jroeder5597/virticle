@@ -108,7 +108,7 @@ test.describe.serial("themed select", () => {
 
   test("a long list has a search box that filters; Enter takes the active match", async ({ page }) => {
     await openVM(page, vm, "hardware");
-    await page.getByRole("button", { name: /^Advanced: CPU placement/ }).click();
+    await page.getByRole("button", { name: /^Advanced/ }).first().click();
     await pick(page, "CPU mode", "custom model");
     const model = page.getByRole("combobox", { name: "Model", exact: true });
     await model.click();

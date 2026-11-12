@@ -83,13 +83,15 @@ What you can do with a node:
 2. Pick what to install from:
    - **Installer ISO**: boots an ISO from a pool. Upload ISOs under Storage.
    - **Disk image**: copies a cloud image. Open **Cloud-init** to set the
-     user, password, SSH key and packages.
-   - **Empty disk** or **Existing volume**.
-3. Leave **CPU type** on **Cluster baseline** unless you need host features.
-   It is the best CPU every online node can run, so live migration works.
-4. For Windows 11, choose UEFI firmware and tick **Secure Boot** and
-   **Virtual TPM 2.0**.
-5. **Create**.
+     user, password and SSH key. The guest agent is installed too.
+   - **Empty disk**.
+3. For Windows, set **Guest OS type** to **Windows**: it picks UEFI, Secure
+   Boot and a virtual TPM for you.
+4. **Advanced** holds the CPU type, firmware, Secure Boot, TPM and **Existing
+   volume** (use a volume as the disk as it is). Leave **CPU type** on
+   **Cluster baseline** unless you need host features: it is the best CPU every
+   online node can run, so live migration works.
+5. **Create**. Every new VM gets a serial console.
 
 ### Manage
 
@@ -104,11 +106,12 @@ What you can do with a node:
 | Power | Start, stop and restart, gracefully or forced. |
 | Edit Settings | Name, CPU, memory, and the other Hardware cards. |
 | Snapshots | Take, manage, schedule. |
-| Clone | Full clone, or a linked clone from a template. |
-| Template | Convert to template, seal, convert back. |
-| Guest | Sync guest clock. |
+| Clone | Clone the VM. A template is cloned linked; **Advanced** offers a full copy. |
+| Convert to template | Optionally resets the identity of a running guest. **Convert back to a VM** undoes it. |
 | Migrate | To another node, or move a disk to another pool. |
-| Delete | Delete the VM; tick the box to delete its disks too. |
+| More | **Edit XML**, and **Delete VM** (its disks are deleted too unless you untick the box). |
+
+Sync guest clock is under **Power**.
 
 - **Tags** sit beside the name. Click **+ Add Tag**; filter by tag in the tree
   and the VM list.
@@ -122,22 +125,23 @@ What you can do with a node:
 - **Display (VNC)** is the VM's screen. **Serial console** is a text terminal.
 - **Keys** sends combinations the browser would swallow. **Paste text** types
   your clipboard into the guest.
-- A VM without a serial console: add one under **Hardware > Serial console**.
+- A VM without a serial console: the **Console** tab offers to add one.
 - Viewers cannot open a console.
 
 ## Hardware
 
 ![Hardware](img/vm-hardware.png)
 
-- Each card edits one area: CPU and memory, firmware and TPM, serial console,
-  boot order, CD-ROM, clock, disks, network interfaces, passthrough.
+- Each card edits one area: CPU and memory, firmware and TPM, boot order,
+  CD-ROM, disks, network interfaces, passthrough and **Advanced** (CPU mode,
+  pinning, huge pages).
 - A change that cannot apply to a running VM is saved and marked as applying
   at the next start.
 - **Passthrough** lists the host's PCI devices. A device shares its IOMMU
   group with others; the dialog shows what moves together. The host needs
   IOMMU enabled in firmware and on the kernel command line. A graphics card
   that the host itself is using cannot be attached.
-- The **XML** tab edits the full libvirt definition.
+- **Actions > More > Edit XML** edits the full libvirt definition.
 
 ## Snapshots
 

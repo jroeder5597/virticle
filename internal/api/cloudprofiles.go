@@ -217,14 +217,20 @@ type ciInput struct {
 
 // mergeProfile combines a profile (nil for none) with what the request itself
 // sets. A value in the request wins; SSH keys and packages are added to the
-// profile's. The profile's password only travels as its hash. Pure: no
+// profile's, and the guest agent is installed unless raw user-data replaces
+// everything. The profile's password only travels as its hash. Pure: no
 // storage, no defaults for the hostname.
 func mergeProfile(p *store.CloudProfile, in ciInput) cloudinit.Config {
 	cfg := cloudinit.Config{Hostname: in.Hostname, User: in.User, Password: in.Password,
 		SSHKeys: cleanList(in.SSHKeys), Packages: cleanList(in.Packages), RawUserData: in.RawUserData}
-	if p == nil {
-		return cfg
+	if p != nil {
+		mergeProfileInto(&cfg, p)
 	}
+	cfg.EnsureGuestAgent()
+	return cfg
+}
+
+func mergeProfileInto(cfg *cloudinit.Config, p *store.CloudProfile) {
 	if cfg.User == "" {
 		cfg.User = p.User
 	}
@@ -236,7 +242,6 @@ func mergeProfile(p *store.CloudProfile, in ciInput) cloudinit.Config {
 	}
 	cfg.SSHKeys = cleanList(append(append([]string{}, p.SSHKeys...), cfg.SSHKeys...))
 	cfg.Packages = cleanList(append(append([]string{}, p.Packages...), cfg.Packages...))
-	return cfg
 }
 
 // resolveProfile loads the profile a request names; id 0 means none.
