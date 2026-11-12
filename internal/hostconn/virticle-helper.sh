@@ -52,13 +52,24 @@
 #   peer-ping HOST PORT USER                 check key, host key and helper of a peer
 #   peer-recv                                the forced command of a peer key: header line, then the file on stdin
 #
+# Backup verbs (names are plain file names; DIR/WORKDIR as above):
+#   df DIR                                   free bytes of the file system of DIR
+#   files-size DIR NAME...                   size of each regular file, or MISSING
+#   backup-scan DIR MARKER                   the backups in a pool directory with their manifests
+#   tar-pack DIR NAME...                     tar of named files of a backup directory on stdout
+#   tar-unpack WORKDIR                       stdin tar -> the empty work directory (plain files only)
+#   convert-start WORKDIR SRC FORMAT         qemu-img convert SRC to WORKDIR/out.part, detached
+#   convert-poll WORKDIR                     exit code, "---", the end of the progress log
+#   convert-kill WORKDIR                     stop the conversion started there
+#   convert-finish WORKDIR DEST              move out.part to the new file DEST
+#
 # For tests: when not running as root, VIRTICLE_HELPER_ROOT names a directory
 # that is prefixed to every path, chown/restorecon are skipped, and
 # VIRTICLE_HELPER_POOLS (newline separated), VIRTICLE_HELPER_USER,
 # VIRTICLE_HELPER_HOME and VIRTICLE_HELPER_SSH stand in for the libvirt pools,
 # the service account and ssh. Running as root, the variables are ignored.
 
-VERSION=2
+VERSION=3
 
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
@@ -1017,6 +1028,184 @@ cmd_peer_recv() {
 	esac
 }
 
+# ---------------------------------------------------------------------------
+# BEGIN BACKUP VERBS (df, files-size, backup-scan, tar-pack, tar-unpack,
+# convert-start, convert-poll, convert-kill, convert-finish)
+# ---------------------------------------------------------------------------
+
+# name_ok NAME: a plain file name (no slash, no leading dot or dash).
+name_ok() {
+	case $1 in
+	'' | -* | .* | *[!A-Za-z0-9._-]*) return 1 ;;
+	esac
+	[ "${#1}" -le 120 ]
+}
+
+# work_dir_arg DIR: DIR is an existing work directory (.virticle-*) inside the
+# roots, not a symbolic link. RP is its canonical form.
+work_dir_arg() {
+	vpath_mod "$1"
+	[ -d "$ROOT$RP" ] || die "$1 is not a directory"
+	work_name "$RP" || die "$1 is not a work directory"
+}
+
+cmd_df() {
+	[ $# -eq 1 ] || die "usage: df DIR"
+	vpath_rd "$1"
+	[ -d "$ROOT$RP" ] || fail "$1 is not a directory"
+	df -P -B1 -- "$ROOT$RP" | awk 'NR==2{print $4}'
+}
+
+# files-size DIR NAME...: per name the size in bytes of the regular file DIR/NAME
+# (not a symbolic link), or MISSING.
+cmd_files_size() {
+	[ $# -ge 2 ] && [ $# -le 40 ] || die "usage: files-size DIR NAME..."
+	vpath_rd "$1"
+	[ -d "$ROOT$RP" ] || fail "$1 is not a directory"
+	_fd=$RP
+	shift
+	for _n in "$@"; do name_ok "$_n" || die "unsupported file name"; done
+	for _n in "$@"; do
+		_ff=$ROOT$_fd/$_n
+		if [ -f "$_ff" ] && [ ! -L "$_ff" ]; then stat -c %s -- "$_ff"; else echo MISSING; fi
+	done
+}
+
+# backup-scan DIR MARKER: the backups (DIR/*.vmbackup/manifest.json) in a pool
+# directory, one section per backup: "MARKER DIR", the size in bytes, the
+# manifest (at most 64 KiB), a newline. At most 500 backups.
+cmd_backup_scan() {
+	[ $# -eq 2 ] || die "usage: backup-scan DIR MARKER"
+	case $2 in
+	@@@????????????????) ;;
+	*) die "unsupported marker" ;;
+	esac
+	case $2 in *[!@0-9a-f]*) die "unsupported marker" ;; esac
+	vpath_rd "$1"
+	[ -d "$ROOT$RP" ] || fail "$1 is not a directory"
+	_sb=$ROOT$RP
+	find -H "$_sb" -maxdepth 2 -path '*.vmbackup/manifest.json' -type f -size -64k -print 2>/dev/null | head -n 500 |
+		while IFS= read -r _sf; do
+			# a name with a newline in it falls apart into pieces that fail these tests
+			case $_sf in "$_sb"/*/manifest.json) ;; *) continue ;; esac
+			_sd=${_sf%/manifest.json}
+			case ${_sd#"$_sb"/} in */*) continue ;; esac
+			{ [ -f "$_sf" ] && [ ! -L "$_sf" ] && [ ! -L "$_sd" ]; } || continue
+			echo "$2 $1${_sd#"$_sb"}"
+			du -sb -- "$_sd" | cut -f1
+			head -c 65536 -- "$_sf"
+			echo
+		done
+	true
+}
+
+# tar-pack DIR NAME...: a tar of the named files of a backup directory (one
+# with a manifest.json) on stdout.
+cmd_tar_pack() {
+	[ $# -ge 2 ] && [ $# -le 40 ] || die "usage: tar-pack DIR NAME..."
+	vpath_rd "$1"
+	[ -d "$ROOT$RP" ] || fail "$1 is not a directory"
+	[ -f "$ROOT$RP/manifest.json" ] && [ ! -L "$ROOT$RP/manifest.json" ] || die "$1 is not a backup"
+	_td=$ROOT$RP
+	shift
+	for _n in "$@"; do
+		name_ok "$_n" || die "unsupported file name"
+		{ [ -f "$_td/$_n" ] && [ ! -L "$_td/$_n" ]; } || fail "$_n is not a regular file"
+	done
+	cd "$_td" && tar -cf - --format=posix -- "$@"
+}
+
+# tar-unpack DIR: unpack a tar from stdin into the empty work directory DIR.
+# Members with a slash in the name are skipped; anything that is not a plain
+# regular file with one link afterwards (symbolic or hard links, devices,
+# directories) makes the whole unpack fail and empties the directory again.
+cmd_tar_unpack() {
+	[ $# -eq 1 ] || die "usage: tar-unpack DIR"
+	work_dir_arg "$1"
+	_ud=$ROOT$RP
+	[ -z "$(ls -A -- "$_ud")" ] || fail "$1 is not empty"
+	_rc=0
+	(cd "$_ud" && umask 077 && tar --no-same-owner --no-same-permissions --exclude='*/*' -xf -) || _rc=1
+	if [ -n "$(find "$_ud" -mindepth 1 \( ! -type f -o -links +1 \) -print -quit 2>/dev/null)" ]; then
+		find "$_ud" -mindepth 1 -delete 2>/dev/null
+		fail "the archive holds something other than plain files"
+	fi
+	[ "$_rc" = 0 ] || fail "tar failed"
+}
+
+# convert-start WORKDIR SRC FORMAT: start qemu-img convert of SRC (a file in a
+# root; a qcow2 chain is checked against the roots) to WORKDIR/out.part, detached.
+# The state lives in WORKDIR: qpid, rc (exit code), prog.log.
+cmd_convert_start() {
+	[ $# -eq 3 ] || die "usage: convert-start WORKDIR SRC FORMAT"
+	case $3 in
+	raw | qcow2 | vpc | vhdx | vdi) ;;
+	*) die "unsupported format" ;;
+	esac
+	work_dir_arg "$1"
+	_cw=$RP
+	vpath_rd "$2"
+	[ -f "$ROOT$RP" ] || fail "$2 is not a regular file"
+	_cs=$RP
+	if [ "$3" = qcow2 ]; then
+		check_chain "$_cs"
+		case $(qemu-img info -U -f qcow2 --output=json -- "$ROOT$_cs" 2>&1) in
+		*'"data-file"'*) die "$2 uses an external data file" ;;
+		esac
+	fi
+	rm -f -- "$ROOT$_cw/rc" "$ROOT$_cw/qpid" "$ROOT$_cw/prog.log" "$ROOT$_cw/out.part"
+	_cfmt=$3
+	_cdir=$ROOT$_cw
+	(
+		trap '' HUP
+		qemu-img convert -p -U -f "$_cfmt" -O qcow2 -- "$ROOT$_cs" "$_cdir/out.part" >"$_cdir/prog.log" 2>&1 &
+		_cp=$!
+		echo "$_cp" >"$_cdir/qpid"
+		wait "$_cp"
+		echo $? >"$_cdir/rc"
+	) >/dev/null 2>&1 </dev/null &
+	echo started
+}
+
+# convert-poll WORKDIR: the exit code once finished, "---", the end of the progress log.
+cmd_convert_poll() {
+	[ $# -eq 1 ] || die "usage: convert-poll WORKDIR"
+	work_dir_arg "$1"
+	cat -- "$ROOT$RP/rc" 2>/dev/null
+	echo ---
+	tail -c 400 -- "$ROOT$RP/prog.log" 2>/dev/null | tr '\r' '\n'
+	true
+}
+
+# convert-kill WORKDIR: stop the conversion recorded in WORKDIR, if it still runs.
+cmd_convert_kill() {
+	[ $# -eq 1 ] || die "usage: convert-kill WORKDIR"
+	work_dir_arg "$1"
+	_kp=$(cat -- "$ROOT$RP/qpid" 2>/dev/null)
+	num_ok "$_kp" || return 0
+	if [ "$(cat "/proc/$_kp/comm" 2>/dev/null)" = qemu-img ]; then
+		kill "$_kp" 2>/dev/null
+		sleep 1
+	fi
+	true
+}
+
+# convert-finish WORKDIR DEST: move the finished WORKDIR/out.part to the new
+# file DEST (never replaced) and drop the state files.
+cmd_convert_finish() {
+	[ $# -eq 2 ] || die "usage: convert-finish WORKDIR DEST"
+	work_dir_arg "$1"
+	_cw=$RP
+	[ -f "$ROOT$_cw/out.part" ] && [ ! -L "$ROOT$_cw/out.part" ] || fail "there is no converted image"
+	vpath_new "$2"
+	mv -n -- "$ROOT$_cw/out.part" "$ROOT$RP" || fail "cannot move the result into place"
+	[ ! -e "$ROOT$_cw/out.part" ] || fail "a file with this name appeared in the pool directory"
+	rm -f -- "$ROOT$_cw/rc" "$ROOT$_cw/qpid" "$ROOT$_cw/prog.log"
+}
+
+# END BACKUP VERBS
+# ---------------------------------------------------------------------------
+
 [ $# -ge 1 ] || die "usage: virticle-helper SUBCOMMAND [ARGS]"
 sub=$1
 shift
@@ -1053,6 +1242,15 @@ peer-list) cmd_peer_list "$@" ;;
 peer-send) cmd_peer_send "$@" ;;
 peer-ping) cmd_peer_ping "$@" ;;
 peer-recv) cmd_peer_recv "$@" ;;
+df) cmd_df "$@" ;;
+files-size) cmd_files_size "$@" ;;
+backup-scan) cmd_backup_scan "$@" ;;
+tar-pack) cmd_tar_pack "$@" ;;
+tar-unpack) cmd_tar_unpack "$@" ;;
+convert-start) cmd_convert_start "$@" ;;
+convert-poll) cmd_convert_poll "$@" ;;
+convert-kill) cmd_convert_kill "$@" ;;
+convert-finish) cmd_convert_finish "$@" ;;
 svc-allow) cmd_svc_allow "$@" ;;
 svc-hosts) cmd_svc_hosts "$@" ;;
 svc-list) cmd_svc_list "$@" ;;

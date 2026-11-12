@@ -159,6 +159,14 @@ never evaluate an argument, and there is no subcommand that runs a given command
 | `qemu-img-info PATH [chain] [FORMAT]` | `qemu-img info` as JSON; every backing file must also be inside a root |
 | `sha256 PATH` | SHA-256 of a file |
 | `tools-missing NAME...` | which of `qemu-img ssh scp tar sha256sum` are missing |
+| `df DIR` | free bytes of the file system that holds `DIR` |
+| `files-size DIR NAME...` | size of each regular file `DIR/NAME` (plain names, no symbolic link), or `MISSING` |
+| `backup-scan DIR MARKER` | the backups in a pool directory with their manifests (at most 500; manifests at most 64 KiB; `MARKER` is `@@@` and 16 hex digits) |
+| `tar-pack DIR NAME...` | tar of the named plain files of a backup directory (one that holds `manifest.json`) on stdout |
+| `tar-unpack WORKDIR` | stdin tar into the empty work directory; names with a slash are skipped; if anything but plain single-link files results, the directory is emptied and the call fails |
+| `convert-start WORKDIR SRC FORMAT` | detached `qemu-img convert` of `SRC` to `WORKDIR/out.part`; `FORMAT` is `raw`, `qcow2`, `vpc`, `vhdx` or `vdi`; a qcow2 backing chain must be inside the roots and may not use an external data file |
+| `convert-poll WORKDIR` / `convert-kill WORKDIR` | exit code and progress of that conversion; stop it |
+| `convert-finish WORKDIR DEST` | moves `out.part` to the new file `DEST` (never replaces) and drops the state files |
 | `peer-key`, `peer-allow`, `peer-disallow` | the account's own node key; install or remove a peer's key (restricted to `peer-recv`) |
 | `peer-hostkey-set HOST PORT`, `peer-hostkey-unset`, `peer-list` | host keys the node accepts for its peers; what is on record |
 | `peer-send HOST PORT USER SRC DST MODE`, `peer-ping`, `peer-recv` | send a file to a peer node; test a peer; receive (the peer key's forced command) |
@@ -193,9 +201,16 @@ if present, else none) until an administrator runs `virticle node prepare` again
 
 With the helper the account can run libvirt operations (it is in the `libvirt` group), upload and manage volumes through
 libvirt, take screenshots, set up and remove **encrypted migration** certificates, and **migrate VMs** (live and
-offline, between two helper nodes). Features that run free-form commands as root on the node (writing into pool
-directories by download or import, backups, moving a disk between pools, clone with guest preparation) are **off** for a node in `helper` mode and the
-UI says why. `--broad-sudo` gives the account the older unrestricted rule instead
+offline, between two helper nodes), and **back up and restore VMs** (live and offline, on the same node or to another
+helper node, export and import included). Features that run free-form commands as root on the node (writing into pool
+directories by download or import, moving a disk between pools, clone with guest preparation) are **off** for a node
+in `helper` mode and the UI says why.
+
+Backups in helper mode: the disks are written into a work directory in a pool (libvirt's backup API for a running VM,
+`convert-start` for a shut-off one), then moved into place with the manifest last. To another helper node the files go
+by `peer-send`, node to node. Export streams a tar from `tar-pack` through the controller to the browser, and import
+streams a tar the controller has vetted into `tar-unpack`, as for root nodes. A backup between a helper node and a
+root/sudo node is refused with a message (the same rule as for migration). `--broad-sudo` gives the account the older unrestricted rule instead
 (`virticle ALL=(ALL) NOPASSWD: ALL`) when you need those; the node is then shown with the warning "Broad sudo; run
 Prepare node to scope it".
 
