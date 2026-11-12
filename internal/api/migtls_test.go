@@ -254,7 +254,4 @@ func TestParseStateLegacyMarker(t *testing.T) {
 	if st.snap.Marker != nil || st.snap.MarkerBad {
 		t.Fatal("no marker expected")
 	}
-	if !strings.Contains(stateScript("/d"), ".virt-proj-migration.json:oldmarker") {
-		t.Fatal("state script does not read the old marker")
-	}
 }

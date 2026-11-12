@@ -1,18 +1,21 @@
 package api
 
-// Direct node to node file transfer between nodes whose login is the scoped
-// helper account (see internal/hostconn/peers.go). The controller introduces
-// the nodes; the file data then flows from the source node to the target node
-// and never through the controller.
+// Direct node to node file transfer between any two nodes, whether each one is
+// reached as its service account or as root (see internal/hostconn/peers.go).
+// The controller introduces the nodes; the file data then flows from the
+// source node to the target node and never through the controller.
 //
 // What is set up, for the direction source -> target:
-//   - the source's service account has its own SSH key (made by "virticle node
-//     prepare"); its public half is installed on the target in the service
-//     account's authorized_keys, restricted to the helper's peer-recv (that key
-//     can deliver one new file inside a storage pool and do nothing else);
+//   - the source's account has its own SSH key (made by "virticle node
+//     prepare"); its public half is installed on the target in the login
+//     account's authorized_keys, restricted to the node command's peer-recv
+//     (that key can deliver one new file inside a storage pool and do nothing
+//     else; the forced command has no sudo when the target account is root);
 //   - the target's SSH host key is recorded on the source, taken from the
 //     controller's own known_hosts. The source checks it strictly.
 // Everything is idempotent. Removing a node from the controller undoes it.
+// A pair of a root node and a service-account node works in both directions:
+// each side's node command decides by its own account.
 
 import (
 	"context"
@@ -24,15 +27,9 @@ import (
 	"virticle/internal/store"
 )
 
-// bothHelper reports whether files between the two nodes travel by the
-// helper's peer transfer.
-func bothHelper(src, dst *hostconn.Host) bool {
-	return src.Privilege() == hostconn.PrivHelper && dst.Privilege() == hostconn.PrivHelper
-}
-
-// anyHelper reports whether either node is in helper mode.
-func anyHelper(src, dst *hostconn.Host) bool {
-	return src.Privilege() == hostconn.PrivHelper || dst.Privilege() == hostconn.PrivHelper
+// hasNodeCommand reports whether the controller can run the node command on h.
+func hasNodeCommand(h *hostconn.Host) bool {
+	return h.Privilege() == hostconn.PrivService || h.Privilege() == hostconn.PrivRoot
 }
 
 func (e migEndpoint) port() string {
@@ -60,7 +57,7 @@ func (s *Server) ensurePeerTrust(src, dst *hostconn.Host, dstNode store.Node, ep
 		return fmt.Errorf("recording the host key of %s on %s: %w", dst.Name, src.Name, err)
 	}
 	if err := src.PeerPing(ep.Host, ep.port(), ep.User); err != nil {
-		return fmt.Errorf("%s cannot reach the helper on %s as %s: %w", src.Name, ep.Host, ep.User, err)
+		return fmt.Errorf("%s cannot reach the node command on %s as %s: %w", src.Name, ep.Host, ep.User, err)
 	}
 	return nil
 }
@@ -72,7 +69,7 @@ func (s *Server) ensurePeerTrust(src, dst *hostconn.Host, dstNode store.Node, ep
 // delivering files into storage pools).
 func (s *Server) dropPeerTrust(id int64) {
 	h, err := s.Nodes.Host(id)
-	if err != nil || h.Privilege() != hostconn.PrivHelper {
+	if err != nil || !hasNodeCommand(h) {
 		return
 	}
 	pub, err := h.PeerKey()
@@ -90,7 +87,7 @@ func (s *Server) dropPeerTrust(id int64) {
 			continue
 		}
 		o, err := s.Nodes.Host(n.ID)
-		if err != nil || o.Privilege() != hostconn.PrivHelper {
+		if err != nil || !hasNodeCommand(o) {
 			continue
 		}
 		if err := o.PeerDisallow(pub); err != nil {
@@ -129,28 +126,14 @@ func peerMode(mode string) string {
 }
 
 // copyToNode copies the file src of node from to the same-named path dstPath
-// on node to, directly between the nodes. mode is the octal permission
-// string the copy gets (empty: 600). Nodes with root or broad sudo use scp
-// started on the source (nodeCopyCmd); nodes in helper mode use the helper's
-// peer transfer. A pair of different kinds is refused. progress, when set, is
-// called with the bytes of this file sent so far.
+// on node to, directly between the nodes with the node key peer transfer (the
+// trust is set up by ensurePeerTrust). mode is the octal permission string the
+// copy gets (empty: 600). progress, when set, is called with the bytes of this
+// file sent so far.
 func copyToNode(ctx context.Context, from, to *hostconn.Host, ep migEndpoint, srcPath, dstPath, mode string, progress func(done uint64)) error {
-	switch {
-	case bothHelper(from, to):
-		return from.PeerSend(ctx, ep.Host, ep.port(), ep.User, srcPath, dstPath, peerMode(mode), func(done, total uint64) {
-			if progress != nil {
-				progress(done)
-			}
-		})
-	case anyHelper(from, to):
-		return fmt.Errorf("files cannot be copied between %s and %s: one node uses the scoped helper account and the other does not", from.Name, to.Name)
-	}
-	cmd, err := nodeCopyCmd(to, ep, srcPath, dstPath, mode)
-	if err != nil {
-		return err
-	}
-	if out, err := from.RunRoot(cmd); err != nil {
-		return fmt.Errorf("%w: %s", err, out)
-	}
-	return nil
+	return from.PeerSend(ctx, ep.Host, ep.port(), ep.User, srcPath, dstPath, peerMode(mode), func(done, total uint64) {
+		if progress != nil {
+			progress(done)
+		}
+	})
 }

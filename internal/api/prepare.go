@@ -27,7 +27,6 @@ type prepareReq struct {
 	UseExisting bool     `json:"useExisting"`
 	Confirm     bool     `json:"confirm"`
 	AllowRoot   bool     `json:"allowRoot"`
-	BroadSudo   bool     `json:"broadSudo"`
 	From        string   `json:"from"`
 	Extras      []string `json:"extras"`
 }
@@ -97,7 +96,7 @@ func (s *Server) prepareStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	o := prepare.Options{User: req.User, UseExisting: req.UseExisting, Confirm: req.Confirm, AllowRoot: req.AllowRoot,
-		BroadSudo: req.BroadSudo, From: strings.TrimSpace(req.From), Extras: req.Extras, ControllerKey: s.PubKey, InstanceID: s.InstanceID}
+		From: strings.TrimSpace(req.From), Extras: req.Extras, ControllerKey: s.PubKey, InstanceID: s.InstanceID}
 	if err := o.Validate(); err != nil {
 		fail(w, badRequest(err.Error()))
 		return

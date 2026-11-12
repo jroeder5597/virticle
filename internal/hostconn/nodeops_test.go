@@ -1,6 +1,7 @@
 package hostconn
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -47,23 +48,23 @@ func TestParseProgress(t *testing.T) {
 	}
 }
 
-func TestOperationsNeedTheRightMode(t *testing.T) {
+func TestOperationsNeedTheNodeCommand(t *testing.T) {
 	var h Host
-	h.SetPrivilege(PrivRoot)
-	if _, err := h.PeerKey(); !errors.Is(err, ErrNotHelper) {
-		t.Errorf("PeerKey on a root node: %v", err)
-	}
-	if err := h.PeerAllow("ssh-ed25519 AAAA"); !errors.Is(err, ErrNotHelper) {
-		t.Errorf("PeerAllow on a root node: %v", err)
-	}
-	if _, err := h.AllowedRoots(); !errors.Is(err, ErrNotHelper) {
-		t.Errorf("AllowedRoots on a root node: %v", err)
-	}
-	// A scoped node never gets a free-form root command from the typed operations:
-	// the root path is not taken (RunRoot would refuse), the helper path is.
 	h.SetPrivilege(PrivNone)
-	if err := h.Remove("/x"); !errors.Is(err, ErrNoPrivilege) && (err == nil || !strings.Contains(err.Error(), "root")) {
-		t.Errorf("Remove without privilege: %v", err)
+	if _, err := h.PeerKey(); !errors.Is(err, ErrNoPrivilege) {
+		t.Errorf("PeerKey without the node command: %v", err)
+	}
+	if err := h.PeerAllow("ssh-ed25519 AAAA"); !errors.Is(err, ErrNoPrivilege) {
+		t.Errorf("PeerAllow: %v", err)
+	}
+	if _, err := h.AllowedRoots(); !errors.Is(err, ErrNoPrivilege) {
+		t.Errorf("AllowedRoots: %v", err)
+	}
+	if err := h.Remove("/x"); !errors.Is(err, ErrNoPrivilege) && (err == nil || !strings.Contains(err.Error(), "node command")) {
+		t.Errorf("Remove: %v", err)
+	}
+	if err := h.PeerSend(context.Background(), "h", "22", "u", "/a", "/b", "600", nil); !errors.Is(err, ErrNoPrivilege) {
+		t.Errorf("PeerSend: %v", err)
 	}
 }
 

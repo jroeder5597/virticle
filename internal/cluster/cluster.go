@@ -230,7 +230,13 @@ func (m *Manager) session(ctx context.Context, n *node) error {
 	n.mu.Lock()
 	cfg := n.cfg
 	n.mu.Unlock()
-	priv := hostconn.Privilege(cfg.Privilege)
+	// A stored value that is not a current setting (empty, or "sudo" from a
+	// version that had broad sudo) is detected again and stored; so is "none",
+	// so that preparing a node takes effect without editing it.
+	priv := hostconn.ParsePrivilege(cfg.Privilege)
+	if priv == hostconn.PrivNone {
+		priv = ""
+	}
 	if det, note, err := h.DetectPrivilege(); err == nil {
 		n.mu.Lock()
 		n.detected, n.privNote = string(det), note
@@ -240,11 +246,18 @@ func (m *Manager) session(ctx context.Context, n *node) error {
 			n.mu.Lock()
 			n.cfg.Privilege = string(det)
 			n.mu.Unlock()
-			if m.Persist != nil {
+			// "none" is not stored: a node that is not prepared yet is
+			// detected again on its next connection, so preparing it takes
+			// effect without anyone editing the node.
+			if m.Persist != nil && det != hostconn.PrivNone {
 				if err := m.Persist.SetNodePrivilege(cfg.ID, string(det)); err != nil {
 					log.Printf("node %s: storing the detected privilege: %v", cfg.Addr, err)
 				}
 			}
+		} else if det == hostconn.PrivNone {
+			// The stored setting says the node command is there but it does
+			// not answer: nothing privileged can run.
+			priv = hostconn.PrivNone
 		}
 	}
 	if !priv.Valid() {

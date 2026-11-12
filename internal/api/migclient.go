@@ -2,19 +2,19 @@ package api
 
 // Live migration coordinated by the controller.
 //
-// libvirt's peer-to-peer migration makes the source libvirtd open a
-// qemu+ssh connection to the target as root. With a scoped service account
-// there is no key for that: the account's SSH key may only deliver a file (see
-// peertrust.go). So when either node is in helper mode the controller does
-// what virDomainMigrate does on the client side: it calls the five phases of
-// libvirt's migration protocol itself, on its own two libvirt connections.
+// libvirt's peer-to-peer migration would make the source libvirtd open a
+// qemu+ssh connection to the target as root, which needs SSH trust between the
+// nodes and a key a service account does not have. So for every node, root or
+// service account, the controller does what virDomainMigrate does on the
+// client side: it calls the five phases of libvirt's migration protocol
+// itself, on its own two libvirt connections.
 //
 //	Begin (source) -> Prepare (target) -> Perform (source) -> Finish (target) -> Confirm (source)
 //
 // The controller carries only the cookies and the domain XML. The memory
 // stream and the NBD disk mirror still run between the two QEMU processes, node
 // to node, to the address stored for the target. Nothing needs SSH between
-// the nodes. Root and sudo nodes keep the peer-to-peer path.
+// the nodes.
 
 import (
 	"fmt"
@@ -39,7 +39,7 @@ func withParam(params []libvirt.TypedParam, field, value string) []libvirt.Typed
 // the target to discard what it prepared.
 func (m *migRun) performFromController(flags libvirt.DomainMigrateFlags, params []libvirt.TypedParam) error {
 	// Not peer-to-peer: the controller is the client of both libvirtds.
-	flags &^= libvirt.MigratePeer2peer
+	flags &^= libvirt.MigratePeer2peer // (the caller does not set it; kept so the call is right by itself)
 	// The target does not take the options that only the source acts on.
 	destFlags := uint32(flags &^ (libvirt.MigrateAutoConverge | libvirt.MigrateAbortOnError))
 

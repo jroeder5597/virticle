@@ -1,7 +1,6 @@
 package hostconn
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
@@ -34,8 +33,8 @@ func TestProtocolAgreesWithTheNodeCommand(t *testing.T) {
 	}
 }
 
-func TestHelperCmdQuotes(t *testing.T) {
-	got := HelperCmd("migtls-put", "/etc/pki/qemu", "it's", "$(id)")
+func TestNodeCmdQuotes(t *testing.T) {
+	got, _ := NodeCmd(PrivService, "migtls-put", "/etc/pki/qemu", "it's", "$(id)")
 	want := `sudo -n /usr/local/libexec/virticle-node migtls-put '/etc/pki/qemu' 'it'\''s' '$(id)'`
 	if got != want {
 		t.Errorf("%s\nwant %s", got, want)
@@ -43,13 +42,13 @@ func TestHelperCmdQuotes(t *testing.T) {
 }
 
 func TestNodeCmdByPrivilege(t *testing.T) {
-	if got, ok := NodeCmd(PrivHelper, "peer-key"); !ok || got != "sudo -n /usr/local/libexec/virticle-node peer-key" {
-		t.Errorf("helper: %q %v", got, ok)
+	if got, ok := NodeCmd(PrivService, "peer-key"); !ok || got != "sudo -n /usr/local/libexec/virticle-node peer-key" {
+		t.Errorf("service account: %q %v", got, ok)
 	}
 	if got, ok := NodeCmd(PrivRoot, "stat", "/a b"); !ok || got != "/usr/local/libexec/virticle-node stat '/a b'" {
 		t.Errorf("root: %q %v", got, ok)
 	}
-	for _, p := range []Privilege{PrivSudo, PrivNone, ""} {
+	for _, p := range []Privilege{"sudo", PrivNone, ""} {
 		if got, ok := NodeCmd(p, "version"); ok || got != "" {
 			t.Errorf("%q: %q %v", p, got, ok)
 		}
@@ -63,19 +62,18 @@ func TestPrivilegeDetection(t *testing.T) {
 		want     Privilege
 		note     string
 	}{
-		{"root", "uid=0\nsudo=no\nuser=root", PrivRoot, "root"},
-		{"root with the node command installed", "uid=0\nhelper=" + v + "\nsudo=yes\nuser=root", PrivRoot, "root"},
-		{"node command", "uid=998\nhelper=" + v + "\nsudo=no\nuser=virticle", PrivHelper, "node command"},
-		{"node command beats broad sudo", "uid=998\nhelper=" + v + "\nsudo=yes\nuser=virticle", PrivHelper, "broad sudo works too"},
-		{"other protocol, no broad sudo", "uid=998\nhelper=0\nsudo=no\nuser=virticle", PrivNone, "Prepare node"},
-		{"other protocol, broad sudo", "uid=998\nhelper=0\nsudo=yes\nuser=virticle", PrivSudo, "ships"},
-		{"node command does not answer", "uid=998\nhelper=\nsudo=no\nuser=virticle", PrivNone, "sudoers"},
-		{"old script, no broad sudo", "uid=998\noldhelper=yes\nsudo=no\nuser=virticle", PrivNone, OlderVersionMessage},
-		{"old script, broad sudo", "uid=998\noldhelper=yes\nsudo=yes\nuser=virticle", PrivSudo, OlderVersionMessage},
-		{"old script next to a current node command", "uid=998\nhelper=" + v + "\noldhelper=yes\nsudo=no\nuser=virticle", PrivHelper, "node command"},
-		{"broad sudo", "uid=1000\nsudo=yes\nuser=admin", PrivSudo, "sudo"},
-		{"nothing", "uid=1000\nsudo=no\nuser=admin", PrivNone, "fails"},
-		{"empty", "", PrivNone, ""},
+		{"root with the node command", "uid=0\nhelper=" + v + "\nuser=root", PrivRoot, "node command"},
+		{"root without the node command", "uid=0\nuser=root", PrivNone, NoNodeCommandMessage},
+		{"root, other protocol", "uid=0\nhelper=0\nuser=root", PrivNone, "virticle node prepare"},
+		{"service account", "uid=998\nhelper=" + v + "\nuser=virticle", PrivService, "node command"},
+		{"service account, other protocol", "uid=998\nhelper=0\nuser=virticle", PrivNone, "ships"},
+		{"node command does not answer", "uid=998\nhelper=\nuser=virticle", PrivNone, "sudoers"},
+		{"old script", "uid=998\noldhelper=yes\nuser=virticle", PrivNone, OlderVersionMessage},
+		{"old script, root", "uid=0\noldhelper=yes\nuser=root", PrivNone, OlderVersionMessage},
+		{"old script next to a current node command", "uid=998\nhelper=" + v + "\noldhelper=yes\nuser=virticle", PrivService, "node command"},
+		{"full sudo but no node command is not prepared", "uid=1000\nsudo=yes\nuser=admin", PrivNone, NoNodeCommandMessage},
+		{"nothing", "uid=1000\nuser=admin", PrivNone, NoNodeCommandMessage},
+		{"empty", "", PrivNone, NoNodeCommandMessage},
 	}
 	for _, c := range cases {
 		got, note := ParseDetect(c.in)
@@ -89,10 +87,10 @@ func TestPrivilegeDetection(t *testing.T) {
 	if !strings.Contains(DetectScript, OldHelperPath) {
 		t.Error("DetectScript does not look for the old helper script")
 	}
-	if _, err := WrapRoot(PrivHelper, "id"); !errors.Is(err, ErrNoPrivilege) {
-		t.Errorf("a free-form command under the node command: %v", err)
+	if strings.Contains(DetectScript, "sudo -n true") {
+		t.Error("DetectScript still probes for broad sudo")
 	}
-	if !PrivHelper.Valid() {
-		t.Error("helper is not a valid setting")
+	if !PrivService.Valid() {
+		t.Error("the service account is not a valid setting")
 	}
 }

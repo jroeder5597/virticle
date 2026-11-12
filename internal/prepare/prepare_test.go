@@ -235,7 +235,6 @@ func TestValidate(t *testing.T) {
 		{ControllerKey: testKey, User: "Bad Name"},
 		{ControllerKey: testKey, User: "a;b"},
 		{ControllerKey: testKey, User: "root"},
-		{ControllerKey: testKey, AllowRoot: true, BroadSudo: true},
 		{ControllerKey: testKey, AllowRoot: true, UseExisting: true},
 		{ControllerKey: testKey, Extras: []string{"docker"}},
 		{ControllerKey: testKey, From: `10.0.0.1" command="id`},
@@ -468,17 +467,6 @@ func TestCheckChangesNothing(t *testing.T) {
 				t.Errorf("--check ran %q:\n%s", w, c)
 			}
 		}
-	}
-}
-
-func TestBroadSudoSkipsTheHelper(t *testing.T) {
-	n := hostOnDebian(true, nil)
-	rows := (&Runner{N: n}).Prepare(Options{ControllerKey: testKey, BroadSudo: true}, nil, nil)
-	if find(rows, "do-helper").ID != "" {
-		t.Error("the helper is not installed with broad sudo")
-	}
-	if !strings.Contains(strings.Join(n.log, "\n"), "NOPASSWD: ALL") {
-		t.Error("the broad rule was not sent")
 	}
 }
 

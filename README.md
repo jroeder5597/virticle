@@ -59,13 +59,14 @@ Rocky Linux 10.
    - checks the host (CPU flags, `/dev/kvm`, disk space, time sync),
    - installs libvirt and QEMU,
    - creates the service account `virticle` with a restricted SSH key and a
-     sudo rule for one helper script,
+     sudo rule for the node command (or, with the root option, installs the
+     node command for a root login),
    - tests the connection.
 3. Save the node.
 
 The same from a shell: `virticle node prepare admin@host` (`--check` changes
-nothing). A host that already runs libvirt can be added without prepare: put
-the public key shown in the dialog into the SSH user's `authorized_keys`.
+nothing). A node must be prepared before it is added. A host that already
+runs libvirt is prepared the same way; its networks, pools and VMs stay.
 
 ### 4. Create a VM
 

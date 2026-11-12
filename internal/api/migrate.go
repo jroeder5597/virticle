@@ -3,14 +3,16 @@ package api
 // Migration of a VM between two nodes without shared storage.
 //
 // Design choices worth knowing:
-//   - Live moves use libvirt's peer-to-peer migration: the source libvirtd
-//     connects to the destination itself (qemu+ssh), so memory and the NBD
-//     disk mirror flow node to node, never through the controller.
+//   - Live moves are coordinated by the controller (migclient.go): it calls
+//     the phases of libvirt's migration protocol on its two libvirt
+//     connections and carries only cookies and XML, so memory and the NBD
+//     disk mirror flow node to node, never through the controller, and the
+//     nodes need no SSH trust for it.
 //   - Files that libvirt does not mirror (backing chains, snapshot memory
-//     states, read-only disks) are copied with scp run on the source node via
-//     Host.Run. The nodes must trust each other over SSH for the libvirt
-//     migration anyway, so this adds no prerequisite, and bulk data stays off
-//     the controller (which in the lab sits behind a jump host).
+//     states, read-only disks) are sent from the source node to the target
+//     node with the node key peer transfer (peertrust.go), for any pair of
+//     root and service-account nodes. Bulk data stays off the controller
+//     (which in the lab sits behind a jump host).
 //   - Offline moves do not use libvirt's offline migrate flag: it only
 //     defines the XML and still needs the copy, refuses domains with snapshot
 //     metadata and does not carry NVRAM. Copy + define + undefine by hand is
@@ -208,10 +210,7 @@ func buildPlan(src *hostconn.Host, dom libvirt.Domain, mode string, c *checkList
 	}
 
 	// Tools used on the source node.
-	tools := []string{"qemu-img", "scp", "ssh"}
-	if src.Privilege() == hostconn.PrivHelper {
-		tools = []string{"qemu-img", "ssh"} // files travel by the helper's peer transfer, not scp
-	}
+	tools := []string{"qemu-img", "ssh"} // ssh: the node key peer transfer
 	if miss, err := src.MissingTools(tools...); err != nil || len(miss) > 0 {
 		if err != nil {
 			c.bad("Tools on source", "cannot check the source node: "+err.Error())
@@ -571,11 +570,7 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 	s.checkTargetFiles(dst, plan, &c)
 
 	// Node to node SSH.
-	if anyHelper(src, dst) {
-		s.checkNodeTransfer(src, dst, dstNode.Node, plan, &c)
-	} else {
-		s.checkSSHTrust(src, dst, dstNode.Node, &c)
-	}
+	s.checkNodeTransfer(src, dst, dstNode.Node, plan, &c)
 
 	// Encryption of the migration streams.
 	s.checkEncryption(srcID, src, req.Target, dst, plan, req, &c)
@@ -822,7 +817,7 @@ func (s *Server) launchMigration(r *http.Request, srcID int64, h *hostconn.Host,
 	if err != nil {
 		return nil, pre, badRequest(err.Error())
 	}
-	m := &migRun{s: s, src: h, dst: dst, dom: dom, plan: plan, req: req, uri: ep.URI(), ep: ep}
+	m := &migRun{s: s, src: h, dst: dst, dom: dom, plan: plan, req: req, ep: ep}
 	migRuns.Lock()
 	if _, busy := migRuns.m[plan.UUID]; busy {
 		migRuns.Unlock()
@@ -923,7 +918,6 @@ type migRun struct {
 	dom      libvirt.Domain
 	plan     *migPlan
 	req      migReq
-	uri      string
 	ep       migEndpoint // how the source reaches the target
 	progress func(float64)
 
@@ -1156,7 +1150,7 @@ func (m *migRun) runOnline() error {
 		}
 	}
 
-	flags := libvirt.MigratePeer2peer | libvirt.MigratePersistDest | libvirt.MigrateUndefineSource | p.mirrorFlag()
+	flags := libvirt.MigratePersistDest | libvirt.MigrateUndefineSource | p.mirrorFlag()
 	if p.Mode == "live" {
 		flags |= libvirt.MigrateLive | libvirt.MigrateAutoConverge
 	}
@@ -1207,8 +1201,8 @@ func (m *migRun) runOnline() error {
 	return m.cleanSource()
 }
 
-// perform runs the peer-to-peer migration call and, while it is in flight,
-// turns libvirt's job statistics into task progress.
+// perform runs the migration phases (migclient.go) and, while they are in
+// flight, turns libvirt's job statistics into task progress.
 func (m *migRun) perform(flags libvirt.DomainMigrateFlags, lo, hi float64) error {
 	if err := m.checkCancel(); err != nil {
 		return err
@@ -1227,14 +1221,7 @@ func (m *migRun) perform(flags libvirt.DomainMigrateFlags, lo, hi float64) error
 	m.inJob.Store(true)
 	defer m.inJob.Store(false)
 	done := make(chan error, 1)
-	go func() {
-		if anyHelper(m.src, m.dst) {
-			done <- m.performFromController(flags, params)
-			return
-		}
-		_, err := m.src.DomainMigratePerform3Params(m.dom, libvirt.OptString{m.uri}, params, nil, flags)
-		done <- err
-	}()
+	go func() { done <- m.performFromController(flags, params) }()
 	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
 	downtimeSet, aborted := m.req.MaxDowntimeMs == 0, false

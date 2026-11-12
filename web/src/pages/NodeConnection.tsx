@@ -54,7 +54,6 @@ interface EditResponse {
 const PRIVILEGE_TEXT: Record<string, string> = {
   root: "root: the SSH user is root",
   helper: "helper: scoped sudo, the account may run the virticle helper as root and nothing else",
-  sudo: "sudo: commands that need root run with sudo -n (broad sudo; Prepare node can scope it)",
   none: "none: nothing runs as root, features that need it are off",
 };
 
@@ -238,7 +237,6 @@ function EditConnection({ n, info, onClose, onSaved }: { n: NodeStatus; info: Co
               { value: "auto", label: "Detect" },
               { value: "root", label: "root" },
               { value: "helper", label: "helper (scoped sudo)" },
-              { value: "sudo", label: "sudo (broad)" },
               { value: "none", label: "none" },
             ]}
           />

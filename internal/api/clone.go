@@ -333,7 +333,7 @@ func (s *Server) vmClone(w http.ResponseWriter, r *http.Request) {
 
 		if mechanism == mechVirtSysprep {
 			progress(float64(len(plan)) / float64(len(plan)+1))
-			if out, err := h.Sysprep(linuxFirstBootFixups, newDisks...); err != nil {
+			if out, err := h.Sysprep(newDisks...); err != nil {
 				return rollback(fmt.Errorf("virt-sysprep failed: %v: %s", err, tail(out, 1500)))
 			}
 		}

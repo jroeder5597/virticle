@@ -1,13 +1,15 @@
 package hostconn
 
-// Direct node to node file transfer for nodes in helper mode.
+// Direct node to node file transfer, for every pair of nodes.
 //
-// Each node's service account has its own SSH key (created by "virticle node
-// prepare", the private half never leaves the node). The controller
+// Each node's account (the service account, or root for a root node) has its
+// own SSH key (created by "virticle node prepare", the private half never
+// leaves the node). The controller
 //   - reads the sending node's public key (PeerKey),
-//   - installs it on the receiving node in the service account's
-//     authorized_keys with restrict,command="sudo -n <helper> peer-recv", so
-//     that key can deliver one new file and do nothing else (PeerAllow),
+//   - installs it on the receiving node in the login account's
+//     authorized_keys with restrict,command="[sudo -n] <node command> peer-recv"
+//     (no sudo for a root node), so that key can deliver one new file and do
+//     nothing else (PeerAllow),
 //   - records the receiving node's SSH host key on the sending node from the
 //     controller's own known_hosts (PeerSetHostKey), because the sending node
 //     checks host keys strictly and never trusts one on first use,
@@ -26,21 +28,11 @@ import (
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
-func (h *Host) needHelper() error {
-	if !h.helperMode() {
-		return ErrNotHelper
-	}
-	return nil
-}
-
 // PeerKey returns the public peer key ("ssh-ed25519 AAAA...") of the node's service account.
 func (h *Host) PeerKey() (string, error) {
-	if err := h.needHelper(); err != nil {
-		return "", err
-	}
-	out, err := h.RunHelper("peer-key")
+	out, err := h.RunNode("peer-key")
 	if err != nil {
-		return "", fmt.Errorf("%s", firstLineOf(out, err))
+		return "", nodeErr(out, err)
 	}
 	if !strings.HasPrefix(out, "ssh-ed25519 ") || strings.ContainsAny(out, "\n\r") {
 		return "", fmt.Errorf("unexpected answer from peer-key: %q", out)
@@ -51,24 +43,18 @@ func (h *Host) PeerKey() (string, error) {
 // PeerAllow lets the holder of the public key deliver files to this node (and nothing else).
 // It is idempotent.
 func (h *Host) PeerAllow(pub string) error {
-	if err := h.needHelper(); err != nil {
-		return err
-	}
-	out, err := h.RunHelperInput(pub+"\n", "peer-allow")
+	out, err := h.RunNodeInput(pub+"\n", "peer-allow")
 	if err != nil {
-		return fmt.Errorf("%s", firstLineOf(out, err))
+		return nodeErr(out, err)
 	}
 	return nil
 }
 
 // PeerDisallow removes a peer key installed by PeerAllow.
 func (h *Host) PeerDisallow(pub string) error {
-	if err := h.needHelper(); err != nil {
-		return err
-	}
-	out, err := h.RunHelperInput(pub+"\n", "peer-disallow")
+	out, err := h.RunNodeInput(pub+"\n", "peer-disallow")
 	if err != nil {
-		return fmt.Errorf("%s", firstLineOf(out, err))
+		return nodeErr(out, err)
 	}
 	return nil
 }
@@ -76,36 +62,27 @@ func (h *Host) PeerDisallow(pub string) error {
 // PeerSetHostKey records the host keys ("ssh-ed25519 AAAA...") of host:port
 // for the peer connections of this node, replacing any earlier ones.
 func (h *Host) PeerSetHostKey(host, port string, keys []string) error {
-	if err := h.needHelper(); err != nil {
-		return err
-	}
-	out, err := h.RunHelperInput(strings.Join(keys, "\n")+"\n", "peer-hostkey-set", host, port)
+	out, err := h.RunNodeInput(strings.Join(keys, "\n")+"\n", "peer-hostkey-set", host, port)
 	if err != nil {
-		return fmt.Errorf("%s", firstLineOf(out, err))
+		return nodeErr(out, err)
 	}
 	return nil
 }
 
 // PeerUnsetHostKey forgets host:port.
 func (h *Host) PeerUnsetHostKey(host, port string) error {
-	if err := h.needHelper(); err != nil {
-		return err
-	}
-	out, err := h.RunHelper("peer-hostkey-unset", host, port)
+	out, err := h.RunNode("peer-hostkey-unset", host, port)
 	if err != nil {
-		return fmt.Errorf("%s", firstLineOf(out, err))
+		return nodeErr(out, err)
 	}
 	return nil
 }
 
 // PeerList returns the peers and hosts on record ("allow BLOB" and "host NAME TYPE" lines).
 func (h *Host) PeerList() ([]string, error) {
-	if err := h.needHelper(); err != nil {
-		return nil, err
-	}
-	out, err := h.RunHelper("peer-list")
+	out, err := h.RunNode("peer-list")
 	if err != nil {
-		return nil, fmt.Errorf("%s", firstLineOf(out, err))
+		return nil, nodeErr(out, err)
 	}
 	return strings.Split(strings.TrimSpace(out), "\n"), nil
 }
@@ -114,12 +91,9 @@ func (h *Host) PeerList() ([]string, error) {
 // that the recorded host key matches and that the helper on the far side
 // answers. The error carries ssh's own message.
 func (h *Host) PeerPing(host, port, user string) error {
-	if err := h.needHelper(); err != nil {
-		return err
-	}
-	out, err := h.RunHelper("peer-ping", host, port, user)
+	out, err := h.RunNode("peer-ping", host, port, user)
 	if err != nil {
-		return fmt.Errorf("%s", firstLineOf(out, err))
+		return nodeErr(out, err)
 	}
 	return nil
 }
@@ -128,12 +102,13 @@ func (h *Host) PeerPing(host, port, user string) error {
 // helper there creates dst (which must not exist) with the given mode (three
 // octal digits). progress, when set, is called with bytes sent and total.
 func (h *Host) PeerSend(ctx context.Context, host, port, user, src, dst, mode string, progress func(done, total uint64)) error {
-	if err := h.needHelper(); err != nil {
-		return err
-	}
 	var tail []string
 	done := false
-	err := h.Stream(ctx, HelperCmd("peer-send", host, port, user, src, dst, mode), func(l string) {
+	cmd, err := h.nodeCmd("peer-send", host, port, user, src, dst, mode)
+	if err != nil {
+		return err
+	}
+	err = h.Stream(ctx, cmd, func(l string) {
 		if d, t, ok := parseProgress(l); ok {
 			if progress != nil {
 				progress(d, t)

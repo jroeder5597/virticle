@@ -253,7 +253,4 @@ func TestGPUUsers(t *testing.T) {
 	if _, ok := parseGPUUsers("sudo: a password is required\n"); ok {
 		t.Error("an incomplete run must not count as checked")
 	}
-	if c := gpuUsersCommand("0000:01:00.0"); !strings.Contains(c, "'0000:01:00.0'") {
-		t.Errorf("address not quoted: %s", c)
-	}
 }

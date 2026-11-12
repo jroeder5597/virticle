@@ -196,12 +196,12 @@ func accountRows(p Plan, o Options) []Row {
 		} else {
 			add("account", "Service account", OK, u+" exists and is in the libvirt and kvm groups where they exist")
 		}
-		if rule := u + " ALL=(root) NOPASSWD: " + helperPath; !o.BroadSudo && !strings.Contains(p.Facts.SudoersRaw, rule) {
+		if rule := u + " ALL=(root) NOPASSWD: " + helperPath; !strings.Contains(p.Facts.SudoersRaw, rule) {
 			st, hint := Warning, "; rerun with the confirm option to add it"
 			if o.Confirm {
 				st, hint = Info, "; it will be added"
 			}
-			add("sudo", "Sudo rule", st, "No sudo rule lets "+u+" run the helper"+hint)
+			add("sudo", "Sudo rule", st, "No sudo rule lets "+u+" run the node command"+hint)
 		}
 		if a.Shell == "/usr/sbin/nologin" || a.Shell == "/sbin/nologin" || a.Shell == "/bin/false" {
 			add("shell", "Login shell", Error, fmt.Sprintf("%s has the shell %s, so the controller cannot run commands as it", u, a.Shell))

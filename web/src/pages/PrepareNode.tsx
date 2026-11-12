@@ -43,7 +43,6 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
   const [useExisting, setUseExisting] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [allowRoot, setAllowRoot] = useState(false);
-  const [broad, setBroad] = useState(false);
   const [from, setFrom] = useState("");
   const [guestfs, setGuestfs] = useState(false);
   const [virtiofs, setVirtiofs] = useState(false);
@@ -74,7 +73,6 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
       useExisting,
       confirm,
       allowRoot,
-      broadSudo: broad,
       from,
       extras: [guestfs && "guestfs", virtiofs && "virtiofs"].filter(Boolean),
     };
@@ -183,9 +181,6 @@ export default function PrepareNode({ addr: addr0, jump: jump0, onClose, onRegis
                 <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} /> Add it to the libvirt and kvm groups and give it the helper's sudo rule
               </label>
             )}
-            <label className="check">
-              <input type="checkbox" checked={broad} onChange={(e) => setBroad(e.target.checked)} /> Full sudo instead of the helper
-            </label>
           </>
         )}
         <label className="check">

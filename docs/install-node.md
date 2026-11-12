@@ -33,17 +33,18 @@ rule, and the group memberships stay. It ends the account's processes first, so 
 before you run it.
 
 ```
-virticle node prepare [--check] [--user virticle] [--use-existing-user[=NAME]] [--confirm] [--allow-root]
-                      [--broad-sudo] [--from ADDR] [--extras guestfs,virtiofs] [--jump user@host]
+virticle node prepare [--check] [--user virticle] [--use-existing-user[=NAME]] [--confirm] [--root]
+                      [--from ADDR] [--extras guestfs,virtiofs] [--jump user@host]
                       [--identity FILE] [--password-stdin] [--data DIR] [user@]host[:port]
 ```
 
 - `--use-existing-user NAME`: the account exists. Prepare reports what is missing (groups, login shell, sudo rule) and
   changes nothing about the account except adding the controller's key; with `--confirm` it also adds the groups and the
   sudoers rule.
-- `--allow-root`: the controller logs in as root. Shown as a warning ("Uses root; a dedicated account is safer").
+- `--root`: the controller logs in as root; no service account is created. The node command is installed all the same and the
+  controller runs it directly, without sudo. Shown as a warning ("Uses root; a dedicated account is safer"). `--allow-root` is the
+  old name of this option and still works.
 - `--from ADDR`: adds `from="ADDR"` to the key, so it works only from the controller's address.
-- `--broad-sudo`: see "What the helper covers" below.
 - `--data DIR`: the controller's data directory (its key, `known_hosts`, instance id); default `data`.
 - The host key of the node is recorded in the controller's `known_hosts` on first sight.
 
@@ -53,7 +54,7 @@ virticle node prepare [--check] [--user virticle] [--use-existing-user[=NAME]] [
 |---|---|
 | Debian 13, Rocky Linux 10 | tested |
 | Debian 12, Ubuntu 22.04 and 24.04, RHEL, AlmaLinux and Rocky 9 and 10, Fedora | untested, prepare warns and goes on |
-| anything else | error; install by hand (below) and register the node |
+| anything else | error; install by hand (below, including the node command) and add the node |
 
 ## Packages
 
@@ -198,7 +199,8 @@ image paths, each inside a root, not a link, qcow2 (backing chain inside the roo
 
 **Node to node copies.** Each helper node has its own SSH key (`~/.ssh/virticle_peer_ed25519`, made by
 `virticle node prepare`; the private half stays on the node). When a migration needs files copied, the controller
-installs the sending node's public key on the receiving node with `restrict,command="sudo -n <helper> peer-recv"`, so
+installs the sending node's public key on the receiving node with `restrict,command="sudo -n <helper> peer-recv"` (without `sudo -n` when the receiving
+account is root), so
 that key can deliver a new file into a storage pool and nothing else, and records the receiving node's SSH host key
 (taken from the controller's `known_hosts`) on the sending node, which checks it strictly. Then `peer-send` on the
 source reads the file as root and streams it over `ssh`, run as the service account, to `peer-recv` on the target. The
@@ -206,14 +208,14 @@ data does not pass through the controller. This is done by the pre-flight check,
 hand. Removing a node from the controller removes its key from the other helper nodes, and theirs from it. `virticle node unprepare`
 removes the node's key and the peer keys installed on it.
 
-**Live migration** of a node in helper mode is coordinated by the controller (it calls the phases of libvirt's
-migration protocol on both nodes), so no SSH between the nodes is needed for it. The memory stream and the disk mirror
+**Live migration** is coordinated by the controller for every node, root or service account (it calls the phases of
+libvirt's migration protocol on both nodes), so no SSH between the nodes is needed for it. The memory stream and the disk mirror
 still go from node to node.
 
 **There is no self-update.** A helper that replaced itself from the service account would let anyone who holds that
-account install any code as root, which is the broad sudo this avoids. When the controller finds a helper whose version
-differs from its own, the connection test says so and the node falls back to what the account can still do (broad sudo
-if present, else none) until an administrator runs `virticle node prepare` again.
+account install any code as root. When the controller finds a helper whose version
+differs from its own, the connection test says so and the node counts as not prepared (privileged features are off) until
+an administrator runs `virticle node prepare` again.
 
 ### What the helper covers
 
@@ -223,13 +225,14 @@ offline), **back up and restore VMs** (live and offline, same node or another no
 **download** images and the image catalogue into a pool, **import** disks and OVAs, **move a disk** to another pool,
 and **clone with guest preparation** (virt-sysprep, if libguestfs is installed).
 
-- Files that move between two helper nodes go node to node by `peer-send`, never through the controller.
-- A file copy between a helper node and a root or broad-sudo node is refused with a message.
-- Backup export and import stream through the controller to and from the browser, as for root nodes.
+- Files that move between two nodes go node to node by `peer-send`, never through the controller, for every pair: two
+  service accounts, two root logins, or one of each.
+- Backup export and import stream through the controller to and from the browser.
 
-`--broad-sudo` gives the account the older unrestricted rule instead
-(`virticle ALL=(ALL) NOPASSWD: ALL`); the node is then shown with the warning "Broad sudo; run
-Prepare node to scope it".
+There is no other way to give the controller root on a node: a login with passwordless full sudo but without the node
+command is simply not prepared, and the connection test says `this node has no node command; run "virticle node
+prepare" for it`. A root login runs the node command directly (installed by `virticle node prepare --root`).
 
-Privilege detection order on each connection: **root**, **helper** (the helper is present, its version matches, and
-`sudo -n helper version` works), **sudo** (legacy broad sudo), **none**.
+Privilege detection on each connection: **root** (uid 0 and the node command of this version answers), **helper** (the
+service account; the node command is present, its version matches, and `sudo -n <node command> version` works) or
+**none** (anything else). A node stored as `sudo` by an older version is detected again.

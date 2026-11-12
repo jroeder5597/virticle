@@ -40,7 +40,7 @@ type TestResult struct {
 	Hostname       string     `json:"hostname"`
 	LibvirtVersion string     `json:"libvirtVersion"`
 	HostUUID       string     `json:"hostUuid"`
-	Privilege      string     `json:"privilege"` // detected: root | sudo | none
+	Privilege      string     `json:"privilege"` // detected: root | helper | none
 	PrivilegeNote  string     `json:"privilegeNote"`
 	ResolvedIPs    []string   `json:"resolvedIps,omitempty"`
 	OK             bool       `json:"ok"`
@@ -241,9 +241,7 @@ func (m *Manager) TestConnect(cfg store.Node, timeout time.Duration) (res TestRe
 	switch p {
 	case hostconn.PrivNone:
 		st.add("privilege", StepWarning, note+"; features that need root are off")
-	case hostconn.PrivSudo:
-		st.add("privilege", StepWarning, "Broad sudo; run Prepare node to scope it. "+note)
-	case hostconn.PrivHelper:
+	case hostconn.PrivService:
 		st.add("privilege", StepOK, "Scoped access (helper): "+note)
 	default:
 		st.add("privilege", StepOK, string(p)+": "+note)
