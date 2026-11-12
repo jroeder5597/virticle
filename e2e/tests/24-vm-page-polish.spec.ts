@@ -1,5 +1,5 @@
 // VM page polish: Edit Settings dialogs that share state with the Hardware tab, the Power submenu order, the
-// snapshot type help tip, the aligned Hardware tab with collapsed sections, the pool picker, the autostart box.
+// the plain Take snapshot dialog, the aligned Hardware tab with collapsed sections, the pool picker, the autostart box.
 import { cleanVMs, createCirros, expect, openVM, test } from "../lib/fixtures";
 import { P } from "../lib/env";
 import { dialog, expectBadge, field } from "../lib/ui";
@@ -276,7 +276,7 @@ test.describe.serial("VM page polish", () => {
     await expect(c.getByRole("button", { name: "Add CD-ROM drive" })).toHaveCount(0);
   });
 
-  test("snapshot help tip opens on hover and on focus and names all three types", async ({ page, api }) => {
+  test("the Take snapshot dialog has no type choice", async ({ page, api }) => {
     await api.post(`/nodes/${vm.node}/vms/${vm.uuid}/action`, { action: "start" });
     await openVM(page, vm);
     await expectBadge(page.locator(".head"), "running");
@@ -284,30 +284,11 @@ test.describe.serial("VM page polish", () => {
     await item(page, "Snapshots").click();
     await item(page, "Take snapshot").click();
     const dlg = dialog(page, "Take snapshot");
-    const help = dlg.getByRole("button", { name: "About snapshot types" });
-    await expect(help).toBeVisible();
-    await expect(page.getByRole("tooltip")).toHaveCount(0);
-    await help.hover();
-    const tip = page.getByRole("tooltip");
-    await expect(tip).toContainText("Automatic");
-    await expect(tip).toContainText("Internal");
-    await expect(tip).toContainText("External");
-    const box = await tip.boundingBox();
-    const vp = page.viewportSize()!;
-    expect(box!.x).toBeGreaterThanOrEqual(0);
-    expect(box!.x + box!.width).toBeLessThanOrEqual(vp.width);
-    expect(box!.y + box!.height).toBeLessThanOrEqual(vp.height);
-    await page.mouse.move(5, 5);
-    await expect(tip).toHaveCount(0);
-    await help.focus();
-    await expect(page.getByRole("tooltip")).toContainText("External");
-    // Escape closes the tip, not the dialog
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("tooltip")).toHaveCount(0);
-    await expect(dlg).toBeVisible();
-    await help.click();
-    await expect(page.getByRole("tooltip")).toBeVisible();
-    await page.keyboard.press("Escape");
+    // no snapshot type to choose and no help tip about types: the type is always automatic
+    await expect(dlg.getByRole("button", { name: "About snapshot types" })).toHaveCount(0);
+    await expect(dlg.getByRole("combobox", { name: "Snapshot type" })).toHaveCount(0);
+    await expect(dlg.getByLabel(/quiesce/i)).toHaveCount(0);
+    await expect(dlg.getByLabel("Save the running state too")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(dialog(page)).toHaveCount(0);
   });

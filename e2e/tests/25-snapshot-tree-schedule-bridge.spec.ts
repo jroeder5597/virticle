@@ -1,4 +1,4 @@
-// Snapshot tree and the delete dialog, schedule time zone helper and Next Run, the bridge picker.
+// Snapshot tree and the delete dialog, schedule local times and Next Run, the bridge picker.
 import { Page } from "@playwright/test";
 import { cleanVMs, createCirros, expect, openVM, test } from "../lib/fixtures";
 import { P } from "../lib/env";
@@ -226,49 +226,61 @@ test.describe.serial("snapshot tree, delete dialog, schedule, bridge picker", ()
     await page.keyboard.press("Escape");
   });
 
-  test.describe("schedule time zone helper", () => {
-    for (const [zone, re] of [
-      ["America/New_York", /^03:00 UTC is 2[23]:00 E[SD]T \(the previous day\) in your time zone \(America\/New_York\)$/],
-      ["Asia/Kolkata", /^03:00 UTC is 08:30 GMT\+5:30 in your time zone \(Asia\/(Kolkata|Calcutta)\)$/],
-      ["Pacific/Auckland", /^03:00 UTC is 1[56]:00 GMT\+1[23] in your time zone \(Pacific\/Auckland\)$/],
+  test.describe("schedule times are entered in the browser time zone and stored in UTC", () => {
+    for (const [zone, utcRe, shown] of [
+      ["America/New_York", /^1[23]:00$/, "08:00"],
+      ["Asia/Kolkata", /^02:30$/, "08:00"],
+      ["Pacific/Auckland", /^(19|20):00$/, "08:00"],
     ] as const) {
-      test(`${zone}: live text, and Set from local time fills the UTC field`, async ({ browser }) => {
+      test(`${zone}: 08:00 local is stored as UTC and shown as 08:00 again`, async ({ browser, api }) => {
         const ctx = await browser.newContext({ storageState: ".auth/admin.json", timezoneId: zone });
         const page = await ctx.newPage();
         await openVM(page, vm, "snapshots");
         const sec = page.locator("#snap-schedule");
         await sec.getByRole("button", { name: "Set up schedule" }).click();
-        await expect(field(sec, "Time (UTC)")).toHaveValue("03:00");
-        const note = sec.getByRole("status", { name: "Time zone conversion" });
-        await expect(note).toHaveText(re);
-        // the text follows what is typed
-        await field(sec, "Time (UTC)").fill("12:15");
-        await expect(note).toContainText("12:15 UTC is");
-        // reverse: a local time becomes the UTC field
-        await sec.getByLabel("Local time").fill("08:00");
-        await expect(sec).toContainText("08:00 in your time zone (");
-        await sec.getByRole("button", { name: "Use as UTC time" }).click();
-        const utc = await field(sec, "Time (UTC)").inputValue();
-        expect(utc).toMatch(/^\d\d:\d\d$/);
-        await expect(note).toContainText(`${utc} UTC is 08:00`);
-        await sec.getByRole("button", { name: "About the time zone conversion" }).hover();
-        await expect(page.getByRole("tooltip")).toContainText("stored in UTC and does not move");
+        await expect(field(sec, "Time")).toHaveValue("03:00");
+        await expect(sec).not.toContainText("UTC");
+        await field(sec, "Time").fill(shown);
+        await sec.getByRole("button", { name: "Save schedule" }).click();
+        await expect(sec).toContainText(`Daily at ${shown}`);
+        await expect(sec).not.toContainText("UTC");
+        const got = await api.get(`${base()}/snapshot-schedule`);
+        expect(got.schedule.at).toMatch(utcRe);
+        await api.del(`${base()}/snapshot-schedule`);
         await ctx.close();
       });
     }
-    test("Pacific/Auckland on the evening before daylight saving ends: the next occurrence is in NZST", async ({ browser }) => {
+    test("Pacific/Auckland on the evening before daylight saving ends: the next occurrence is in NZST", async ({ browser, api }) => {
       const ctx = await browser.newContext({ storageState: ".auth/admin.json", timezoneId: "Pacific/Auckland" });
       const page = await ctx.newPage();
       await page.clock.install({ time: new Date("2026-04-04T12:00:00Z") });
       await openVM(page, vm, "snapshots");
       const sec = page.locator("#snap-schedule");
       await sec.getByRole("button", { name: "Set up schedule" }).click();
-      await expect(sec.getByRole("status", { name: "Time zone conversion" })).toHaveText("03:00 UTC is 15:00 GMT+12 in your time zone (Pacific/Auckland)");
+      await field(sec, "Time").fill("08:00");
+      await sec.getByRole("button", { name: "Save schedule" }).click();
+      await expect(sec).toContainText("Daily at");
+      // the next 08:00 in Auckland is on 5 April, already NZST (+12)
+      expect((await api.get(`${base()}/snapshot-schedule`)).schedule.at).toBe("20:00");
+      await api.del(`${base()}/snapshot-schedule`);
       await ctx.close();
+    });
+    test("an interval is entered in hours; an old minutes value is rounded and the form says so", async ({ page, api }) => {
+      await api.put(`${base()}/snapshot-schedule`, { enabled: true, mode: "interval", everyMinutes: 90, keep: 3, prefix: "auto", memory: false, quiesce: false });
+      await openVM(page, vm, "snapshots");
+      const sec = page.locator("#snap-schedule");
+      await expect(sec).toContainText("Every 90 minutes");
+      await sec.getByRole("button", { name: "Edit schedule" }).click();
+      await expect(field(sec, "Every (hours)")).toHaveValue("2");
+      await expect(sec).toContainText("rounds that to whole hours");
+      await sec.getByRole("button", { name: "Save schedule" }).click();
+      await expect(sec).toContainText("Every 2 hours");
+      expect((await api.get(`${base()}/snapshot-schedule`)).schedule).toMatchObject({ everyMinutes: 120, enabled: true });
+      await api.del(`${base()}/snapshot-schedule`);
     });
   });
 
-  test("Next Run: the server computes it, the page shows local and UTC time", async ({ page, api }) => {
+  test("Next Run: the server computes it, the page shows local time", async ({ page, api }) => {
     const sched = { enabled: true, mode: "daily", at: "03:30", keep: 3, prefix: `${P}auto`, memory: false, quiesce: false };
     await api.put(`${base()}/snapshot-schedule`, sched);
     // a schedule that has taken nothing yet is due at once (the scheduler's own rule): the answer is "now"
@@ -291,7 +303,7 @@ test.describe.serial("snapshot tree, delete dialog, schedule, bridge picker", ()
     await api.del(`${base()}/snapshot-schedule`);
   });
 
-  test("Next Run with a scheduler: times in both zones, one timer refreshes the text when it passes", async ({ browser }) => {
+  test("Next Run with a scheduler: local time, one timer refreshes the text when it passes", async ({ browser }) => {
     const ctx = await browser.newContext({ storageState: ".auth/admin.json", timezoneId: "America/New_York" });
     const page = await ctx.newPage();
     const soon = Math.floor(Date.now() / 1000) + 4;
@@ -305,7 +317,6 @@ test.describe.serial("snapshot tree, delete dialog, schedule, bridge picker", ()
     const line = page.locator("#snap-schedule .nextrun").first();
     await expect(line).toContainText("Next Run:");
     await expect(line).toContainText(/E[SD]T/);
-    await expect(line).toContainText("UTC)");
     expect(requests).toBe(1);
     const first = (await line.textContent())!;
     // when the time passes the page asks once more and shows the following run
@@ -318,7 +329,7 @@ test.describe.serial("snapshot tree, delete dialog, schedule, bridge picker", ()
     await ctx.close();
   });
 
-  test("backup schedule: Next Run and the helper in the form", async ({ page, api }) => {
+  test("backup schedule: Next Run and the local time in the form", async ({ page, api }) => {
     await api.put(`${base()}/backup-schedule`, { enabled: true, mode: "daily", at: "04:10", targetNode: 0, pool: "default", keepLast: 2 });
     const got = await api.get(`${base()}/backup-schedule`);
     // no backup exists yet, so the schedule is due at once (the scheduler's own rule)
@@ -329,7 +340,8 @@ test.describe.serial("snapshot tree, delete dialog, schedule, bridge picker", ()
     await expect(sec.locator(".nextrun").first()).toContainText("Next Run:");
     await expect(sec.locator(".nextrun").first()).toContainText("-no-scheduler");
     await sec.getByRole("button", { name: "Edit schedule" }).click();
-    await expect(sec.getByRole("status", { name: "Time zone conversion" })).toContainText("04:10 UTC is");
+    await expect(field(sec, "Time")).toHaveValue(/^\d\d:\d\d$/);
+    await expect(sec).not.toContainText("UTC");
     await api.del(`${base()}/backup-schedule`);
   });
 

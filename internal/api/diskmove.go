@@ -521,7 +521,7 @@ func (s *Server) diskMovePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	req := moveReq{Pool: q.Get("pool"), Name: q.Get("name"), Format: q.Get("format"), DeleteOld: q.Get("deleteOld") == "1", Flatten: q.Get("flatten") == "1"}
+	req := moveReq{Pool: q.Get("pool"), Name: q.Get("name"), Format: q.Get("format"), DeleteOld: q.Get("deleteOld") != "0", Flatten: q.Get("flatten") == "1"}
 	moveRuns.Lock()
 	migRuns.Lock()
 	f, checks := s.movePlan(h, dom, r.PathValue("target"), req)
@@ -541,13 +541,16 @@ func (s *Server) diskMovePlan(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
+// defaultMoveReq: deleteOld absent means the old volume is deleted after a successful move.
+func defaultMoveReq() moveReq { return moveReq{DeleteOld: true} }
+
 func (s *Server) diskMove(w http.ResponseWriter, r *http.Request) {
 	h, dom, err := s.domain(r)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	var req moveReq
+	req := defaultMoveReq()
 	if err := readJSON(r, &req); err != nil {
 		fail(w, err)
 		return

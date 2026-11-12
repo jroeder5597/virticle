@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { bytes, get, NodeStatus, post, Task, VMDetail } from "../api";
 import Select from "../Select";
 import { ErrorBox, Field, Modal, useAction, useConfirm } from "../ui";
+import { SectionFrame } from "./Disclosure";
 
 interface Check {
   check: string;
@@ -23,15 +24,14 @@ interface Preview {
 
 const modeText = { live: "Live: the VM keeps running", suspended: "Non-live: the VM is paused during the copy", offline: "Offline: the VM is shut off" };
 
+
 /** Move a VM to another node: pre-flight checks, options, then a task with live progress. */
 export default function MigrateDialog(props: { d: VMDetail; onClose: () => void }) {
   const { d } = props;
   const nav = useNavigate();
   const [nodes, setNodes] = useState<NodeStatus[]>([]);
   const [target, setTarget] = useState(0);
-  const [live, setLive] = useState(true);
   const [keep, setKeep] = useState(false);
-  const [encrypt, setEncrypt] = useState(true); // true = encrypt when both nodes are set up for it
   const [preview, setPreview] = useState<Preview | undefined>();
   const [checking, setChecking] = useState(false);
   const [taskId, setTaskId] = useState(0);
@@ -40,7 +40,6 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
   const cancel = useAction();
   const confirm = useConfirm();
   const base = `/nodes/${d.node}/vms/${d.uuid}`;
-  const running = d.state !== "shutoff";
 
   useEffect(() => {
     get<{ nodes: NodeStatus[] }>("/nodes").then((r) => {
@@ -51,20 +50,21 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
     }, () => {});
   }, [d.node]);
 
-  // Pre-flight whenever the target or the live option changes.
+  // Pre-flight whenever the target changes. A running VM is migrated live, a shut-off one offline; the
+  // server decides that and encrypts when both nodes are set up for it.
   useEffect(() => {
     if (!target || taskId) return;
     let stale = false;
     setChecking(true);
     setPreview(undefined);
-    post<Preview>(`${base}/migrate/check`, { target, live, encrypt: encrypt ? undefined : false }).then(
+    post<Preview>(`${base}/migrate/check`, { target }).then(
       (p) => !stale && setPreview(p),
       (e) => !stale && setPreview({ ok: false, checks: [{ check: "Pre-flight", ok: false, severity: "error", message: String(e.message ?? e) }], copyBytes: 0, mirrorBytes: 0 }),
     ).finally(() => !stale && setChecking(false));
     return () => {
       stale = true;
     };
-  }, [target, live, encrypt, base, taskId]);
+  }, [target, base, taskId]);
 
   // Follow the task. The VM leaves this node when the move completes, so the
   // task list is polled instead of the VM.
@@ -92,7 +92,7 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
 
   const start = () =>
     act.run(async () => {
-      const r = await post<{ task: number }>(`${base}/migrate`, { target, live, keepSourceDisks: keep, encrypt: encrypt ? undefined : false });
+      const r = await post<{ task: number }>(`${base}/migrate`, { target, keepSourceDisks: keep });
       setTask(undefined);
       setTaskId(r.task);
     });
@@ -116,22 +116,12 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
               />
             </Field>
           </div>
-          {running && (
+          <SectionFrame id="migrate-advanced" title="Advanced" summary="">
             <label className="check">
-              <input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} />
-              Live migration (the VM keeps running; otherwise it is paused while memory is copied)
+              <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
+              Keep the disks on the source node
             </label>
-          )}
-          <label className="check">
-            <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
-            Keep the disks on the source node (by default they are deleted after a successful move)
-          </label>
-          {preview?.mode !== "offline" && (
-            <label className="check">
-              <input type="checkbox" checked={encrypt} onChange={(e) => setEncrypt(e.target.checked)} />
-              Encrypt memory and disk streams with TLS when both nodes are set up for it (Nodes page)
-            </label>
-          )}
+          </SectionFrame>
           <h3>Pre-flight checks</h3>
           {checking && <p className="muted">Checking {targetName}</p>}
           {preview && (

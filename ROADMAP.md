@@ -44,7 +44,7 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
 
 ## Snapshots and backup
 - [~] Snapshots with memory, tree view, revert, delete (done). Default type chosen per node (see note). Open: quiesce untested with a real agent, UEFI guests untested
-- [x] Scheduled snapshots with retention (schedule stored in domain metadata; times in UTC)
+- [x] Scheduled snapshots with retention (schedule stored in domain metadata, stored in UTC and shown in the browser time zone)
 - [~] Backup and restore to another pool or node (live, no snapshot left behind); export/import a VM as one tar file. Scheduled backups with retention (one unexplained stall seen in testing, not reproduced). Open: TPM state and snapshots are not part of a backup
 
 ## Networking
@@ -93,7 +93,7 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
   clone gets an `unattend.xml` (account, password, hostname) on an attached
   ISO so first boot is unattended.
 
-**Snapshot type.** For a live snapshot with memory, "automatic" picks
+**Snapshot type.** The web UI has no type choice; the API still accepts `mode`. For a live snapshot with memory, "automatic" picks
 external (guest keeps running, survives live migration), verified on Rocky 10
 with SELinux (libvirt 11.10): create, revert and delete of a chain all work.
 It falls back to internal (guest pauses, blocks live migration, offline

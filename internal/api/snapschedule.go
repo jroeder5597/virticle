@@ -159,7 +159,7 @@ func (s *Server) runSchedule(h *hostconn.Host, dom libvirt.Domain, sch snapsched
 		}
 		name := snapsched.Name(sch.Prefix, now)
 		_, err := s.createSnapshot(r, h, dom, snapshotRequest{
-			Name: name, Description: snapsched.Stamp(s.InstanceID), Memory: sch.Memory, Quiesce: sch.Quiesce,
+			Name: name, Description: snapsched.Stamp(s.InstanceID), Memory: sch.Memory, // the freeze is automatic (Quiesce left unset)
 		})
 		if err != nil {
 			// createSnapshot only records a task once validation passed;
@@ -294,13 +294,19 @@ func (s *Server) lastSchedulerTask(vm string) map[string]any {
 	return nil
 }
 
+// defaultSnapSchedule holds what a saved schedule gets for fields the client leaves out: enabled, named "auto-<timestamp>".
+func defaultSnapSchedule() snapsched.Schedule {
+	return snapsched.Schedule{Enabled: true, Prefix: "auto", Keep: 7}
+}
+
 func (s *Server) putSnapshotSchedule(w http.ResponseWriter, r *http.Request) {
 	h, dom, err := s.domain(r)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	var sch snapsched.Schedule
+	// Fields the client leaves out: a saved schedule is enabled and names its snapshots "auto-<timestamp>".
+	sch := defaultSnapSchedule()
 	if err := readJSON(r, &sch); err != nil {
 		fail(w, err)
 		return

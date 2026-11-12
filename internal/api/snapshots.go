@@ -186,7 +186,11 @@ type snapshotRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Memory      bool   `json:"memory"`
-	Quiesce     bool   `json:"quiesce"`
+	// Quiesce freezes the guest file systems through the guest agent. Absent
+	// means automatic: freeze when the agent is connected and no memory is
+	// saved, otherwise take the snapshot without freezing. true insists on
+	// the freeze and fails without an agent; false never freezes.
+	Quiesce *bool `json:"quiesce"`
 	// Mode is "" (choose automatically), "internal" or "external"; it only
 	// matters for a live snapshot with memory.
 	Mode string `json:"mode"`
@@ -233,21 +237,25 @@ func (s *Server) createSnapshot(r *http.Request, h *hostconn.Host, dom libvirt.D
 	if err := xml.Unmarshal([]byte(raw), &dx); err != nil {
 		return "", err
 	}
-	if !active && (q.Memory || q.Quiesce) {
+	explicitQuiesce := q.Quiesce != nil && *q.Quiesce
+	if !active && (q.Memory || explicitQuiesce) {
 		return "", badRequest("a VM that is shut off has no memory to save and nothing to freeze; clear those options")
 	}
-	if q.Quiesce {
+	agent := "no guest agent channel"
+	for _, c := range dx.Devices.Channels {
+		if c.Target.Name == "org.qemu.guest_agent.0" {
+			agent = "the agent channel exists but nothing inside the guest answers"
+			if c.Target.State == "connected" {
+				agent = ""
+			}
+		}
+	}
+	// Automatic freeze: only with a connected agent, a running guest and no memory.
+	autoQuiesce := q.Quiesce == nil && active && !q.Memory && agent == ""
+	quiesce := explicitQuiesce || autoQuiesce
+	if explicitQuiesce {
 		if q.Memory {
 			return "", badRequest("freezing the guest file systems only applies to disk-only snapshots; clear either 'include memory' or 'quiesce'")
-		}
-		agent := "no guest agent channel"
-		for _, c := range dx.Devices.Channels {
-			if c.Target.Name == "org.qemu.guest_agent.0" {
-				agent = "the agent channel exists but nothing inside the guest answers"
-				if c.Target.State == "connected" {
-					agent = ""
-				}
-			}
 		}
 		if agent != "" {
 			return "", badRequest("quiesce needs the QEMU guest agent, which is not connected (" + agent + "); install and start qemu-guest-agent in the guest, or take the snapshot without quiesce")
@@ -314,7 +322,7 @@ func (s *Server) createSnapshot(r *http.Request, h *hostconn.Host, dom libvirt.D
 		} else {
 			body.WriteString("  <memory snapshot='no'/>\n")
 			flags |= libvirt.DomainSnapshotCreateDiskOnly
-			if q.Quiesce {
+			if quiesce {
 				flags |= libvirt.DomainSnapshotCreateQuiesce
 			}
 		}
@@ -327,6 +335,11 @@ func (s *Server) createSnapshot(r *http.Request, h *hostconn.Host, dom libvirt.D
 		defer refreshPools(h)
 		create := func() error {
 			_, err := h.DomainSnapshotCreateXML(dom, xmlBody, uint32(flags))
+			if err != nil && autoQuiesce && flags&libvirt.DomainSnapshotCreateQuiesce != 0 {
+				// The automatic freeze must never make the snapshot fail
+				// (an agent that cannot freeze, as on Windows without VSS).
+				_, err = h.DomainSnapshotCreateXML(dom, xmlBody, uint32(flags&^libvirt.DomainSnapshotCreateQuiesce))
+			}
 			return err
 		}
 		if withMemory {
@@ -529,6 +542,25 @@ func secModelIsAppArmor(caps string) bool {
 	}
 	for _, m := range x.Models {
 		if m == "apparmor" {
+			return true
+		}
+	}
+	return false
+}
+
+// guestAgentConnected reports whether the guest agent channel of a running
+// domain is connected.
+func guestAgentConnected(h *hostconn.Host, dom libvirt.Domain) bool {
+	raw, err := h.DomainGetXMLDesc(dom, 0)
+	if err != nil {
+		return false
+	}
+	var dx snapDomXML
+	if xml.Unmarshal([]byte(raw), &dx) != nil {
+		return false
+	}
+	for _, c := range dx.Devices.Channels {
+		if c.Target.Name == "org.qemu.guest_agent.0" && c.Target.State == "connected" {
 			return true
 		}
 	}

@@ -3,7 +3,7 @@ import { CheckList, preflightItems } from "../Checks";
 import { bytes, get, Pool, post, Task, VMDetail } from "../api";
 import { useEvents } from "../live";
 import { ErrorBox, Field, Modal, useAction, useConfirm } from "../ui";
-import Select from "../Select";
+import { SectionFrame } from "./Disclosure";
 import PoolSelect from "../PoolSelect";
 
 interface CheckT {
@@ -33,9 +33,6 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
   const oldName = (disk.source ?? "").split("/").pop() ?? "";
   const [pools, setPools] = useState<Pool[]>([]);
   const [pool, setPool] = useState("");
-  const [name, setName] = useState(oldName);
-  const [format, setFormat] = useState(disk.format === "raw" ? "raw" : "qcow2");
-  const [deleteOld, setDeleteOld] = useState(true);
   const [flatten, setFlatten] = useState(false);
   const [plan, setPlan] = useState<Plan>();
   const [checking, setChecking] = useState(false);
@@ -55,13 +52,13 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
     }, () => {});
   }, [d.node]);
 
-  // Pre-flight whenever an option changes (debounced, one request).
+  // Pre-flight whenever the pool or the copy option changes (debounced, one request).
   useEffect(() => {
     if (taskId) return;
     let stale = false;
     setChecking(true);
     const h = setTimeout(() => {
-      const q = new URLSearchParams({ pool, name, format, deleteOld: deleteOld ? "1" : "0", flatten: flatten ? "1" : "0" });
+      const q = new URLSearchParams({ pool, flatten: flatten ? "1" : "0" });
       get<Plan>(`${base}/plan?${q}`).then(
         (p) => !stale && setPlan(p),
         (e) => !stale && setPlan({ ok: false, checks: [{ check: "Pre-flight", ok: false, severity: "error", message: String(e.message ?? e) }], capacity: 0, allocation: 0, backing: false }),
@@ -71,7 +68,7 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
       stale = true;
       clearTimeout(h);
     };
-  }, [pool, name, format, deleteOld, flatten, base, taskId]);
+  }, [pool, flatten, base, taskId]);
 
   // The task announces its progress on the event stream; no polling.
   useEvents((e) => {
@@ -86,16 +83,14 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
 
   const busy = taskId !== 0 && task?.status !== "ok" && task?.status !== "failed";
   const start = async () => {
-    if (deleteOld) {
-      const ok = await confirm.ask({
-        title: `Move ${disk.target} and delete the old volume`,
-        message: `${disk.target} of ${d.name} is copied to pool ${pool}. When the copy has finished, the old volume ${oldName} is deleted and cannot be recovered.`,
-        confirm: "Move and delete old volume",
-      });
-      if (!ok) return;
-    }
+    const ok = await confirm.ask({
+      title: `Move ${disk.target} and delete the old volume`,
+      message: `${disk.target} of ${d.name} is copied to pool ${pool}. When the copy has finished, the old volume ${oldName} is deleted and cannot be recovered.`,
+      confirm: "Move and delete old volume",
+    });
+    if (!ok) return;
     return act.run(async () => {
-      const r = await post<{ task: number }>(base, { pool, name, format, deleteOld, flatten });
+      const r = await post<{ task: number }>(base, { pool, flatten });
       setTask(undefined);
       setTaskId(r.task);
     });
@@ -116,34 +111,15 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
             <Field label="Target pool" group>
               <PoolSelect pools={pools} value={pool} onChange={setPool} label="Target pool" needBytes={disk.capacity} />
             </Field>
-            <Field label="Volume name">
-              <input value={name} onChange={(e) => setName(e.target.value.trim())} aria-label="Volume name" />
-            </Field>
-            <Field label="Format">
-              <Select
-                label="Format"
-                value={format}
-                onChange={(f) => {
-                  setName((n) => (n === oldName || n.endsWith(".qcow2") || n.endsWith(".raw") ? n.replace(/\.(qcow2|raw)$/, "") + "." + f : n));
-                  setFormat(f);
-                }}
-                options={[
-                  { value: "qcow2", label: "qcow2" },
-                  { value: "raw", label: "raw" },
-                ]}
-              />
-            </Field>
           </div>
           {plan?.backing && (
-            <label className="check">
-              <input type="checkbox" checked={flatten} onChange={(e) => setFlatten(e.target.checked)} />
-              Copy as a standalone image (breaks the link to the base)
-            </label>
+            <SectionFrame id="diskmove-advanced" title="Advanced" summary="">
+              <label className="check">
+                <input type="checkbox" checked={flatten} onChange={(e) => setFlatten(e.target.checked)} />
+                Copy as a standalone image (breaks the link to the base)
+              </label>
+            </SectionFrame>
           )}
-          <label className="check">
-            <input type="checkbox" checked={deleteOld} onChange={(e) => setDeleteOld(e.target.checked)} />
-            Delete the old volume
-          </label>
           <h3>Pre-flight checks</h3>
           {checking && <p className="muted">Checking</p>}
           {plan && (

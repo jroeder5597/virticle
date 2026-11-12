@@ -364,14 +364,14 @@ test.describe.serial("visual pass", () => {
       await page.keyboard.press("Escape");
       await page.keyboard.press("Escape");
       // the Hardware tab with its collapsed sections opened, and an Edit Settings dialog
-      // snapshot tree, delete dialog, schedule form with the time zone helper
+      // snapshot tree, delete dialog, schedule form
       await page.goto(`/vm/${snapVm.node}/${snapVm.uuid}?tab=snapshots`);
       await shot("snapshot-tree", () => expect(page.getByRole("treeitem", { name: /^scheduled-2026/ })).toBeVisible({ timeout: 30_000 }));
       await page.getByRole("button", { name: "Delete b", exact: true }).click();
       await shot("snapshot-delete-dialog", () => expect(page.getByRole("dialog", { name: "Delete b" }).getByRole("treeitem").first()).toBeVisible());
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "Set up schedule" }).click();
-      await shot("snapshot-schedule-form", () => expect(page.getByRole("status", { name: "Time zone conversion" })).toBeVisible());
+      await shot("snapshot-schedule-form", () => expect(page.locator("#snap-schedule").getByRole("button", { name: "Save schedule" })).toBeVisible());
       // the bridge picker
       await page.goto(vmUrl + "?tab=hardware");
       await page.getByRole("button", { name: "Add interface" }).click();

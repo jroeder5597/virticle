@@ -15,7 +15,8 @@ test.describe.serial("live migration", () => {
     await vmAction(page, "Migrate", "Migrate to another node");
     const dlg = dialog(page, `Migrate ${NAME}`);
     await expect(dlg.getByRole("combobox", { name: "Target node" })).toContainText(toName);
-    await expect(dlg.getByLabel(/Live migration/)).toBeChecked();
+    await expect(dlg.getByLabel(/Live migration/)).toHaveCount(0); // a running VM is always migrated live
+    await expect(dlg.getByLabel(/Encrypt/)).toHaveCount(0);
     // the pre-flight list renders with at least one entry, none of them an error
     const checks = dlg.locator("ul.checklist li");
     await expect(checks.first()).toBeVisible({ timeout: 60_000 });
@@ -50,7 +51,7 @@ test.describe.serial("live migration", () => {
     await migrate(page, api, n2, n1, env.node1);
   });
 
-  test("a stopped VM gets the offline pre-flight and no live option", async ({ page, api, n1 }) => {
+  test("a stopped VM gets the offline pre-flight", async ({ page, api, n1 }) => {
     // a target that is not running is not offered; with the VM stopped the offline path is checked instead
     await api.post(`/nodes/${n1}/vms/${vm.uuid}/action`, { action: "poweroff" });
     await api.waitFor("off", async () => (await api.vmDetail(n1, vm.uuid)).state === "shutoff");
