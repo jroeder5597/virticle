@@ -23,8 +23,12 @@ logged, not written to the audit log or the task record. It is separate from the
 4. **Installs the controller's public key** for that account with restrictions, the **helper**, and the **sudoers rule**.
 5. **Tests the connection** as the service account, with the same steps as Test connection.
 
-Running it again changes nothing and says so. `virticle node unprepare admin@host` removes the account, key, helper and
-sudoers file and leaves packages, VMs, pools and networks alone.
+The sudoers file names one account, so a host has one service account: preparing it for another account replaces the
+rule. Running it again changes nothing and says so. `virticle node unprepare admin@host` removes the account, key, helper and
+sudoers file and leaves packages, VMs, pools and networks alone. It removes an account only when prepare created it
+(the account carries the comment "virticle service account"); for an existing account it removes just the key and the
+rule, and the group memberships stay. It ends the account's processes first, so remove the node in the controller
+before you run it.
 
 ```
 virticle node prepare [--check] [--user virticle] [--use-existing-user[=NAME]] [--confirm] [--allow-root]

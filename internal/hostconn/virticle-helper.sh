@@ -97,11 +97,14 @@ need_certdir() {
 	nolinks "$1" || die "$1 is, or lies below, a symbolic link"
 }
 
-# need_dir_exists DIR: a real directory owned by root.
+# need_dir_exists DIR: a real directory owned by root that nobody else can write to.
 need_dir_exists() {
 	[ -d "$ROOT$1" ] || die "$1 does not exist"
-	if [ "$TEST" = 0 ] && [ "$(stat -c %u "$1")" != 0 ]; then
-		die "$1 is not owned by root"
+	if [ "$TEST" = 0 ]; then
+		[ "$(stat -c %u "$1")" = 0 ] || die "$1 is not owned by root"
+		case $(stat -c %a "$1") in
+		*[2367]? | *[2367]) die "$1 is writable by others than root" ;;
+		esac
 	fi
 }
 
