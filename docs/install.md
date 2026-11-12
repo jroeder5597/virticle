@@ -107,8 +107,8 @@ To build from source: `make build` (needs Go and Node.js), result `bin/virticle`
 
 Open the page (`http://127.0.0.1:8080` for the package, or the address you
 set). The first visit asks you to create the administrator account; the
-password needs at least 10 characters. After that, add nodes: the Nodes page
-shows the controller's SSH public key to put on each node (`install-node.md`
+password needs at least 10 characters. After that, add nodes: prepare each
+node from the Nodes page or with `virticle node prepare` (`install-node.md`
 describes the preparation).
 
 ## Where data lives

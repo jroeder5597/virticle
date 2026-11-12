@@ -231,16 +231,8 @@ func newScanMarker() string {
 	return "@@@" + hex.EncodeToString(b)
 }
 
-// scanScript lists manifests below one pool directory with a single find,
-// bounded in depth, count and size. Section layout per backup:
-// "<marker> <dir>", the size in bytes, the manifest, a newline.
-func scanScript(dir, marker string) string {
-	return fmt.Sprintf(`find -H %s -maxdepth 2 -path '*%s/manifest.json' -type f -size -%dk -print0 2>/dev/null | head -z -n %d | `+
-		`xargs -0 -r sh -c 'for f; do d=${f%%/manifest.json}; echo "%s $d"; du -sb -- "$d" | cut -f1; head -c %d -- "$f"; echo; done' sh`,
-		shq(dir), backupSuffix, backupMaxManifest>>10, backupMaxScan, marker, backupMaxManifest)
-}
-
-// parseScan splits scanScript's output. Directories outside poolDir or with
+// parseScan splits the output of the node command's backup-scan verb: per
+// backup "<marker> <dir>", the size in bytes, the manifest, a newline. Directories outside poolDir or with
 // unexpected names are dropped.
 func parseScan(out, marker, poolDir string) []scanItem {
 	var items []scanItem

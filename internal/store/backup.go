@@ -16,7 +16,7 @@ import (
 // migration is added: a database found at a lower version is copied first
 // (see backupBeforeMigration). Databases from before the version was recorded
 // read as 0.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 // keepBackups is how many pre-migration copies stay in the data directory.
 const keepBackups = 3

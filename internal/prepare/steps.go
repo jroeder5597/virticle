@@ -168,11 +168,9 @@ func steps(o Options) []stepDef {
 		list = append(list, stepDef{id: "do-account", title: "Service account", run: stepAccount})
 	}
 	list = append(list, stepDef{id: "do-key", title: "Install SSH key", run: stepKey})
-	if !o.BroadSudo {
-		// The node command is installed for every login: the service account
-		// runs it through sudo, root directly.
-		list = append(list, stepDef{id: "do-helper", title: "Install node command", run: stepHelper})
-	}
+	// The node command is installed for every login: the service account
+	// runs it through sudo, root directly.
+	list = append(list, stepDef{id: "do-helper", title: "Install node command", run: stepHelper})
 	if !o.AllowRoot {
 		// An existing account gets a sudo rule only when the change is confirmed.
 		rule := !o.UseExisting || o.Confirm
@@ -180,9 +178,7 @@ func steps(o Options) []stepDef {
 			list = append(list, stepDef{id: "do-sudoers", title: "Install sudo rule", run: stepSudoers})
 		}
 	}
-	if !o.BroadSudo {
-		list = append(list, stepDef{id: "do-peerkey", title: "Node key", run: stepPeerKey})
-	}
+	list = append(list, stepDef{id: "do-peerkey", title: "Node key", run: stepPeerKey})
 	return list
 }
 
@@ -501,13 +497,10 @@ func stepHelper(r *Runner, p Plan, o Options) (string, bool, error) {
 func stepSudoers(r *Runner, p Plan, o Options) (string, bool, error) {
 	content := hostconn.SudoersLine(o.ServiceUser())
 	what := "the sudo rule for the node command only"
-	if o.BroadSudo {
-		content, what = hostconn.BroadSudoersLine(o.ServiceUser()), "the broad sudo rule"
-	}
 	// A temporary name starting with a dot is ignored by sudo, so a rule that
 	// does not parse is never active; visudo checks it before it is moved.
 	d, ch, err := installFile(r, what, hostconn.SudoersPath, "755", "440", content, `visudo -cf "$1"`, "visudo rejected the sudo rule; nothing was installed")
-	if err != nil || o.BroadSudo {
+	if err != nil {
 		return d, ch, err
 	}
 	// The rule works only if the account really can run the node command.

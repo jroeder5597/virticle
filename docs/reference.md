@@ -118,11 +118,15 @@ backup restores as a new VM or as the original, and exports to one
 
 ## Node privilege levels
 
+Every node is reached in one of two ways and runs the same root program, the node command
+(`/usr/local/libexec/virticle-node`), with the same verbs. `virticle node prepare` installs it for both.
+
 | Level | How | Limits |
 | --- | --- | --- |
-| Helper | `virticle node prepare` (default) | Everything works between helper nodes; files go node to node. A file copy between a helper node and a root or broad-sudo node is refused. VMDK disks and qcow2 with an external data file cannot be backed up. |
-| Broad sudo | `virticle node prepare --broad-sudo`, or an account with passwordless sudo | None. |
-| Root | SSH as root | None. Discouraged. |
+| Helper (service account) | `virticle node prepare` (default): the controller signs in as `virticle` and runs the node command with `sudo -n` | Everything works, between any two nodes; files go node to node. VMDK disks and qcow2 with an external data file cannot be backed up. |
+| Root | `virticle node prepare --root`: the controller signs in as root and runs the node command directly | The same. Discouraged. |
+
+A node whose account has passwordless full sudo but no node command is not prepared.
 
 ## Known limits
 

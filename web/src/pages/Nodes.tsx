@@ -56,7 +56,7 @@ export default function Nodes() {
         </table></div>
       )}
       {evacuating && nodes.data && <Evacuate node={evacuating} nodes={nodes.data.nodes} onClose={() => setEvacuating(undefined)} />}
-      {adding && nodes.data && <AddNode publicKey={nodes.data.publicKey} onClose={() => setAdding(false)} />}
+      {adding && nodes.data && <AddNode onClose={() => setAdding(false)} />}
     </>
   );
 }
@@ -111,11 +111,10 @@ function NodeRow({ n, canRemove, alerts, onEvacuate, onMaintenance }: { n: NodeS
   );
 }
 
-function AddNode({ publicKey, onClose }: { publicKey: string; onClose: () => void }) {
+function AddNode({ onClose }: { onClose: () => void }) {
   const [addr, setAddr] = useState("");
-  const [user, setUser] = useState("root");
+  const [user, setUser] = useState("virticle");
   const [jump, setJump] = useState("");
-  const [copied, setCopied] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const act = useAction();
   const submit = async (e: FormEvent) => {
@@ -127,19 +126,14 @@ function AddNode({ publicKey, onClose }: { publicKey: string; onClose: () => voi
     <Modal title="Add node" onClose={onClose}>
       <form onSubmit={submit}>
         <p>
-          First allow this server to sign in: add its public key to <code>~/.ssh/authorized_keys</code> for the user below on the node.
+          A node must be prepared before it can be added. Use Prepare this node for a new host; it installs the access this server needs. If the node is
+          already prepared, enter its address and the user here.
         </p>
-        <div className="keybox">
-          <code>{publicKey}</code>
-          <button type="button" className="link" onClick={() => navigator.clipboard?.writeText(publicKey).then(() => setCopied(true))}>
-            {copied ? "Copied" : "Copy"}
-          </button>
-        </div>
         <div className="grid2">
           <Field label="Address" hint="Host name or IP, optionally with :port.">
             <input value={addr} onChange={(e) => setAddr(e.target.value)} required autoFocus placeholder="kvm1.example.lan" />
           </Field>
-          <Field label="SSH user" hint="root, or a member of the libvirt group.">
+          <Field label="SSH user" hint="virticle (the service account that Prepare creates), or root if the node was prepared for root.">
             <input value={user} onChange={(e) => setUser(e.target.value)} required />
           </Field>
         </div>
@@ -148,7 +142,7 @@ function AddNode({ publicKey, onClose }: { publicKey: string; onClose: () => voi
         </Field>
         <ErrorBox error={act.error} />
         <footer>
-          <button type="button" onClick={() => setPreparing(true)} title="Install libvirt and set up access on a fresh host">
+          <button type="button" onClick={() => setPreparing(true)} title="Install libvirt and set up the access this server needs on a host">
             Prepare this node
           </button>
           <button type="button" onClick={onClose}>

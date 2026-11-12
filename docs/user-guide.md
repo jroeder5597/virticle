@@ -143,8 +143,9 @@ downloaded as one file and imported on another installation. The format is in
 4. **Migrate**. With **Live migration** ticked the VM keeps running.
 
 - Disks are copied along; shared storage is not needed.
-- Nodes need SSH trust with each other. The **SSH between nodes** row tells
-  you the command when it is missing.
+- Live migration needs no SSH between the nodes. When files have to be copied,
+  the controller sets up a restricted key between the two nodes itself; the
+  **SSH between nodes** row shows whether it works.
 - To encrypt the streams, set up encrypted migration for both nodes on the
   Nodes page.
 - A Debian node and a RHEL-family node cannot exchange VMs.
@@ -185,7 +186,7 @@ downloaded as one file and imported on another installation. The format is in
 | Node shows Offline | Node **Settings > Test connection**. It names the failing step. |
 | Guest agent "Not responding" | Install and start `qemu-guest-agent` in the VM. |
 | Migration blocked | Read the red pre-flight row. Usually SSH trust or a missing network on the target. |
-| Migration or backup refused between two nodes | One node uses the scoped helper account and the other root or broad sudo. Use the same mode on both. An older helper needs `virticle node prepare` run again. |
+| Migration or backup refused for a node | The node has no node command, or one from an older version. Run `virticle node prepare` for it again. |
 | Locked out after a web access change | Wait 60 seconds for the automatic revert, or run `virticle web reset` and restart. |
 | "No ISO images on this node" | Upload one under **Storage**. |
 | A task failed | **Tasks** shows the libvirt error in the Result column. |

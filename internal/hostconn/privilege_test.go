@@ -4,8 +4,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
-	"errors"
-	"os/exec"
 	"strings"
 	"testing"
 )
@@ -19,64 +17,6 @@ func TestQuote(t *testing.T) {
 	} {
 		if got := Quote(in); got != want {
 			t.Errorf("Quote(%q) = %s, want %s", in, got, want)
-		}
-	}
-}
-
-func TestWrapRoot(t *testing.T) {
-	if got, err := WrapRoot(PrivRoot, "id -u"); err != nil || got != "id -u" {
-		t.Errorf("root: %q %v", got, err)
-	}
-	if got, err := WrapRoot("", "id -u"); err != nil || got != "id -u" {
-		t.Errorf("undetected: %q %v", got, err)
-	}
-	if _, err := WrapRoot(PrivNone, "id -u"); !errors.Is(err, ErrNoPrivilege) {
-		t.Errorf("none: %v", err)
-	}
-	got, err := WrapRoot(PrivSudo, "echo 'x y' | tr a-z A-Z")
-	if err != nil || got != `sudo -n sh -c 'echo '\''x y'\'' | tr a-z A-Z'` {
-		t.Fatalf("sudo: %q %v", got, err)
-	}
-	if !strings.HasPrefix(got, "sudo -n sh -c ") {
-		t.Fatal("prefix")
-	}
-}
-
-// The wrapped line, with sudo replaced by a function that just runs its
-// arguments, must behave like the plain command line: output and exit code.
-func TestWrapRootRoundTrip(t *testing.T) {
-	cmds := []string{
-		`echo 'single quoted' "double $((1+2))" | tr a-z A-Z`,
-		`FOO=bar sh -c 'echo $FOO'; echo "rc=$?"`,
-		`printf '%s\n' "it's" 'a"b' | wc -l; exit 3`,
-		"cat <<EOF\nhere doc $((2*3))\nEOF",
-		`x=$(echo hi); [ "$x" = hi ] && echo yes || echo no; false`,
-		`cat; echo done`,
-	}
-	for _, c := range cmds {
-		w, err := WrapRoot(PrivSudo, c)
-		if err != nil {
-			t.Fatal(err)
-		}
-		fake := `sudo() { shift; "$@"; }; ` + w
-		pl := exec.Command("sh", "-c", c)
-		pl.Stdin = strings.NewReader("stdin text\n")
-		want, werr := pl.CombinedOutput()
-		wr := exec.Command("sh", "-c", fake)
-		wr.Stdin = strings.NewReader("stdin text\n")
-		got, gerr := wr.CombinedOutput()
-		if string(got) != string(want) {
-			t.Errorf("%q: wrapped output %q, plain %q", c, got, want)
-		}
-		code := func(e error) int {
-			var x *exec.ExitError
-			if errors.As(e, &x) {
-				return x.ExitCode()
-			}
-			return 0
-		}
-		if code(werr) != code(gerr) {
-			t.Errorf("%q: exit codes differ: %v vs %v", c, werr, gerr)
 		}
 	}
 }
@@ -102,19 +42,38 @@ func TestDropHost(t *testing.T) {
 }
 
 func TestParseDetect(t *testing.T) {
+	v := HelperVersion
 	cases := []struct {
 		in   string
 		want Privilege
 	}{
-		{"uid=0\nsudo=no\nuser=root", PrivRoot},
-		{"uid=0\nsudo=yes\nuser=root", PrivRoot},
-		{"uid=1000\nsudo=yes\nuser=ne-user", PrivSudo},
-		{"uid=1000\nsudo=no\nuser=ne-user", PrivNone},
+		{"uid=0\nhelper=" + v + "\nuser=root", PrivRoot},
+		{"uid=0\nuser=root", PrivNone},
+		{"uid=1000\nhelper=" + v + "\nuser=virticle", PrivService},
+		{"uid=1000\nuser=ne-user", PrivNone},
 		{"", PrivNone},
 	}
 	for _, c := range cases {
 		if got, _ := ParseDetect(c.in); got != c.want {
 			t.Errorf("%q: %s, want %s", c.in, got, c.want)
 		}
+	}
+}
+
+func TestParsePrivilege(t *testing.T) {
+	for in, want := range map[string]Privilege{
+		"root": PrivRoot, "helper": PrivService, "none": PrivNone,
+		"": "", "auto": "", "sudo": "", "bogus": "",
+	} {
+		if got := ParsePrivilege(in); got != want {
+			t.Errorf("ParsePrivilege(%q) = %q, want %q", in, got, want)
+		}
+	}
+	// The stored value of the service account did not change.
+	if string(PrivService) != "helper" {
+		t.Errorf("stored value of the service account: %q", PrivService)
+	}
+	if Privilege("sudo").Valid() {
+		t.Error("the retired broad sudo setting is still valid")
 	}
 }

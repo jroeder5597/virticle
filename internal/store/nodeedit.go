@@ -22,7 +22,11 @@ func migrateNodeConnection(tx *sql.Tx, have map[string]bool) error {
 			return err
 		}
 	}
-	return nil
+	// "sudo" was the privilege of a login with broad passwordless sudo, a mode
+	// that no longer exists. Such a node is not prepared until detected again
+	// ("" means detect on the next connect).
+	_, err := tx.Exec(`UPDATE nodes SET privilege='' WHERE privilege='sudo'`)
+	return err
 }
 
 // UpdateNodeConnection changes how a node is reached. The id, the maintenance

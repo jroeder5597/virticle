@@ -1,8 +1,7 @@
 package api
 
 // Node-side helpers of the backup code. They call the typed operations of
-// internal/hostconn, so they work for root, broad sudo and the scoped helper
-// account alike.
+// internal/hostconn, so they work for root and service-account nodes alike.
 
 import (
 	"fmt"
@@ -65,30 +64,13 @@ func bkQemuInfo(h *hostconn.Host, file string) (importImgInfo, error) {
 func bkFreeBytes(h *hostconn.Host, dir string) (int64, error) { return h.FreeBytes(dir) }
 
 // checkBackupTransfer prepares and checks how files get from src to dst for a
-// backup or restore, and returns how src reaches dst. Root and sudo pairs are
-// checked as before (checkSSHTrust); two helper-mode nodes get their peer
-// trust set up (ensurePeerTrust) and send the data straight to each other.
+// backup or restore, and returns how src reaches dst: the peer trust between
+// the two nodes is set up (ensurePeerTrust) and they send the data straight to
+// each other, for any pair of root and service-account nodes.
 func (s *Server) checkBackupTransfer(src, dst *hostconn.Host, n store.Node) (migEndpoint, error) {
-	var c checkList
-	if !anyHelper(src, dst) {
-		s.checkSSHTrust(src, dst, n, &c)
-		for _, k := range c {
-			if !k.OK && k.Severity == "error" {
-				return migEndpoint{}, badRequest(k.Message)
-			}
-		}
-		ep, err := endpointFor(n)
-		if err != nil {
-			return ep, badRequest(err.Error())
-		}
-		return ep, nil
-	}
 	ep, err := endpointFor(n)
 	if err != nil {
 		return ep, badRequest(err.Error())
-	}
-	if !bothHelper(src, dst) {
-		return ep, badRequest(fmt.Sprintf("files cannot be copied between %s and %s: one node uses the scoped helper account and the other does not. Prepare both nodes the same way", src.Name, dst.Name))
 	}
 	if _, err := src.Run(reachCmd(ep.Host, ep.port())); err != nil {
 		return ep, badRequest(fmt.Sprintf("%s cannot open a TCP connection to %s port %s", src.Name, ep.Host, ep.port()))

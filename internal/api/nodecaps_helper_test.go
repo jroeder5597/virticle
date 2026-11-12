@@ -1,19 +1,17 @@
 package api
 
 import (
+	"strings"
 	"testing"
 
 	"virticle/internal/prepare"
 )
 
-func TestCapabilitiesUnderTheHelper(t *testing.T) {
-	c := nodeCapabilities("helper")
-	for _, k := range []string{"installTLS", "migration", "backups", "writePools", "diskMove", "clone"} {
-		if !c[k].OK {
-			t.Errorf("%s goes through the helper: %+v", k, c[k])
-		}
+func TestCapabilitiesByAccessMode(t *testing.T) {
+	if len(nodeCapabilities("helper")) != 6 {
+		t.Error("expected six node command features")
 	}
-	for _, p := range []string{"root", "sudo", ""} {
+	for _, p := range []string{"root", "helper", ""} {
 		for k, v := range nodeCapabilities(p) {
 			if !v.OK {
 				t.Errorf("%q %s should be allowed", p, k)
@@ -21,8 +19,8 @@ func TestCapabilitiesUnderTheHelper(t *testing.T) {
 		}
 	}
 	for k, v := range nodeCapabilities("none") {
-		if v.OK {
-			t.Errorf("none %s should be off", k)
+		if v.OK || !strings.Contains(v.Reason, "virticle node prepare") {
+			t.Errorf("none %s should be off with the fix named: %+v", k, v)
 		}
 	}
 }

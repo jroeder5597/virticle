@@ -25,7 +25,7 @@ type nodeEditReq struct {
 	Addr             *string `json:"addr"`
 	User             *string `json:"user"`
 	Jump             *string `json:"jump"`
-	Privilege        *string `json:"privilege"` // root | sudo | none | auto (detect)
+	Privilege        *string `json:"privilege"` // root | helper | none | auto (detect)
 	MigrationAddress *string `json:"migrationAddress"`
 	// Force saves without a successful trial connection, to fix a node that
 	// is down.
@@ -75,7 +75,7 @@ func mergeNodeEdit(cur store.Node, req nodeEditReq) (n store.Node, detect bool, 
 	switch {
 	case req.Privilege != nil && *req.Privilege != "auto" && *req.Privilege != "":
 		if !hostconn.Privilege(*req.Privilege).Valid() {
-			return n, false, badRequest("privilege must be root, helper, sudo, none or auto")
+			return n, false, badRequest("privilege must be root, helper, none or auto")
 		}
 		n.Privilege = *req.Privilege
 	case req.Privilege != nil || connChanged || cur.Privilege == "":
@@ -194,7 +194,7 @@ func privilegeWarnings(n store.Node, res *cluster.TestResult) []string {
 	if res == nil || n.Privilege == "" || n.Privilege == res.Privilege {
 		return nil
 	}
-	rank := map[string]int{"none": 0, "helper": 1, "sudo": 2, "root": 3}
+	rank := map[string]int{"none": 0, "helper": 1, "root": 2}
 	if rank[n.Privilege] > rank[res.Privilege] {
 		return []string{fmt.Sprintf("Privilege is set to %s but the node reports: %s. Commands that need root will fail.", n.Privilege, res.PrivilegeNote)}
 	}

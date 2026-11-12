@@ -4,6 +4,12 @@
 #
 # Creates only objects prefixed "vspike": one NAT network, one image directory,
 # and N nested libvirt nodes (Debian 13) that the spike migrates VMs between.
+#
+# The controller reaches these nodes as root, so each one must be prepared with
+# "virticle node prepare --root" (it installs the node command). The cluster key
+# below (root SSH trust between the nodes) is no longer used by the controller:
+# files between nodes go by the node key peer transfer. It is left in place for
+# manual work on the nodes.
 set -euo pipefail
 
 CONTROLLER_PUB=$(cat "$1")

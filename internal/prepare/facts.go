@@ -365,8 +365,7 @@ type Options struct {
 	User          string   // service account; default DefaultUser
 	UseExisting   bool     // the account exists; change nothing about it except the key
 	Confirm       bool     // with UseExisting: also add it to the groups and grant the helper rule
-	AllowRoot     bool     // the service user is root
-	BroadSudo     bool     // grant unrestricted passwordless sudo instead of the helper
+	AllowRoot     bool     // the controller logs in as root (the node command runs directly, no service account)
 	From          string   // controller address(es) the key is restricted to
 	Extras        []string // guestfs, virtiofs
 	ControllerKey string   // the controller's public key line
@@ -386,14 +385,14 @@ func (o Options) ServiceUser() string {
 
 // Validate checks the options before anything is done.
 func (o Options) Validate() error {
-	if o.AllowRoot && (o.UseExisting || o.BroadSudo || (o.User != "" && o.User != "root")) {
-		return fmt.Errorf("allow-root cannot be combined with an account name, use-existing-user or broad sudo")
+	if o.AllowRoot && (o.UseExisting || (o.User != "" && o.User != "root")) {
+		return fmt.Errorf("root cannot be combined with an account name or use-existing-user")
 	}
 	if !o.AllowRoot && !validUser(o.ServiceUser()) {
 		return fmt.Errorf("%q is not a valid account name (lower case letters, digits, - and _)", o.ServiceUser())
 	}
 	if o.ServiceUser() == "root" && !o.AllowRoot {
-		return fmt.Errorf("the service account root needs allow-root")
+		return fmt.Errorf("the account root needs the root option")
 	}
 	for _, e := range o.Extras {
 		if !ValidExtra(e) {

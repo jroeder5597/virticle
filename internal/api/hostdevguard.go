@@ -18,17 +18,7 @@ import (
 // hot-plugged, and a VM that has one does not start while processes on the
 // node have the card open.
 
-// gpuUsersCommand prints, for one PCI address, the names of the processes
-// that hold the card's device nodes open: its DRM nodes, and for the
-// proprietary NVIDIA driver the /dev/nvidia* nodes. It needs root to see
-// other users' processes. "ok" marks a complete run.
-func gpuUsersCommand(addr string) string {
-	return `a=` + hostconn.Quote(addr) + `; pat=""; for n in /sys/bus/pci/devices/$a/drm/card* /sys/bus/pci/devices/$a/drm/renderD*; do [ -e "$n" ] && pat="$pat|/dev/dri/$(basename "$n")\$"; done; ` +
-		`d=$(basename "$(readlink /sys/bus/pci/devices/$a/driver 2>/dev/null)" 2>/dev/null); [ "$d" = nvidia ] && pat="$pat|/dev/nvidia"; pat=${pat#|}; ` +
-		`if [ -n "$pat" ]; then for p in /proc/[0-9]*; do ls -l "$p/fd" 2>/dev/null | grep -qE "$pat" && cat "$p/comm" 2>/dev/null; done; fi; echo ok`
-}
-
-// parseGPUUsers reads gpuUsersCommand's output; complete is false when the
+// parseGPUUsers reads the output of the node command's gpu-users verb; complete is false when the
 // run did not finish.
 func parseGPUUsers(out string) (users []string, complete bool) {
 	seen := map[string]bool{}
@@ -57,7 +47,7 @@ func hostDriverInUse(h *hostconn.Host, d hostDevice) string {
 	users, complete := parseGPUUsers(out)
 	if err != nil || !complete {
 		// Without root the node's other processes cannot be inspected; say so rather than guess.
-		return fmt.Sprintf("it could not be checked whether the node is using graphics card %s (driver %s); this needs root or sudo on the node", d.ID, d.Driver)
+		return fmt.Sprintf("it could not be checked whether the node is using graphics card %s (driver %s); this needs the node command on the node", d.ID, d.Driver)
 	}
 	if len(users) == 0 {
 		return ""

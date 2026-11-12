@@ -13,34 +13,32 @@ type capability struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// Features that run commands as root on the node (see internal/hostconn
-// privilege.go). Everything else the app does goes through libvirt, which a
-// member of the libvirt group may use, or reads world-readable system files.
-// scoped marks the features the virticle helper covers (scoped sudo access).
+// Features that run something as root on the node. They all go through the
+// node command (internal/hostconn helper.go), for the service account and for a
+// root login alike, so a node either has all of them or none. Everything else
+// the app does goes through libvirt, which a member of the libvirt group may
+// use, or reads world-readable system files.
 var rootFeatures = []struct {
 	key, reason string
-	scoped      bool
 }{
-	{"installTLS", "Encrypted migration needs root or sudo on this node: the certificates go into /etc/pki/qemu", true},
-	{"writePools", "Downloading or importing into a storage pool needs root or sudo on this node: the pool directories belong to root", true},
-	{"backups", "Backups need root or sudo on this node: they read and write disk images in the pool directories", true},
-	{"migration", "Moving a VM to or from this node needs root or sudo on it: disk images and snapshot files are copied as root", true},
-	{"diskMove", "Moving a disk between pools needs root or sudo on this node", true},
-	{"clone", "Cloning with guest preparation needs root or sudo on this node", true},
+	{"installTLS", "Encrypted migration needs the node command on this node: the certificates go into /etc/pki/qemu"},
+	{"writePools", "Downloading or importing into a storage pool needs the node command on this node: the pool directories belong to root"},
+	{"backups", "Backups need the node command on this node: they read and write disk images in the pool directories"},
+	{"migration", "Moving a VM to or from this node needs the node command on it: disk images and snapshot files are copied as root"},
+	{"diskMove", "Moving a disk between pools needs the node command on this node"},
+	{"clone", "Cloning with guest preparation needs the node command on this node"},
 }
 
 // nodeCapabilities evaluates every feature for a privilege setting. An
 // undetected privilege (the node never connected) allows everything; the
-// commands then fail with their own error if the guess was wrong.
+// commands then fail with their own error if the guess was wrong. The
+// reason of a refused feature ends with how to fix it.
 func nodeCapabilities(priv string) map[string]capability {
 	out := map[string]capability{}
 	for _, f := range rootFeatures {
 		c := capability{OK: true}
-		switch {
-		case hostconn.Privilege(priv) == hostconn.PrivNone:
-			c = capability{OK: false, Reason: f.reason}
-		case hostconn.Privilege(priv) == hostconn.PrivHelper && !f.scoped:
-			c = capability{OK: false, Reason: "Needs broad sudo or root on this node; the scoped account (virticle helper) does not cover it"}
+		if hostconn.Privilege(priv) == hostconn.PrivNone {
+			c = capability{OK: false, Reason: f.reason + `; run "virticle node prepare" for it`}
 		}
 		out[f.key] = c
 	}

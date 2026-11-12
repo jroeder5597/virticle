@@ -202,24 +202,7 @@ func ancestors(dir string) []string {
 	return out
 }
 
-// stateScript prints the certificate directory of a node in the form
-// parseState reads.
-func stateScript(dir string) string {
-	var b strings.Builder
-	b.WriteString("d=" + shq(dir) + "\n")
-	b.WriteString("for a in")
-	for _, a := range ancestors(dir) {
-		b.WriteString(" " + shq(a))
-	}
-	b.WriteString(`; do if [ -d "$a" ]; then echo "@@dir $a 1"; else echo "@@dir $a 0"; fi; done` + "\n")
-	b.WriteString(`for f in server-key.pem client-key.pem ca-cert.pem server-cert.pem client-cert.pem .virticle-migration.json .virt-proj-migration.json; do p="$d/$f"; if [ -e "$p" ]; then echo "@@file $f $(sha256sum < "$p" | cut -d' ' -f1) $(stat -c '%U:%G %a' "$p")"; fi; done` + "\n")
-	b.WriteString(`for c in ca-cert.pem:ca server-cert.pem:server client-cert.pem:client .virticle-migration.json:marker .virt-proj-migration.json:oldmarker; do f=${c%%:*}; n=${c##*:}; echo "@@content $n"; cat "$d/$f" 2>/dev/null; done` + "\n")
-	b.WriteString(`echo "@@content ls"; ls -A "$d" 2>/dev/null` + "\n")
-	b.WriteString("echo '@@end'\ntrue")
-	return b.String()
-}
-
-// nodeState is the parsed output of stateScript.
+// nodeState is the parsed output of the node command's migtls-state verb.
 type nodeState struct {
 	snap      migpki.Snapshot
 	dirExists map[string]bool // ancestors that exist

@@ -12,16 +12,16 @@ func TestMigrationTargetAndURIs(t *testing.T) {
 		name         string
 		node         store.Node
 		host, port   string
-		ssh, tcp     string
+		tcp          string
 		wantEndpoint string
 	}{
-		{"ipv4", store.Node{Addr: "192.168.1.5", User: "root"}, "192.168.1.5", "", "qemu+ssh://root@192.168.1.5/system", "tcp://192.168.1.5", "root@192.168.1.5"},
-		{"hostname", store.Node{Addr: "kvm2.lab.example", User: "bob"}, "kvm2.lab.example", "", "qemu+ssh://bob@kvm2.lab.example/system", "tcp://kvm2.lab.example", "bob@kvm2.lab.example"},
-		{"ipv6", store.Node{Addr: "2001:db8::5", User: "root"}, "2001:db8::5", "", "qemu+ssh://root@[2001:db8::5]/system", "tcp://[2001:db8::5]", "root@2001:db8::5"},
-		{"ipv6 with port", store.Node{Addr: "[2001:db8::5]:2222", User: "root"}, "2001:db8::5", "2222", "qemu+ssh://root@[2001:db8::5]:2222/system", "tcp://[2001:db8::5]", "root@2001:db8::5 (port 2222)"},
-		{"port", store.Node{Addr: "10.0.0.9:2200", User: "u1"}, "10.0.0.9", "2200", "qemu+ssh://u1@10.0.0.9:2200/system", "tcp://10.0.0.9", "u1@10.0.0.9 (port 2200)"},
-		{"migration address wins", store.Node{Addr: "n2.jump.example", User: "root", MigrationAddr: "10.9.9.2"}, "10.9.9.2", "", "qemu+ssh://root@10.9.9.2/system", "tcp://10.9.9.2", "root@10.9.9.2"},
-		{"default user", store.Node{Addr: "10.0.0.1"}, "10.0.0.1", "", "qemu+ssh://root@10.0.0.1/system", "tcp://10.0.0.1", "root@10.0.0.1"},
+		{"ipv4", store.Node{Addr: "192.168.1.5", User: "root"}, "192.168.1.5", "", "tcp://192.168.1.5", "root@192.168.1.5"},
+		{"hostname", store.Node{Addr: "kvm2.lab.example", User: "bob"}, "kvm2.lab.example", "", "tcp://kvm2.lab.example", "bob@kvm2.lab.example"},
+		{"ipv6", store.Node{Addr: "2001:db8::5", User: "root"}, "2001:db8::5", "", "tcp://[2001:db8::5]", "root@2001:db8::5"},
+		{"ipv6 with port", store.Node{Addr: "[2001:db8::5]:2222", User: "root"}, "2001:db8::5", "2222", "tcp://[2001:db8::5]", "root@2001:db8::5 (port 2222)"},
+		{"port", store.Node{Addr: "10.0.0.9:2200", User: "u1"}, "10.0.0.9", "2200", "tcp://10.0.0.9", "u1@10.0.0.9 (port 2200)"},
+		{"migration address wins", store.Node{Addr: "n2.jump.example", User: "root", MigrationAddr: "10.9.9.2"}, "10.9.9.2", "", "tcp://10.9.9.2", "root@10.9.9.2"},
+		{"default user", store.Node{Addr: "10.0.0.1"}, "10.0.0.1", "", "tcp://10.0.0.1", "root@10.0.0.1"},
 	}
 	for _, c := range cases {
 		h, p := migrationTarget(c.node)
@@ -32,9 +32,6 @@ func TestMigrationTargetAndURIs(t *testing.T) {
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
-		}
-		if ep.URI() != c.ssh {
-			t.Errorf("%s: ssh URI %s, want %s", c.name, ep.URI(), c.ssh)
 		}
 		if tcpURI(ep.Host) != c.tcp {
 			t.Errorf("%s: tcp URI %s, want %s", c.name, tcpURI(ep.Host), c.tcp)
@@ -116,23 +113,16 @@ func TestMergeNodeEdit(t *testing.T) {
 		t.Errorf("%+v %v %v", n, detect, err)
 	}
 	// an explicit privilege is taken as given
-	n, detect, err = mergeNodeEdit(cur, nodeEditReq{User: s("alice"), Privilege: s("sudo")})
-	if err != nil || detect || n.Privilege != "sudo" {
+	n, detect, err = mergeNodeEdit(cur, nodeEditReq{User: s("alice"), Privilege: s("helper")})
+	if err != nil || detect || n.Privilege != "helper" {
 		t.Errorf("%+v %v %v", n, detect, err)
 	}
 	if _, detect, _ = mergeNodeEdit(cur, nodeEditReq{Privilege: s("auto")}); !detect {
 		t.Error("auto must detect")
 	}
-	for _, bad := range []nodeEditReq{{Addr: s("")}, {Addr: s("a b")}, {User: s("a;b")}, {Jump: s("nouser")}, {Privilege: s("admin")}, {MigrationAddress: s("x y")}} {
+	for _, bad := range []nodeEditReq{{Addr: s("")}, {Addr: s("a b")}, {User: s("a;b")}, {Jump: s("nouser")}, {Privilege: s("admin")}, {Privilege: s("sudo")}, {MigrationAddress: s("x y")}} {
 		if _, _, err := mergeNodeEdit(cur, bad); err == nil {
 			t.Errorf("accepted %+v", bad)
 		}
-	}
-}
-
-func TestProbeParse(t *testing.T) {
-	uid, acc, uuid := parseProbe("uid=1001\nlibvirt=ok\nuuid=4c4c4544-0000-1111-2222-333344445555\n")
-	if uid != "1001" || acc != "ok" || uuid != "4c4c4544-0000-1111-2222-333344445555" {
-		t.Errorf("%q %q %q", uid, acc, uuid)
 	}
 }

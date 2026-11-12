@@ -329,8 +329,8 @@ test.describe.serial("visual pass", () => {
       await page.getByRole("button", { name: "Add node" }).click();
       await page.getByRole("dialog", { name: "Add node" }).getByRole("button", { name: "Prepare this node" }).click();
       await shot("prepare-node-form", () => expect(page.getByRole("dialog", { name: "Prepare node" })).toBeVisible());
-      await page.getByRole("dialog", { name: "Prepare node" }).getByRole("checkbox", { name: /Full sudo/ }).check();
-      await shot("prepare-node-form-options", () => expect(page.getByRole("dialog", { name: "Prepare node" }).getByRole("checkbox", { name: /Full sudo/ })).toBeChecked());
+      await page.getByRole("dialog", { name: "Prepare node" }).getByRole("checkbox", { name: /Install virtiofsd/ }).check();
+      await shot("prepare-node-form-options", () => expect(page.getByRole("dialog", { name: "Prepare node" }).getByRole("checkbox", { name: /Install virtiofsd/ })).toBeChecked());
       const adminKey = (() => { try { return readFileSync(process.env.E2E_ADMIN_KEY_FILE ?? "/root/virt-proj/lab/keys/controller", "utf8").trim(); } catch { return ""; } })();
       if (adminKey) {
         const n1 = (await (await page.request.get("/api/nodes")).json()).nodes.find((n: any) => n.hostname === env.node1 || n.addr === env.node1);

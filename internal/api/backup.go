@@ -584,8 +584,7 @@ func (m *bkRun) measure(wd *bkWork) error {
 }
 
 // copyOver copies the staged files to the target node, straight from node to
-// node: scp run on the source for root and sudo logins, the helper's peer
-// transfer for scoped ones.
+// node, with the node key peer transfer.
 func (m *bkRun) copyOver(from, to *bkWork, man *backupManifest, lo, hi float64) error {
 	var total, done uint64
 	for _, d := range man.Disks {
@@ -686,7 +685,7 @@ type backupEntry struct {
 // scanPool lists the backups in one pool directory (one find on the node).
 func scanPool(h *hostconn.Host, pd poolDir) ([]scanned, error) {
 	marker := newScanMarker()
-	out := h.ScanBackups(scanScript(pd.Dir, marker), pd.Dir, marker) // find exits non-zero for unreadable entries; the output is what counts
+	out := h.ScanBackups(pd.Dir, marker) // the scan may report unreadable entries; the output is what counts
 	var res []scanned
 	for _, it := range parseScan(out, marker, pd.Dir) {
 		sc := scanned{Dir: path.Base(it.Dir), Size: it.Size}

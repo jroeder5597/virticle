@@ -4,7 +4,7 @@ package api
 //
 // Migration must never depend on one node resolving another's host name: the
 // nodes of a cluster often have no shared DNS. So the memory stream, the NBD
-// disk copy and the qemu+ssh connection all name the destination by the
+// disk copy and the node to node file transfer all name the destination by the
 // address stored for it, not by the host name its libvirtd reports.
 
 import (
@@ -50,30 +50,15 @@ func bracket(host string) string {
 	return host
 }
 
-// sshURI is libvirt's connection URI from a source node to the target.
-func sshURI(user, host, port string) string {
-	h := bracket(host)
-	if port != "" && port != "22" {
-		h += ":" + port
-	}
-	return "qemu+ssh://" + user + "@" + h + "/system"
-}
-
 // tcpURI is the URI of the migration data stream (VIR_MIGRATE_PARAM_URI) or of
 // the NBD disk copy (VIR_MIGRATE_PARAM_DISKS_URI). libvirt picks the port from
 // 49152-49215 on the destination when none is given.
 func tcpURI(host string) string { return "tcp://" + bracket(host) }
 
-// scpHost is host in the form scp and ssh accept after "user@": IPv6
-// literals need brackets for scp's host:path syntax.
-func scpHost(host string) string { return bracket(host) }
-
 // migEndpoint is everything the migration needs to know about the target.
 type migEndpoint struct {
 	User, Host, Port string
 }
-
-func (e migEndpoint) URI() string { return sshURI(e.User, e.Host, e.Port) }
 
 func (e migEndpoint) String() string {
 	h := e.User + "@" + e.Host
@@ -81,14 +66,6 @@ func (e migEndpoint) String() string {
 		h += " (port " + e.Port + ")"
 	}
 	return h
-}
-
-// sshArgs are the ssh/scp options for the endpoint's port; scp uses -P.
-func (e migEndpoint) sshPort(flag string) string {
-	if e.Port == "" || e.Port == "22" {
-		return ""
-	}
-	return fmt.Sprintf("%s %s ", flag, e.Port)
 }
 
 // endpointFor validates the target node's settings.

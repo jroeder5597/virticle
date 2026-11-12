@@ -19,17 +19,19 @@ import (
 )
 
 const nodeUsage = `usage:
-  virticle node prepare   [--check] [--user NAME] [--use-existing-user[=NAME]] [--confirm] [--allow-root]
-                          [--broad-sudo] [--from ADDR] [--extras guestfs,virtiofs] [--jump user@host]
+  virticle node prepare   [--check] [--user NAME] [--use-existing-user[=NAME]] [--confirm] [--root]
+                          [--from ADDR] [--extras guestfs,virtiofs] [--jump user@host]
                           [--identity FILE] [--password-stdin] [--data DIR] [user@]host[:port]
-  virticle node unprepare [--user NAME] [--allow-root] [--jump user@host] [--identity FILE]
+  virticle node unprepare [--user NAME] [--root] [--jump user@host] [--identity FILE]
                           [--password-stdin] [--data DIR] [user@]host[:port]
 
 prepare signs in as the administrator (your SSH agent, or --identity, or a password read from
 standard input), installs libvirt and QEMU, creates a service account for the controller with a
-restricted SSH key and a sudo right for the virticle helper only, and tests the connection.
---check changes nothing. Running prepare again changes nothing. unprepare removes the account,
-key, helper and sudo rule; packages, VMs, pools and networks stay.`
+restricted SSH key and a sudo right for the virticle node command only, and tests the connection.
+With --root the controller signs in as root instead and no account is created. Both ways install
+the node command. --check changes nothing. Running prepare again changes nothing. unprepare removes
+the account, key, node command and sudo rule; packages, VMs, pools and networks stay.
+(--allow-root is the old name of --root.)`
 
 // useExistingFlag is a boolean flag that also accepts --use-existing-user=NAME.
 type useExistingFlag struct {
@@ -63,9 +65,9 @@ func nodeCommand(args []string) int {
 		check     = fs.Bool("check", false, "read-only preflight; change nothing")
 		user      = fs.String("user", "", "service account name (default virticle)")
 		existing  useExistingFlag
-		confirm   = fs.Bool("confirm", false, "with --use-existing-user: add the account to the libvirt and kvm groups and give it the helper's sudo rule")
-		allowRoot = fs.Bool("allow-root", false, "use root as the service account (warns; a dedicated account is safer)")
-		broad     = fs.Bool("broad-sudo", false, "give the service account unrestricted passwordless sudo instead of the helper, for the features the helper does not cover")
+		confirm   = fs.Bool("confirm", false, "with --use-existing-user: add the account to the libvirt and kvm groups and give it the sudo rule for the node command")
+		root      = fs.Bool("root", false, "the controller logs in as root instead of a service account (warns; a dedicated account is safer)")
+		allowRoot = fs.Bool("allow-root", false, "")
 		from      = fs.String("from", "", "restrict the controller's key to this source address (comma-separated patterns)")
 		extras    = fs.String("extras", "", "comma-separated extra packages: guestfs, virtiofs")
 		jump      = fs.String("jump", "", "user@host to connect through")
@@ -127,7 +129,7 @@ func nodeCommand(args []string) int {
 	}
 	renameEnv("VIRT_JUMP_PASSWORD", "VIRTICLE_JUMP_PASSWORD")
 
-	o := prepare.Options{User: *user, UseExisting: existing.on, Confirm: *confirm, AllowRoot: *allowRoot, BroadSudo: *broad,
+	o := prepare.Options{User: *user, UseExisting: existing.on, Confirm: *confirm, AllowRoot: *root || *allowRoot,
 		From: *from, ControllerKey: pub, InstanceID: instance}
 	if existing.name != "" {
 		o.User = existing.name

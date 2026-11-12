@@ -1,13 +1,11 @@
 package hostconn
 
 // Typed operations on a node's files. Feature code calls these and never
-// branches on how the login obtains root:
-//   - root and broad sudo run the plain shell commands the code used before;
-//   - the scoped helper account runs the matching helper verb, which checks
-//     every path itself (see virticle-helper.sh: only files inside the
-//     storage pool directories and the UEFI NVRAM directory).
-// The two paths take the same arguments and return the same results. A path
-// that is not plain (letters, digits and . _ + = , @ / -) is refused in both.
+// branches on how the login obtains root: each one runs the matching verb of
+// the node command (for the service account through sudo, for root directly),
+// which checks every path itself: only files inside the storage pool
+// directories and the UEFI NVRAM directory. A path that is not plain (letters,
+// digits and . _ + = , @ / -) is refused.
 
 import (
 	"bytes"
@@ -19,34 +17,19 @@ import (
 	"strings"
 )
 
-// ErrNotHelper is returned by operations that exist for helper-mode nodes only.
-var ErrNotHelper = errors.New("this node is not in helper mode")
-
-func (h *Host) helperMode() bool { return h.priv == PrivHelper }
-
-// run executes rootCmd as root, or the helper verb for a scoped login.
-func (h *Host) run(rootCmd, sub string, args ...string) (string, error) {
-	if h.helperMode() {
-		return h.RunHelper(sub, args...)
-	}
-	return h.RunRoot(rootCmd)
+// run executes one verb of the node command.
+func (h *Host) run(verb string, args ...string) (string, error) {
+	return h.RunNode(verb, args...)
 }
 
-// pipe is run for commands whose output must arrive unchanged (not trimmed)
+// pipe is run for verbs whose output must arrive unchanged (not trimmed)
 // or that read stdin.
-func (h *Host) pipe(ctx context.Context, rootCmd, sub string, args []string, stdin io.Reader, stdout io.Writer) error {
-	if h.helperMode() {
-		return h.Pipe(ctx, HelperCmd(sub, args...), stdin, stdout)
+func (h *Host) pipe(ctx context.Context, verb string, args []string, stdin io.Reader, stdout io.Writer) error {
+	cmd, err := h.nodeCmd(verb, args...)
+	if err != nil {
+		return err
 	}
-	return h.PipeRoot(ctx, rootCmd, stdin, stdout)
-}
-
-func quoteAll(args []string) string {
-	q := make([]string, len(args))
-	for i, a := range args {
-		q[i] = Quote(a)
-	}
-	return strings.Join(q, " ")
+	return h.Pipe(ctx, cmd, stdin, stdout)
 }
 
 // FileStat describes one path on a node.
@@ -70,9 +53,9 @@ func (h *Host) Stat(paths ...string) ([]FileStat, error) {
 	if len(paths) == 0 {
 		return nil, nil
 	}
-	out, err := h.run(`for f in `+quoteAll(paths)+`; do stat -L -c '%F|%b|%B|%a|%s' -- "$f" 2>/dev/null || echo MISSING; done`, "stat", paths...)
+	out, err := h.run("stat", paths...)
 	if err != nil {
-		return nil, fmt.Errorf("%s", firstLineOf(out, err))
+		return nil, nodeErr(out, err)
 	}
 	return parseStat(paths, out)
 }
@@ -137,9 +120,9 @@ func (h *Host) Remove(paths ...string) error {
 	if len(paths) == 0 {
 		return nil
 	}
-	out, err := h.run("rm -f -- "+quoteAll(paths), "remove", paths...)
+	out, err := h.run("remove", paths...)
 	if err != nil {
-		return fmt.Errorf("%s", firstLineOf(out, err))
+		return nodeErr(out, err)
 	}
 	return nil
 }
@@ -147,37 +130,36 @@ func (h *Host) Remove(paths ...string) error {
 // RemoveTree deletes a work directory (a name starting ".virticle-") or a
 // directory that holds a manifest.json (a backup), with everything in it.
 func (h *Host) RemoveTree(dir string) error {
-	q := Quote(dir)
-	out, err := h.run(`[ ! -L `+q+` ] && [ -d `+q+` ] && { [ -f `+q+`/manifest.json ] || case `+q+` in */.virticle-*) true ;; *) false ;; esac; } && rm -rf --one-file-system -- `+q, "rmtree", dir)
+	out, err := h.run("rmtree", dir)
 	if err != nil {
-		return fmt.Errorf("%s", firstLineOf(out, err))
+		return nodeErr(out, err)
 	}
 	return nil
 }
 
 // Rmdir removes an empty directory.
 func (h *Host) Rmdir(dir string) error {
-	out, err := h.run("rmdir -- "+Quote(dir), "rmdir", dir)
+	out, err := h.run("rmdir", dir)
 	if err != nil {
-		return fmt.Errorf("%s", firstLineOf(out, err))
+		return nodeErr(out, err)
 	}
 	return nil
 }
 
 // Move renames a file or directory; dst must not exist and is never replaced.
 func (h *Host) Move(src, dst string) error {
-	out, err := h.run("test ! -e "+Quote(dst)+" && mv -T -n -- "+Quote(src)+" "+Quote(dst)+" && test ! -e "+Quote(src), "move", src, dst)
+	out, err := h.run("move", src, dst)
 	if err != nil {
-		return fmt.Errorf("%s", firstLineOf(out, err))
+		return nodeErr(out, err)
 	}
 	return nil
 }
 
 // Copy copies a regular file on the node; dst must not exist and is never replaced.
 func (h *Host) Copy(src, dst string) error {
-	out, err := h.run("test ! -e "+Quote(dst)+" && umask 077 && cp --preserve=mode -- "+Quote(src)+" "+Quote(dst), "copy", src, dst)
+	out, err := h.run("copy", src, dst)
 	if err != nil {
-		return fmt.Errorf("%s", firstLineOf(out, err))
+		return nodeErr(out, err)
 	}
 	return nil
 }
@@ -189,8 +171,7 @@ func (h *Host) ReadLimited(path string, max int) ([]byte, error) {
 		return nil, fmt.Errorf("unsupported limit %d", max)
 	}
 	var buf bytes.Buffer
-	n := strconv.Itoa(max + 1)
-	if err := h.pipe(context.Background(), "head -c "+n+" -- "+Quote(path), "read", []string{path, strconv.Itoa(max)}, nil, &buf); err != nil {
+	if err := h.pipe(context.Background(), "read", []string{path, strconv.Itoa(max)}, nil, &buf); err != nil {
 		return nil, fmt.Errorf("cannot read %s: %w", path, err)
 	}
 	if buf.Len() > max {
@@ -211,16 +192,14 @@ func (h *Host) WriteFile(path string, data []byte, max int, mode string) error {
 	if max < 1 || max > 64<<20 || len(data) > max {
 		return fmt.Errorf("%s: the content (%d bytes) exceeds the limit", path, len(data))
 	}
-	q := Quote(path)
-	root := "set -C; umask 077; cat > " + q + " && chmod " + mode + " " + q
-	return h.pipe(context.Background(), root, "write", []string{path, strconv.Itoa(max), mode}, bytes.NewReader(data), nil)
+	return h.pipe(context.Background(), "write", []string{path, strconv.Itoa(max), mode}, bytes.NewReader(data), nil)
 }
 
 // MkWorkDir creates a private work directory DIR/.virticle-TAG.XXXXXX (TAG:
 // lower-case letters) and returns its path.
 func (h *Host) MkWorkDir(dir, tag string) (string, error) {
 	prefix := strings.TrimSuffix(dir, "/") + "/.virticle-" + tag + "."
-	out, err := h.run("umask 077 && mktemp -d -- "+Quote(prefix+"XXXXXX"), "mkworkdir", dir, tag)
+	out, err := h.run("mkworkdir", dir, tag)
 	if err != nil || !strings.HasPrefix(out, prefix) || len(out) != len(prefix)+6 || strings.ContainsAny(out, "\n\r\x00") {
 		return "", fmt.Errorf("cannot create a work directory in %s on %s: %s", dir, h.Name, firstLineOf(out, errors.New("unexpected answer")))
 	}
@@ -233,9 +212,9 @@ func (h *Host) ChmodWork(dir, mode string) error {
 	if mode != "700" && mode != "711" {
 		return fmt.Errorf("unsupported mode %s", mode)
 	}
-	out, err := h.run("chmod "+mode+" -- "+Quote(dir), "chmod-work", mode, dir)
+	out, err := h.run("chmod-work", mode, dir)
 	if err != nil {
-		return fmt.Errorf("%s", firstLineOf(out, err))
+		return nodeErr(out, err)
 	}
 	return nil
 }
@@ -243,16 +222,16 @@ func (h *Host) ChmodWork(dir, mode string) error {
 // QemuInfo runs qemu-img info as JSON (a shared lock is not taken). chain asks
 // for the whole backing chain. The output of a failing run is returned with the error.
 func (h *Host) QemuInfo(path string, chain bool) (string, error) {
-	flag, args := "", []string{path}
+	args := []string{path}
 	if chain {
-		flag, args = "--backing-chain ", []string{path, "chain"}
+		args = []string{path, "chain"}
 	}
-	return h.run("qemu-img info -U "+flag+"--output=json -- "+Quote(path)+" 2>&1", "qemu-img-info", args...)
+	return h.run("qemu-img-info", args...)
 }
 
 // SHA256 returns the SHA-256 of a node file as 64 hex digits.
 func (h *Host) SHA256(path string) (string, error) {
-	out, err := h.run("sha256sum -- "+Quote(path), "sha256", path)
+	out, err := h.run("sha256", path)
 	f := strings.Fields(out)
 	if err != nil || len(f) < 1 || len(f[0]) != 64 || strings.Trim(f[0], "0123456789abcdef") != "" {
 		return "", fmt.Errorf("sha256 of %s: %s", path, firstLineOf(out, errors.New("no checksum")))
@@ -263,23 +242,30 @@ func (h *Host) SHA256(path string) (string, error) {
 // MissingTools returns those of names (qemu-img, ssh, scp, tar, sha256sum)
 // that are not installed on the node.
 func (h *Host) MissingTools(names ...string) ([]string, error) {
-	out, err := h.run(`for t in `+quoteAll(names)+`; do command -v "$t" >/dev/null 2>&1 || echo "$t"; done`, "tools-missing", names...)
+	out, err := h.run("tools-missing", names...)
 	if err != nil {
-		return nil, fmt.Errorf("%s", firstLineOf(out, err))
+		return nil, nodeErr(out, err)
 	}
 	return strings.Fields(out), nil
 }
 
-// AllowedRoots lists the directories the helper confines file operations to
-// (helper mode only): the target directories of the node's dir, fs and netfs
+// AllowedRoots lists the directories the node command confines file operations
+// to: the target directories of the node's dir, fs and netfs
 // storage pools and the UEFI NVRAM directory.
 func (h *Host) AllowedRoots() ([]string, error) {
-	if !h.helperMode() {
-		return nil, ErrNotHelper
-	}
-	out, err := h.RunHelper("roots")
+	out, err := h.RunNode("roots")
 	if err != nil {
-		return nil, fmt.Errorf("%s", firstLineOf(out, err))
+		return nil, nodeErr(out, err)
 	}
 	return strings.Fields(out), nil
+}
+
+// nodeErr turns the output and error of a failed node command run into one
+// error with the first line of the output as its text. A missing node command
+// stays recognisable with errors.Is(err, ErrNoPrivilege).
+func nodeErr(out string, err error) error {
+	if errors.Is(err, ErrNoPrivilege) {
+		return err
+	}
+	return errors.New(firstLineOf(out, err))
 }
