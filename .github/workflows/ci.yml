@@ -24,6 +24,9 @@ jobs:
       # The web build runs tsc first, so a TypeScript error fails the job.
       - name: Web build
         run: make web
+      # The controller embeds the node command; build it before the tests.
+      - name: Node command
+        run: make nodebin
       - name: Vet
         run: go vet ./...
       - name: Test

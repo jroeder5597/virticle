@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"virticle/internal/hostconn"
+	"virticle/internal/nodebin"
 )
 
 // Node is the administrator's shell on the host: the plain SSH connection.
@@ -167,18 +168,20 @@ func steps(o Options) []stepDef {
 		list = append(list, stepDef{id: "do-account", title: "Service account", run: stepAccount})
 	}
 	list = append(list, stepDef{id: "do-key", title: "Install SSH key", run: stepKey})
+	if !o.BroadSudo {
+		// The node command is installed for every login: the service account
+		// runs it through sudo, root directly.
+		list = append(list, stepDef{id: "do-helper", title: "Install node command", run: stepHelper})
+	}
 	if !o.AllowRoot {
 		// An existing account gets a sudo rule only when the change is confirmed.
 		rule := !o.UseExisting || o.Confirm
-		if !o.BroadSudo {
-			list = append(list, stepDef{id: "do-helper", title: "Install helper", run: stepHelper})
-		}
 		if rule {
 			list = append(list, stepDef{id: "do-sudoers", title: "Install sudo rule", run: stepSudoers})
 		}
-		if !o.BroadSudo {
-			list = append(list, stepDef{id: "do-peerkey", title: "Node key", run: stepPeerKey})
-		}
+	}
+	if !o.BroadSudo {
+		list = append(list, stepDef{id: "do-peerkey", title: "Node key", run: stepPeerKey})
 	}
 	return list
 }
@@ -460,23 +463,59 @@ func installFile(r *Runner, what, dest, dirmode, mode, content, check, checkmsg 
 	return d, ch, nil
 }
 
+// nodeBinary returns the node command for a machine name (`uname -m`). A
+// variable so that tests do not need the built binaries.
+var nodeBinary = nodebin.Binary
+
+// removeOldHelperScript removes the shell script of versions before the node
+// command.
+const removeOldHelperScript = `
+if [ -e ` + oldHelperPath + ` ] || [ -L ` + oldHelperPath + ` ]; then rm -f ` + oldHelperPath + `; echo "removed the old helper script"; echo @@changed; else echo @@unchanged; fi`
+
+// stepHelper uploads the node command for the node's architecture, installs it
+// root:root 0755, removes the old shell script and checks that the program
+// runs and speaks this controller's protocol.
 func stepHelper(r *Runner, p Plan, o Options) (string, bool, error) {
-	d, ch, err := installFile(r, "the helper", hostconn.HelperPath, "755", "755", hostconn.HelperScript, "", "")
+	bin, err := nodeBinary(p.Facts.Arch)
 	if err != nil {
 		return "", false, err
+	}
+	d, ch, err := installFile(r, "the node command", hostconn.HelperPath, "755", "755", string(bin), "", "")
+	if err != nil {
+		return "", false, err
+	}
+	out, err := r.root(removeOldHelperScript, "")
+	if err != nil {
+		return "", false, fmt.Errorf("%w: %s", err, firstLines(out, 6))
+	}
+	if od, och := parseStep(out); och {
+		d, ch = d+"; "+od, true
+	}
+	got, err := r.root(hostconn.HelperPath+" version", "")
+	if err != nil || strings.TrimSpace(got) != hostconn.HelperVersion {
+		return "", false, fmt.Errorf("the node command does not run on this host (expected protocol %s): %s", hostconn.HelperVersion, firstLines(got, 3))
 	}
 	return d + " (version " + hostconn.HelperVersion + ")", ch, nil
 }
 
 func stepSudoers(r *Runner, p Plan, o Options) (string, bool, error) {
 	content := hostconn.SudoersLine(o.ServiceUser())
-	what := "the sudo rule for the helper only"
+	what := "the sudo rule for the node command only"
 	if o.BroadSudo {
 		content, what = hostconn.BroadSudoersLine(o.ServiceUser()), "the broad sudo rule"
 	}
 	// A temporary name starting with a dot is ignored by sudo, so a rule that
 	// does not parse is never active; visudo checks it before it is moved.
-	return installFile(r, what, hostconn.SudoersPath, "755", "440", content, `visudo -cf "$1"`, "visudo rejected the sudo rule; nothing was installed")
+	d, ch, err := installFile(r, what, hostconn.SudoersPath, "755", "440", content, `visudo -cf "$1"`, "visudo rejected the sudo rule; nothing was installed")
+	if err != nil || o.BroadSudo {
+		return d, ch, err
+	}
+	// The rule works only if the account really can run the node command.
+	got, verr := r.root("runuser -u "+shq(o.ServiceUser())+" -- sudo -n "+hostconn.HelperPath+" version 2>&1", "")
+	if verr != nil || strings.TrimSpace(got) != hostconn.HelperVersion {
+		return "", false, fmt.Errorf("%s cannot run the node command through sudo: %s", o.ServiceUser(), firstLines(got, 3))
+	}
+	return d, ch, nil
 }
 
 // peerKeyScript creates the service account's own key pair for node to node
@@ -516,14 +555,16 @@ if [ -n "$home" ] && [ -f "$home/.ssh/authorized_keys" ] && grep -qF -- "$blob" 
 else echo "no controller key"; fi
 if [ -n "$home" ] && [ -d "$home/.ssh" ]; then
   if [ -f "$home/.ssh/virticle_peer_ed25519" ] || [ -f "$home/.ssh/virticle_peer_known_hosts" ]; then rm -f "$home/.ssh/virticle_peer_ed25519" "$home/.ssh/virticle_peer_ed25519.pub" "$home/.ssh/virticle_peer_known_hosts"; echo "node key removed"; changed=1; fi
-  if [ -f "$home/.ssh/authorized_keys" ] && grep -qF -- "virticle-helper peer-recv" "$home/.ssh/authorized_keys"; then
-    t=$(mktemp "$home/.ssh/.authorized_keys.XXXXXX"); grep -vF -- "virticle-helper peer-recv" "$home/.ssh/authorized_keys" > "$t"
-    chown --reference="$home/.ssh/authorized_keys" "$t"; chmod 600 "$t"; mv -f "$t" "$home/.ssh/authorized_keys"
-    echo "peer keys removed"; changed=1
-  fi
+  for mark in "virticle-node peer-recv" "virticle-helper peer-recv"; do
+    if [ -f "$home/.ssh/authorized_keys" ] && grep -qF -- "$mark" "$home/.ssh/authorized_keys"; then
+      t=$(mktemp "$home/.ssh/.authorized_keys.XXXXXX"); grep -vF -- "$mark" "$home/.ssh/authorized_keys" > "$t"
+      chown --reference="$home/.ssh/authorized_keys" "$t"; chmod 600 "$t"; mv -f "$t" "$home/.ssh/authorized_keys"
+      echo "peer keys removed"; changed=1
+    fi
+  done
 fi
 if [ -f ` + sudoersPath + ` ] && head -c 200 ` + sudoersPath + ` | grep -q 'Written by virticle node prepare' && grep -q "^$u ALL=" ` + sudoersPath + `; then rm -f ` + sudoersPath + `; echo "sudo rule removed"; changed=1; else echo "no sudo rule for $u"; fi
-if [ -f ` + helperPath + ` ] && [ ! -f ` + sudoersPath + ` ]; then rm -f ` + helperPath + `; rmdir /usr/local/libexec 2>/dev/null; echo "helper removed"; changed=1; elif [ -f ` + helperPath + ` ]; then echo "helper kept, another account's sudo rule uses it"; else echo "no helper"; fi
+if { [ -f ` + helperPath + ` ] || [ -f ` + oldHelperPath + ` ]; } && [ ! -f ` + sudoersPath + ` ]; then rm -f ` + helperPath + ` ` + oldHelperPath + `; rmdir /usr/local/libexec 2>/dev/null; echo "node command removed"; changed=1; elif [ -f ` + helperPath + ` ] || [ -f ` + oldHelperPath + ` ]; then echo "node command kept, another account's sudo rule uses it"; else echo "no node command"; fi
 if [ "$u" != root ] && getent passwd "$u" | grep -q "` + AccountComment + `"; then
   pkill -KILL -u "$u" 2>/dev/null; sleep 1
   userdel -r "$u" >/dev/null 2>&1; if id "$u" >/dev/null 2>&1; then echo "the account could not be removed (is the controller still connected as $u? remove the node there first)"; exit 1; fi
@@ -532,7 +573,7 @@ elif [ "$u" != root ] && id "$u" >/dev/null 2>&1; then echo "account $u kept (th
 if [ "$changed" = 1 ]; then echo @@changed; else echo @@unchanged; fi`
 
 // Unprepare removes what Prepare added for the service account: the key, the
-// sudo rule, the helper and (when this tool created it) the account. Packages,
+// sudo rule, the node command (and the old helper script) and (when this tool created it) the account. Packages,
 // VMs, pools and networks stay.
 func (r *Runner) Unprepare(o Options) []Row {
 	access := r.Access()
@@ -570,8 +611,8 @@ func titleOf(s string) string {
 		return "Node key"
 	case strings.Contains(s, "key"):
 		return "SSH key"
-	case strings.Contains(s, "helper"):
-		return "Helper"
+	case strings.Contains(s, "node command"), strings.Contains(s, "helper"):
+		return "Node command"
 	case strings.Contains(s, "sudo"):
 		return "Sudo rule"
 	}

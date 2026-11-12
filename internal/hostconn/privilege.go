@@ -108,10 +108,11 @@ func (h *Host) PipeRoot(ctx context.Context, cmd string, stdin io.Reader, stdout
 // copy).
 func (h *Host) RootCmd(cmd string) (string, error) { return WrapRoot(h.priv, cmd) }
 
-// DetectScript prints what ParseDetect reads: the uid, whether the helper
-// answers through sudo (and its version), and whether broad sudo works without
-// a password. It always succeeds.
-const DetectScript = `echo "uid=$(id -u)"; if [ -x ` + HelperPath + ` ]; then echo "helper=$(sudo -n ` + HelperPath + ` version 2>/dev/null | head -n 1)"; fi; if sudo -n true >/dev/null 2>&1; then echo sudo=yes; else echo sudo=no; fi; echo "user=$(id -un)"`
+// DetectScript prints what ParseDetect reads: the uid, whether the node
+// command answers through sudo (and its version), whether the old helper
+// script of an earlier version is still there, and whether broad sudo works
+// without a password. It always succeeds.
+const DetectScript = `echo "uid=$(id -u)"; if [ -x ` + HelperPath + ` ]; then echo "helper=$(sudo -n ` + HelperPath + ` version 2>/dev/null | head -n 1)"; fi; if [ -e ` + OldHelperPath + ` ]; then echo oldhelper=yes; fi; if sudo -n true >/dev/null 2>&1; then echo sudo=yes; else echo sudo=no; fi; echo "user=$(id -un)"`
 
 // DetectPrivilege runs DetectScript and decides: uid 0 is root, else a helper
 // of this version that answers through sudo is helper, else working
@@ -135,25 +136,32 @@ func ParseDetect(out string) (Privilege, string) {
 	}
 	user := kv["user"]
 	hv, hasHelper := kv["helper"]
+	old := kv["oldhelper"] == "yes" && !hasHelper
 	switch {
 	case kv["uid"] == "0":
 		return PrivRoot, "logged in as root"
 	case hasHelper && hv == HelperVersion:
 		if kv["sudo"] == "yes" {
-			return PrivHelper, user + " may run the virticle helper (version " + hv + ") as root; broad sudo works too, but the helper is used"
+			return PrivHelper, user + " may run the virticle node command (version " + hv + ") as root; broad sudo works too, but the node command is used"
 		}
-		return PrivHelper, user + " may run the virticle helper (version " + hv + ") as root, and nothing else"
+		return PrivHelper, user + " may run the virticle node command (version " + hv + ") as root, and nothing else"
 	case kv["sudo"] == "yes":
 		if hasHelper && hv != "" {
-			return PrivSudo, user + " is not root but \"sudo -n\" works without a password (the installed helper is version " + hv + ", this controller ships " + HelperVersion + ")"
+			return PrivSudo, user + " is not root but \"sudo -n\" works without a password (the installed node command is version " + hv + ", this controller ships " + HelperVersion + ")"
+		}
+		if old {
+			return PrivSudo, user + " is not root but \"sudo -n\" works without a password (this node was " + OlderVersionMessage + ")"
 		}
 		return PrivSudo, user + " is not root but \"sudo -n\" works without a password"
 	}
 	if hasHelper {
 		if hv == "" {
-			return PrivNone, user + " is not root and the helper in " + HelperPath + " does not answer through sudo (check " + SudoersPath + ")"
+			return PrivNone, user + " is not root and the node command in " + HelperPath + " does not answer through sudo (check " + SudoersPath + ")"
 		}
-		return PrivNone, user + " is not root; the installed helper is version " + hv + " and this controller ships " + HelperVersion + ": run Prepare node to update it"
+		return PrivNone, user + " is not root; the installed node command is version " + hv + " and this controller ships " + HelperVersion + ": run Prepare node to update it"
+	}
+	if old {
+		return PrivNone, user + " is not root and this node was " + OlderVersionMessage
 	}
 	return PrivNone, user + " is not root and \"sudo -n true\" fails (no passwordless sudo)"
 }

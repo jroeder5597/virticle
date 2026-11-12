@@ -9,3 +9,5 @@ web/dist/
 /.claude/
 /data-e2e/
 /data-helper/
+/internal/nodebin/dist/*
+!/internal/nodebin/dist/.gitkeep
