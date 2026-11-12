@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/xml"
-	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -71,18 +70,12 @@ func (s *Server) downloadVolume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dest := dir + "/" + req.Name
-	part := dest + ".part"
+	part := hostconn.DownloadPart(dest)
 
 	err = s.task(r, "download", pool.Name+"/"+req.Name, h.Name, func(progress func(float64)) error {
 		defer watchPartSize(h, part, probeSize(h, req.URL), progress)()
-		// -f: an HTTP error status is a failure, not a saved error page.
-		cmd := fmt.Sprintf("umask 077; if [ -e %[3]s ]; then echo 'a file with this name already exists in the pool directory'; exit 1; fi; if curl -q -fsSL --proto '=http,https' --proto-redir '=http,https' --max-redirs 10 --connect-timeout 20 -o %[1]s -- %[2]s && mv -n -- %[1]s %[3]s; then :; else rc=$?; rm -f -- %[1]s; exit $rc; fi",
-			shQuote(part), shQuote(req.URL), shQuote(dest))
-		if out, err := h.RunRoot(cmd); err != nil {
-			if out != "" {
-				return fmt.Errorf("download failed: %s", out)
-			}
-			return fmt.Errorf("download failed: %w", err)
+		if err := h.Download(hostconn.DownloadOpts{URL: req.URL, Dest: dest}); err != nil {
+			return err
 		}
 		return h.StoragePoolRefresh(pool, 0)
 	})
@@ -147,10 +140,8 @@ func watchPartSize(h *hostconn.Host, part string, total int64, progress func(flo
 				case <-done:
 					return
 				case <-tick.C:
-					if out, err := h.RunRoot("stat -c %s -- " + shQuote(part)); err == nil {
-						if n, err := strconv.ParseInt(out, 10, 64); err == nil {
-							progress(float64(n) / float64(total))
-						}
+					if st, err := h.Stat(part); err == nil && len(st) == 1 && st[0].Exists {
+						progress(float64(st[0].Size) / float64(total))
 					}
 				}
 			}

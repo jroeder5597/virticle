@@ -159,6 +159,13 @@ never evaluate an argument, and there is no subcommand that runs a given command
 | `qemu-img-info PATH [chain] [FORMAT]` | `qemu-img info` as JSON; every backing file must also be inside a root |
 | `sha256 PATH` | SHA-256 of a file |
 | `tools-missing NAME...` | which of `qemu-img ssh scp tar sha256sum` are missing |
+| `download URL DEST [sha256\|sha512 HEX]` | the node fetches an `http://` or `https://` URL into the new file `DEST` (see "Downloads and imports") |
+| `download-cancel DEST` | stops the running download of `DEST` |
+| `image-info PATH` | `qemu-img info` as JSON for an image to import; the format is recognised from the content |
+| `realpath file\|dir PATH`, `free-space DIR` | canonical path of an existing file or directory inside a root; free bytes of its file system |
+| `tar-list FILE`, `tar-extract FILE WORKDIR NAME...` | list an OVA; extract plain-named members of an archive that holds regular files only into a work directory |
+| `convert-start WORKDIR SRC`, `convert-status WORKDIR`, `convert-kill WORKDIR` | run `qemu-img convert` to qcow2 in the background from a work directory, read its progress, stop it |
+| `sysprep DISK...` | `virt-sysprep` with a fixed option set on qcow2 or raw images |
 | `peer-key`, `peer-allow`, `peer-disallow` | the account's own node key; install or remove a peer's key (restricted to `peer-recv`) |
 | `peer-hostkey-set HOST PORT`, `peer-hostkey-unset`, `peer-list` | host keys the node accepts for its peers; what is on record |
 | `peer-send HOST PORT USER SRC DST MODE`, `peer-ping`, `peer-recv` | send a file to a peer node; test a peer; receive (the peer key's forced command) |
@@ -170,6 +177,17 @@ every call. A path must be absolute and plain (`A-Za-z0-9._+=,@/-`, at most 200 
 final component that is a symbolic link; verbs that create refuse to replace anything. A pool whose directory is a
 system place (`/etc`, `/usr`, `/root`, `/var/lib/libvirt/qemu`, ...) is never a root.
 
+**Downloads and imports.** `download` runs `curl` as root with `-q`, `--proto =http,https` and
+`--proto-redir =http,https`, so neither the URL nor a redirect can name a local file or another scheme. The URL must start with
+`http://` or `https://`, be at most 2000 characters and contain only `A-Za-z0-9._~:/?#@!$&()*+,;=%-`. The destination must be
+a new name (starting with a letter or digit) inside a root. The data goes to `.NAME.part` next to it, which is created
+exclusively and never written through a link; with a digest the file is moved to `NAME` only if it matches; any failure,
+cancel or signal removes the part file. Import reads an image or OVA that lies inside a root. `image-info` and
+`convert-start` choose the format themselves (raw, qcow2, vmdk, vpc, vhdx or vdi) and refuse a qcow2 whose backing chain
+leaves the roots and a VMDK whose descriptor names another file. `tar-extract` refuses an archive that contains anything
+but regular files with plain names. `sysprep` takes the first-boot script from the helper itself; the caller supplies only
+image paths, each inside a root, not a link, qcow2 (backing chain inside the roots) or raw.
+
 **Node to node copies.** Each helper node has its own SSH key (`~/.ssh/virticle_peer_ed25519`, made by
 `virticle node prepare`; the private half stays on the node). When a migration needs files copied, the controller
 installs the sending node's public key on the receiving node with `restrict,command="sudo -n <helper> peer-recv"`, so
@@ -177,7 +195,7 @@ that key can deliver a new file into a storage pool and nothing else, and record
 (taken from the controller's `known_hosts`) on the sending node, which checks it strictly. Then `peer-send` on the
 source reads the file as root and streams it over `ssh`, run as the service account, to `peer-recv` on the target. The
 data does not pass through the controller. This is done by the pre-flight check, idempotently; nothing is entered by
-hand. Removing a node from the controller removes its key from the other helper nodes. `virticle node unprepare`
+hand. Removing a node from the controller removes its key from the other helper nodes, and theirs from it. `virticle node unprepare`
 removes the node's key and the peer keys installed on it.
 
 **Live migration** of a node in helper mode is coordinated by the controller (it calls the phases of libvirt's
@@ -192,10 +210,11 @@ if present, else none) until an administrator runs `virticle node prepare` again
 ### What the helper covers
 
 With the helper the account can run libvirt operations (it is in the `libvirt` group), upload and manage volumes through
-libvirt, take screenshots, set up and remove **encrypted migration** certificates, and **migrate VMs** (live and
-offline, between two helper nodes). Features that run free-form commands as root on the node (writing into pool
-directories by download or import, backups, moving a disk between pools, clone with guest preparation) are **off** for a node in `helper` mode and the
-UI says why. `--broad-sudo` gives the account the older unrestricted rule instead
+libvirt, take screenshots, set up and remove **encrypted migration** certificates, **migrate VMs** (live and
+offline, between two helper nodes), **download** images and the image catalogue into a pool (and cancel the download),
+**import** disks and OVAs, **move a disk** to another pool, and **clone with guest preparation** (virt-sysprep, if
+libguestfs is installed). Backups still need more than the helper offers and are **off** for a node in `helper` mode;
+the UI says why. `--broad-sudo` gives the account the older unrestricted rule instead
 (`virticle ALL=(ALL) NOPASSWD: ALL`) when you need those; the node is then shown with the warning "Broad sudo; run
 Prepare node to scope it".
 

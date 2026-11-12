@@ -788,16 +788,12 @@ func (m *moveRun) runOffline() error {
 					return
 				case <-t.C:
 				}
-				out, err := h.RunRoot("stat -c '%b %B' " + shq(p))
-				var blocks, size float64
-				if err == nil {
-					if _, e := fmt.Sscanf(out, "%f %f", &blocks, &size); e == nil {
-						frac := blocks * size / float64(f.Alloc)
-						if frac > 1 {
-							frac = 1
-						}
-						m.progress(0.02 + 0.9*frac)
+				if st, err := h.Stat(p); err == nil && len(st) == 1 && st[0].Exists {
+					frac := float64(st[0].Allocated()) / float64(f.Alloc)
+					if frac > 1 {
+						frac = 1
 					}
+					m.progress(0.02 + 0.9*frac)
 				}
 			}
 		}()

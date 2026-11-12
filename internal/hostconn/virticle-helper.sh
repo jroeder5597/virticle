@@ -58,7 +58,7 @@
 # VIRTICLE_HELPER_HOME and VIRTICLE_HELPER_SSH stand in for the libvirt pools,
 # the service account and ssh. Running as root, the variables are ignored.
 
-VERSION=2
+VERSION=3
 
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
@@ -559,6 +559,7 @@ cmd_copy() {
 	_d=$RP
 	_t=$ROOT$_d.virticle-part.$$
 	trap 'rm -f -- "$_t"' EXIT
+	trap 'exit 1' HUP INT TERM PIPE # the EXIT trap removes the temporary file
 	cp --preserve=mode -- "$ROOT$_s" "$_t" || fail "cannot copy $1"
 	ln -- "$_t" "$ROOT$_d" 2>/dev/null || fail "$2 appeared meanwhile; nothing was overwritten"
 	rm -f -- "$_t"
@@ -591,6 +592,7 @@ cmd_write() {
 	_d=$RP
 	_t=$ROOT$_d.virticle-part.$$
 	trap 'rm -f -- "$_t"' EXIT
+	trap 'exit 1' HUP INT TERM PIPE # the EXIT trap removes the temporary file
 	(
 		set -C
 		head -c "$(($2 + 1))" >"$_t"
@@ -1002,6 +1004,7 @@ cmd_peer_recv() {
 		_d=$RP
 		_t=$ROOT$_d.virticle-part.$$
 		trap 'rm -f -- "$_t"' EXIT
+		trap 'exit 1' HUP INT TERM PIPE # the EXIT trap removes the temporary file
 		(
 			set -C
 			head -c "$_size" >"$_t"
@@ -1016,6 +1019,336 @@ cmd_peer_recv() {
 	*) die "unsupported header" ;;
 	esac
 }
+
+# ---------------------------------------------------------------------------
+# BEGIN pool operations (downloads, import, disk preparation)
+# Verbs for writing into the storage pools: download, import conversion, OVA
+# extraction, clone preparation. Same path rules as the file verbs above.
+#   download URL DEST [sha256|sha512 HEX]    http(s) URL -> new file DEST (a .NAME.part file next to it meanwhile)
+#   download-cancel DEST                     stop a running download of DEST
+#   image-info PATH                          qemu-img info as JSON; the format is recognised from the content
+#   realpath file|dir PATH                   canonical path of an existing file or directory inside the roots
+#   free-space DIR                           free bytes of the file system of DIR
+#   tar-list FILE                            tar -tv of an archive
+#   tar-extract FILE WORKDIR NAME...         extract plain-named regular members into a work directory
+#   convert-start WORKDIR SRC                start qemu-img convert SRC -> WORKDIR/out.part (qcow2) in the background
+#   convert-status WORKDIR                   exit code (once finished), "---", the tail of the progress log
+#   convert-kill WORKDIR                     stop the conversion started from WORKDIR
+#   sysprep DISK...                          virt-sysprep with a fixed option set on disk images
+# ---------------------------------------------------------------------------
+
+RUN_DIR=$ROOT/run/virticle-helper
+
+# sniff_format FILE: FMT = raw | qcow2 | vmdk | vpc | vhdx | vdi from the content.
+sniff_format() {
+	_sf=$ROOT$1
+	_m=$(head -c 8 -- "$_sf" | od -An -tx1 | tr -d ' \n')
+	case $_m in
+	514649fb*) FMT=qcow2 ;;
+	4b444d56*) FMT=vmdk ;;
+	636f6e6563746978) FMT=vpc ;;
+	7668647866696c65) FMT=vhdx ;;
+	3c3c3c20*)
+		if head -c 64 -- "$_sf" | grep -aq 'Disk Image\|Virtual Disk'; then FMT=vdi; else FMT=raw; fi
+		;;
+	*) FMT=raw ;;
+	esac
+}
+
+# le64_at FILE OFFSET: V = the little endian 64 bit number at OFFSET.
+le64_at() {
+	V=0
+	for _b in $(dd if="$ROOT$1" bs=1 skip="$2" count=8 2>/dev/null | od -An -tu1 | tr -s ' ' '\n' | sed '1!G;h;$!d'); do
+		V=$((V * 256 + _b))
+	done
+}
+
+# vmdk_selfcontained FILE: a sparse VMDK whose embedded descriptor names no
+# other file. (For a header with capacity 0 qemu-img opens every extent the
+# descriptor names; otherwise the descriptor is not followed.)
+vmdk_selfcontained() {
+	_vf=$1
+	[ "$(head -c 4 -- "$ROOT$_vf")" = KDMV ] || return 1
+	# qemu follows the extents of the descriptor only when the header's capacity is 0.
+	le64_at "$_vf" 12
+	[ "$V" != 0 ] && return 0
+	le64_at "$_vf" 28
+	_doff=$V
+	le64_at "$_vf" 36
+	_dsz=$V
+	[ "$_doff" -gt 0 ] && [ "$_dsz" -gt 0 ] && [ "$_dsz" -le 2048 ] && [ "$_doff" -le 8192 ] || return 1
+	_names=$(dd if="$ROOT$_vf" bs=512 skip="$_doff" count="$_dsz" 2>/dev/null | grep -a -E '^(RW|RDONLY|NOACCESS) [0-9]+ ' | sed 's/^[^"]*"\(.*\)".*$/\1/')
+	_base=${_vf##*/}
+	[ -n "$_names" ] || return 0
+	for _n in $_names; do
+		[ "$_n" = "$_base" ] || return 1
+	done
+	return 0
+}
+
+# source_format PATH: FMT for an image the caller wants to read; refuses what
+# would make qemu-img open other files. RP is the canonical path.
+source_format() {
+	vpath_rd "$1"
+	[ -f "$ROOT$RP" ] || fail "$1 is not a regular file"
+	_sp=$RP
+	sniff_format "$_sp"
+	case $FMT in
+	qcow2) check_chain "$_sp" ;;
+	vmdk) vmdk_selfcontained "$_sp" || fail "refusing VMDK: it refers to other files; only self-contained images are accepted" ;;
+	esac
+	RP=$_sp
+}
+
+cmd_image_info() {
+	[ $# -eq 1 ] || die "usage: image-info PATH"
+	source_format "$1"
+	qemu-img info -U -f "$FMT" --output=json -- "$ROOT$RP" 2>&1
+}
+
+cmd_realpath() {
+	[ $# -eq 2 ] || die "usage: realpath file|dir PATH"
+	vpath_rd "$2"
+	case $1 in
+	file) [ -f "$ROOT$RP" ] || fail "$2 is not a regular file" ;;
+	dir) [ -d "$ROOT$RP" ] || fail "$2 is not a directory" ;;
+	*) die "usage: realpath file|dir PATH" ;;
+	esac
+	printf '%s' "$RP"
+}
+
+cmd_free_space() {
+	[ $# -eq 1 ] || die "usage: free-space DIR"
+	vpath_rd "$1"
+	[ -d "$ROOT$RP" ] || fail "$1 is not a directory"
+	df -P -B1 -- "$ROOT$RP" | awk 'NR==2{print $4}'
+}
+
+cmd_tar_list() {
+	[ $# -eq 1 ] || die "usage: tar-list FILE"
+	vpath_rd "$1"
+	[ -f "$ROOT$RP" ] || fail "$1 is not a regular file"
+	TZ=UTC timeout 60 tar --quoting-style=escape -tvf "$ROOT$RP" 2>/dev/null
+}
+
+# member_name_ok NAME: a plain file name, as the OVA import accepts them.
+member_name_ok() {
+	case $1 in
+	'' | *[!A-Za-z0-9._-]* | [!A-Za-z0-9]*) return 1 ;;
+	esac
+	[ "${#1}" -le 121 ]
+}
+
+# work_dir_arg DIR: DIR is an existing work directory inside the roots. RP is set.
+work_dir_arg() {
+	vpath_mod "$1"
+	[ -d "$ROOT$RP" ] || fail "$1 is not a directory"
+	work_name "$RP" || die "$1 is not a work directory"
+}
+
+cmd_tar_extract() {
+	[ $# -ge 3 ] && [ $# -le 66 ] || die "usage: tar-extract FILE WORKDIR NAME..."
+	_tf=$1
+	_td=$2
+	shift 2
+	for _n in "$@"; do member_name_ok "$_n" || die "unsupported member name"; done
+	vpath_rd "$_tf"
+	[ -f "$ROOT$RP" ] || fail "$_tf is not a regular file"
+	_ta=$ROOT$RP
+	work_dir_arg "$_td"
+	_tw=$ROOT$RP
+	# Every member of the archive must be a regular file with a plain name, so
+	# that no link or later member can redirect where a name is written.
+	_lst=$(TZ=UTC timeout 60 tar --quoting-style=escape -tvf "$_ta" 2>/dev/null) || fail "cannot list $_tf"
+	[ -n "$_lst" ] || fail "$_tf is empty"
+	if printf '%s\n' "$_lst" | grep -qv '^-'; then fail "refusing archive: it contains something other than regular files"; fi
+	_names=$(TZ=UTC timeout 60 tar --quoting-style=escape -tf "$_ta" 2>/dev/null) || fail "cannot list $_tf"
+	for _n in $_names; do member_name_ok "$_n" || fail "refusing archive: member $_n is not a plain file name"; done
+	[ "$(printf '%s\n' "$_names" | sort | uniq -d | wc -l)" = 0 ] || fail "refusing archive: duplicate member"
+	tar --no-same-owner --no-same-permissions -xf "$_ta" -C "$_tw" -- "$@" 2>&1
+}
+
+cmd_convert_start() {
+	[ $# -eq 2 ] || die "usage: convert-start WORKDIR SRC"
+	work_dir_arg "$1"
+	_cw=$ROOT$RP
+	source_format "$2"
+	_cs=$ROOT$RP
+	_cf=$FMT
+	rm -f -- "$_cw/rc" "$_cw/qpid" "$_cw/prog.log" "$_cw/out.part"
+	(
+		trap '' HUP
+		qemu-img convert -p -U -f "$_cf" -O qcow2 -- "$_cs" "$_cw/out.part" >"$_cw/prog.log" 2>&1 &
+		_qp=$!
+		echo "$_qp" >"$_cw/qpid"
+		wait "$_qp"
+		echo $? >"$_cw/rc"
+	) >/dev/null 2>&1 </dev/null &
+	echo started
+}
+
+cmd_convert_status() {
+	[ $# -eq 1 ] || die "usage: convert-status WORKDIR"
+	work_dir_arg "$1"
+	_cw=$ROOT$RP
+	[ ! -f "$_cw/rc" ] || cat -- "$_cw/rc"
+	echo ---
+	[ ! -f "$_cw/prog.log" ] || tail -c 400 -- "$_cw/prog.log" | tr '\r' '\n'
+	true
+}
+
+cmd_convert_kill() {
+	[ $# -eq 1 ] || die "usage: convert-kill WORKDIR"
+	work_dir_arg "$1"
+	_cw=$ROOT$RP
+	_p=$(head -c 20 -- "$_cw/qpid" 2>/dev/null)
+	num_ok "$_p" || return 0
+	if [ "$(cat "/proc/$_p/comm" 2>/dev/null)" = qemu-img ]; then
+		kill "$_p"
+		sleep 1
+	fi
+	true
+}
+
+# --- downloads ---
+
+# url_ok URL: an http or https URL of plain characters, no quotes or spaces.
+url_ok() {
+	case $1 in
+	http://?* | https://?*) ;;
+	*) return 1 ;;
+	esac
+	case $1 in *"$NL"*) return 1 ;; esac
+	[ "${#1}" -le 2000 ] || return 1
+	_rest=$(printf '%s' "$1" | tr -d 'A-Za-z0-9._~:/?#@!$&()*+,;=%-')
+	[ -z "$_rest" ]
+}
+
+# dl_pidfile DEST (canonical): where the running download of DEST records its process.
+dl_pidfile() {
+	printf '%s/dl.%s.pid' "$RUN_DIR" "$(printf '%s' "$1" | sha256sum | cut -c1-32)"
+}
+
+cmd_download() {
+	[ $# -eq 2 ] || [ $# -eq 4 ] || die "usage: download URL DEST [sha256|sha512 HEX]"
+	url_ok "$1" || die "unsupported URL: only plain http:// and https:// addresses"
+	_algo=""
+	_want=""
+	if [ $# -eq 4 ]; then
+		_algo=$3
+		_want=$4
+		case $_algo in
+		sha256) _len=64 ;;
+		sha512) _len=128 ;;
+		*) die "unsupported digest" ;;
+		esac
+		case $_want in *[!0-9a-f]*) die "unsupported digest" ;; esac
+		[ "${#_want}" = "$_len" ] || die "unsupported digest"
+	fi
+	vpath_new "$2"
+	_dest=$RP
+	_dir=${_dest%/*}
+	_name=${_dest##*/}
+	case $_name in [A-Za-z0-9]*) ;; *) die "unsupported file name" ;; esac
+	_part=$_dir/.$_name.part
+	if [ -e "$ROOT$_part" ] || [ -L "$ROOT$_part" ]; then
+		fail "a file named .$_name.part already exists in the pool directory"
+	fi
+	mkdir -p -- "$RUN_DIR" || fail "cannot create $RUN_DIR"
+	_pf=$(dl_pidfile "$_dest")
+	_cp=""
+	trap '[ -z "$_cp" ] || kill "$_cp" 2>/dev/null; rm -f -- "$ROOT$_part" "$_pf" "$_pf.sum"' EXIT
+	trap 'exit 1' HUP INT TERM PIPE # the EXIT trap removes the part file
+	# The part file is created by the shell redirection with noclobber, so
+	# nothing existing (and no symbolic link) is ever written through.
+	(
+		set -C
+		exec curl -q -fsSL -g --proto '=http,https' --proto-redir '=http,https' --max-redirs 10 --connect-timeout 20 -o - -- "$1" >"$ROOT$_part"
+	) &
+	_cp=$!
+	echo "$_cp" >"$_pf"
+	wait "$_cp"
+	_rc=$?
+	_cp=""
+	[ "$_rc" = 0 ] || fail "download failed (curl exit $_rc)"
+	if [ -n "$_algo" ]; then
+		"${_algo}sum" <"$ROOT$_part" >"$_pf.sum" &
+		_cp=$!
+		echo "$_cp" >"$_pf"
+		wait "$_cp"
+		_rc=$?
+		_cp=""
+		_got=$(cut -d' ' -f1 <"$_pf.sum" 2>/dev/null)
+		[ "$_rc" = 0 ] || fail "computing the checksum failed"
+		[ "$_got" = "$_want" ] || fail "checksum mismatch: got $_got"
+	fi
+	ln -- "$ROOT$_part" "$ROOT$_dest" 2>/dev/null || fail "$_dest appeared meanwhile; nothing was overwritten"
+	echo "@@done $(stat -c %s -- "$ROOT$_dest")"
+}
+
+cmd_download_cancel() {
+	[ $# -eq 1 ] || die "usage: download-cancel DEST"
+	vpath_rd "$1"
+	_pf=$(dl_pidfile "$RP")
+	_p=$(head -c 20 -- "$_pf" 2>/dev/null)
+	num_ok "$_p" || fail "no download of $1 is running"
+	case $(cat "/proc/$_p/comm" 2>/dev/null) in
+	curl | sha256sum | sha512sum) kill "$_p" ;;
+	*) fail "no download of $1 is running" ;;
+	esac
+}
+
+# --- clone preparation ---
+
+# The first-boot fixes virt-sysprep runs in the guest. The text is part of the
+# helper so the caller cannot supply commands; a test keeps it equal to the
+# controller's copy (linuxFirstBootFixups in internal/api/agent.go).
+SYSPREP_FIXUPS=$(
+	cat <<'FIXUPS_END'
+# cloud-init pins its netplan config to the NIC's MAC address, which a clone
+# does not have; without a seed cloud-init stays disabled and the clone would
+# have no network. A seeded boot rewrites this file.
+if [ -f /etc/netplan/50-cloud-init.yaml ]; then
+  printf 'network:\n  version: 2\n  ethernets:\n    all-en:\n      match:\n        name: "en*"\n      dhcp4: true\n      dhcp6: true\n' > /etc/netplan/50-cloud-init.yaml
+fi
+rm -f /etc/systemd/network/10-cloud-init-*.network
+for u in ssh sshd; do
+  if [ -e /lib/systemd/system/$u.service ] || [ -e /usr/lib/systemd/system/$u.service ]; then
+    mkdir -p /etc/systemd/system/$u.service.d
+    printf '[Service]\nExecStartPre=\nExecStartPre=-/usr/bin/ssh-keygen -A\nExecStartPre=/usr/sbin/sshd -t\n' > /etc/systemd/system/$u.service.d/10-regenerate-hostkeys.conf
+    break
+  fi
+done
+FIXUPS_END
+)
+
+cmd_sysprep() {
+	[ $# -ge 1 ] && [ $# -le 8 ] || die "usage: sysprep DISK..."
+	_list=""
+	for _a in "$@"; do
+		vpath_mod "$_a"
+		[ -f "$ROOT$RP" ] || fail "$_a is not a regular file"
+		sniff_format "$RP"
+		case $FMT in
+		qcow2) check_chain "$RP" ;;
+		raw) ;;
+		*) fail "$_a is neither qcow2 nor raw" ;;
+		esac
+		_list="$_list$FMT $ROOT$RP$NL"
+	done
+	command -v virt-sysprep >/dev/null 2>&1 || fail "virt-sysprep is not installed on this node"
+	set -- --run-command "$SYSPREP_FIXUPS"
+	while read -r _f _p; do
+		[ -n "$_f" ] || continue
+		set -- "$@" --format "$_f" -a "$_p"
+	done <<SYSPREP_LIST
+$_list
+SYSPREP_LIST
+	LIBGUESTFS_BACKEND=direct virt-sysprep "$@" 2>&1
+}
+
+# END pool operations
+# ---------------------------------------------------------------------------
 
 [ $# -ge 1 ] || die "usage: virticle-helper SUBCOMMAND [ARGS]"
 sub=$1
@@ -1056,5 +1389,16 @@ peer-recv) cmd_peer_recv "$@" ;;
 svc-allow) cmd_svc_allow "$@" ;;
 svc-hosts) cmd_svc_hosts "$@" ;;
 svc-list) cmd_svc_list "$@" ;;
+download) cmd_download "$@" ;;
+download-cancel) cmd_download_cancel "$@" ;;
+image-info) cmd_image_info "$@" ;;
+realpath) cmd_realpath "$@" ;;
+free-space) cmd_free_space "$@" ;;
+tar-list) cmd_tar_list "$@" ;;
+tar-extract) cmd_tar_extract "$@" ;;
+convert-start) cmd_convert_start "$@" ;;
+convert-status) cmd_convert_status "$@" ;;
+convert-kill) cmd_convert_kill "$@" ;;
+sysprep) cmd_sysprep "$@" ;;
 *) die "unknown subcommand" ;;
 esac

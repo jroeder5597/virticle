@@ -83,7 +83,7 @@ func (s *Server) listPoolImages(w http.ResponseWriter, r *http.Request) {
 type imageRun struct {
 	mu        sync.Mutex
 	cancelled bool
-	pidFile   string // on the node; holds the pid of the running curl / sha*sum
+	dest      string // the file being downloaded; the node finds the running process by it
 	h         *hostconn.Host
 }
 
@@ -140,29 +140,14 @@ func (r *imageRun) isCancelled() bool {
 	return r.cancelled
 }
 
-// runTracked runs a script on the node in which one background process is
-// started with `& echo $! > $PIDFILE; wait $!`, so that cancel can kill it.
-func (r *imageRun) runTracked(script string) (string, error) {
-	if r.isCancelled() {
-		return "", errImageCancelled
-	}
-	out, err := r.h.RunRoot(script)
-	if r.isCancelled() {
-		return out, errImageCancelled
-	}
-	return out, err
-}
-
-// cancel kills the process the current step started. If the step has not
-// written its pid file yet it tries again for a moment; the flag stops the
-// next step from starting in any case.
+// cancel stops the download. If the node has not started it yet it tries
+// again for a moment; the flag stops the next step from starting in any case.
 func (r *imageRun) cancel() {
 	r.mu.Lock()
 	r.cancelled = true
-	pf := r.pidFile
 	r.mu.Unlock()
 	for i := 0; i < 8; i++ {
-		if _, err := r.h.RunRoot("kill $(cat -- " + shQuote(pf) + ") 2>/dev/null"); err == nil {
+		if err := r.h.DownloadCancel(r.dest); err == nil {
 			return
 		}
 		time.Sleep(250 * time.Millisecond)
@@ -186,10 +171,6 @@ func randHex() string {
 	rand.Read(b)
 	return hex.EncodeToString(b)
 }
-
-// curlOpts are the options for every fetch. -f: an HTTP error status is a
-// failure, not a saved error page.
-const curlOpts = "curl -q -fsSL --proto '=http,https' --proto-redir '=http,https' --max-redirs 10 --connect-timeout 20"
 
 func (s *Server) downloadImage(w http.ResponseWriter, r *http.Request) {
 	h, pool, err := s.pool(r)
@@ -229,24 +210,23 @@ func (s *Server) downloadImage(w http.ResponseWriter, r *http.Request) {
 	}
 	node := r.PathValue("node")
 	key := runKey(node, pool.Name, name)
-	run := &imageRun{h: h, pidFile: "/tmp/virticle-img-" + randHex() + ".pid"}
+	run := &imageRun{h: h}
 	if !imageRuns.add(key, run) {
 		fail(w, badRequest("this image is already being downloaded as "+name))
 		return
 	}
 	dest := dir + "/" + name
-	// A dot file: libvirt's directory pools do not list it, so a half-written
-	// image never shows up as a volume (it cannot clash with a real volume
-	// either, those names start with a letter or digit).
-	part := dir + "/." + name + ".part"
+	part := hostconn.DownloadPart(dest)
+	run.dest = dest
 
 	// A leftover or foreign file with either name stops us before anything is written.
-	if out, err := h.RunRoot(fmt.Sprintf("if [ -e %[1]s ] || [ -e %[2]s ]; then echo 'a file named %[3]s (or .%[3]s.part) already exists in the pool directory'; exit 1; fi", shQuote(dest), shQuote(part), name)); err != nil {
+	if have, err := h.Exists(dest, part); err != nil || have[dest] || have[part] {
 		imageRuns.remove(key)
-		if out == "" {
-			out = err.Error()
+		msg := fmt.Sprintf("a file named %[1]s (or .%[1]s.part) already exists in the pool directory", name)
+		if err != nil {
+			msg = err.Error()
 		}
-		fail(w, badRequest(out))
+		fail(w, badRequest(msg))
 		return
 	}
 
@@ -273,22 +253,17 @@ func (s *Server) downloadImage(w http.ResponseWriter, r *http.Request) {
 // fetchImage does the work on the node: checksum file, download to a .part
 // name, hash, compare, and only then move into place. Whatever happens, the
 // .part file is gone afterwards unless it was moved.
-func (s *Server) fetchImage(run *imageRun, img catalog.Image, pool, part, dest string, progress func(float64)) (err error) {
-	defer func() {
-		if _, rmErr := run.h.RunRoot("rm -f -- " + shQuote(part)); rmErr != nil && err != nil {
-			err = fmt.Errorf("%w (and the partial file %s could not be removed: %v)", err, part, rmErr)
-		}
-		run.h.RunRoot("rm -f -- " + shQuote(run.pidFile))
-	}()
-
+func (s *Server) fetchImage(run *imageRun, img catalog.Image, pool, part, dest string, progress func(float64)) error {
 	want := strings.ToLower(img.Checksum)
 	if want == "" {
-		out, err := run.runTracked(fmt.Sprintf("t=$(mktemp) || exit 1; if %s --max-time 60 -o \"$t\" -- %s; then head -c 2000000 \"$t\"; rc=0; else rc=$?; fi; rm -f \"$t\"; exit $rc",
-			curlOpts, shQuote(img.ChecksumURL)))
+		if run.isCancelled() {
+			return errImageCancelled
+		}
+		out, err := run.h.FetchText(img.ChecksumURL)
+		if run.isCancelled() {
+			return errImageCancelled
+		}
 		if err != nil {
-			if errors.Is(err, errImageCancelled) {
-				return err
-			}
 			return fmt.Errorf("could not fetch the checksum file %s: %s", img.ChecksumURL, orErr(out, err))
 		}
 		if want, err = catalog.ParseChecksum(out, img.FileName(), img.Algorithm); err != nil {
@@ -297,39 +272,17 @@ func (s *Server) fetchImage(run *imageRun, img catalog.Image, pool, part, dest s
 	}
 
 	defer watchPartSize(run.h, part, firstPositive(probeSize(run.h, img.URL), img.SizeBytes), progress)()
-	script := fmt.Sprintf("umask 077; %s -o %s -- %s & echo $! > %s; wait $!",
-		curlOpts, shQuote(part), shQuote(img.URL), shQuote(run.pidFile))
-	if out, err := run.runTracked(script); err != nil {
-		if errors.Is(err, errImageCancelled) {
-			return err
-		}
-		return fmt.Errorf("download failed: %s", orErr(out, err))
-	}
-
-	sum := img.Algorithm + "sum"
-	out, err := run.runTracked(fmt.Sprintf("%s -- %s & echo $! > %s; wait $!", sum, shQuote(part), shQuote(run.pidFile)))
-	if err != nil {
-		if errors.Is(err, errImageCancelled) {
-			return err
-		}
-		return fmt.Errorf("computing the %s on the node failed: %s", img.Algorithm, orErr(out, err))
-	}
-	got, _, _ := strings.Cut(strings.TrimSpace(out), " ")
-	if len(got) != catalog.HashLen(img.Algorithm) {
-		return fmt.Errorf("unexpected output from %s: %q", sum, out)
-	}
-	if err := compareDigest(img.Algorithm, want, got); err != nil {
-		return err
-	}
-	if run.isCancelled() {
+	err := run.h.Download(hostconn.DownloadOpts{URL: img.URL, Dest: dest, Algo: img.Algorithm, Digest: want, Cancelled: run.isCancelled})
+	var dm *hostconn.DigestMismatch
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, hostconn.ErrCancelled):
 		return errImageCancelled
+	case errors.As(err, &dm):
+		return digestMismatch(img.Algorithm, want, dm.Got)
 	}
-	// mv -n never overwrites; if the name appeared meanwhile it exits 0 and
-	// leaves the source behind, which is what the check after it detects.
-	if out, err := run.h.RunRoot(fmt.Sprintf("mv -n -- %[1]s %[2]s && if [ -e %[1]s ]; then echo 'a file with this name appeared in the pool directory; nothing was overwritten'; exit 1; fi", shQuote(part), shQuote(dest))); err != nil {
-		return fmt.Errorf("could not move the image into place: %s", orErr(out, err))
-	}
-	return nil
+	return err
 }
 
 func orErr(out string, err error) string {

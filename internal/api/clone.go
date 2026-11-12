@@ -104,8 +104,7 @@ func buildSeed(guest, cloneName string, c cloneCustomize) ([]byte, error) {
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 func hasVirtSysprep(h *hostconn.Host) bool {
-	_, err := h.RunRoot("command -v virt-sysprep")
-	return err == nil
+	return h.HasTool("virt-sysprep")
 }
 
 // cloneInfo tells the UI what a clone of this VM can do on this node.
@@ -334,11 +333,7 @@ func (s *Server) vmClone(w http.ResponseWriter, r *http.Request) {
 
 		if mechanism == mechVirtSysprep {
 			progress(float64(len(plan)) / float64(len(plan)+1))
-			cmd := "LIBGUESTFS_BACKEND=direct virt-sysprep --run-command " + shellQuote(linuxFirstBootFixups)
-			for _, p := range newDisks {
-				cmd += " -a " + shellQuote(p)
-			}
-			if out, err := h.RunRoot(cmd + " 2>&1"); err != nil {
+			if out, err := h.Sysprep(linuxFirstBootFixups, newDisks...); err != nil {
 				return rollback(fmt.Errorf("virt-sysprep failed: %v: %s", err, tail(out, 1500)))
 			}
 		}

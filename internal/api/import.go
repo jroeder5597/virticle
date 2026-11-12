@@ -114,7 +114,7 @@ func qemuInfo(h *hostconn.Host, file string) (importImgInfo, error) {
 	// -U: do not take locks, so an image that a VM uses can be inspected.
 	// No -f: the format is probed from the content, and no --backing-chain:
 	// a referenced file is reported, never opened.
-	out, err := h.RunRoot("qemu-img info -U --output=json -- " + shQuote(file) + " 2>&1")
+	out, err := h.ImageInfo(file)
 	if err != nil {
 		return importImgInfo{}, badRequest("qemu-img could not read the image: " + impFirstLine(out))
 	}
@@ -188,12 +188,12 @@ func resolveSource(h *hostconn.Host, src importSource) (string, error) {
 		return "", badRequest("the node has no running directory-backed storage pool")
 	}
 	// The path must be inside a pool dir by name first, then by real path.
-	real, err := h.RunRoot("p=$(realpath -e -- " + shQuote(file) + ") && [ -f \"$p\" ] && printf '%s' \"$p\"")
+	real, err := h.ResolveFile(file)
 	if err != nil || real == "" || hasControl(real) {
 		return "", badRequest("no such regular file on the node: " + file)
 	}
 	for _, d := range dirs {
-		rd, err := h.RunRoot("realpath -e -- " + shQuote(d.Dir))
+		rd, err := h.ResolveDir(d.Dir)
 		if err == nil && strings.HasPrefix(real, strings.TrimRight(rd, "/")+"/") {
 			return real, nil
 		}
@@ -216,13 +216,7 @@ func destPool(h *hostconn.Host, name string) (libvirt.StoragePool, poolDir, erro
 	return libvirt.StoragePool{}, poolDir{}, badRequest("the destination must be a running directory-backed pool")
 }
 
-func freeBytes(h *hostconn.Host, dir string) (int64, error) {
-	out, err := h.RunRoot("df -P -B1 -- " + shQuote(dir) + " | awk 'NR==2{print $4}'")
-	if err != nil {
-		return 0, err
-	}
-	return strconv.ParseInt(strings.TrimSpace(out), 10, 64)
-}
+func freeBytes(h *hostconn.Host, dir string) (int64, error) { return h.FreeBytes(dir) }
 
 // --- tar (OVA) listing ---
 
@@ -280,7 +274,7 @@ func parseTarListing(out string) ([]tarEntry, error) {
 // listTar returns the vetted members of a tar file, or ok=false when the file
 // is not a tar archive at all.
 func listTar(h *hostconn.Host, file string) (entries []tarEntry, ok bool, err error) {
-	out, runErr := h.RunRoot("LC_ALL=C TZ=UTC timeout 60 tar --quoting-style=escape -tvf " + shQuote(file) + " 2>/dev/null")
+	out, runErr := h.TarList(file)
 	if runErr != nil || strings.TrimSpace(out) == "" {
 		return nil, false, nil
 	}
@@ -498,9 +492,9 @@ type workDir struct {
 }
 
 func newWorkDir(h *hostconn.Host, poolDir string) (*workDir, error) {
-	out, err := h.RunRoot("umask 077 && mktemp -d -- " + shQuote(poolDir+"/.virticle-import.XXXXXX"))
-	if err != nil || !strings.HasPrefix(out, poolDir+"/.virticle-import.") || hasControl(out) {
-		return nil, fmt.Errorf("cannot create a work directory in %s: %s", poolDir, impFirstLine(out))
+	out, err := h.MkWorkDir(poolDir, "import")
+	if err != nil {
+		return nil, err
 	}
 	return &workDir{h: h, path: out}, nil
 }
@@ -510,23 +504,15 @@ func (w *workDir) file(n string) string { return w.path + "/" + n }
 // remove kills a conversion still running from this directory (by the PID it
 // recorded, after checking the process really is qemu-img) and deletes the
 // directory.
-func (w *workDir) remove() error {
-	_, err := w.h.RunRoot("p=$(cat " + shQuote(w.file("qpid")) + " 2>/dev/null); if [ -n \"$p\" ] && [ \"$(cat /proc/$p/comm 2>/dev/null)\" = qemu-img ]; then kill $p; sleep 1; fi; rm -rf -- " + shQuote(w.path))
-	return err
-}
+func (w *workDir) remove() error { return w.h.ConvertKill(w.path) }
 
 // convert runs qemu-img convert in the background on the node, polls its
 // progress file and renames the result to dest when it succeeded. The
 // conversion is detached from the SSH session, so no long-lived channel is
 // needed; its PID and exit code are files in the work directory.
 func (w *workDir) convert(src, srcFmt, dest string, progress func(float64)) error {
-	for _, f := range []string{"rc", "qpid", "prog.log", "out.part"} {
-		w.h.RunRoot("rm -f -- " + shQuote(w.file(f)))
-	}
-	inner := fmt.Sprintf("qemu-img convert -p -U -f %s -O qcow2 -- %s %s >%s 2>&1 & p=$!; echo $p >%s; wait $p; echo $? >%s",
-		shQuote(srcFmt), shQuote(src), shQuote(w.file("out.part")), shQuote(w.file("prog.log")), shQuote(w.file("qpid")), shQuote(w.file("rc")))
-	if out, err := w.h.RunRoot("umask 077; nohup sh -c " + shQuote(inner) + " >/dev/null 2>&1 </dev/null & echo started"); err != nil || out != "started" {
-		return fmt.Errorf("cannot start qemu-img: %s %v", out, err)
+	if err := w.h.ConvertStart(w.path, src, srcFmt); err != nil {
+		return err
 	}
 	deadline := time.Now().Add(6 * time.Hour)
 	misses := 0
@@ -535,7 +521,7 @@ func (w *workDir) convert(src, srcFmt, dest string, progress func(float64)) erro
 		if w.stop != nil && w.stop() {
 			return errors.New("conversion cancelled")
 		}
-		out, err := w.h.RunRoot("cat -- " + shQuote(w.file("rc")) + " 2>/dev/null; echo ---; tail -c 400 -- " + shQuote(w.file("prog.log")) + " 2>/dev/null | tr '\\r' '\\n'")
+		out, err := w.h.ConvertStatus(w.path)
 		if err != nil {
 			if misses++; misses >= 15 {
 				return fmt.Errorf("lost contact with the node; qemu-img may still be running (work directory %s, nothing was deleted)", w.path)
@@ -559,9 +545,8 @@ func (w *workDir) convert(src, srcFmt, dest string, progress func(float64)) erro
 	}
 	// A second writer with this name would have been caught earlier; mv -n
 	// plus the existence test keeps a race from overwriting anything.
-	out, err := w.h.RunRoot("if [ -e " + shQuote(dest) + " ]; then echo 'a file with this name appeared in the pool directory'; exit 1; fi; mv -n -- " + shQuote(w.file("out.part")) + " " + shQuote(dest))
-	if err != nil {
-		return fmt.Errorf("cannot move the result into the pool: %s", out)
+	if err := w.h.Move(w.file("out.part"), dest); err != nil {
+		return fmt.Errorf("cannot move the result into the pool: %w", err)
 	}
 	return nil
 }
@@ -729,11 +714,7 @@ func (s *Server) importOVA(r *http.Request, h *hostconn.Host, pool libvirt.Stora
 		defer wd.remove()
 		// Members are extracted by their vetted plain names only, never by pattern.
 		untar := func(names ...string) error {
-			quoted := make([]string, len(names))
-			for i, n := range names {
-				quoted[i] = shQuote(n)
-			}
-			out, err := h.RunRoot("tar --no-same-owner --no-same-permissions -xf " + shQuote(file) + " -C " + shQuote(wd.path) + " -- " + strings.Join(quoted, " ") + " 2>&1")
+			out, err := h.TarExtract(file, wd.path, names...)
 			if err != nil {
 				return fmt.Errorf("extracting the archive: %s", impFirstLine(out))
 			}
@@ -742,11 +723,11 @@ func (s *Server) importOVA(r *http.Request, h *hostconn.Host, pool libvirt.Stora
 		if err := untar(ovfName); err != nil {
 			return err
 		}
-		raw, err := h.RunRoot("head -c " + strconv.Itoa(importMaxOVFBytes) + " -- " + shQuote(wd.file(ovfName)))
+		raw, err := h.ReadLimited(wd.file(ovfName), importMaxOVFBytes)
 		if err != nil {
 			return err
 		}
-		ovf, err := parseOVF([]byte(raw))
+		ovf, err := parseOVF(raw)
 		if err != nil {
 			return err
 		}
@@ -772,7 +753,7 @@ func (s *Server) importOVA(r *http.Request, h *hostconn.Host, pool libvirt.Stora
 		created := []string{}
 		undo := func() {
 			for _, v := range created {
-				h.RunRoot("rm -f -- " + shQuote(pd.Dir+"/"+v))
+				h.Remove(pd.Dir + "/" + v)
 			}
 		}
 		for i, d := range ovf.Disks {
@@ -788,7 +769,7 @@ func (s *Server) importOVA(r *http.Request, h *hostconn.Host, pool libvirt.Stora
 				return fmt.Errorf("disk %s: %w", d.File, err)
 			}
 			created = append(created, vols[i])
-			h.RunRoot("rm -f -- " + shQuote(local)) // free the space before the next disk
+			h.Remove(local) // free the space before the next disk
 		}
 		if err := h.StoragePoolRefresh(pool, 0); err != nil {
 			return err
