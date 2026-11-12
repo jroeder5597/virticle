@@ -35,7 +35,7 @@ test.describe.serial("disk move", () => {
     await expect(dlg.getByText("Live: the VM keeps running")).toBeVisible();
     await expect(dlg.getByRole("img", { name: "failed" })).toHaveCount(0);
     await dlg.getByRole("button", { name: "Move disk" }).click();
-    // "Delete the old volume afterwards" is on: ask first. Cancel changes nothing, confirm starts the move.
+    // The old volume is always deleted afterwards: ask first. Cancel changes nothing, confirm starts the move.
     await cancelConfirm(page, /^Move vda and delete the old volume/);
     await expect(dlg.getByText("Done.")).toHaveCount(0);
     await dlg.getByRole("button", { name: "Move disk" }).click();
@@ -49,22 +49,27 @@ test.describe.serial("disk move", () => {
     expect((await volumes(api, "default")).some((v) => v.name === oldName)).toBe(false);
   });
 
-  test("move it back while shut off, keeping the old volume", async ({ page, api }) => {
+  test("move it back while shut off; the old volume is deleted too", async ({ page, api }) => {
     await api.post(`/nodes/${vm.node}/vms/${vm.uuid}/action`, { action: "poweroff" });
     await openVM(page, vm, "hardware");
     await page.locator("section.card").filter({ has: page.getByRole("heading", { name: "Disks", exact: true }) }).getByRole("row", { name: /vda/ }).getByRole("button", { name: "Move", exact: true }).click();
     const dlg = dialog(page, /^Move vda/);
     await pickPool(dlg, "Target pool", "default");
-    await dlg.getByLabel("Delete the old volume").uncheck();
+    await expect(dlg.getByLabel("Delete the old volume")).toHaveCount(0); // no checkbox any more
+    await expect(dlg.getByLabel("Volume name")).toHaveCount(0);
     await expect(dlg.getByText("Offline: the VM is shut off.")).toBeVisible();
     await dlg.getByRole("button", { name: "Move disk" }).click();
+    await confirm(page, /^Move vda and delete the old volume/);
     await expect(dlg.getByText("Done.")).toBeVisible({ timeout: 120_000 });
     await dlg.locator("footer").getByRole("button", { name: "Close" }).click();
     expect((await disk(api)).source).toContain("/images/");
-    expect((await volumes(api, POOL)).length).toBe(1);
+    expect((await volumes(api, POOL)).length).toBe(0);
   });
 
-  test("a name that already exists in the target is refused in the dialog", async ({ page }) => {
+  test("a name that already exists in the target is refused in the dialog", async ({ page, api }) => {
+    // the disk keeps its name, so a volume of that name in the target blocks the move
+    const name = ((await disk(api)).source as string).split("/").pop()!;
+    await api.post(`/nodes/${vm.node}/pools/${POOL}/volumes`, { name, capacity: 2 ** 20 * 64, format: "qcow2" });
     await openVM(page, vm, "hardware");
     await page.locator("section.card").filter({ has: page.getByRole("heading", { name: "Disks", exact: true }) }).getByRole("row", { name: /vda/ }).getByRole("button", { name: "Move", exact: true }).click();
     const dlg = dialog(page, /^Move vda/);

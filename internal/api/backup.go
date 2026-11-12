@@ -39,8 +39,12 @@ type backupReq struct {
 	TargetNode int64  `json:"targetNode"` // 0 = the node the VM is on
 	Pool       string `json:"pool"`
 	KeepLast   int    `json:"keepLast"` // 0 = keep everything
-	SHA256     bool   `json:"sha256"`
-	Quiesce    bool   `json:"quiesce"` // freeze guest file systems through the guest agent (running VM)
+	// SHA256 records checksums; absent means yes.
+	SHA256 *bool `json:"sha256"`
+	// Quiesce freezes guest file systems through the guest agent (running VM).
+	// Absent means automatic: freeze when the agent is connected and fall back
+	// to no freeze if that fails. true insists, false never freezes.
+	Quiesce *bool `json:"quiesce"`
 }
 
 // bkDisk is a writable disk that goes into the backup.
@@ -210,13 +214,17 @@ func (s *Server) planBackup(srcID int64, src *hostconn.Host, dom libvirt.Domain,
 	return m, nil
 }
 
+// defaultBackupReq is what a request body that leaves fields out means:
+// checksums and an automatic freeze (nil), and keep the newest 7 (0 keeps everything).
+func defaultBackupReq() backupReq { return backupReq{KeepLast: 7} }
+
 func (s *Server) vmBackup(w http.ResponseWriter, r *http.Request) {
 	h, dom, err := s.domain(r)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	var req backupReq
+	req := defaultBackupReq()
 	if err := readJSON(r, &req); err != nil {
 		fail(w, err)
 		return
@@ -447,7 +455,8 @@ func (m *bkRun) liveBackup(wd *bkWork, lo, hi float64) error {
 		plain = append(plain, d.migDisk)
 	}
 	var flags libvirt.DomainBackupBeginFlags
-	if m.req.Quiesce {
+	auto := m.req.Quiesce == nil && guestAgentConnected(m.src, m.dom)
+	if auto || (m.req.Quiesce != nil && *m.req.Quiesce) {
 		flags |= backupBeginQuiesce
 	}
 	if err := m.checkCancel(); err != nil {
@@ -455,7 +464,13 @@ func (m *bkRun) liveBackup(wd *bkWork, lo, hi float64) error {
 	}
 	m.inJob.Store(true)
 	defer m.inJob.Store(false)
-	if err := m.src.DomainBackupBegin(m.dom, backupXML(wd.path, plain, files, m.skip), libvirt.OptString{}, flags); err != nil {
+	bxml := backupXML(wd.path, plain, files, m.skip)
+	err := m.src.DomainBackupBegin(m.dom, bxml, libvirt.OptString{}, flags)
+	if err != nil && auto {
+		// The automatic freeze must never make the backup fail.
+		err = m.src.DomainBackupBegin(m.dom, bxml, libvirt.OptString{}, flags&^backupBeginQuiesce)
+	}
+	if err != nil {
 		return fmt.Errorf("starting the backup job: %w", err)
 	}
 	tick := time.NewTicker(500 * time.Millisecond)
@@ -574,7 +589,7 @@ func (m *bkRun) measure(wd *bkWork) error {
 			return fmt.Errorf("stat %s: %v", f, err)
 		}
 		d.Size = st[0].Size
-		if m.req.SHA256 {
+		if m.req.SHA256 == nil || *m.req.SHA256 {
 			if d.SHA, err = m.src.SHA256(f); err != nil {
 				return err
 			}
@@ -670,16 +685,21 @@ func removeBackupDir(h *hostconn.Host, poolDir, name string) error {
 // --- listing ---
 
 type backupEntry struct {
-	Node       int64           `json:"node"`
-	NodeName   string          `json:"nodeName"`
-	Pool       string          `json:"pool"`
-	Dir        string          `json:"dir"`
-	Path       string          `json:"path"`
-	Size       uint64          `json:"size"`
-	Manifest   *backupManifest `json:"manifest,omitempty"`
-	Err        string          `json:"error,omitempty"`
-	VMExists   bool            `json:"vmExists"`
-	ExportName string          `json:"exportName,omitempty"`
+	Node     int64           `json:"node"`
+	NodeName string          `json:"nodeName"`
+	Pool     string          `json:"pool"`
+	Dir      string          `json:"dir"`
+	Path     string          `json:"path"`
+	Size     uint64          `json:"size"`
+	Manifest *backupManifest `json:"manifest,omitempty"`
+	Err      string          `json:"error,omitempty"`
+	VMExists bool            `json:"vmExists"`
+	// Where the backed-up VM lives now and whether it is shut off, for
+	// "replace the VM" (which needs it on the target node and shut off).
+	VMNode     int64  `json:"vmNode,omitempty"`
+	VMNodeName string `json:"vmNodeName,omitempty"`
+	VMShutOff  bool   `json:"vmShutOff,omitempty"`
+	ExportName string `json:"exportName,omitempty"`
 }
 
 // scanPool lists the backups in one pool directory (one find on the node).
@@ -710,7 +730,12 @@ type scanned struct {
 func (s *Server) listBackups(uuidFilter string) []backupEntry {
 	var mu sync.Mutex
 	var out []backupEntry
-	exists := map[string]bool{}
+	type where struct {
+		node    int64
+		name    string
+		shutOff bool
+	}
+	exists := map[string]where{}
 	var wg sync.WaitGroup
 	for _, n := range s.Nodes.Status() {
 		h, err := s.Nodes.Host(n.ID)
@@ -725,9 +750,16 @@ func (s *Server) listBackups(uuidFilter string) []backupEntry {
 		go func(id int64, h *hostconn.Host, name string) {
 			defer wg.Done()
 			if doms, _, err := h.ConnectListAllDomains(1, 0); err == nil {
+				active := map[string]bool{}
+				if act, _, err := h.ConnectListAllDomains(1, libvirt.ConnectListDomainsActive); err == nil {
+					for _, d := range act {
+						active[cluster.FormatUUID(d.UUID)] = true
+					}
+				}
 				mu.Lock()
 				for _, d := range doms {
-					exists[cluster.FormatUUID(d.UUID)] = true
+					u := cluster.FormatUUID(d.UUID)
+					exists[u] = where{node: id, name: name, shutOff: !active[u]}
 				}
 				mu.Unlock()
 			}
@@ -751,7 +783,9 @@ func (s *Server) listBackups(uuidFilter string) []backupEntry {
 	wg.Wait()
 	for i := range out {
 		if out[i].Manifest != nil {
-			out[i].VMExists = exists[out[i].Manifest.UUID]
+			if w, ok := exists[out[i].Manifest.UUID]; ok {
+				out[i].VMExists, out[i].VMNode, out[i].VMNodeName, out[i].VMShutOff = true, w.node, w.name, w.shutOff
+			}
 			out[i].ExportName = out[i].Manifest.VM + ".vmexport.tar"
 		}
 	}

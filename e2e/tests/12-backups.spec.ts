@@ -68,6 +68,8 @@ test.describe.serial("backups", () => {
     await page.locator("tbody tr").first().getByRole("button", { name: "Restore" }).click();
     const dlg = dialog(page, `Restore ${NAME}`);
     await expect(dlg.getByLabel("New VM name")).toHaveValue(RESTORED);
+    await expect(dlg.getByLabel("Start the VM afterwards")).toBeChecked(); // on by default
+    await dlg.getByLabel("Start the VM afterwards").uncheck(); // the checks below expect it shut off
     await dlg.getByRole("button", { name: "Restore", exact: true }).click();
     await expect(dlg.getByRole("progressbar")).toBeVisible();
     await expect(dlg).toContainText(/ok/i, { timeout: 200_000 });

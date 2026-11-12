@@ -1,43 +1,79 @@
-// Helpers for schedule forms: the UTC time next to the browser's time zone, and the "Next Run" line.
-// Used by the snapshot schedule and the backup schedule.
+// Helpers for schedule forms: the "When" fields in the browser's local time, and the "Next Run" line.
+// Used by the snapshot schedule and the backup schedule. The server stores and runs daily times in UTC.
 import { useEffect, useState } from "react";
-import { browserZone, describeLocal, describeUtc, formatInstant, formatUtc, localToUtc } from "./tz";
-import { HelpTip } from "./ui";
+import Select from "./Select";
+import { Field } from "./ui";
+import { browserZone, formatInstant, localToUtc, utcToLocal } from "./tz";
 import "./schedtime.css";
 
-/** Under a UTC time input: what the time is for the user, and a way to type the local time instead. */
-export function ScheduleTimeHelper({ at, onSet }: { at: string; onSet: (utc: string) => void }) {
-  const zone = browserZone();
-  const [local, setLocal] = useState("");
-  const now = Date.now();
-  const text = describeUtc(at, now, zone);
-  const back = local ? describeLocal(local, now, zone) : undefined;
+/** What the user enters: a daily time in local time, or a number of hours. */
+export interface When {
+  mode: "daily" | "interval";
+  /** HH:MM, browser time. */
+  at: string;
+  hours: number;
+  /** An existing interval that is not a whole number of hours, in minutes. */
+  oddMinutes?: number;
+}
+
+interface Stored {
+  mode: "daily" | "interval";
+  at?: string;
+  everyMinutes?: number;
+}
+
+/** The form values of a stored schedule (UTC time becomes local; minutes become hours, rounded, at least 1). */
+export function whenFrom(s?: Stored): When {
+  // A new schedule starts at 03:00 local time; a stored daily time is shown in local time.
+  const at = s?.mode === "daily" && s.at ? (utcToLocal(s.at, Date.now(), browserZone())?.time ?? s.at) : "03:00";
+  const min = s?.mode === "interval" ? (s.everyMinutes ?? 60) : 60;
+  return { mode: s?.mode ?? "daily", at, hours: Math.max(1, Math.round(min / 60)), oddMinutes: min % 60 === 0 ? undefined : min };
+}
+
+/** The fields to send: the local time becomes UTC, hours become minutes. */
+export function whenBody(w: When): Stored {
+  if (w.mode === "interval") return { mode: "interval", everyMinutes: Math.round(w.hours) * 60 };
+  return { mode: "daily", at: localToUtc(w.at, Date.now(), browserZone())?.time ?? w.at };
+}
+
+/** "Daily at 22:00" or "Every 6 hours" for a stored schedule, in local time. */
+export function describeWhen(s: Stored): string {
+  if (s.mode === "interval") {
+    const m = s.everyMinutes ?? 0;
+    return m % 60 === 0 ? `Every ${m / 60} ${m === 60 ? "hour" : "hours"}` : `Every ${m} minutes`;
+  }
+  const at = s.at ?? "";
+  return `Daily at ${utcToLocal(at, Date.now(), browserZone())?.time ?? at}`;
+}
+
+/** The "When" and "Time" or "Every" fields of a schedule form. */
+export function ScheduleWhen({ value, onChange }: { value: When; onChange: (w: When) => void }) {
   return (
-    <div className="tzhelp">
-      <p className="tzline" role="status" aria-label="Time zone conversion">
-        {text ?? "Enter a time to see it in your time zone."}
-      </p>
-      <div className="tzset">
-        <label>
-          <span>Set from local time</span>
-          <input type="time" value={local} onChange={(e) => setLocal(e.target.value)} aria-label="Local time" />
-        </label>
-        <button
-          type="button"
-          disabled={!local || !localToUtc(local, now, zone)}
-          onClick={() => {
-            const c = localToUtc(local, Date.now(), zone);
-            if (c) onSet(c.time);
-          }}
+    <>
+      <Field label="When">
+        <Select
+          label="When"
+          value={value.mode}
+          onChange={(v) => onChange({ ...value, mode: v as When["mode"] })}
+          options={[
+            { value: "daily", label: "Daily at a fixed time" },
+            { value: "interval", label: "At a fixed interval" },
+          ]}
+        />
+      </Field>
+      {value.mode === "daily" ? (
+        <Field label="Time">
+          <input type="time" value={value.at} onChange={(e) => onChange({ ...value, at: e.target.value })} />
+        </Field>
+      ) : (
+        <Field
+          label="Every (hours)"
+          hint={value.oddMinutes ? `This schedule ran every ${value.oddMinutes} minutes; saving rounds that to whole hours.` : undefined}
         >
-          Use as UTC time
-        </button>
-      </div>
-      {back && <p className="tzline muted">{back}</p>}
-      <HelpTip label="About the time zone conversion">
-        <p>The schedule is stored in UTC and does not move. When daylight saving time changes, the local time shifts by an hour.</p>
-      </HelpTip>
-    </div>
+          <input type="number" min={1} max={8784} value={value.hours} onChange={(e) => onChange({ ...value, hours: Number(e.target.value) })} />
+        </Field>
+      )}
+    </>
   );
 }
 
@@ -54,7 +90,7 @@ export interface NextRunProps {
   onElapsed?: () => void;
 }
 
-/** "Next Run: <local time> (<UTC time>)", refreshed when that moment passes; one timer, stopped while the tab is hidden. */
+/** "Next Run: <local time>", refreshed when that moment passes; one timer, stopped while the tab is hidden. */
 export function NextRunLine(p: NextRunProps) {
   const [, tick] = useState(0);
   useEffect(() => {
@@ -113,14 +149,7 @@ export function NextRunLine(p: NextRunProps) {
   const passed = Date.now() >= t;
   return (
     <p className="nextrun" role="status">
-      <strong>Next Run:</strong>{" "}
-      {passed ? (
-        <>due now ({formatUtc(t)})</>
-      ) : (
-        <>
-          <span className="nr-local">{formatInstant(t, zone)}</span> <span className="muted nr-utc">({formatUtc(t)})</span>
-        </>
-      )}
+      <strong>Next Run:</strong> {passed ? <>due now</> : <span className="nr-local">{formatInstant(t, zone)}</span>}
       {p.skipsStopped && <span className="muted"> Skipped while the VM is shut off.</span>}
     </p>
   );

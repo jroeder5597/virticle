@@ -94,7 +94,7 @@ session, not a token.
 
 ## Schedules
 
-- Stored in the VM's metadata, run by the controller, times in UTC.
+- Stored in the VM's metadata and run by the controller. You enter and see times in your browser's time zone; they are stored in UTC.
 - **Snapshots**: interval or daily, keep newest N. Shut-off VMs are skipped.
   Only snapshots the scheduler made are pruned.
 - **Backups**: interval or daily, target node and pool, keep last N.
@@ -106,7 +106,7 @@ session, not a token.
 
 A directory `<vm>-<UTC timestamp>.vmbackup` in a directory-backed pool:
 
-- `manifest.json`: VM name and UUID, time, source node, disks, optional SHA-256.
+- `manifest.json`: VM name and UUID, time, source node, disks, SHA-256 checksums (not for scheduled backups).
 - `domain.xml`: the VM definition.
 - `<target>.qcow2`: one flattened image per writable disk.
 - `nvram.fd`: for UEFI guests.

@@ -8,6 +8,7 @@ const NAME = `${P}snap1`;
 const node = (page: any, name: string) => page.getByRole("treeitem", { name: new RegExp(`^${name}(,|$)`) });
 
 test.describe.serial("snapshots", () => {
+  test.use({ timezoneId: "UTC" }); // schedule times are entered in browser time and stored in UTC
   let vm: { node: number; uuid: string; name: string };
   const snaps = (api: any) => api.get(`/nodes/${vm.node}/vms/${vm.uuid}/snapshots`) as Promise<any[]>;
 
@@ -19,7 +20,7 @@ test.describe.serial("snapshots", () => {
     await expect(page.getByText("No snapshots yet.")).toBeVisible();
     await page.getByRole("button", { name: "Take snapshot" }).first().click();
     const dlg = dialog(page, "Take snapshot");
-    await expect(dlg.getByLabel(/Include memory/)).toBeChecked();
+    await expect(dlg.getByLabel(/Save the running state too/)).toBeChecked();
     await field(dlg, "Name").fill("first");
     await field(dlg, "Description").fill("before the change");
     await dlg.getByRole("button", { name: "Take snapshot" }).click();
@@ -82,20 +83,19 @@ test.describe.serial("snapshots", () => {
     await openVM(page, vm, "snapshots");
     const sec = page.locator("section.card", { hasText: "Scheduled snapshots" });
     await sec.getByRole("button", { name: "Set up schedule" }).click();
-    await field(sec, "Time (UTC)").fill("03:30");
+    await field(sec, "Time").fill("03:30");
     await field(sec, "Keep the newest").fill("3");
-    await field(sec, "Name prefix").fill(`${P}auto`);
     await sec.getByRole("button", { name: "Save schedule" }).click();
-    await expect(sec).toContainText("Daily at 03:30 UTC");
+    await expect(sec).toContainText("Daily at 03:30");
     await expect(sec).toContainText("keeping the newest 3");
     let got = await api.get(`/nodes/${vm.node}/vms/${vm.uuid}/snapshot-schedule`);
-    expect(got.schedule).toMatchObject({ mode: "daily", at: "03:30", keep: 3, enabled: true });
+    expect(got.schedule).toMatchObject({ mode: "daily", at: "03:30", keep: 3, enabled: true, prefix: "auto" });
 
     await sec.getByRole("button", { name: "Edit schedule" }).click();
     await pick(sec, "When", "At a fixed interval");
-    await field(sec, "Every (minutes)").fill("720");
+    await field(sec, "Every (hours)").fill("12");
     await sec.getByRole("button", { name: "Save schedule" }).click();
-    await expect(sec).toContainText("Every 720 minutes");
+    await expect(sec).toContainText("Every 12 hours");
 
     await sec.getByRole("button", { name: "Remove" }).click();
     await confirm(page, "Remove snapshot schedule");

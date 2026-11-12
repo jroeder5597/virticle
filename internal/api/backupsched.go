@@ -187,6 +187,7 @@ func (s *Server) runBackupSchedule(srcID int64, h *hostconn.Host, dom libvirt.Do
 	if dstID == 0 {
 		dstID = srcID
 	}
+	no := false // a scheduled backup records no checksums and freezes nothing
 	r := schedRequest()
 	target := backupTarget(dom.Name, fmt.Sprintf("node %d", dstID), bs.Pool)
 	failed := func(err error) {
@@ -208,7 +209,7 @@ func (s *Server) runBackupSchedule(srcID int64, h *hostconn.Host, dom libvirt.Do
 	if !bs.due(now, last) {
 		return
 	}
-	m, err := s.planBackup(srcID, h, dom, backupReq{TargetNode: bs.TargetNode, Pool: bs.Pool, KeepLast: bs.KeepLast})
+	m, err := s.planBackup(srcID, h, dom, backupReq{TargetNode: bs.TargetNode, Pool: bs.Pool, KeepLast: bs.KeepLast, SHA256: &no, Quiesce: &no})
 	if err != nil {
 		failed(err)
 		return
@@ -276,13 +277,16 @@ func (s *Server) getBackupSchedule(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, resp)
 }
 
+// defaultBackupSchedule holds what a saved schedule gets for fields the client leaves out: a saved schedule is enabled.
+func defaultBackupSchedule() backupSchedule { return backupSchedule{Enabled: true, KeepLast: 7} }
+
 func (s *Server) putBackupSchedule(w http.ResponseWriter, r *http.Request) {
 	h, dom, err := s.domain(r)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	var bs backupSchedule
+	bs := defaultBackupSchedule()
 	if err := readJSON(r, &bs); err != nil {
 		fail(w, err)
 		return

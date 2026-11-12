@@ -1,4 +1,5 @@
-import { NextRunLine, ScheduleTimeHelper } from "../ScheduleTime";
+import { describeWhen, NextRunLine, ScheduleWhen, When, whenBody, whenFrom } from "../ScheduleTime";
+import { SectionFrame } from "./Disclosure";
 import { useEffect, useState } from "react";
 import { ApiError, bytes, del, get, NodeStatus, Pool, post, put, Task, VMDetail } from "../api";
 import { useRole } from "../auth";
@@ -29,6 +30,10 @@ export interface BackupEntry {
   manifest?: Manifest;
   error?: string;
   vmExists: boolean;
+  /** Where the backed-up VM is now, and whether it is shut off (for "Replace"). */
+  vmNode?: number;
+  vmNodeName?: string;
+  vmShutOff?: boolean;
 }
 
 const when = (iso: string) => new Date(iso).toLocaleString();
@@ -118,15 +123,12 @@ function BackupNow(props: { d: VMDetail; onClose: () => void; onDone: () => void
   const act = useAction();
   const [node, setNode] = useState(d.node);
   const [pool, setPool] = useState("");
-  const [keep, setKeep] = useState(0);
-  const [sha, setSha] = useState(false);
-  const [quiesce, setQuiesce] = useState(false);
+  const [keep, setKeep] = useState(7);
   const [task, setTask] = useState(0);
   const base = `/nodes/${d.node}/vms/${d.uuid}`;
-  const live = d.state !== "shutoff";
   const submit = async () => {
     await act.run(async () => {
-      const r = await post<{ task: number }>(`${base}/backup`, { targetNode: node === d.node ? 0 : node, pool, keepLast: keep, sha256: sha, quiesce });
+      const r = await post<{ task: number }>(`${base}/backup`, { targetNode: node === d.node ? 0 : node, pool, keepLast: keep });
       setTask(r.task);
     });
   };
@@ -136,21 +138,11 @@ function BackupNow(props: { d: VMDetail; onClose: () => void; onDone: () => void
         <TaskFollow id={task} onDone={props.onDone} onCancel={() => post(`${base}/backup/cancel`)} />
       ) : (
         <>
-          <p className="muted">
-            {live ? "The VM keeps running; the disks are copied consistently as of the start of the backup (crash-consistent)." : "The VM is shut off; its disks are copied and flattened."} {notIncluded}
-          </p>
+          <p className="muted">Copies the VM's disks as they are now; snapshots and TPM state are not included.</p>
           <Target node={node} pool={pool} setNode={setNode} setPool={setPool} />
-          <Field label="Keep last" hint="After a successful backup, delete this VM's older backups in this pool beyond the newest N. 0 keeps everything.">
+          <Field label="Keep last" hint="Older backups of this VM in this pool beyond the newest N are deleted; 0 keeps everything.">
             <input type="number" min={0} max={1000} value={keep} onChange={(e) => setKeep(Number(e.target.value))} />
           </Field>
-          <label>
-            <input type="checkbox" checked={sha} onChange={(e) => setSha(e.target.checked)} /> Record SHA-256 checksums (checked on restore)
-          </label>
-          {live && d.agent === "connected" && (
-            <label>
-              <input type="checkbox" checked={quiesce} onChange={(e) => setQuiesce(e.target.checked)} /> Freeze guest file systems through the guest agent
-            </label>
-          )}
           <ErrorBox error={act.error} />
           <div className="actions">
             <button className="primary" disabled={act.busy || !pool} onClick={submit}>
@@ -168,16 +160,24 @@ function Restore(props: { b: BackupEntry; onClose: () => void; onDone: () => voi
   const m = b.manifest!;
   const act = useAction();
   const confirm = useConfirm();
-  const [mode, setMode] = useState<"new" | "original">(b.vmExists ? "new" : "original");
+  const [replace, setReplace] = useState(false);
   const [name, setName] = useState(m.vm + "-restored");
   const [node, setNode] = useState(b.node);
   const [pool, setPool] = useState(b.pool);
-  const [replace, setReplace] = useState(false);
-  const [start, setStart] = useState(false);
+  const [start, setStart] = useState(true);
   const [task, setTask] = useState(0);
   const [warnings, setWarnings] = useState<string[]>([]);
+  // Replacing needs the original VM on the target node and shut off.
+  const whyNot = !b.vmExists
+    ? `Replace is not possible: ${m.vm} no longer exists.`
+    : b.vmNode !== node
+      ? `Replace is not possible: ${m.vm} is on ${b.vmNodeName ?? "another node"}; choose that node under Advanced.`
+      : !b.vmShutOff
+        ? `Replace is not possible while ${m.vm} is running; shut it down first.`
+        : "";
+  const doReplace = replace && !whyNot;
   const submit = async () => {
-    if (mode === "original" && replace) {
+    if (doReplace) {
       const ok = await confirm.ask({
         title: `Replace ${m.vm}`,
         message: `The existing VM ${m.vm} on the target node is deleted together with its disks, and replaced by the backup from ${when(m.created)}.`,
@@ -186,7 +186,7 @@ function Restore(props: { b: BackupEntry; onClose: () => void; onDone: () => voi
       if (!ok) return;
     }
     return act.run(async () => {
-      const r = await post<{ task: number; warnings: string[] }>(`${url(b)}/restore`, { mode, name, targetNode: node, pool, replace, start });
+      const r = await post<{ task: number; warnings: string[] }>(`${url(b)}/restore`, { mode: doReplace ? "original" : "new", name, targetNode: node, pool, replace: doReplace, start });
       setWarnings(r.warnings ?? []);
       setTask(r.task);
     });
@@ -208,33 +208,28 @@ function Restore(props: { b: BackupEntry; onClose: () => void; onDone: () => voi
           <p className="muted">
             Backup of {m.vm} from {when(m.created)}. {notIncluded}
           </p>
-          <Field label="Restore as">
+          <Field label="Restore" hint={whyNot || undefined}>
             <Select
-              label="Restore as"
-              value={mode}
-              onChange={(v) => setMode(v as "new" | "original")}
+              label="Restore"
+              value={doReplace ? "replace" : "new"}
+              onChange={(v) => setReplace(v === "replace")}
               options={[
-                { value: "new", label: "A new VM (new name, UUID and MAC addresses)" },
-                { value: "original", label: "The original (same name and UUID)" },
+                { value: "new", label: "As a new VM" },
+                { value: "replace", label: `Replace ${m.vm}`, disabled: !!whyNot },
               ]}
             />
           </Field>
-          {mode === "new" ? (
+          {!doReplace && (
             <Field label="New VM name">
               <input value={name} onChange={(e) => setName(e.target.value)} />
             </Field>
-          ) : (
-            <>
-              <p className="muted">Refused while a VM with this name or UUID exists on any node.</p>
-              <label>
-                <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} /> Replace the existing VM on the target node (it must be shut off; its disks are deleted)
-              </label>
-            </>
           )}
-          <Target node={node} pool={pool} setNode={setNode} setPool={setPool} />
-          <label>
+          <label className="check">
             <input type="checkbox" checked={start} onChange={(e) => setStart(e.target.checked)} /> Start the VM afterwards
           </label>
+          <SectionFrame id="restore-advanced" title="Advanced" summary="">
+            <Target node={node} pool={pool} setNode={setNode} setPool={setPool} />
+          </SectionFrame>
           <ErrorBox error={act.error} />
           <div className="actions">
             <button className="primary" disabled={act.busy || !pool} onClick={submit}>
@@ -334,6 +329,13 @@ interface BackupSched {
   keepLast: number;
 }
 
+interface SchedForm {
+  when: When;
+  targetNode: number;
+  pool: string;
+  keepLast: number;
+}
+
 /** The schedule form and summary; the schedule lives in the VM's metadata. */
 function SchedulePanel({ d }: { d: VMDetail }) {
   const path = `/nodes/${d.node}/vms/${d.uuid}/backup-schedule`;
@@ -342,16 +344,17 @@ function SchedulePanel({ d }: { d: VMDetail }) {
   const nodes = useNodes();
   const act = useAction();
   const confirm = useConfirm();
-  const [form, setForm] = useState<BackupSched | undefined>();
+  const [form, setForm] = useState<SchedForm | undefined>();
   const sch = cur.data?.schedule;
   const nodeName = (id: number) => {
     const n = nodes.find((x) => x.id === (id || d.node));
     return n?.hostname || n?.addr || `node ${id || d.node}`;
   };
-  const edit = () => setForm(sch ?? { enabled: true, mode: "daily", everyMinutes: 60, at: "03:00", targetNode: d.node, pool: "", keepLast: 7 });
+  const edit = () => setForm({ when: whenFrom(sch ?? undefined), targetNode: sch?.targetNode || d.node, pool: sch?.pool ?? "", keepLast: sch?.keepLast ?? 7 });
   const save = async () => {
     if (!form) return;
-    const body = { ...form, targetNode: form.targetNode === d.node ? 0 : form.targetNode, everyMinutes: form.mode === "interval" ? form.everyMinutes : undefined, at: form.mode === "daily" ? form.at : undefined };
+    // A saved schedule is enabled.
+    const body = { ...whenBody(form.when), targetNode: form.targetNode === d.node ? 0 : form.targetNode, pool: form.pool, keepLast: form.keepLast };
     if (await act.run(() => put(path, body))) {
       setForm(undefined);
       cur.reload();
@@ -371,8 +374,8 @@ function SchedulePanel({ d }: { d: VMDetail }) {
         <>
           {sch ? (
             <p>
-              <span className={"badge " + (sch.enabled ? "s-running" : "")}>{sch.enabled ? "Enabled" : "Paused"}</span>{" "}
-              {sch.mode === "interval" ? `Every ${sch.everyMinutes} minutes` : `Daily at ${sch.at} UTC`} to {sch.pool} on {nodeName(sch.targetNode)}, keeping the newest {sch.keepLast}.
+              {!sch.enabled && <><span className="badge">Paused</span>{" "}</>}
+              {describeWhen(sch)} to {sch.pool} on {nodeName(sch.targetNode)}, keeping the newest {sch.keepLast}.
               {cur.data?.last ? ` Last backup ${when(new Date(cur.data.last * 1000).toISOString())}.` : " No backup there yet."}
             </p>
           ) : (
@@ -395,36 +398,12 @@ function SchedulePanel({ d }: { d: VMDetail }) {
       {form && (
         <>
           <div className="grid2">
-            <Field label="When">
-              <Select
-                label="When"
-                value={form.mode}
-                onChange={(v) => setForm({ ...form, mode: v as BackupSched["mode"] })}
-                options={[
-                  { value: "daily", label: "Daily at a fixed time (UTC)" },
-                  { value: "interval", label: "At a fixed interval" },
-                ]}
-              />
-            </Field>
-            {form.mode === "daily" ? (
-              <Field label="Time (UTC)">
-                <input type="time" value={form.at ?? "03:00"} onChange={(e) => setForm({ ...form, at: e.target.value })} />
-              </Field>
-            ) : (
-              <Field label="Every (minutes)">
-                <input type="number" min={1} value={form.everyMinutes ?? 60} onChange={(e) => setForm({ ...form, everyMinutes: Number(e.target.value) })} />
-              </Field>
-            )}
+            <ScheduleWhen value={form.when} onChange={(when) => setForm({ ...form, when })} />
             <Field label="Keep the newest" hint="After each backup, this VM's older backups in the target pool beyond the newest N are deleted.">
               <input type="number" min={1} max={1000} value={form.keepLast} onChange={(e) => setForm({ ...form, keepLast: Number(e.target.value) })} />
             </Field>
           </div>
-          {form.mode === "daily" && <ScheduleTimeHelper at={form.at ?? "03:00"} onSet={(at) => setForm({ ...form, at })} />}
           <Target node={form.targetNode} pool={form.pool} setNode={(n) => setForm((f) => f && { ...f, targetNode: n })} setPool={(p) => setForm((f) => f && { ...f, pool: p })} />
-          <label className="check" style={{ marginBottom: 8 }}>
-            <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
-            Enabled
-          </label>
           <ErrorBox error={act.error} />
           <div className="actions">
             <button className="primary" disabled={act.busy || !form.pool} onClick={save}>
