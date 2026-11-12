@@ -8,6 +8,7 @@ import { HostLoad, useHostSeries } from "../charts";
 import { AlertMarks, useAlerts } from "./Alerts";
 import Evacuate from "./Evacuate";
 import { StatusLine } from "../Checks";
+import PrepareNode from "./PrepareNode";
 
 export default function Nodes() {
   const nodes = useLive(() => get<{ nodes: NodeStatus[]; publicKey: string }>("/nodes"), "nodes");
@@ -115,12 +116,14 @@ function AddNode({ publicKey, onClose }: { publicKey: string; onClose: () => voi
   const [user, setUser] = useState("root");
   const [jump, setJump] = useState("");
   const [copied, setCopied] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const act = useAction();
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (await act.run(() => post("/nodes", { addr, user, jump }))) onClose();
   };
   return (
+    <>
     <Modal title="Add node" onClose={onClose}>
       <form onSubmit={submit}>
         <p>
@@ -145,6 +148,9 @@ function AddNode({ publicKey, onClose }: { publicKey: string; onClose: () => voi
         </Field>
         <ErrorBox error={act.error} />
         <footer>
+          <button type="button" onClick={() => setPreparing(true)} title="Install libvirt and set up access on a fresh host">
+            Prepare this node
+          </button>
           <button type="button" onClick={onClose}>
             Cancel
           </button>
@@ -154,5 +160,7 @@ function AddNode({ publicKey, onClose }: { publicKey: string; onClose: () => voi
         </footer>
       </form>
     </Modal>
+    {preparing && <PrepareNode addr={addr} jump={jump} onClose={() => setPreparing(false)} onRegistered={onClose} />}
+    </>
   );
 }

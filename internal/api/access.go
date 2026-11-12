@@ -58,6 +58,8 @@ var routeLevels = map[string]string{
 	"PUT /api/nodes/{node}":                  admin,
 	"POST /api/nodes/{node}/test-connection": admin,
 	"POST /api/nodes/{node}/forget-host-key": admin,
+	"POST /api/prepare":                      admin,
+	"GET /api/prepare/{task}":                admin,
 	"GET /api/nodes/{node}":                  viewer,
 
 	"POST /api/nodes/{node}/evacuate/check":  operator,

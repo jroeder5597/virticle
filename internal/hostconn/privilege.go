@@ -19,13 +19,16 @@ import (
 type Privilege string
 
 const (
-	PrivRoot Privilege = "root" // the login user is root
-	PrivSudo Privilege = "sudo" // passwordless sudo: privileged commands run as "sudo -n sh -c ..."
-	PrivNone Privilege = "none" // unprivileged: privileged commands are refused
+	PrivRoot   Privilege = "root"   // the login user is root
+	PrivHelper Privilege = "helper" // sudo right for the virticle helper only (helper.go): scoped, fixed subcommands
+	PrivSudo   Privilege = "sudo"   // broad passwordless sudo: privileged commands run as "sudo -n sh -c ..."
+	PrivNone   Privilege = "none"   // unprivileged: privileged commands are refused
 )
 
-// Valid reports whether p is one of the three settings.
-func (p Privilege) Valid() bool { return p == PrivRoot || p == PrivSudo || p == PrivNone }
+// Valid reports whether p is one of the settings.
+func (p Privilege) Valid() bool {
+	return p == PrivRoot || p == PrivHelper || p == PrivSudo || p == PrivNone
+}
 
 // ErrNoPrivilege is returned for a command that needs root on a node whose
 // login user has none.
@@ -45,6 +48,9 @@ func WrapRoot(p Privilege, cmd string) (string, error) {
 		return cmd, nil
 	case PrivSudo:
 		return "sudo -n sh -c " + Quote(cmd), nil
+	case PrivHelper:
+		// Free-form commands are exactly what the scoped access does not allow.
+		return "", ErrScoped{}
 	}
 	return "", ErrNoPrivilege
 }
@@ -102,11 +108,13 @@ func (h *Host) PipeRoot(ctx context.Context, cmd string, stdin io.Reader, stdout
 // copy).
 func (h *Host) RootCmd(cmd string) (string, error) { return WrapRoot(h.priv, cmd) }
 
-// DetectScript prints what ParseDetect reads: the uid and whether sudo works
-// without a password. It always succeeds.
-const DetectScript = `echo "uid=$(id -u)"; if sudo -n true >/dev/null 2>&1; then echo sudo=yes; else echo sudo=no; fi; echo "user=$(id -un)"`
+// DetectScript prints what ParseDetect reads: the uid, whether the helper
+// answers through sudo (and its version), and whether broad sudo works without
+// a password. It always succeeds.
+const DetectScript = `echo "uid=$(id -u)"; if [ -x ` + HelperPath + ` ]; then echo "helper=$(sudo -n ` + HelperPath + ` version 2>/dev/null | head -n 1)"; fi; if sudo -n true >/dev/null 2>&1; then echo sudo=yes; else echo sudo=no; fi; echo "user=$(id -un)"`
 
-// DetectPrivilege runs DetectScript and decides: uid 0 is root, else working
+// DetectPrivilege runs DetectScript and decides: uid 0 is root, else a helper
+// of this version that answers through sudo is helper, else working
 // passwordless sudo is sudo, else none. The detail is a one-line explanation.
 func (h *Host) DetectPrivilege() (Privilege, string, error) {
 	out, err := h.Run(DetectScript)
@@ -126,11 +134,26 @@ func ParseDetect(out string) (Privilege, string) {
 		}
 	}
 	user := kv["user"]
+	hv, hasHelper := kv["helper"]
 	switch {
 	case kv["uid"] == "0":
 		return PrivRoot, "logged in as root"
+	case hasHelper && hv == HelperVersion:
+		if kv["sudo"] == "yes" {
+			return PrivHelper, user + " may run the virticle helper (version " + hv + ") as root; broad sudo works too, but the helper is used"
+		}
+		return PrivHelper, user + " may run the virticle helper (version " + hv + ") as root, and nothing else"
 	case kv["sudo"] == "yes":
+		if hasHelper && hv != "" {
+			return PrivSudo, user + " is not root but \"sudo -n\" works without a password (the installed helper is version " + hv + ", this controller ships " + HelperVersion + ")"
+		}
 		return PrivSudo, user + " is not root but \"sudo -n\" works without a password"
+	}
+	if hasHelper {
+		if hv == "" {
+			return PrivNone, user + " is not root and the helper in " + HelperPath + " does not answer through sudo (check " + SudoersPath + ")"
+		}
+		return PrivNone, user + " is not root; the installed helper is version " + hv + " and this controller ships " + HelperVersion + ": run Prepare node to update it"
 	}
 	return PrivNone, user + " is not root and \"sudo -n true\" fails (no passwordless sudo)"
 }

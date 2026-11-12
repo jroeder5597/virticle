@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"net/http"
 	"path"
@@ -160,6 +161,10 @@ func snapshotList(h *hostconn.Host, dom libvirt.Domain) ([]snapInfo, error) {
 	for _, sn := range snaps {
 		raw, err := h.DomainSnapshotGetXMLDesc(sn, 0)
 		if err != nil {
+			var lv libvirt.Error
+			if errors.As(err, &lv) && lv.Code == uint32(libvirt.ErrNoDomainSnapshot) {
+				continue // deleted by a running task since the list was taken
+			}
 			return nil, err
 		}
 		var x snapXML

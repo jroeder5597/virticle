@@ -107,7 +107,7 @@ func (s *Server) readMigTLS(h *hostconn.Host) (migTLSInfo, nodeEnv, nodeState, e
 		info.QemuUser = u
 	}
 	// The private keys are readable by QEMU's account and root only.
-	out, err = h.RunRoot(stateScript(dir))
+	out, err = migState(h, dir)
 	if err != nil {
 		if errors.Is(err, hostconn.ErrNoPrivilege) {
 			return info, env, nodeState{}, badRequest(nodeCapabilities("none")["installTLS"].Reason)
@@ -336,30 +336,22 @@ func (s *Server) installMigTLS(id int64, h *hostconn.Host, req migTLSReq, progre
 			changes = append(changes, "created directory "+d)
 		}
 	}
-	if out, err := h.RunRoot("umask 022; mkdir -p -- " + shq(dir)); err != nil {
+	if out, err := migMkdir(h, dir); err != nil {
 		return info, fmt.Errorf("creating %s on %s: %w: %s", dir, h.Name, err, out)
 	}
 	cleanTmp := func() {
-		var b strings.Builder
-		b.WriteString("rm -f --")
-		for f := range content {
-			b.WriteString(" " + shq(path.Join(dir, f+tmpSuffix)))
-		}
-		h.RunRoot(b.String())
+		var created []string
 		if !ours { // only remove directories this run created
-			for i := len(marker.CreatedDirs) - 1; i >= 0; i-- {
-				h.RunRoot("rmdir -- " + shq(marker.CreatedDirs[i]) + " 2>/dev/null; true")
-			}
+			created = marker.CreatedDirs
 		}
+		migDiscard(h, dir, created)
 	}
 	for i, f := range append(append([]string{}, migpki.Files...), migpki.FileMarker) {
 		owner, mode := "0:0", "0644"
 		if f == migpki.FileServerKey || f == migpki.FileClientKey {
 			owner, mode = user+":0", "0400" // only QEMU's account reads the private key
 		}
-		tmp := shq(path.Join(dir, f+tmpSuffix))
-		cmd := "umask 077; cat > " + tmp + " && chown " + shq(owner) + " " + tmp + " && chmod " + mode + " " + tmp
-		if out, err := h.RunInputRoot(cmd, content[f]); err != nil {
+		if out, err := migPut(h, dir, f, owner, mode, content[f]); err != nil {
 			cleanTmp()
 			return info, fmt.Errorf("writing %s on %s: %w: %s", f, h.Name, err, out)
 		}
@@ -367,25 +359,12 @@ func (s *Server) installMigTLS(id int64, h *hostconn.Host, req migTLSReq, progre
 	}
 
 	// Phase 2: move the files into place in one command.
-	var sh strings.Builder
-	sh.WriteString("set -e; ")
 	for _, b := range backups {
-		sh.WriteString("mv -- " + shq(path.Join(dir, b[0])) + " " + shq(path.Join(dir, b[1])) + "; ")
 		changes = append(changes, "kept the existing "+path.Join(dir, b[0])+" as "+path.Join(dir, b[1]))
 	}
-	for _, f := range append(append([]string{}, migpki.Files...), migpki.FileMarker) {
-		sh.WriteString("mv -f -- " + shq(path.Join(dir, f+tmpSuffix)) + " " + shq(path.Join(dir, f)) + "; ")
-	}
-	if st.markerFile == migpki.FileMarkerLegacy && ours {
-		// Our own marker under the old name is replaced by the new one.
-		sh.WriteString("rm -f -- " + shq(path.Join(dir, migpki.FileMarkerLegacy)) + "; ")
-	}
-	// SELinux hosts (RHEL family) need the file contexts libvirt expects.
-	if env.Restore {
-		sh.WriteString("restorecon -R " + shq(dir) + " >/dev/null 2>&1 || true; ")
-	}
-	sh.WriteString("true")
-	if out, err := h.RunRoot(sh.String()); err != nil {
+	// Our own marker under the old name is replaced by the new one.
+	dropLegacy := st.markerFile == migpki.FileMarkerLegacy && ours
+	if out, err := migCommit(h, dir, backups, dropLegacy, env.Restore); err != nil {
 		cleanTmp()
 		return info, fmt.Errorf("installing the certificates in %s on %s failed: %w: %s (the directory may be partly changed; run the setup again or remove it)", dir, h.Name, err, out)
 	}
@@ -477,9 +456,8 @@ func (s *Server) removeMigTLS(h *hostconn.Host, req migTLSReq) (migTLSInfo, erro
 		}
 	}
 	dir := info.Dir
-	var sh strings.Builder
+	var ops []migOp
 	var changes, kept []string
-	sh.WriteString("set -e; ")
 	for _, f := range migpki.Files {
 		fs := st.snap.Files[f]
 		switch {
@@ -488,25 +466,24 @@ func (s *Server) removeMigTLS(h *hostconn.Host, req migTLSReq) (migTLSInfo, erro
 			kept = append(kept, f+" (changed after installation)")
 			continue
 		default:
-			sh.WriteString("rm -f -- " + shq(path.Join(dir, f)) + "; ")
+			ops = append(ops, migOp{Name: f})
 			changes = append(changes, "removed "+path.Join(dir, f))
 		}
 		if b := m.Backups[f]; b != "" && st.listing[b] {
-			sh.WriteString("mv -- " + shq(path.Join(dir, b)) + " " + shq(path.Join(dir, f)) + "; ")
+			ops = append(ops, migOp{Name: f, Restore: true})
 			changes = append(changes, "restored "+path.Join(dir, f)+" from "+path.Join(dir, b))
 		}
 	}
 	mf := st.markerFile // the marker that was read: the current name, or the old one
-	sh.WriteString("rm -f -- " + shq(path.Join(dir, mf)) + "; ")
+	ops = append(ops, migOp{Name: mf})
 	changes = append(changes, "removed "+path.Join(dir, mf))
 	for _, name := range []string{migpki.FileMarker, migpki.FileMarkerLegacy} {
 		if b := m.Backups[name]; b != "" && st.listing[b] {
-			sh.WriteString("mv -- " + shq(path.Join(dir, b)) + " " + shq(path.Join(dir, name)) + "; ")
+			ops = append(ops, migOp{Name: name, Restore: true})
 			changes = append(changes, "restored the previous marker file")
 		}
 	}
-	sh.WriteString("true")
-	if out, err := h.RunRoot(sh.String()); err != nil {
+	if out, err := migRemove(h, dir, ops); err != nil {
 		return info, fmt.Errorf("removing the certificates on %s failed: %w: %s", h.Name, err, out)
 	}
 	for i := len(m.CreatedDirs) - 1; i >= 0; i-- {
@@ -514,7 +491,7 @@ func (s *Server) removeMigTLS(h *hostconn.Host, req migTLSReq) (migTLSInfo, erro
 		if !safePathRE.MatchString(d) {
 			continue
 		}
-		if _, err := h.RunRoot("rmdir -- " + shq(d)); err != nil {
+		if _, err := migRmdir(h, dir, d); err != nil {
 			kept = append(kept, "directory "+d+" (not empty)")
 			break
 		}

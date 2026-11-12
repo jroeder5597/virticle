@@ -1,0 +1,548 @@
+package prepare
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"strings"
+
+	"virticle/internal/hostconn"
+)
+
+// Node is the administrator's shell on the host: the plain SSH connection.
+type Node interface {
+	Run(cmd string) (string, error)
+	RunInput(cmd, stdin string) (string, error)
+}
+
+// Runner runs the steps. SudoPassword, when set, feeds "sudo -S" for an
+// administrator that is not root and has no passwordless sudo. It is held in
+// memory only and is never put in a row, an error or a log line.
+type Runner struct {
+	N            Node
+	SudoPassword string
+
+	isRoot  bool
+	useSudo bool
+}
+
+// root runs cmd as root on the host. stdin reaches the command.
+func (r *Runner) root(cmd, stdin string) (string, error) {
+	switch {
+	case r.isRoot:
+		return r.N.RunInput("sh -c "+shq(cmd), stdin)
+	case r.SudoPassword != "":
+		out, err := r.N.RunInput("sudo -S -p '' sh -c "+shq(cmd), r.SudoPassword+"\n"+stdin)
+		return r.scrub(out), err
+	default:
+		return r.N.RunInput("sudo -n sh -c "+shq(cmd), stdin)
+	}
+}
+
+// scrub removes the sudo password from text that is about to be shown.
+func (r *Runner) scrub(s string) string {
+	if r.SudoPassword == "" {
+		return s
+	}
+	return strings.ReplaceAll(s, r.SudoPassword, "")
+}
+
+// Access finds out how the administrator can act as root and says so as a row.
+func (r *Runner) Access() Row {
+	row := Row{ID: "admin", Title: "Administrator access"}
+	out, err := r.N.Run("echo uid=$(id -u); echo user=$(id -un)")
+	if err != nil {
+		row.Status, row.Detail = Error, "could not run a command on the host: "+firstLine(r.scrub(out+" "+err.Error()))
+		return row
+	}
+	var user string
+	for _, l := range strings.Split(out, "\n") {
+		switch {
+		case l == "uid=0":
+			r.isRoot = true
+		case strings.HasPrefix(l, "user="):
+			user = strings.TrimPrefix(l, "user=")
+		}
+	}
+	if r.isRoot {
+		row.Status, row.Detail = OK, "Signed in as root"
+		return row
+	}
+	if _, err := r.N.Run("sudo -n true"); err == nil {
+		r.useSudo = true
+		row.Status, row.Detail = OK, user+" has passwordless sudo"
+		return row
+	}
+	if r.SudoPassword != "" {
+		if _, err := r.root("true", ""); err == nil {
+			r.useSudo = true
+			row.Status, row.Detail = OK, user+" uses sudo with its password"
+			return row
+		}
+		row.Status, row.Detail = Error, user+" is not root and sudo did not accept the password"
+		return row
+	}
+	row.Status, row.Detail = Error, user+" is not root and has no passwordless sudo; sign in as root, or give a user that may use sudo (a password works when sudo accepts it)"
+	return row
+}
+
+func firstLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	return s
+}
+
+// Check looks at the host and returns the check rows. It changes nothing.
+func (r *Runner) Check(o Options) ([]Row, Plan, error) {
+	var p Plan
+	if err := o.Validate(); err != nil {
+		return nil, p, err
+	}
+	access := r.Access()
+	if access.Status == Error {
+		return []Row{access}, p, errors.New(access.Detail)
+	}
+	out, err := r.root(FactsScript, "")
+	if err != nil {
+		return []Row{access}, p, fmt.Errorf("reading the host's facts: %w", err)
+	}
+	p.Facts = ParseFacts(out)
+	p.Distro = Classify(p.Facts.OSID, p.Facts.OSVersion, p.Facts.OSLike, p.Facts.OSName)
+	if !o.AllowRoot {
+		aout, err := r.root("set -- "+shq(o.ServiceUser())+"\n"+accountScript, "")
+		if err != nil {
+			return []Row{access}, p, fmt.Errorf("reading the service account: %w", err)
+		}
+		p.Account = ParseAccount(aout)
+	}
+	if p.Distro.Family != FamilyOther {
+		p.Want = PackageList(p.Distro.Family, o.Extras)
+		mout, err := r.root(MissingScript(p.Distro.Family, p.Want), "")
+		if err != nil {
+			return []Row{access}, p, fmt.Errorf("listing installed packages: %w", err)
+		}
+		p.Missing = strings.Fields(mout)
+	}
+	return append([]Row{access}, Evaluate(p, o)...), p, nil
+}
+
+// step marker protocol: a script prints its detail lines and ends with one of
+// these.
+const (
+	markChanged   = "@@changed"
+	markUnchanged = "@@unchanged"
+)
+
+func parseStep(out string) (detail string, changed bool) {
+	var lines []string
+	for _, l := range strings.Split(out, "\n") {
+		switch strings.TrimSpace(l) {
+		case markChanged:
+			changed = true
+		case markUnchanged, "":
+		default:
+			lines = append(lines, upperFirst(strings.TrimSpace(l)))
+		}
+	}
+	return strings.Join(lines, "; "), changed
+}
+
+type stepDef struct {
+	id, title string
+	run       func(r *Runner, p Plan, o Options) (detail string, changed bool, err error)
+	skip      func(p Plan, o Options) string // non-empty: not applicable, shown as info with this text
+}
+
+func steps(o Options) []stepDef {
+	list := []stepDef{
+		{id: "do-packages", title: "Install packages", run: stepPackages},
+		{id: "do-services", title: "Enable libvirt", run: stepServices},
+		{id: "do-network", title: "Default network", run: stepNetwork},
+		{id: "do-pool", title: "Default pool", run: stepPool},
+	}
+	if !o.AllowRoot {
+		list = append(list, stepDef{id: "do-account", title: "Service account", run: stepAccount})
+	}
+	list = append(list, stepDef{id: "do-key", title: "Install SSH key", run: stepKey})
+	if !o.AllowRoot {
+		// An existing account gets a sudo rule only when the change is confirmed.
+		rule := !o.UseExisting || o.Confirm
+		if !o.BroadSudo {
+			list = append(list, stepDef{id: "do-helper", title: "Install helper", run: stepHelper})
+		}
+		if rule {
+			list = append(list, stepDef{id: "do-sudoers", title: "Install sudo rule", run: stepSudoers})
+		}
+	}
+	return list
+}
+
+// Prepare checks the host and, when the check finds no error, makes it ready.
+// report is called with the whole row list after every change to it; rows
+// that did not run yet show as skipped. verify, when set, runs last (the
+// connection test as the service account) and its rows are appended.
+func (r *Runner) Prepare(o Options, report func([]Row), verify func() []Row) []Row {
+	rows, plan, err := r.Check(o)
+	if err != nil && len(rows) == 0 {
+		rows = []Row{{ID: "check", Title: "Check", Status: Error, Detail: r.scrub(err.Error())}}
+	}
+	publish := func() {
+		if report != nil {
+			report(append([]Row(nil), rows...))
+		}
+	}
+	defs := steps(o)
+	if HasError(rows) || err != nil {
+		for _, d := range defs {
+			rows = append(rows, Row{ID: d.id, Title: d.title, Status: Skipped, Detail: "Not run"})
+		}
+		if verify != nil {
+			rows = append(rows, Row{ID: "do-test", Title: "Test connection", Status: Skipped, Detail: "Not run"})
+		}
+		publish()
+		return rows
+	}
+	first := len(rows)
+	for _, d := range defs {
+		rows = append(rows, Row{ID: d.id, Title: d.title, Status: Skipped, Detail: "Not run"})
+	}
+	if verify != nil {
+		rows = append(rows, Row{ID: "do-test", Title: "Test connection", Status: Skipped, Detail: "Not run"})
+	}
+	publish()
+	changedAny, failed := false, false
+	for i, d := range defs {
+		detail, changed, err := d.run(r, plan, o)
+		row := &rows[first+i]
+		switch {
+		case err != nil:
+			row.Status, row.Detail = Error, r.scrub(err.Error())
+			failed = true
+		case changed:
+			row.Status, row.Detail = OK, detail
+			changedAny = true
+		default:
+			row.Status, row.Detail = OK, "Already in place. "+detail
+			row.Detail = strings.TrimSpace(row.Detail)
+		}
+		publish()
+		if failed {
+			break
+		}
+	}
+	if failed {
+		return rows
+	}
+	if verify != nil {
+		vr := verify()
+		rows = append(rows[:len(rows)-1], vr...)
+		if HasError(vr) {
+			rows = append(rows, Row{ID: "summary", Title: "Result", Status: Warning, Detail: "The host was prepared, but the controller cannot use it yet; see the failed row"})
+			publish()
+			return rows
+		}
+	}
+	if changedAny {
+		rows = append(rows, Row{ID: "summary", Title: "Result", Status: Info, Detail: "The host is prepared"})
+	} else {
+		rows = append(rows, Row{ID: "summary", Title: "Result", Status: Info, Detail: "Nothing changed; the host was already prepared"})
+	}
+	publish()
+	return rows
+}
+
+// --- steps ---
+
+func stepPackages(r *Runner, p Plan, o Options) (string, bool, error) {
+	if len(p.Missing) == 0 {
+		return "All " + fmt.Sprint(len(p.Want)) + " packages are installed", false, nil
+	}
+	pk := make([]string, len(p.Missing))
+	for i, m := range p.Missing {
+		pk[i] = shq(m)
+	}
+	var cmd string
+	if p.Distro.Family == FamilyDebian {
+		cmd = "export DEBIAN_FRONTEND=noninteractive; apt-get update -qq >/dev/null 2>&1; out=$(timeout 1500 apt-get install -y -qq --no-install-recommends " + strings.Join(pk, " ") + " 2>&1); rc=$?; [ $rc -eq 0 ] || { echo \"$out\" | tail -n 12; exit $rc; }"
+	} else {
+		cmd = "out=$(timeout 1500 dnf install -y " + strings.Join(pk, " ") + " 2>&1); rc=$?; [ $rc -eq 0 ] || { echo \"$out\" | tail -n 12; exit $rc; }"
+	}
+	out, err := r.root(cmd, "")
+	if err != nil {
+		return "", false, fmt.Errorf("installing %s failed: %w: %s", strings.Join(p.Missing, " "), err, firstLines(out, 12))
+	}
+	return "Installed " + strings.Join(p.Missing, " "), true, nil
+}
+
+func firstLines(s string, n int) string {
+	l := strings.Split(strings.TrimSpace(s), "\n")
+	if len(l) > n {
+		l = l[len(l)-n:]
+	}
+	return strings.Join(l, " / ")
+}
+
+const servicesScript = `
+if systemctl cat libvirtd.service >/dev/null 2>&1; then
+  units="libvirtd.service"; kind="libvirtd"
+else
+  units="virtqemud.socket virtnetworkd.socket virtstoraged.socket virtnodedevd.socket virtsecretd.socket virtproxyd.socket virtlogd.socket"; kind="modular daemons"
+fi
+need=0
+for u in $units; do systemctl is-enabled --quiet "$u" 2>/dev/null || need=1; done
+timeout 30 virsh -c qemu:///system version >/dev/null 2>&1 || need=1
+if [ "$need" = 0 ]; then echo "Libvirt ($kind) is running and enabled"; echo @@unchanged; exit 0; fi
+out=$(systemctl enable --now $units 2>&1) || { echo "$out" | tail -n 3; exit 1; }
+i=0; while [ $i -lt 20 ]; do timeout 10 virsh -c qemu:///system version >/dev/null 2>&1 && break; i=$((i+1)); sleep 1; done
+timeout 10 virsh -c qemu:///system version >/dev/null 2>&1 || { echo "libvirt does not answer after starting $kind"; exit 1; }
+echo "Enabled and started libvirt ($kind)"; echo @@changed`
+
+func stepServices(r *Runner, p Plan, o Options) (string, bool, error) {
+	out, err := r.root(servicesScript, "")
+	if err != nil {
+		return "", false, fmt.Errorf("%w: %s", err, firstLines(out, 6))
+	}
+	d, ch := parseStep(out)
+	return d, ch, nil
+}
+
+const networkScript = `
+V="virsh -c qemu:///system"
+if $V net-info default >/dev/null 2>&1; then
+  if $V net-info default 2>/dev/null | grep -q '^Active:[[:space:]]*yes'; then echo "default network is active"; echo @@unchanged; exit 0; fi
+  $V net-start default >/dev/null 2>&1 || { echo "the existing default network does not start: $($V net-start default 2>&1 | head -n 2)"; exit 1; }
+  echo "started the existing default network (its autostart setting is unchanged)"; echo @@changed; exit 0
+fi
+$V net-define /dev/stdin >/dev/null <<'XML'
+<network>
+  <name>default</name>
+  <forward mode='nat'/>
+  <bridge name='virbr0' stp='on' delay='0'/>
+  <ip address='192.168.122.1' netmask='255.255.255.0'>
+    <dhcp><range start='192.168.122.2' end='192.168.122.254'/></dhcp>
+  </ip>
+</network>
+XML
+$V net-autostart default >/dev/null && $V net-start default >/dev/null || { echo "could not start the new default network"; exit 1; }
+echo "defined, started and set to autostart the default network (192.168.122.0/24)"; echo @@changed`
+
+func stepNetwork(r *Runner, p Plan, o Options) (string, bool, error) {
+	out, err := r.root(networkScript, "")
+	if err != nil {
+		return "", false, fmt.Errorf("%w: %s", err, firstLines(out, 6))
+	}
+	d, ch := parseStep(out)
+	return d, ch, nil
+}
+
+const poolScript = `
+V="virsh -c qemu:///system"
+if $V pool-info default >/dev/null 2>&1; then
+  if $V pool-info default 2>/dev/null | grep -q '^State:[[:space:]]*running'; then echo "default pool is running"; echo @@unchanged; exit 0; fi
+  $V pool-start default >/dev/null 2>&1 || { echo "the existing default pool does not start: $($V pool-start default 2>&1 | head -n 2)"; exit 1; }
+  echo "started the existing default pool (its settings are unchanged)"; echo @@changed; exit 0
+fi
+$V pool-define-as default dir --target ` + DefaultPoolPath + ` >/dev/null && $V pool-build default >/dev/null 2>&1; $V pool-autostart default >/dev/null && $V pool-start default >/dev/null || { echo "could not create the default pool"; exit 1; }
+echo "defined, started and set to autostart the default pool (` + DefaultPoolPath + `)"; echo @@changed`
+
+func stepPool(r *Runner, p Plan, o Options) (string, bool, error) {
+	out, err := r.root(poolScript, "")
+	if err != nil {
+		return "", false, fmt.Errorf("%w: %s", err, firstLines(out, 6))
+	}
+	d, ch := parseStep(out)
+	return d, ch, nil
+}
+
+const accountCreateScript = `
+home=` + DefaultHome + `
+changed=0
+if id "$u" >/dev/null 2>&1; then
+  if [ "$existing" != 1 ] && ! getent passwd "$u" | grep -q "` + AccountComment + `"; then echo "an account named $u exists and was not created by this tool"; exit 1; fi
+  echo "Account $u exists"
+elif [ "$existing" = 1 ]; then
+  echo "the account $u does not exist"; exit 1
+else
+  useradd --system --create-home --home-dir "$home" --shell /bin/sh --user-group --comment "` + AccountComment + `" -p '*' "$u" || exit 1
+  echo "Created account $u (home $home, shell /bin/sh, no password)"; changed=1
+fi
+if [ "$existing" != 1 ] || [ "$confirm" = 1 ]; then
+  for g in libvirt kvm; do
+    getent group "$g" >/dev/null || continue
+    id -nG "$u" | tr ' ' '\n' | grep -qx "$g" && continue
+    usermod -aG "$g" "$u" || exit 1
+    echo "Added $u to the group $g"; changed=1
+  done
+else
+  for g in libvirt kvm; do
+    getent group "$g" >/dev/null || continue
+    id -nG "$u" | tr ' ' '\n' | grep -qx "$g" || echo "Account $u is not in the group $g (not changed without confirmation)"
+  done
+fi
+if [ "$changed" = 1 ]; then echo @@changed; else echo @@unchanged; fi`
+
+func stepAccount(r *Runner, p Plan, o Options) (string, bool, error) {
+	vars := "u=" + shq(o.ServiceUser()) + "\nexisting=" + b2s(o.UseExisting) + "\nconfirm=" + b2s(o.Confirm) + "\n"
+	out, err := r.root(vars+accountCreateScript, "")
+	if err != nil {
+		return "", false, fmt.Errorf("%w: %s", err, firstLines(out, 6))
+	}
+	d, ch := parseStep(out)
+	return d, ch, nil
+}
+
+func b2s(b bool) string {
+	if b {
+		return "1"
+	}
+	return "0"
+}
+
+const keyScript = `
+home=$(getent passwd "$u" | cut -d: -f6)
+[ -n "$home" ] && [ -d "$home" ] || { echo "no home directory for $u"; exit 1; }
+grp=$(id -gn "$u")
+umask 077
+new=$(cat)
+d="$home/.ssh"; f="$d/authorized_keys"
+[ -d "$d" ] || install -d -m 700 -o "$u" -g "$grp" "$d"
+# every line except the ones that carry the controller's key
+t=$(mktemp "$d/.authorized_keys.XXXXXX")
+if [ -f "$f" ]; then grep -vF -- "$blob" "$f" > "$t"; fi
+echo "$new" >> "$t"
+if [ -f "$f" ] && cmp -s "$t" "$f"; then rm -f "$t"; echo "the key is installed with its restrictions"; echo @@unchanged; exit 0; fi
+chown "$u:$grp" "$t"; chmod 600 "$t"; mv -f "$t" "$f"
+command -v restorecon >/dev/null 2>&1 && restorecon -R "$d" >/dev/null 2>&1
+echo "installed the controller key in $f"; echo @@changed`
+
+func stepKey(r *Runner, p Plan, o Options) (string, bool, error) {
+	blob, _ := KeyBlob(o.ControllerKey)
+	vars := "u=" + shq(o.ServiceUser()) + "\nblob=" + shq(blob) + "\n"
+	line := AuthorizedKeyLine(o)
+	out, err := r.root(vars+keyScript, line+"\n")
+	if err != nil {
+		return "", false, fmt.Errorf("%w: %s", err, firstLines(out, 6))
+	}
+	d, ch := parseStep(out)
+	return d + " (options: " + strings.SplitN(line, " ", 2)[0] + ")", ch, nil
+}
+
+const installFileScript = `
+umask 077
+d=$(dirname "$dest")
+install -d -m "$dirmode" -o root -g root "$d" || exit 1
+t=$(mktemp "$d/.virticle-tmp.XXXXXX") || exit 1
+trap 'rm -f "$t"' EXIT
+cat > "$t"
+got=$(sha256sum "$t" | cut -d' ' -f1)
+[ "$got" = "$sha" ] || { echo "the file arrived damaged"; exit 1; }
+if [ -n "$check" ]; then sh -c "$check" sh "$t" >/dev/null 2>&1 || { echo "$checkmsg"; exit 1; }; fi
+if [ -f "$dest" ] && [ ! -L "$dest" ] && cmp -s "$t" "$dest" && [ "$(stat -c '%U:%G %a' "$dest")" = "root:root $mode" ]; then echo "$what is current"; echo @@unchanged; exit 0; fi
+chown root:root "$t"; chmod "$mode" "$t"
+mv -f "$t" "$dest" || exit 1
+command -v restorecon >/dev/null 2>&1 && restorecon "$dest" >/dev/null 2>&1
+echo "installed $dest"; echo @@changed`
+
+func installFile(r *Runner, what, dest, dirmode, mode, content, check, checkmsg string) (string, bool, error) {
+	sum := sha256.Sum256([]byte(content))
+	vars := "what=" + shq(what) + "\ndest=" + shq(dest) + "\ndirmode=" + dirmode + "\nmode=" + mode + "\nsha=" + hex.EncodeToString(sum[:]) + "\ncheck=" + shq(check) + "\ncheckmsg=" + shq(checkmsg) + "\n"
+	out, err := r.root(vars+installFileScript, content)
+	if err != nil {
+		return "", false, fmt.Errorf("%w: %s", err, firstLines(out, 6))
+	}
+	d, ch := parseStep(out)
+	return d, ch, nil
+}
+
+func stepHelper(r *Runner, p Plan, o Options) (string, bool, error) {
+	d, ch, err := installFile(r, "the helper", hostconn.HelperPath, "755", "755", hostconn.HelperScript, "", "")
+	if err != nil {
+		return "", false, err
+	}
+	return d + " (version " + hostconn.HelperVersion + ")", ch, nil
+}
+
+func stepSudoers(r *Runner, p Plan, o Options) (string, bool, error) {
+	content := hostconn.SudoersLine(o.ServiceUser())
+	what := "the sudo rule for the helper only"
+	if o.BroadSudo {
+		content, what = hostconn.BroadSudoersLine(o.ServiceUser()), "the broad sudo rule"
+	}
+	// A temporary name starting with a dot is ignored by sudo, so a rule that
+	// does not parse is never active; visudo checks it before it is moved.
+	return installFile(r, what, hostconn.SudoersPath, "755", "440", content, `visudo -cf "$1"`, "visudo rejected the sudo rule; nothing was installed")
+}
+
+// --- unprepare ---
+
+const unprepareScript = `
+home=$(getent passwd "$u" | cut -d: -f6)
+changed=0
+if [ -n "$home" ] && [ -f "$home/.ssh/authorized_keys" ] && grep -qF -- "$blob" "$home/.ssh/authorized_keys"; then
+  t=$(mktemp "$home/.ssh/.authorized_keys.XXXXXX"); grep -vF -- "$blob" "$home/.ssh/authorized_keys" > "$t"
+  chown --reference="$home/.ssh/authorized_keys" "$t"; chmod 600 "$t"; mv -f "$t" "$home/.ssh/authorized_keys"
+  echo "key removed"; changed=1
+else echo "no controller key"; fi
+if [ -f ` + sudoersPath + ` ] && head -c 200 ` + sudoersPath + ` | grep -q 'Written by virticle node prepare' && grep -q "^$u ALL=" ` + sudoersPath + `; then rm -f ` + sudoersPath + `; echo "sudo rule removed"; changed=1; else echo "no sudo rule for $u"; fi
+if [ -f ` + helperPath + ` ] && [ ! -f ` + sudoersPath + ` ]; then rm -f ` + helperPath + `; rmdir /usr/local/libexec 2>/dev/null; echo "helper removed"; changed=1; elif [ -f ` + helperPath + ` ]; then echo "helper kept, another account's sudo rule uses it"; else echo "no helper"; fi
+if [ "$u" != root ] && getent passwd "$u" | grep -q "` + AccountComment + `"; then
+  pkill -KILL -u "$u" 2>/dev/null; sleep 1
+  userdel -r "$u" >/dev/null 2>&1; if id "$u" >/dev/null 2>&1; then echo "the account could not be removed (is the controller still connected as $u? remove the node there first)"; exit 1; fi
+  echo "account removed"; changed=1
+elif [ "$u" != root ] && id "$u" >/dev/null 2>&1; then echo "account $u kept (this tool did not create it)"; else echo "no service account"; fi
+if [ "$changed" = 1 ]; then echo @@changed; else echo @@unchanged; fi`
+
+// Unprepare removes what Prepare added for the service account: the key, the
+// sudo rule, the helper and (when this tool created it) the account. Packages,
+// VMs, pools and networks stay.
+func (r *Runner) Unprepare(o Options) []Row {
+	access := r.Access()
+	rows := []Row{access}
+	if access.Status == Error {
+		return rows
+	}
+	if err := (Options{User: o.User, AllowRoot: o.AllowRoot, ControllerKey: o.ControllerKey}).Validate(); err != nil {
+		return append(rows, Row{ID: "unprepare", Title: "Remove", Status: Error, Detail: err.Error()})
+	}
+	blob, _ := KeyBlob(o.ControllerKey)
+	vars := "u=" + shq(o.ServiceUser()) + "\nblob=" + shq(blob) + "\n"
+	out, err := r.root(vars+unprepareScript, "")
+	d, changed := parseStep(r.scrub(out))
+	if err != nil {
+		return append(rows, Row{ID: "unprepare", Title: "Remove controller access", Status: Error, Detail: d})
+	}
+	for _, part := range strings.Split(d, "; ") {
+		if part != "" {
+			rows = append(rows, Row{ID: "unprepare", Title: titleOf(part), Status: OK, Detail: part})
+		}
+	}
+	if changed {
+		rows = append(rows, Row{ID: "summary", Title: "Result", Status: Info, Detail: "Controller access removed; packages, VMs, pools and networks were left alone"})
+	} else {
+		rows = append(rows, Row{ID: "summary", Title: "Result", Status: Info, Detail: "Nothing changed; the host had nothing of this tool's to remove"})
+	}
+	return rows
+}
+
+func titleOf(s string) string {
+	s = strings.ToLower(s)
+	switch {
+	case strings.Contains(s, "key"):
+		return "SSH key"
+	case strings.Contains(s, "helper"):
+		return "Helper"
+	case strings.Contains(s, "sudo"):
+		return "Sudo rule"
+	}
+	return "Service account"
+}
+
+func upperFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}

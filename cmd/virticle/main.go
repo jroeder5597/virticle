@@ -31,6 +31,9 @@ func renameEnv(old, name string) {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "node" {
+		os.Exit(nodeCommand(os.Args[2:])) // node.go
+	}
 	if len(os.Args) > 1 && os.Args[1] == "web" {
 		os.Exit(webCommand(os.Args[2:]))
 	}
