@@ -185,7 +185,7 @@ downloaded as one file and imported on another installation. The format is in
 | Node shows Offline | Node **Settings > Test connection**. It names the failing step. |
 | Guest agent "Not responding" | Install and start `qemu-guest-agent` in the VM. |
 | Migration blocked | Read the red pre-flight row. Usually SSH trust or a missing network on the target. |
-| Image download, disk move or clone greyed out | The node uses the scoped helper account. See [reference.md](reference.md#node-privilege-levels). |
+| Migration or backup refused between two nodes | One node uses the scoped helper account and the other root or broad sudo. Use the same mode on both. An older helper needs `virticle node prepare` run again. |
 | Locked out after a web access change | Wait 60 seconds for the automatic revert, or run `virticle web reset` and restart. |
 | "No ISO images on this node" | Upload one under **Storage**. |
 | A task failed | **Tasks** shows the libvirt error in the Result column. |

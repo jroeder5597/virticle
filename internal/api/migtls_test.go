@@ -195,7 +195,7 @@ func TestEncryptionCheck(t *testing.T) {
 		{"expired", func(i *encInput) { i.Src, i.Dst = expired, ok }, false, false, "warning", "n1: expired"},
 		{"requested but impossible is an error", func(i *encInput) { i.Src, i.Dst, i.Request = ok, none, bptr(true) }, false, false, "error", "requested but is not possible"},
 		{"unreadable node", func(i *encInput) { i.Src, i.Dst, i.DstErr = ok, ok, errors.New("timeout") }, false, false, "warning", "n2: cannot be checked"},
-		{"offline needs nothing", func(i *encInput) { i.Mode = "offline"; i.Src, i.Dst = none, none }, false, true, "info", "scp over SSH"},
+		{"offline needs nothing", func(i *encInput) { i.Mode = "offline"; i.Src, i.Dst = none, none }, false, true, "info", "over SSH, node to node"},
 		{"offline with explicit true is fine", func(i *encInput) { i.Mode = "offline"; i.Request = bptr(true) }, false, true, "info", "encrypted"},
 		{"suspended is a live stream too", func(i *encInput) { i.Mode = "suspended"; i.Src, i.Dst = ok, ok }, true, true, "info", "encrypted with TLS"},
 	}
