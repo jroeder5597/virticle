@@ -1,7 +1,7 @@
 # User guide
 
-How to do the everyday things in the web UI. For installing, see
-[install.md](install.md); for adding hosts, [install-node.md](install-node.md).
+How to do the everyday things in the web UI. To install, see
+[install.md](install.md). To add hosts, see [install-node.md](install-node.md).
 
 - [The screen](#the-screen)
 - [Nodes](#nodes)
@@ -36,17 +36,30 @@ You can leave the page; the task keeps going.
 
 ![Nodes](img/nodes.png)
 
-- **Add node** registers a prepared host. **Prepare this node** in that dialog
-  prepares a fresh host first: it installs libvirt and the node command and
-  sets up either a **Service account** (recommended) or **Root** access; see
-  [install-node.md](install-node.md). Run prepare again when the controller says
-  a node was prepared by an older version.
-- Click a node for its summary, VMs, storage, networks, updates and settings.
-- **Settings > Test connection** runs each connection step and shows which one
-  fails. The **Node access** row says whether the node is reached as a Service
-  account, as Root, or is not prepared.
-- **Maintenance** stops the node from being chosen as a migration target.
-- **Evacuate** live-migrates the node's VMs to the other nodes.
+A node is a host that runs your VMs. To add one:
+
+1. Open **Nodes**, then **Add node**.
+2. For a new host, choose **Prepare this node**. It installs libvirt and the
+   node command (`virticle-node`), and sets up the access the controller
+   needs. You choose **Service account** (recommended) or **Root**. See
+   [install-node.md](install-node.md).
+3. When prepare has finished, choose **Add this node**.
+4. For a host that is already prepared, enter its address and SSH user
+   (`virticle` for a Service account, `root` for Root) and choose **Add**.
+
+![Add node dialog](img/add-node.png)
+
+Run prepare again when the controller says a node was "prepared by an older
+version".
+
+What you can do with a node:
+
+| To do this | Do this |
+| --- | --- |
+| See a node's summary, VMs, storage, networks, updates and settings | Click the node. |
+| Find out why a node is Offline | **Settings > Test connection**. It runs each connection step and shows which one fails. The **Node access** row says whether the node is reached as a Service account, as Root, or is not prepared. |
+| Keep new migrations away from a node | **Maintenance**. The node is never chosen as a migration target. |
+| Empty a node | **Evacuate**. It live-migrates the node's VMs to the other nodes. |
 
 ## Virtual machines
 
@@ -140,20 +153,32 @@ downloaded as one file and imported on another installation. The format is in
 
 ![Migration pre-flight](img/migrate.png)
 
-1. **Actions > Migrate > Migrate to another node**.
-2. Pick the target. The pre-flight list checks CPU, memory, networks, storage,
-   SSH between the nodes and the migration ports.
-3. A red row blocks the move and names the fix. A yellow row is a warning.
-4. **Migrate**. With **Live migration** ticked the VM keeps running.
+1. Choose **Actions > Migrate > Migrate to another node**.
+2. Pick the target node.
+3. Read the pre-flight checks. This is the list of checks shown before a
+   migration. It covers CPU, memory, networks, storage, SSH between the nodes
+   and the migration ports.
+   - A red row blocks the move and names the fix.
+   - A yellow row is a warning.
+4. Choose **Migrate**. With **Live migration** ticked the VM keeps running.
 
-- Disks are copied along; shared storage is not needed.
-- The controller coordinates a live migration; the nodes need no SSH between
-  them for it. When files have to be copied (disks on local storage, snapshot
-  files, a backup restored on another node), they go straight from node to
-  node with a node key that the controller installs itself. The key can only
-  deliver a new file into a storage pool. The **SSH between nodes** row
-  says whether a copy is needed and whether the path works, and **Migration
-  ports** whether the target's firewall lets the migration data through.
+Good to know:
+
+- Disks are copied along. You do not need shared storage.
+- The controller coordinates a live migration. Memory and disk data go
+  directly from node to node. The nodes need no SSH trust between them for it.
+- When files have to be copied (disks on local storage, snapshot files, a
+  backup restored on another node), they go straight from node to node. The
+  controller sets up a key on each node for this. The key can only deliver a
+  new file into a storage pool. It works between any two nodes, Service
+  account or Root.
+- Two pre-flight rows tell you about the network between the nodes:
+
+  | Row | It tells you |
+  | --- | --- |
+  | **SSH between nodes** | Whether a file copy is needed and whether the path works. |
+  | **Migration ports** | Whether the target's firewall lets the migration data through. |
+
 - To encrypt the streams, set up encrypted migration for both nodes on the
   Nodes page.
 - A Debian node and a RHEL-family node cannot exchange VMs.
@@ -180,12 +205,12 @@ downloaded as one file and imported on another installation. The format is in
 
 ## Users, tokens and the audit log
 
-- **Users** (admin): add accounts as viewer, operator or admin. See
-  [reference.md](reference.md#roles).
-- **Account**: change your password, create API tokens.
-- **Audit** (admin): every state-changing request, who made it and from where.
-- **Web access** (admin): HTTPS and reverse proxy settings. See
-  [web-tls.md](web-tls.md).
+| Page | Who | What it does |
+| --- | --- | --- |
+| **Users** | Admin | Add accounts as viewer, operator or admin. See [Roles](reference.md#roles). |
+| **Account** | Everyone | Change your password, create API tokens. |
+| **Audit** | Admin | Lists every state-changing request, who made it and from where. |
+| **Web access** | Admin | HTTPS and reverse proxy settings. See [web-tls.md](web-tls.md). |
 
 ## Troubleshooting
 
@@ -194,7 +219,7 @@ downloaded as one file and imported on another installation. The format is in
 | Node shows Offline | Node **Settings > Test connection**. It names the failing step. |
 | Guest agent "Not responding" | Install and start `qemu-guest-agent` in the VM. |
 | Migration blocked | Read the red pre-flight row. Usually a missing network or pool on the target, or a firewall between the nodes (SSH between nodes, Migration ports). |
-| Migration or backup refused for a node | **Node access** says Not prepared: the node has no node command, or one from an older version. Run `virticle node prepare` for it again. |
+| Migration or backup refused for a node | **Node access** says Not prepared: the node has no node command, or one from an older version. Run `virticle node prepare` for it again (see [install.md](install.md#upgrading-from-010)). |
 | Locked out after a web access change | Wait 60 seconds for the automatic revert, or run `virticle web reset` and restart. |
 | "No ISO images on this node" | Upload one under **Storage**. |
 | A task failed | **Tasks** shows the libvirt error in the Result column. |

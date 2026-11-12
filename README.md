@@ -1,113 +1,133 @@
 # Virticle
 
-A web UI for KVM/QEMU/libvirt hosts. One Go binary with the UI embedded; it
-manages hosts ("nodes") over SSH and runs no agent on them.
-
-- **VMs**: create from cloud images, ISOs or templates; clone; cloud-init;
-  UEFI, Secure Boot, vTPM; hot-plug hardware; edit the libvirt XML.
-- **Consoles**: VNC and serial, in the browser.
-- **Migration**: live and offline between nodes, with pre-flight checks;
-  node maintenance and evacuation.
-- **Snapshots and backups**: manual or scheduled, with retention; restore,
-  export, import.
-- **Storage and networks**: pools, volumes, uploads, image catalogue; NAT and
-  bridged networks, DHCP reservations.
-- **Passthrough**: PCI devices and GPUs.
-- **Access**: users with three roles, API tokens, audit log, task log, alerts.
-- **HTTPS**: self-signed, your own certificate, ACME, or behind a reverse proxy.
+A web UI for KVM/QEMU/libvirt hosts. One program with the UI built in. It
+manages your hosts (called "nodes") over SSH and installs no service on them.
 
 ![Datacenter summary](docs/img/datacenter.png)
 
-Libvirt stays the source of truth: VMs made with `virsh` and VMs made here look
-the same.
+Libvirt stays the source of truth. A VM made with `virsh` and a VM made in
+Virticle look the same.
+
+## What it does
+
+| Area | Features |
+| --- | --- |
+| VMs | Create from cloud images, ISOs or templates. Clone. cloud-init. UEFI, Secure Boot, virtual TPM. Hot-plug hardware. Edit the libvirt XML. |
+| Consoles | VNC and serial, in the browser. |
+| Migration | Live and offline, between nodes, with a list of pre-flight checks. Node maintenance and evacuation. |
+| Snapshots and backups | Manual or scheduled, with retention. Restore, export, import. |
+| Storage and networks | Pools, volumes, uploads, an image catalogue. NAT and bridged networks, DHCP reservations. |
+| Passthrough | PCI devices and GPUs. |
+| Access | Users with three roles, API tokens, audit log, task log, alerts. |
+| HTTPS | Self-signed, your own certificate, ACME, or behind a reverse proxy. |
 
 ## Quick start
 
+Four steps: install the controller, create the administrator, add a node,
+create a VM. The controller is the machine that runs Virticle. It needs a
+Linux amd64 machine that can reach your nodes over SSH.
+
 ### 1. Install the controller
 
-Pick one. Any Linux amd64 machine that can reach the nodes over SSH will do.
+Pick one.
 
-- **Package** (systemd service on `127.0.0.1:8080`). Download from
-  [Releases](https://github.com/jroeder5597/virticle/releases), then:
+| Way | Commands |
+| --- | --- |
+| Package, Debian or Ubuntu | `sudo apt-get install ./virticle_<version>_amd64.deb` |
+| Package, RHEL family | `sudo dnf install ./virticle-<version>-1.x86_64.rpm` then `sudo systemctl enable --now virticle` |
+| Container | `docker compose up -d --build` |
+| From source (needs Go and Node.js) | `make build` then `./bin/virticle -data ./data` |
 
-      sudo apt-get install ./virticle_<version>_amd64.deb     # Debian, Ubuntu
-      sudo dnf install ./virticle-<version>-1.x86_64.rpm      # RHEL family
-      sudo systemctl enable --now virticle
-
-- **Container** (HTTPS with a self-signed certificate on `127.0.0.1:8080`):
-
-      docker compose up -d --build
-
-- **From source** (needs Go and Node.js):
-
-      make build
-      ./bin/virticle -data ./data
+Download packages from
+[Releases](https://github.com/jroeder5597/virticle/releases). A package runs
+a systemd service on `127.0.0.1:8080`. The container serves HTTPS with a
+self-signed certificate on `127.0.0.1:8080`. More in
+[docs/install.md](docs/install.md).
 
 ### 2. Create the administrator
 
-Open `http://127.0.0.1:8080` (`https://` for the container). The first visit
-asks for the administrator account. The password needs at least 10 characters.
+1. Open `http://127.0.0.1:8080` (`https://` for the container).
+2. Choose a user name and a password of at least 10 characters.
 
 ### 3. Add a node
 
-A node is a Linux host with hardware virtualisation. Tested: Debian 13 and
-Rocky Linux 10.
+A node is a Linux host with hardware virtualisation. Debian 13 and Rocky
+Linux 10 are tested. A node must be **prepared** before you add it. Preparing
+installs libvirt and QEMU and sets up the access the controller needs.
 
-1. Open **Nodes > Add node**.
-2. Choose **Prepare this node** and give an administrator login for the host.
-   It is used once and not stored. Prepare then:
-   - checks the host (CPU flags, `/dev/kvm`, disk space, time sync),
-   - installs libvirt and QEMU,
-   - installs the node command (`virticle-node`), the one program the
-     controller runs as root on the node,
-   - creates the service account `virticle` with a restricted SSH key and a
-     sudo rule that allows the node command and nothing else (with the root
-     option there is no account: the controller signs in as root),
-   - tests the connection.
-3. Save the node.
+1. Open **Nodes**, then **Add node**.
+2. Choose **Prepare this node**.
+3. Enter the address and an administrator login for the host. It is used once
+   and is not stored.
+4. **Check only** is ticked at first. Choose **Check** to see what would
+   change. Then untick it and choose **Prepare**.
+5. When prepare has finished without errors, choose **Add this node**.
 
-The same from a shell: `virticle node prepare admin@host` (`--check` changes
-nothing). A node must be prepared before it is added. A host that already
-runs libvirt is prepared the same way; its networks, pools and VMs stay.
+![Add node dialog](docs/img/add-node.png)
+
+You can prepare from a shell instead: `virticle node prepare admin@host`.
+Add `--check` to change nothing.
+
+Prepare gives the controller one of two kinds of access:
+
+| Access | What the controller uses | When to choose it |
+| --- | --- | --- |
+| **Service account** (default) | The account `virticle`. It may run the node command as root through one sudo rule, and nothing else. | Almost always. |
+| **Root** (`--root`) | The root account. | You do not want an extra account on the node. |
+
+The node command is `virticle-node`, a small program that prepare installs on
+the node. The controller runs it over SSH when something needs root. No
+service runs on the node. Details are in
+[docs/install-node.md](docs/install-node.md).
+
+A host that already runs libvirt is prepared the same way. Its networks,
+pools and VMs stay as they are.
 
 ### 4. Create a VM
 
-1. **Storage**: select a pool, open **Image catalogue** and download a cloud
-   image.
-2. **Virtual machines > New VM**: name, node, **Disk image**, CPU, memory,
-   network.
-3. Open the VM and use the **Console** tab.
+1. Open **Storage**, select a pool, choose **Image catalogue** and download a
+   cloud image.
+2. Open **Virtual machines**, then **New VM**. Set the name, node, **Disk
+   image**, CPU, memory and network.
+3. Open the VM and choose its **Console** tab.
 
 ![VM overview](docs/img/vm-overview.png)
 
 ## Everyday use
 
-- **Tree on the left**: nodes and their VMs. Drag its edge to resize.
-- **Tasks panel at the bottom**: every action with progress and result. Long
-  actions run in the background.
-- **Status**: a green, yellow or red dot with the word Ok, Warning or Error.
-- **Migrate**: **Actions > Migrate**. The pre-flight list says what blocks it.
+| To do this | Do this |
+| --- | --- |
+| Find a node or VM | Use the tree on the left. Drag its edge to resize. |
+| See what happened | Look at the **Tasks** panel at the bottom. Every action shows progress and result. Long actions run in the background. |
+| Read a status | A green, yellow or red dot with the word Ok, Warning or Error. |
+| Move a VM | **Actions > Migrate**. The pre-flight list says what blocks the move. |
+| Switch to HTTPS or a reverse proxy | **Web access** (administrator). No restart. A change you do not confirm is undone after 60 seconds. |
 
-  ![Migration pre-flight](docs/img/migrate.png)
+![Migration pre-flight](docs/img/migrate.png)
 
-- **Remote access**: **Web access** (admin) switches to HTTPS or a reverse
-  proxy without a restart. An unconfirmed change reverts after 60 seconds.
+Live migration is coordinated by the controller. Memory and disk data go
+directly from node to node. When a migration or restore has to copy files,
+they also go from node to node, with a key that the controller sets up. That
+key can only deliver a new file into a storage pool. You set up nothing by
+hand. The **SSH between nodes** row of the pre-flight list shows whether it
+works.
 
-Live migration is coordinated by the controller. When a migration or a restore
-has to copy files, they go from node to node over a restricted node key that
-the controller sets up itself; the pre-flight check shows whether it works.
+## Upgrading from 0.1.0
+
+Nodes prepared with 0.1.0 must be prepared again. Steps are in
+[docs/install.md](docs/install.md#upgrading-from-010).
 
 ## Documentation
 
-| Topic | File |
+| If you want to | Read |
 | --- | --- |
-| Using the UI, with screenshots; troubleshooting | [docs/user-guide.md](docs/user-guide.md) |
-| Install, upgrade, rollback, uninstall | [docs/install.md](docs/install.md) |
-| Preparing a node, the node command, manual steps | [docs/install-node.md](docs/install-node.md) |
-| HTTPS, ACME, reverse proxies | [docs/web-tls.md](docs/web-tls.md) |
-| Flags, roles, API tokens, data, schedules, backup format, limits | [docs/reference.md](docs/reference.md) |
-| Building, tests, releases | [docs/development.md](docs/development.md) |
-| What is done, untested and open | [ROADMAP.md](ROADMAP.md) |
+| Use the UI, with screenshots, and fix common problems | [docs/user-guide.md](docs/user-guide.md) |
+| Install, upgrade, roll back, uninstall | [docs/install.md](docs/install.md) |
+| Prepare a node, see what is installed on it, audit the node command | [docs/install-node.md](docs/install-node.md) |
+| Set up HTTPS, ACME or a reverse proxy | [docs/web-tls.md](docs/web-tls.md) |
+| Look up flags, roles, API tokens, data, schedules, limits | [docs/reference.md](docs/reference.md) |
+| Build, test, release | [docs/development.md](docs/development.md) |
+| See what is done, untested and open | [ROADMAP.md](ROADMAP.md) |
 
 ## Contributing and security
 
@@ -116,8 +136,12 @@ the controller sets up itself; the pre-flight check shows whether it works.
 
 ## Status
 
-Early release. Tested with a controller on Linux amd64 and nodes on Debian 13
-and Rocky Linux 10.
+Early release. Tested: a controller on Linux amd64, and nodes on Debian 13
+and Rocky Linux 10, each in both access modes.
+
+Not tested: arm64, the packages on a clean machine, ACME certificate
+issuance. A Debian node and a RHEL-family node cannot exchange VMs. Packages
+are not signed. No container image is published.
 
 ## Licence
 

@@ -1,19 +1,39 @@
 # Preparing a node
 
-A node is a Linux host with libvirt and QEMU that the controller reaches over SSH. No virticle service runs on it.
-A node must be prepared before it is added: `virticle node prepare` (or **Prepare this node** in the Add node dialog)
-makes a host ready, and this page says exactly what it does so you can do the same by hand.
+A node is a Linux host with libvirt and QEMU that the controller reaches over SSH. No Virticle service runs on it.
+
+**Prepare a node before you add it.** Either way works:
+
+- In the web UI: **Nodes > Add node > Prepare this node**.
+- In a shell: `virticle node prepare admin@host`.
+
+This page tells you what prepare does, so you can check it or do the same by hand. The last part,
+[Reference: the node command](#reference-the-node-command), is for readers who audit the program that runs as root.
+
+On this page:
+
+- [The two ways to reach a node](#the-two-ways-to-reach-a-node)
+- [What prepare does](#what-prepare-does)
+- [Prepare options](#prepare-options)
+- [Upgrade and unprepare](#upgrade-and-unprepare)
+- [Tested systems and packages](#tested-systems-and-packages)
+- [Preparing by hand](#preparing-by-hand)
+- [The restricted SSH key](#the-restricted-ssh-key)
+- [How nodes exchange files](#how-nodes-exchange-files)
+- [What the node command is used for](#what-the-node-command-is-used-for)
+- [How the controller finds the access](#how-the-controller-finds-the-access)
+- [Reference: the node command](#reference-the-node-command)
 
 ## The two ways to reach a node
 
-Both use the same program, **the node command** (`virticle-node`), installed by prepare at
-`/usr/local/libexec/virticle-node`. The controller starts it over SSH when something must be done as root; it exits when
+Both use the same program, **the node command** (`virticle-node`). Prepare installs it at
+`/usr/local/libexec/virticle-node`. The controller starts it over SSH when something must be done as root. It exits when
 it is done.
 
-| Access | The controller signs in as | The node command runs | Use |
+| Access | The controller signs in as | The node command runs | Choose it |
 | --- | --- | --- | --- |
-| **Service account** | `virticle`, a user without a password | as root, through one sudo rule that allows this program and nothing else | Recommended. |
-| **Root** | `root` | directly | When you do not want an extra account: `virticle node prepare --root`. |
+| **Service account** | `virticle`, a user without a password | As root, through one sudo rule that allows this program and nothing else | By default. Recommended. |
+| **Root** | `root` | Directly | When you do not want an extra account: `virticle node prepare --root` |
 
 There is no other way. A login that has general passwordless sudo but no node command is not prepared.
 
@@ -21,45 +41,55 @@ There is no other way. A login that has general passwordless sudo but no node co
 
 ![Prepare node dialog](img/prepare-node.png)
 
-It signs in with an **administrator credential that you give for this one run** (your SSH agent or a key file with
-the CLI; a password or pasted private key in the web dialog). The credential is used in memory only. It is not stored, not
-logged, not written to the audit log or the task record. It is separate from the controller's own key.
+Prepare signs in with an **administrator credential that you give for this one run**.
 
-1. **Checks** the host (read-only; `--check` stops here): CPU virtualisation flags (vmx or svm), `/dev/kvm`, nested
-   virtualisation (information, when the host is itself a VM), IOMMU on or off (information, for device passthrough),
-   distribution and version against the tested matrix, architecture, free space under `/var/lib/libvirt/images`,
-   SELinux or AppArmor, time sync, whether libvirt is installed (and its version), whether another controller runs
-   snapshot schedules there, and how many VMs exist ("Existing VMs are left alone"). It never reboots the host; if a
-   reboot or kernel parameter is needed (IOMMU), a row says so.
-2. **Installs packages** (the lists below), enables libvirt, starts the `default` network and defines the `default`
-   pool when they are missing. Existing networks and pools are not changed.
-3. **Service account only: creates the account** (default `virticle`, a system user, home `/var/lib/virticle`, shell
-   `/bin/sh`, no password, groups `libvirt` and `kvm`).
-4. **Installs the controller's public key** for that account (or for root) with restrictions, **installs the node
-   command**, and for a service account **the sudo rule**.
-5. **Creates the node key** of the account (for copies between nodes, see below), then **tests the connection** with
-   the same steps as Test connection.
+- With the command line, use your SSH agent, or `--identity FILE`, or a password on standard input.
+- In the web dialog, enter a password or paste a private key without a passphrase. The password is also used for sudo
+  when the user is not root.
+
+The credential is used in memory only. It is not stored, not logged, and not written to the audit log or the task
+record. It is separate from the controller's own key.
+
+Prepare runs these steps in order:
+
+1. **Checks the host.** This part only reads. `--check`, or **Check only** in the dialog, stops here. It looks at:
+   - CPU virtualisation flags (`vmx` or `svm`) and `/dev/kvm`
+   - nested virtualisation (information, when the host is itself a VM)
+   - IOMMU on or off (information, needed for device passthrough)
+   - distribution and version against the tested list, and the architecture
+   - free space under `/var/lib/libvirt/images`
+   - SELinux or AppArmor, and time sync
+   - whether libvirt is installed, and its version
+   - whether another controller runs snapshot schedules there
+   - how many VMs exist (existing VMs are left alone)
+
+   Prepare never reboots the host. If a reboot or kernel parameter is needed (for IOMMU), a row says so.
+2. **Installs packages** (see the lists below) and enables libvirt. It starts the `default` network and defines the
+   `default` pool when they are missing. Existing networks and pools are not changed.
+3. **Service account only: creates the account.** Default name `virticle`, a system user, home `/var/lib/virticle`,
+   shell `/bin/sh`, no password, in the groups `libvirt` and `kvm`.
+4. **Installs the controller's public key** for that account (or for root) with restrictions. It also installs the node
+   command and, for a Service account, the sudo rule.
+5. **Creates the node key** of the account. Nodes use it to copy files to each other (see
+   [How nodes exchange files](#how-nodes-exchange-files)).
+6. **Tests the connection** with the same steps as **Test connection** on the node page.
+
+Running prepare again changes nothing and says so.
 
 What is on the node afterwards:
 
 | Item | Where | Service account | Root |
 | --- | --- | --- | --- |
-| Account | `virticle`, comment "virticle service account" | created | none (root) |
-| Controller's key | `~/.ssh/authorized_keys` of the account, with restrictions (see below) | yes | yes |
-| Sudo rule | `/etc/sudoers.d/virticle`: the account may run the node command as root | yes | no |
-| Node command | `/usr/local/libexec/virticle-node`, `root:root 0755` | yes | yes |
-| Node key | `~/.ssh/virticle_peer_ed25519`, the account's own key for copies between nodes | yes | yes |
+| Account | `virticle`, comment "virticle service account" | Created | None (root is used) |
+| Controller's key | `~/.ssh/authorized_keys` of the account, with restrictions | Yes | Yes |
+| Sudo rule | `/etc/sudoers.d/virticle`: the account may run the node command as root | Yes | No |
+| Node command | `/usr/local/libexec/virticle-node`, `root:root 0755` | Yes | Yes |
+| Node key | `~/.ssh/virticle_peer_ed25519`, the account's own key for copies between nodes | Yes | Yes |
 
-The sudoers file names one account, so a host has one service account: preparing it for another account replaces the
-rule. Running prepare again changes nothing and says so.
+The sudoers file names one account, so a host has one Service account. Preparing it for another account replaces the
+rule.
 
-- **Upgrading.** When the controller says that a node was prepared by an older version (the node command there reports
-  another protocol version, or is still the old shell script), run prepare again. It replaces the node command and
-  removes the old script.
-- **Unprepare.** `virticle node unprepare admin@host` removes the account, key, node command and sudo rule and leaves
-  packages, VMs, pools and networks alone. It removes an account only when prepare created it (the account carries the
-  comment "virticle service account"); for an existing account it removes just the key and the rule, and the group
-  memberships stay. It ends the account's processes first, so remove the node in the controller before you run it.
+## Prepare options
 
 ```
 virticle node prepare [--check] [--user virticle] [--use-existing-user[=NAME]] [--confirm] [--root]
@@ -67,37 +97,53 @@ virticle node prepare [--check] [--user virticle] [--use-existing-user[=NAME]] [
                       [--identity FILE] [--password-stdin] [--data DIR] [user@]host[:port]
 ```
 
-- `--use-existing-user NAME`: the account exists. Prepare reports what is missing (groups, login shell, sudo rule) and
-  changes nothing about the account except adding the controller's key; with `--confirm` it also adds the groups and the
-  sudoers rule.
-- `--root`: Root access. The controller signs in as root and no service account is created. The node command is
-  installed all the same and the controller runs it directly, without sudo. Prepare shows a warning ("Uses root; a
-  dedicated account is safer"). `--allow-root` is the old name of this option and still works.
-- `--from ADDR`: adds `from="ADDR"` to the key, so it works only from the controller's address.
-- `--data DIR`: the controller's data directory (its key, `known_hosts`, instance id); default `data`.
-- The host key of the node is recorded in the controller's `known_hosts` on first sight.
+| Option | Meaning |
+| --- | --- |
+| `--check` | Look and report. Change nothing. |
+| `--root` | Root access. The controller signs in as root and no account is created. The node command is installed all the same, and the controller runs it directly, without sudo. Prepare shows a warning ("Uses root; a dedicated account is safer"). `--allow-root` is the old name and still works. |
+| `--user NAME` | Name of the Service account (default `virticle`). |
+| `--use-existing-user NAME` | The account exists already. Prepare reports what is missing (groups, login shell, sudo rule). It changes nothing about the account except adding the controller's key. With `--confirm` it also adds the groups and the sudo rule. |
+| `--from ADDR` | Adds `from="ADDR"` to the key, so it works only from the controller's address. |
+| `--extras guestfs,virtiofs` | Also installs guest disk tools (`guestfs`) or `virtiofsd` (`virtiofs`). |
+| `--jump user@host` | Reaches the node through a jump host. |
+| `--identity FILE`, `--password-stdin` | How you sign in as administrator (default: your SSH agent). |
+| `--data DIR` | The controller's data directory (its key, `known_hosts`, instance id). Default `data`. |
 
-## Tested matrix
+The host key of the node is recorded in the controller's `known_hosts` the first time it is seen.
+
+## Upgrade and unprepare
+
+**Upgrade.** When the controller says that a node was "prepared by an older version", run prepare again. This happens
+when the node command there reports another protocol version, or is still the old shell script from 0.1.0. Prepare
+replaces the node command and removes the old script. Steps for 0.1.0 are in
+[install.md](install.md#upgrading-from-010).
+
+**Unprepare.** `virticle node unprepare admin@host` removes the account, key, node command and sudo rule. It leaves
+packages, VMs, pools and networks alone.
+
+- It removes an account only when prepare created it (the account carries the comment "virticle service account"). For
+  an existing account it removes just the key and the rule. The group memberships stay.
+- It ends the account's processes first, so remove the node in the controller before you run it.
+
+## Tested systems and packages
 
 | Distribution | Status |
-|---|---|
-| Debian 13, Rocky Linux 10 | tested |
-| Debian 12, Ubuntu 22.04 and 24.04, RHEL, AlmaLinux and Rocky 9 and 10, Fedora | untested, prepare warns and goes on |
-| anything else | error; install by hand (below, including the node command), then add the node |
+| --- | --- |
+| Debian 13, Rocky Linux 10 | Tested |
+| Debian 12, Ubuntu 22.04 and 24.04, RHEL, AlmaLinux and Rocky 9 and 10, Fedora | Untested. Prepare warns and goes on. |
+| Anything else | Error. Install by hand (below, including the node command), then add the node. |
 
-## Packages
-
-The names were checked on Debian 13 and Rocky Linux 10.
+Package names, checked on Debian 13 and Rocky Linux 10:
 
 | | Debian family | RHEL family |
-|---|---|---|
-| base | `qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients dnsmasq-base ovmf swtpm swtpm-tools sudo curl ca-certificates openssh-client` | `qemu-kvm libvirt virt-install edk2-ovmf swtpm swtpm-tools sudo curl openssh-clients` |
-| extra `guestfs` | `libguestfs-tools` | `guestfs-tools` |
-| extra `virtiofs` | `virtiofsd` | `virtiofsd` |
+| --- | --- | --- |
+| Base | `qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients dnsmasq-base ovmf swtpm swtpm-tools sudo curl ca-certificates openssh-client` | `qemu-kvm libvirt virt-install edk2-ovmf swtpm swtpm-tools sudo curl openssh-clients` |
+| Extra `guestfs` | `libguestfs-tools` | `guestfs-tools` |
+| Extra `virtiofs` | `virtiofsd` | `virtiofsd` |
 
-## The manual equivalent
+## Preparing by hand
 
-As root on the node. Debian family:
+If you cannot use `virticle node prepare`, do the same steps yourself. Run these as root on the node. Debian family:
 
 ```sh
 apt-get update
@@ -141,10 +187,10 @@ the node command the same way, and create the node key as root.
 
 On SELinux hosts run `restorecon -R /var/lib/virticle/.ssh` and `restorecon /usr/local/libexec/virticle-node`
 afterwards. The `virticle-node` file is embedded in the controller binary (linux/amd64 and linux/arm64) and
-`virticle node prepare` installs it. To get it by hand, build it from the source with `make nodebin`; the files are
+`virticle node prepare` installs it. To get it by hand, build it from the source with `make nodebin`. The files are
 `internal/nodebin/dist/virticle-node_linux_amd64` and `_arm64`.
 
-## The SSH key restriction
+## The restricted SSH key
 
 The key line is `restrict,pty,port-forwarding[,from="ADDR"] ssh-ed25519 AAAA... virticle-controller`.
 
@@ -156,11 +202,70 @@ The key line is `restrict,pty,port-forwarding[,from="ADDR"] ssh-ed25519 AAAA... 
 - `permitopen=` was tried and dropped: OpenSSH applies it to the UNIX socket forward too, so libvirt becomes unreachable.
 - Shell commands, `scp` and `sftp` keep working (they are not restricted by `restrict`).
 
-## The node command
+## How nodes exchange files
+
+Any two nodes can exchange files, for example when a migration copies local disks or a backup is restored on another
+node. A Service account node and a Root node can do this with each other.
+
+Each node has its own SSH key, the **node key** (`~/.ssh/virticle_peer_ed25519`, made by `virticle node prepare`). The
+private half stays on the node. You set up nothing by hand. When a file has to be copied, the controller:
+
+1. Installs the sending node's public key on the receiving node as
+   `restrict,command="sudo -n /usr/local/libexec/virticle-node peer-recv"` (without `sudo -n` when the receiving
+   account is root). That key can deliver one new file into a storage pool and nothing else.
+2. Records the receiving node's SSH host key, taken from the controller's `known_hosts`, on the sending node. The
+   sending node checks it strictly.
+3. Tests the path with `peer-ping`. Then it runs `peer-send` on the source, which reads the file as root and streams it
+   over `ssh` to `peer-recv` on the target.
+
+Facts:
+
+- The file data goes from node to node. It does not pass through the controller.
+- The migration pre-flight does these steps in its **SSH between nodes** row. It repeats safely.
+- Removing a node from the controller removes its key from the other nodes, and theirs from it.
+  `virticle node unprepare` removes the node's key and the keys of peers installed on it.
+- **Live migration** is coordinated by the controller for every node. It calls the phases of libvirt's migration
+  protocol on both nodes, so it needs no SSH between the nodes. The memory stream and the disk mirror still go from node
+  to node.
+
+## What the node command is used for
+
+The account is in the `libvirt` group, so libvirt operations and volume upload need no root. The node command is used
+for:
+
+- **encrypted migration** certificates,
+- **migrating VMs**, live and offline,
+- **backing up and restoring VMs**, on the same node or another one, including export and import,
+- **downloading** images and the image catalogue into a pool,
+- **importing** disks and OVAs,
+- **moving a disk** to another pool,
+- **cloning with guest preparation** (`virt-sysprep`, if libguestfs is installed).
+
+Backup export and import stream through the controller to and from the browser.
+
+## How the controller finds the access
+
+- The controller never replaces the node command by itself. When the version on a node differs from the controller's,
+  **Test connection** says "prepared by an older version; run `virticle node prepare` again" (or names the two
+  versions). The node counts as not prepared, and the features that need root are off, until an administrator runs
+  prepare again.
+- On each connection the controller detects the access:
+
+  | Detected | When |
+  | --- | --- |
+  | **Root** | The user id is 0 and the node command of this version answers. |
+  | **Service account** | The node command is present, its version matches, and `sudo -n virticle-node version` works. |
+  | **Not prepared** | Anything else. |
+
+  A node stored as `sudo` by an older version is detected again.
+
+## Reference: the node command
+
+This part is for readers who audit what runs as root on a node.
 
 `/usr/local/libexec/virticle-node` is a Go program, `root:root 0755`, embedded in the controller and versioned
 (`virticle-node version` prints the protocol number, which the controller compares with its own). The sudo rule of the
-service account allows exactly this program:
+Service account allows exactly this program:
 
 ```
 # /etc/sudoers.d/virticle
@@ -169,13 +274,12 @@ virticle ALL=(root) NOPASSWD: /usr/local/libexec/virticle-node
 
 sudoers cannot pin the arguments of a program, so the node command checks them itself.
 
-**What it may do.** Run one of the fixed verbs below. Every verb validates all its arguments first (absolute paths
-inside the allowed roots, no `..`, no `//`, no shell characters, no symbolic links in written paths), never passes an
-argument to a shell, and works on open directory descriptors, so a link swapped in later is not followed.
+| | |
+| --- | --- |
+| **What it may do** | Run one of the fixed verbs below. Every verb validates all its arguments first (absolute paths inside the allowed roots, no `..`, no `//`, no shell characters, no symbolic links in written paths). It never passes an argument to a shell. It works on open directory descriptors, so a link swapped in later is not followed. |
+| **What it may not do** | There is no verb that runs a given command, none that reads or writes outside the allowed roots, and none that replaces an existing file. It has no listener and no daemon. It cannot update itself: that would let anyone who holds the service account install any code as root. |
 
-**What it may not do.** There is no verb that runs a given command, none that reads or writes outside the allowed
-roots, and none that replaces an existing file. It has no listener and no daemon. It cannot update itself: that would
-let anyone who holds the service account install any code as root.
+### Verbs
 
 | Verb | Does |
 |---|---|
@@ -208,7 +312,7 @@ let anyone who holds the service account install any code as root.
 | `convert-start WORKDIR SRC FORMAT` | detached `qemu-img convert` of `SRC` to `WORKDIR/out.part`; `FORMAT` is `raw`, `qcow2`, `vpc`, `vhdx` or `vdi`; a qcow2 backing chain must be inside the roots and may not use an external data file |
 | `convert-poll WORKDIR` / `convert-kill WORKDIR` | exit code and progress of that conversion; stop it |
 | `convert-finish WORKDIR DEST` | moves `out.part` to the new file `DEST` (never replaces) and drops the state files |
-| `download URL DEST [sha256\|sha512 HEX]` | the node fetches an `http://` or `https://` URL into the new file `DEST` (see "Downloads and imports") |
+| `download URL DEST [sha256\|sha512 HEX]` | the node fetches an `http://` or `https://` URL into the new file `DEST` (see "Downloads and imports" below) |
 | `download-cancel DEST` | stops the running download of `DEST` |
 | `image-info PATH` | `qemu-img info` as JSON for an image to import; the format is recognised from the content |
 | `realpath file\|dir PATH`, `free-space DIR` | canonical path of an existing file or directory inside a root; free bytes of its file system |
@@ -238,41 +342,3 @@ cancel or signal removes the part file. Import reads an image or OVA that lies i
 leaves the roots and a VMDK whose descriptor names another file. `tar-extract` refuses an archive that contains anything
 but regular files with plain names. `sysprep` takes the first-boot script from the node command itself; the caller
 supplies only image paths, each inside a root, not a link, qcow2 (backing chain inside the roots) or raw.
-
-### How nodes exchange files
-
-Each node has its own SSH key, the **node key** (`~/.ssh/virticle_peer_ed25519`, made by `virticle node prepare`; the
-private half stays on the node). When a migration or a restore needs a file copied, the controller:
-
-1. installs the sending node's public key on the receiving node as
-   `restrict,command="sudo -n /usr/local/libexec/virticle-node peer-recv"` (without `sudo -n` when the receiving
-   account is root), so that key can deliver one new file into a storage pool and nothing else;
-2. records the receiving node's SSH host key, taken from the controller's `known_hosts`, on the sending node, which
-   checks it strictly;
-3. tests the path with `peer-ping`, then runs `peer-send` on the source, which reads the file as root and streams it
-   over `ssh` to `peer-recv` on the target.
-
-The file data goes from node to node and does not pass through the controller. The migration pre-flight does this,
-idempotently, in its **SSH between nodes** row; nothing is entered by hand. It works for any pair of nodes, service
-account or root. Removing a node from the controller removes its key from the other nodes, and theirs from it.
-`virticle node unprepare` removes the node's key and the keys of peers installed on it.
-
-**Live migration** is coordinated by the controller for every node (it calls the phases of libvirt's migration protocol
-on both nodes), so it needs no SSH between the nodes. The memory stream and the disk mirror still go from node to node.
-
-### What the node command is used for
-
-The account is in the `libvirt` group, so libvirt operations and volume upload need no root. The node command is used for
-**encrypted migration** certificates, **migrating VMs** (live and offline), **backing up and restoring VMs** (same node
-or another node, export and import included), **downloading** images and the image catalogue into a pool, **importing**
-disks and OVAs, **moving a disk** to another pool, and **cloning with guest preparation** (virt-sysprep, if libguestfs is
-installed). Backup export and import stream through the controller to and from the browser.
-
-### Versions and detection
-
-- The controller never replaces the node command by itself. When the version on a node differs from the controller's,
-  Test connection says "prepared by an older version; run `virticle node prepare` again" (or names the two versions);
-  the node counts as not prepared, and the features that need root are off, until an administrator runs prepare again.
-- On each connection the controller detects the access: **Root** (uid 0 and the node command of this version answers),
-  **Service account** (the node command is present, its version matches, and `sudo -n virticle-node version` works) or
-  **Not prepared** (anything else). A node stored as `sudo` by an older version is detected again.

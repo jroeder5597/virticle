@@ -119,7 +119,7 @@ controller from VM metadata, so two controllers pointed at the same nodes
 would both run every schedule. `-no-scheduler` turns one of them off, and an
 alert appears when another controller's scheduled snapshots are seen.
 
-The project is called Virticle (working name until then: `virt-proj`).
+The project is called Virticle (earlier working name: `virt-proj`).
 
 ## Build and run
 

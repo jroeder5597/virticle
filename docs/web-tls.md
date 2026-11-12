@@ -1,30 +1,41 @@
 # Web access and TLS
 
-Settings > Web access (admin only, link "Web access" in the top bar) chooses how the controller serves its web UI and API. The same settings can be given on the command line, so a headless install works without ever opening the page.
+The **Web access** page (administrators only, link in the top bar) chooses how the controller serves its web UI and API. You can give the same settings on the command line, so a headless install works without opening the page.
 
 ![Web access page](img/web-access.png)
 
 | Mode | What it does |
-|---|---|
+| --- | --- |
 | Off (HTTP) | Plain HTTP on one address, 127.0.0.1:8080 by default. A non-loopback address shows the row "Sign-ins travel unencrypted". |
 | Self-signed certificate | HTTPS with a certificate the controller makes itself. |
 | Own certificate | HTTPS with a certificate you provide. |
 | ACME | HTTPS with a certificate obtained and renewed from Let's Encrypt or another ACME directory. |
 | Behind a reverse proxy | Plain HTTP on loopback; nginx, Apache, HAProxy, Caddy or Traefik terminates TLS. |
 
-In every TLS mode the controller offers TLS 1.2 and 1.3 only, sets the session cookie `Secure`, and can run an extra HTTP listener that only redirects to HTTPS. The Origin/CSRF check and the WebSocket Origin check accept the configured public URL. HSTS is off by default; the toggle sends `Strict-Transport-Security: max-age=31536000` on HTTPS responses. Turn it on only after HTTPS works for good, because browsers then refuse plain HTTP to that host for a year.
+In every TLS mode the controller:
+
+- offers TLS 1.2 and 1.3 only,
+- sets the session cookie `Secure`,
+- can run an extra HTTP listener that only redirects to HTTPS,
+- accepts the configured public URL in the Origin/CSRF check and the WebSocket Origin check.
+
+HSTS is off by default. The toggle sends `Strict-Transport-Security: max-age=31536000` on HTTPS responses. Turn it on only after HTTPS works for good, because browsers then refuse plain HTTP to that host for a year.
 
 ## Applying a change safely
 
-"Apply" first runs the checks and shows them as a list (certificate parses and its key matches, not expired, names cover the public URL, address can be bound, trusted proxy sends the headers on this very request, and so on). Any failed check blocks the change.
+1. Choose **Apply**. The page first runs checks and shows them as a list: the certificate parses and its key matches, it is not expired, its names cover the public URL, the address can be bound, the trusted proxy sends the headers on this very request, and so on. Any failed check blocks the change.
+2. The new listener starts at once. The old one stays.
+3. Open the new address, as the page tells you. There, choose **Keep this setting**.
+4. If nobody confirms within 60 seconds, the new listener is closed and the previous settings return, so a typo cannot lock you out. (`VIRTICLE_WEB_CONFIRM_SECONDS` changes the time, for tests.)
 
-Then the new listener starts at once and the old one stays. The page tells you to open the new address; there, "Keep this setting" confirms it. If nobody confirms within 60 seconds (`VIRTICLE_WEB_CONFIRM_SECONDS` changes this, for tests), the new listener is closed and the previous settings return, so a typo cannot lock you out. A change that is still open when the controller restarts is undone at the next start. Confirming works only from a request that came in through the new listener, which proves the new address is reachable from your browser. "Undo" reverts at once.
+Good to know:
 
-If the new and the old setting use the same address (for example Off to Reverse proxy on 127.0.0.1:8080), the address is taken over: open connections finish, new ones get the new settings, and a revert rebinds the old one.
-
-No restart is needed for any of this. Changes made with `virticle web set` or `virticle web reset` (below) are read at the next start.
-
-Browsers share cookies between ports of the same host name, so a session started on `http://host:8080` is also sent to `https://host:8443`. A different host name (the public URL) needs a new sign-in.
+- Confirming works only from a request that came in through the new listener. That proves the new address is reachable from your browser.
+- **Undo** reverts at once.
+- A change that is still open when the controller restarts is undone at the next start.
+- If the new and the old setting use the same address (for example Off to Reverse proxy on 127.0.0.1:8080), the address is taken over. Open connections finish, new ones get the new settings, and a revert binds the old settings again.
+- No restart is needed for any of this. Changes made with `virticle web set` or `virticle web reset` (below) are read at the next start.
+- Browsers share cookies between ports of the same host name, so a session started on `http://host:8080` is also sent to `https://host:8443`. A different host name (the public URL) needs a new sign-in.
 
 ## Self-signed
 

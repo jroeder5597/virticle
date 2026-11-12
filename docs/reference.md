@@ -43,7 +43,7 @@ The package reads these from `/etc/virticle/virticle.env`.
 
 | Role | Can |
 | --- | --- |
-| `viewer` | Read everything except the audit log. No console. |
+| `viewer` | Read everything except the audit log. Cannot open a console. |
 | `operator` | Viewer, plus VM, storage, network, snapshot, backup, migration and console actions. |
 | `admin` | Operator, plus nodes, users, web access and the audit log. |
 
@@ -118,29 +118,29 @@ backup restores as a new VM or as the original, and exports to one
 
 ## Node access
 
-A node is reached in one of two ways. Both run the same program as root, the node command
+A node is reached in one of two ways. Both run the same program as root: the node command
 (`/usr/local/libexec/virticle-node`), which `virticle node prepare` installs. See [install-node.md](install-node.md).
 
-| Access | How | Limits |
+| Access | How to set it up | What the controller does |
 | --- | --- | --- |
-| Service account | `virticle node prepare` (default, recommended): the controller signs in as `virticle` and runs the node command with `sudo -n` | No limit of its own. VMDK disks and qcow2 with an external data file cannot be backed up. |
-| Root | `virticle node prepare --root`: the controller signs in as root and runs the node command directly | The same. A service account is safer. |
+| **Service account** (recommended) | `virticle node prepare` | Signs in as `virticle` and runs the node command with `sudo -n`. The sudo rule allows that program and nothing else. |
+| **Root** | `virticle node prepare --root` | Signs in as root and runs the node command directly. A Service account is safer. |
 
 A node that has neither is "Not prepared": the features that need root are off. A node whose account has general
 passwordless sudo but no node command is also not prepared.
 
 ## Known limits
 
-- Debian and Rocky nodes cannot migrate VMs to each other (emulator path and
-  machine type differ).
+- A Debian node and a Rocky Linux node cannot migrate VMs to each other
+  (emulator path and machine type differ).
 - Snapshots and TPM state are not part of a backup.
 - Only file-based, non-shareable disks can be backed up.
 - Internal snapshots pause the guest while memory is saved and block live
   migration.
 - External snapshots could not be deleted on Debian nodes (AppArmor).
 - No high availability, no shared-storage features, no replication.
-- Not verified end to end: ACME issuance, the systemd service, arm64. See
-  `ROADMAP.md`.
+- Not verified end to end: ACME issuance, the packages and the systemd service
+  on a clean machine, arm64. See [ROADMAP.md](../ROADMAP.md).
 
 ## Upgrading from the working name virt-proj
 
