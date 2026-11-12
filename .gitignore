@@ -8,5 +8,3 @@ web/node_modules/
 web/dist/
 /.claude/
 /data-e2e/
-/dist/
-/packaging/virticle.1.gz

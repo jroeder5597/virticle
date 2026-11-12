@@ -1,4 +1,4 @@
-# Lab access from the dev container:  SSHPASS=<jump password> ssh -F lab/ssh_config n1
+# Lab access:  VSPIKE_JUMP=user@kvm-host SSHPASS=<jump password> ssh -F lab/ssh_config n1
 Host n1
   HostName 192.168.150.11
 Host n2
