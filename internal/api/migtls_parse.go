@@ -336,7 +336,7 @@ const setupHint = "Use \"Set up encrypted migration\" on the Nodes page for thes
 func encryptionCheck(in encInput) (useTLS bool, c migCheck) {
 	const name = "Encryption"
 	if in.Mode == "offline" {
-		return false, migCheck{name, true, "info", "offline migration copies the disks with scp over SSH, which is encrypted; no TLS setup is needed"}
+		return false, migCheck{name, true, "info", "offline migration copies the disks over SSH, node to node, which is encrypted; no TLS setup is needed"}
 	}
 	probs := in.problems()
 	if in.Request != nil && !*in.Request {
