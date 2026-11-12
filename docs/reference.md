@@ -139,7 +139,6 @@ passwordless sudo but no node command is also not prepared.
   migration.
 - External snapshots could not be deleted on Debian nodes (AppArmor).
 - No high availability, no shared-storage features, no replication.
-- The node command and the two access modes are built and unit-tested but not yet run in the lab.
 - Not verified end to end: ACME issuance, the systemd service, arm64. See
   `ROADMAP.md`.
 
