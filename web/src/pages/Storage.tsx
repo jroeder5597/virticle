@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
+import DialogAdvanced from "./DialogAdvanced";
 import { Link, useSearchParams } from "react-router-dom";
 import Play from "lucide-react/icons/play";
 import Square from "lucide-react/icons/square";
@@ -336,7 +337,7 @@ function CreateVolume({ base, pool, onClose }: { base: string; pool: Pool; onClo
             Cancel
           </button>
           <button className="primary" disabled={act.busy}>
-            Create
+            Create volume
           </button>
         </footer>
       </form>
@@ -396,8 +397,7 @@ function CreatePool({ node: initialNode, nodes, onClose, onDone }: { node: numbe
             />
           </Field>
         )}
-        <details className="cloudinit">
-          <summary>Advanced</summary>
+        <DialogAdvanced>
           <Field label="Other storage types">
             <Select label="Other storage types" value={type} onChange={setType} options={Object.entries(poolTypes).map(([k, v]) => ({ value: k, label: v }))} />
           </Field>
@@ -441,14 +441,14 @@ function CreatePool({ node: initialNode, nodes, onClose, onDone }: { node: numbe
               <textarea spellCheck={false} rows={10} value={f.xml} onChange={set("xml")} required placeholder="Pool definition (XML)" />
             </Field>
           )}
-        </details>
+        </DialogAdvanced>
         <ErrorBox error={act.error} />
         <footer>
           <button type="button" onClick={onClose}>
             Cancel
           </button>
           <button className="primary" disabled={act.busy}>
-            Create
+            Create pool
           </button>
         </footer>
       </form>

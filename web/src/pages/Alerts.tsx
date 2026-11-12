@@ -117,7 +117,7 @@ export function AlertSettings() {
       </div>
       <form className="card" onSubmit={save} aria-label="Notifications">
         <h2>Notifications</h2>
-        <Field label="Webhook URL" hint="Receives a JSON POST whenever an alert is raised or cleared. Empty: no notifications.">
+        <Field label="Webhook URL" hint="Receives a JSON POST when an alert is raised or cleared.">
           <input value={url} disabled={fromFlag} onChange={(e) => { setUrl(e.target.value); setSaved(false); }} placeholder="https://" />
         </Field>
         {fromFlag && <p className="muted">Set by the -alert-webhook flag. Remove the flag to change it here.</p>}

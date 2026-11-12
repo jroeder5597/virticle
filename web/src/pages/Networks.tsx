@@ -1,4 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
+import DialogAdvanced from "./DialogAdvanced";
 import Play from "lucide-react/icons/play";
 import Square from "lucide-react/icons/square";
 import Trash2 from "lucide-react/icons/trash-2";
@@ -547,7 +548,7 @@ function CreateNetwork({ node: initialNode, nodes, onClose, onDone }: { node: nu
           />
         </Field>
         {mode === "xml" ? (
-          <Field label="Network definition" hint="Checked against libvirt's schema. A network with an existing name is refused.">
+          <Field label="Network definition" hint="Checked against libvirt's schema.">
             <textarea spellCheck={false} rows={12} value={f.xml} onChange={set("xml")} required placeholder="Network definition (XML)" autoFocus />
           </Field>
         ) : (
@@ -581,8 +582,7 @@ function CreateNetwork({ node: initialNode, nodes, onClose, onDone }: { node: nu
             )}
           </>
         )}
-        <details className="cloudinit">
-          <summary>Advanced</summary>
+        <DialogAdvanced>
           <Field label="Other network types">
             <Select label="Other network types" value={other} onChange={setOther} options={Object.entries(otherModes).map(([k, v]) => ({ value: k, label: v }))} />
           </Field>
@@ -618,14 +618,14 @@ function CreateNetwork({ node: initialNode, nodes, onClose, onDone }: { node: nu
               <input type="number" min={1} max={4094} value={f.vlan} onChange={set("vlan")} />
             </Field>
           )}
-        </details>
+        </DialogAdvanced>
         <ErrorBox error={act.error} />
         <footer>
           <button type="button" onClick={onClose}>
             Cancel
           </button>
           <button className="primary" disabled={act.busy || (mode === "bridge" && !picked)}>
-            Create
+            Create network
           </button>
         </footer>
       </form>

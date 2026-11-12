@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { bytes, get, NodeStatus, post, Task, VMDetail } from "../api";
 import Select from "../Select";
 import { ErrorBox, Field, Modal, useAction, useConfirm } from "../ui";
-import { SectionFrame } from "./Disclosure";
+import DialogAdvanced from "./DialogAdvanced";
 
 interface Check {
   check: string;
@@ -116,12 +116,12 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
               />
             </Field>
           </div>
-          <SectionFrame id="migrate-advanced" title="Advanced" summary="">
+          <DialogAdvanced>
             <label className="check">
               <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
               Keep the disks on the source node
             </label>
-          </SectionFrame>
+          </DialogAdvanced>
           <h3>Pre-flight checks</h3>
           {checking && <p className="muted">Checking {targetName}</p>}
           {preview && (

@@ -3,7 +3,7 @@ import { ApiError, get, post, put } from "../api";
 import { CheckItem, CheckList, StatusLine } from "../Checks";
 import Select from "../Select";
 import { ErrorBox, Field, useAction, useConfirm } from "../ui";
-import { SectionFrame } from "./Disclosure";
+import DialogAdvanced from "./DialogAdvanced";
 import "./webaccess.css";
 
 interface WSettings {
@@ -289,7 +289,6 @@ export default function WebAccess() {
   const acmeDir = draft.acme.directory === LE || draft.acme.directory === LE_STAGING ? draft.acme.directory : "custom";
   const plainOpen = st.settings.mode === "off" && !isLoopback(st.settings.listen);
   const storedListen = st.settings.mode === mode || (tls && (st.settings.mode === "selfsigned" || st.settings.mode === "own" || st.settings.mode === "acme"));
-  const modeName = mode === "off" ? "Plain HTTP" : mode === "proxy" ? "Behind a reverse proxy" : "";
   const acmeLine = st.acme
     ? st.acme.lastError
       ? `Let's Encrypt: ${st.acme.lastError}`
@@ -421,14 +420,14 @@ export default function WebAccess() {
               <Field label="Certificate chain (PEM)" hint={draft.own.managed ? "A pasted certificate is installed. Paste again to replace it." : "Paste the certificate, then intermediates."}>
                 <textarea rows={4} value={certPem} disabled={locked} spellCheck={false} onChange={(e) => { dirty.current = true; setChecks(undefined); setCertPem(e.target.value); }} />
               </Field>
-              <Field label="Private key (PEM)" hint="Stored in the data directory with mode 0600. Never shown again.">
+              <Field label="Private key (PEM)" hint="Never shown again.">
                 <textarea rows={4} value={keyPem} disabled={locked} spellCheck={false} onChange={(e) => { dirty.current = true; setChecks(undefined); setKeyPem(e.target.value); }} />
               </Field>
             </>
           )}
         </div>
 
-        <SectionFrame id="wa-advanced" title="Advanced" summary={modeName}>
+        <DialogAdvanced>
           <div role="radiogroup" aria-label="Without a certificate from this page" className="wa-radios">
             {PLAIN_MODES.map((m) => (
               <label key={m.value} className="pref-opt">
@@ -484,7 +483,7 @@ export default function WebAccess() {
 
           {mode === "own" && (
             <div className="grid2">
-              <Field label="Certificate file" hint="Instead of pasting. Re-read when it changes and on SIGHUP.">
+              <Field label="Certificate file" hint="Instead of pasting. Re-read when it changes.">
                 <input value={draft.own.managed ? "" : draft.own.certFile} disabled={locked} onChange={(e) => edit({ own: { ...draft.own, managed: false, certFile: e.target.value } })} />
               </Field>
               <Field label="Key file">
@@ -494,7 +493,7 @@ export default function WebAccess() {
           )}
 
           {mode === "proxy" && (
-            <Field label="Trusted proxy addresses" hint="IPs or CIDRs. Only these may set X-Forwarded-For, -Proto and -Host.">
+            <Field label="Trusted proxy addresses" hint="IP addresses or CIDR ranges of your reverse proxies.">
               <textarea rows={2} value={draft.trustedProxies.join("\n")} disabled={locked} onChange={(e) => edit({ trustedProxies: lines(e.target.value) })} />
             </Field>
           )}
@@ -502,10 +501,10 @@ export default function WebAccess() {
           {mode !== "off" && (
             <label className="wa-check">
               <input type="checkbox" checked={draft.hsts} disabled={locked} onChange={(e) => edit({ hsts: e.target.checked })} /> HSTS
-              <small className="muted"> Browsers refuse plain HTTP to this host for a year. Turn it on once HTTPS works.</small>
+              <small className="muted"> Browsers refuse plain HTTP to this host for a year, so turn it on once HTTPS works.</small>
             </label>
           )}
-        </SectionFrame>
+        </DialogAdvanced>
 
         <div className="card">
           <ErrorBox error={act.error} />

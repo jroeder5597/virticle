@@ -56,7 +56,7 @@ Prepare signs in with an **administrator credential that you give for this one r
 
 - With the command line, use your SSH agent, or `--identity FILE`, or a password on standard input.
 - In the web dialog, enter a password or paste a private key without a passphrase. Choose **Check** to see what would
-  change, then **Prepare**; the dialog keeps the credential in memory for that, so you do not type it twice. The password is also used for sudo
+  change, then **Add node** (**Prepare node** for a node that is already added); the dialog keeps the credential in memory for that, so you do not type it twice. The password is also used for sudo
   when the user is not root.
 
 The credential is used in memory only. It is not stored, not logged, and not written to the audit log or the task
@@ -119,7 +119,7 @@ virticle node prepare [--check] [--minimal] [--root] [--user NAME] [--use-existi
 | Option | Meaning |
 | --- | --- |
 | `--check` | Look and report. Change nothing. |
-| `--root` | Root access. The controller signs in as root and no account is created. The node command is installed all the same, and the controller runs it directly, without sudo. Prepare shows a warning ("The controller will sign in as root. A service account is safer"). `--allow-root` is the old name and still works. |
+| `--root` | Root access. The controller signs in as root and no account is created. The node command is installed all the same, and the controller runs it directly, without sudo. Prepare shows a warning ("The controller will sign in as root. A service account is safer"). |
 | `--minimal` | Leave out the guest disk tools. Clone with sysprep then needs a sealed template. |
 | `--user NAME` | Name of the Service account (default `virticle-node`). |
 | `--use-existing-user NAME` | For an account you manage yourself. Prepare reports what is missing (groups, login shell, sudo rule). It changes nothing about the account except adding the controller's key. With `--confirm` it also adds the groups and the sudo rule. The account needs a login shell such as `/bin/sh`. |

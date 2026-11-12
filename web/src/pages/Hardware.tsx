@@ -13,7 +13,7 @@ import PassthroughCard from "./Passthrough";
 import DiskMoveDialog from "./DiskMove";
 import PoolSelect from "../PoolSelect";
 import { HostNIC, isBridge, shownAddresses } from "../BridgeSelect";
-import { AdvancedSection } from "./Disclosure";
+import DialogAdvanced from "./DialogAdvanced";
 import "./hw.css";
 import { StatusLine } from "../Checks";
 
@@ -216,7 +216,7 @@ function CpuMemory({ d, send, run, busy, bare }: CardProps) {
               <input type="number" min={64} value={mem} onChange={num(setMem)} />
             </Field>
           </div>
-          <AdvancedSection>
+          <DialogAdvanced>
             <div className="grid2">
               <Field label="Maximum vCPUs" hint={d.state !== "shutoff" ? "Applies after a restart." : undefined}>
                 <input type="number" min={1} value={maxVNow} onChange={num(setMaxV)} />
@@ -225,7 +225,7 @@ function CpuMemory({ d, send, run, busy, bare }: CardProps) {
                 <input type="number" min={64} value={maxMemNow} onChange={num(setMaxMem)} />
               </Field>
             </div>
-          </AdvancedSection>
+          </DialogAdvanced>
           <footer>
             <button onClick={() => setEditing(false)}>Cancel</button>
             <button className="primary" disabled={busy || vcpus < 1 || mem < 64 || vcpus > maxVNow || mem > maxMemNow} onClick={save}>
@@ -412,10 +412,10 @@ function AddDisk({ d, send, onClose }: { d: VMDetail; send: Send; onClose: () =>
           <Select label="Volume" value={volume} onChange={setVolume} options={vols.map((v) => ({ value: v.name, label: `${v.name} (${bytes(v.capacity)})` }))} />
         </Field>
       )}
-      <AdvancedSection>
-        <Field label="Bus" hint={d.state !== "shutoff" && bus !== "virtio" ? "Appears after a restart." : undefined}>
+      <DialogAdvanced>
+        <Field label="Disk bus" hint={d.state !== "shutoff" && bus !== "virtio" ? "Appears after a restart." : undefined}>
           <Select
-            label="Bus"
+            label="Disk bus"
             value={bus}
             onChange={setBus}
             options={[
@@ -429,7 +429,7 @@ function AddDisk({ d, send, onClose }: { d: VMDetail; send: Send; onClose: () =>
           <input type="checkbox" checked={readonly} onChange={(e) => setReadonly(e.target.checked)} />
           Read-only
         </label>
-      </AdvancedSection>
+      </DialogAdvanced>
       <ErrorBox error={act.error} />
       <footer>
         <button onClick={onClose}>Cancel</button>
@@ -648,16 +648,16 @@ function NICForm({ d, nic, send, onClose }: { d: VMDetail; nic?: NicT; send: Sen
         <Select label="Network" value={target} onChange={setTarget} options={options} />
       </Field>
       {!nic && (
-        <AdvancedSection>
+        <DialogAdvanced>
           <div className="grid2">
-            <Field label="Model">
-              <Select label="Model" value={model} onChange={setModel} options={NIC_MODELS.map((m) => ({ value: m, label: m }))} />
+            <Field label="Network card">
+              <Select label="Network card" value={model} onChange={setModel} options={NIC_MODELS.map((m) => ({ value: m, label: m }))} />
             </Field>
             <Field label="MAC address" hint="Leave empty to generate one.">
               <input className="mono" placeholder="52:54:00:12:34:56" value={mac} onChange={(e) => setMac(e.target.value)} />
             </Field>
           </div>
-        </AdvancedSection>
+        </DialogAdvanced>
       )}
       <ErrorBox error={act.error} />
       <footer>

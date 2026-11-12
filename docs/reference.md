@@ -98,7 +98,7 @@ session, not a token.
 - Stored in the VM's metadata and run by the controller. You enter and see times in your browser's time zone; they are stored in UTC.
 - **Snapshots**: interval or daily, keep newest N. Shut-off VMs are skipped.
   Only snapshots the scheduler made are pruned.
-- **Backups**: interval or daily, target node and pool, keep last N.
+- **Backups**: interval or daily, target node and pool, keep the newest N.
 - A failed run is retried after 5 minutes and raises an alert.
 - Run one controller per set of nodes. With several, start all but one with
   `-no-scheduler`.

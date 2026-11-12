@@ -54,4 +54,3 @@
 .modal p { max-width: 68ch; text-wrap: pretty; }
 .modal label.check { flex-wrap: nowrap; align-items: flex-start; }
 .modal label.check > input[type="checkbox"] { flex: none; margin-top: 2px; }
-.nameval { overflow-wrap: anywhere; font-family: var(--mono, monospace); }

@@ -4,7 +4,7 @@ import { cleanVMs, createCirros, expect, openVM, test } from "../lib/fixtures";
 import { P } from "../lib/env";
 import { dialog, field } from "../lib/ui";
 import { buildSnapRows, branchOf } from "../../web/src/snapTree";
-import { describeLocal, describeUtc, localToUtc, utcToLocal } from "../../web/src/tz";
+import { localToUtc, utcToLocal } from "../../web/src/tz";
 
 const NAME = `${P}st1`;
 const NAME2 = `${P}st2`;
@@ -42,11 +42,11 @@ test.describe("snapshot tree rows (pure)", () => {
 
 test.describe("time zone conversion (pure)", () => {
   test("America/New_York: UTC evening or early morning, DST changes the offset", () => {
-    expect(describeUtc("03:00", at("2026-03-01T12:00:00Z"), "America/New_York")).toBe("03:00 UTC is 22:00 EST (the previous day) in your time zone (America/New_York)");
+    expect(utcToLocal("03:00", at("2026-03-01T12:00:00Z"), "America/New_York")).toMatchObject({ time: "22:00", zoneName: "EST", dayShift: -1 });
     // after the change on 8 March the same UTC time is an hour later locally
-    expect(describeUtc("03:00", at("2026-03-09T12:00:00Z"), "America/New_York")).toBe("03:00 UTC is 23:00 EDT (the previous day) in your time zone (America/New_York)");
-    expect(describeUtc("15:30", at("2026-03-01T12:00:00Z"), "America/New_York")).toBe("15:30 UTC is 10:30 EST in your time zone (America/New_York)");
-    expect(describeLocal("22:00", at("2026-03-01T12:00:00Z"), "America/New_York")).toBe("22:00 in your time zone (America/New_York) is 03:00 UTC (the next day)");
+    expect(utcToLocal("03:00", at("2026-03-09T12:00:00Z"), "America/New_York")).toMatchObject({ time: "23:00", zoneName: "EDT", dayShift: -1 });
+    expect(utcToLocal("15:30", at("2026-03-01T12:00:00Z"), "America/New_York")).toMatchObject({ time: "10:30", dayShift: 0 });
+    expect(localToUtc("22:00", at("2026-03-01T12:00:00Z"), "America/New_York")).toMatchObject({ time: "03:00", dayShift: 1 });
   });
   test("Asia/Kolkata: +5:30, no daylight saving", () => {
     expect(utcToLocal("03:00", at("2026-03-01T12:00:00Z"), "Asia/Kolkata")).toMatchObject({ time: "08:30", dayShift: 0 });
@@ -67,7 +67,6 @@ test.describe("time zone conversion (pure)", () => {
   test("bad input gives nothing", () => {
     expect(utcToLocal("25:00", Date.now(), "UTC")).toBeUndefined();
     expect(localToUtc("", Date.now(), "UTC")).toBeUndefined();
-    expect(describeUtc("3pm", Date.now(), "UTC")).toBeUndefined();
   });
 });
 
@@ -379,11 +378,11 @@ test.describe.serial("snapshot tree, delete dialog, schedule, bridge picker", ()
         await page.keyboard.press("Escape");
       }
     });
-    test("Model and MAC address are under Advanced; Escape closes only the list", async ({ page }) => {
+    test("Network card and MAC address are under Advanced; Escape closes only the list", async ({ page }) => {
       const dlg = await addInterface(page);
-      await expect(dlg.getByRole("combobox", { name: "Model", exact: true })).toHaveCount(0);
+      await expect(dlg.getByRole("combobox", { name: "Network card", exact: true })).toHaveCount(0);
       await dlg.getByRole("button", { name: "Advanced" }).click();
-      await expect(dlg.getByRole("combobox", { name: "Model", exact: true })).toBeVisible();
+      await expect(dlg.getByRole("combobox", { name: "Network card", exact: true })).toBeVisible();
       await expect(field(dlg, "MAC address")).toBeVisible();
       await dlg.getByRole("combobox", { name: "Network", exact: true }).click();
       await page.keyboard.press("Escape");

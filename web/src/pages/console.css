@@ -27,5 +27,4 @@
 .cc-note { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; padding: 16px; background: var(--bg); color: var(--muted); }
 .cc-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; min-height: 30px; }
 .cc-foot .spacer { flex: 1; }
-.cc-inline { max-width: 100%; }
 .pref-opt { display: flex; align-items: center; gap: 8px; padding: 3px 0; }

@@ -110,7 +110,7 @@ test.describe.serial("themed select", () => {
     await openVM(page, vm, "hardware");
     await page.getByRole("button", { name: /^Advanced/ }).first().click();
     await pick(page, "CPU mode", "custom model");
-    const model = page.getByRole("combobox", { name: "Model", exact: true });
+    const model = page.getByRole("combobox", { name: "Network card", exact: true });
     await model.click();
     const search = page.getByRole("searchbox", { name: "Search model" });
     await expect(search).toBeFocused();

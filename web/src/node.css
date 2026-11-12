@@ -10,9 +10,8 @@
 .nicbox .num { font-variant-numeric: tabular-nums; }
 .connfacts dd { overflow-wrap: anywhere; }
 
-/* The Advanced part of a node dialog */
-.dlgadv { padding-top: 8px; }
-.dlgadv > .field, .dlgadv > .statusline { margin-top: 8px; }
+/* Inside the Advanced section of a node dialog */
+.dlg-adv .dlgadv > .field, .dlg-adv .dlgadv > .statusline { margin-top: 8px; }
 .conndetails { margin: 8px 0; }
 .conndetails summary { cursor: pointer; font-weight: 600; }
 .warnrow { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }

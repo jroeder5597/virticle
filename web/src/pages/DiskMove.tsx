@@ -3,7 +3,7 @@ import { CheckList, preflightItems } from "../Checks";
 import { bytes, get, Pool, post, Task, VMDetail } from "../api";
 import { useEvents } from "../live";
 import { ErrorBox, Field, Modal, useAction, useConfirm } from "../ui";
-import { SectionFrame } from "./Disclosure";
+import DialogAdvanced from "./DialogAdvanced";
 import PoolSelect from "../PoolSelect";
 
 interface CheckT {
@@ -113,12 +113,12 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
             </Field>
           </div>
           {plan?.backing && (
-            <SectionFrame id="diskmove-advanced" title="Advanced" summary="">
+            <DialogAdvanced>
               <label className="check">
                 <input type="checkbox" checked={flatten} onChange={(e) => setFlatten(e.target.checked)} />
                 Copy as a standalone image (breaks the link to the base)
               </label>
-            </SectionFrame>
+            </DialogAdvanced>
           )}
           <h3>Pre-flight checks</h3>
           {checking && <p className="muted">Checking</p>}

@@ -1,5 +1,5 @@
 import { describeWhen, NextRunLine, ScheduleWhen, When, whenBody, whenFrom } from "../ScheduleTime";
-import { SectionFrame } from "./Disclosure";
+import DialogAdvanced from "./DialogAdvanced";
 import { useEffect, useState } from "react";
 import { ApiError, bytes, del, get, NodeStatus, Pool, post, put, Task, VMDetail } from "../api";
 import { useRole } from "../auth";
@@ -140,7 +140,7 @@ function BackupNow(props: { d: VMDetail; onClose: () => void; onDone: () => void
         <>
           <p className="muted">Copies the VM's disks as they are now; snapshots and TPM state are not included.</p>
           <Target node={node} pool={pool} setNode={setNode} setPool={setPool} />
-          <Field label="Keep last" hint="Older backups of this VM in this pool beyond the newest N are deleted; 0 keeps everything.">
+          <Field label="Keep the newest" hint="Older backups of this VM in this pool are deleted. 0 keeps all.">
             <input type="number" min={0} max={1000} value={keep} onChange={(e) => setKeep(Number(e.target.value))} />
           </Field>
           <ErrorBox error={act.error} />
@@ -227,9 +227,9 @@ function Restore(props: { b: BackupEntry; onClose: () => void; onDone: () => voi
           <label className="check">
             <input type="checkbox" checked={start} onChange={(e) => setStart(e.target.checked)} /> Start the VM afterwards
           </label>
-          <SectionFrame id="restore-advanced" title="Advanced" summary="">
+          <DialogAdvanced>
             <Target node={node} pool={pool} setNode={setNode} setPool={setPool} />
-          </SectionFrame>
+          </DialogAdvanced>
           <ErrorBox error={act.error} />
           <div className="actions">
             <button className="primary" disabled={act.busy || !pool} onClick={submit}>
@@ -379,7 +379,7 @@ function SchedulePanel({ d }: { d: VMDetail }) {
               {cur.data?.last ? ` Last backup ${when(new Date(cur.data.last * 1000).toISOString())}.` : " No backup there yet."}
             </p>
           ) : (
-            <p className="muted">No schedule. Runs for running and shut-off VMs; a failed run shows up in the task log and as an alert.</p>
+            <p className="muted">No schedule. A failed run raises an alert.</p>
           )}
           {sch && cur.data?.lastError && <StatusLine status="error">Cannot read the target: {cur.data.lastError}</StatusLine>}
           {sch && <NextRunLine nextRun={cur.data?.nextRun} runner={cur.data?.runner} enabled={sch.enabled} tick={cur.data?.tick} onElapsed={cur.reload} />}
@@ -399,7 +399,7 @@ function SchedulePanel({ d }: { d: VMDetail }) {
         <>
           <div className="grid2">
             <ScheduleWhen value={form.when} onChange={(when) => setForm({ ...form, when })} />
-            <Field label="Keep the newest" hint="After each backup, this VM's older backups in the target pool beyond the newest N are deleted.">
+            <Field label="Keep the newest" hint="Older backups of this VM in the target pool are deleted.">
               <input type="number" min={1} max={1000} value={form.keepLast} onChange={(e) => setForm({ ...form, keepLast: Number(e.target.value) })} />
             </Field>
           </div>

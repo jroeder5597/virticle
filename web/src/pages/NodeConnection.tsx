@@ -222,11 +222,11 @@ function EditConnection({ n, info, onClose, onSaved }: { n: NodeStatus; info: Co
             <Field label="Jump host (optional)" hint="user@address of a host to connect through.">
               <input value={jump} onChange={(e) => setJump(e.target.value)} />
             </Field>
-            <Field label="Migration address (optional)" hint="What other nodes use to reach this one. Empty: the address above.">
+            <Field label="Migration address (optional)" hint="How other nodes reach this one. Empty uses the address above.">
               <input value={mig} onChange={(e) => setMig(e.target.value)} />
             </Field>
           </div>
-          <p className="muted">This server signs in with this key. It must be in ~/.ssh/authorized_keys of the SSH user on the node.</p>
+          <p className="muted">Add this key to ~/.ssh/authorized_keys of the SSH user on the node.</p>
           <div className="keybox">
             <code>{publicKey}</code>
             <button type="button" className="link" onClick={() => navigator.clipboard?.writeText(publicKey).then(() => setCopied(true))}>

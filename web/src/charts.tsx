@@ -113,16 +113,6 @@ export const pct = (v: number | null | undefined) => (v == null ? "–" : `${v <
 export const rate = (v: number | null | undefined) => (v == null ? "–" : `${bytes(v)}/s`);
 const kib = (v: number | null | undefined) => (v == null ? "–" : bytes(v * 1024));
 
-/** Round up to 1, 2 or 5 times a power of 1024 (or of ten below 1000), so axis labels read well. */
-export function niceMax(v: number, floor: number): number {
-  v = Math.max(v, floor);
-  let unit = 1;
-  while (v / unit >= 1000 && unit < 1024 ** 4) unit *= 1024;
-  const x = v / unit;
-  const step = [1, 2, 5, 10, 20, 50, 100, 200, 500].find((s) => s >= x) ?? 1024;
-  return step * unit;
-}
-
 // --- charts ---
 
 export interface Line {
@@ -183,98 +173,7 @@ export function Plot({ t, lines, max, height, grid }: { t: number[]; lines: Line
   );
 }
 
-/** A titled chart with the current value, the axis maximum and the time span. */
-export function ChartCard(props: { title: string; t: number[]; lines: Line[]; max: number; maxLabel: string; current: string[]; height?: number; note?: string }) {
-  const h = props.height ?? 72;
-  return (
-    <div className="chart">
-      <div className="chart-head">
-        <span className="chart-title">{props.title}</span>
-        <span className="chart-now">
-          {props.current.map((c, i) => (
-            <span key={i} className="chart-val">
-              {props.lines.length > 1 && <i style={{ background: props.lines[i].color }} />}
-              {c}
-            </span>
-          ))}
-        </span>
-      </div>
-      <div className="chart-body">
-        <span className="chart-max">{props.maxLabel}</span>
-        <Plot t={props.t} lines={props.lines} max={props.max} height={h} grid />
-      </div>
-      <div className="chart-foot">
-        <span>10 min ago</span>
-        {props.note && <span>{props.note}</span>}
-        <span>now</span>
-      </div>
-    </div>
-  );
-}
-
-/** Chart for the scale of a rate series: the axis grows with the data but never below `floor`. */
-function rateMax(series: (number | null)[][], floor: number): number {
-  let m = 0;
-  for (const s of series) for (const v of s) if (v != null && v > m) m = v;
-  return niceMax(m * 1.05, floor);
-}
-
 const last = <T,>(a: T[]): T | undefined => a[a.length - 1];
-
-/** The four VM charts: CPU, memory, disk I/O and network. */
-export function VMCharts({ base }: { base: string }) {
-  const s = usePoll<{ points: VMPoint[] }>(`${base}/stats`);
-  const pts = s?.points ?? [];
-  const t = pts.map((p) => p.t);
-  const cur = last(pts);
-  const col = (f: (p: VMPoint) => number | null) => pts.map(f);
-  const total = cur?.memTotalKiB ?? 0;
-  const mem = col((p) => (p.memUsedKiB == null ? null : p.memUsedKiB * 1024));
-  const dr = col((p) => p.diskRead);
-  const dw = col((p) => p.diskWrite);
-  const rx = col((p) => p.netRx);
-  const tx = col((p) => p.netTx);
-  const diskMax = rateMax([dr, dw], 100 * 1024);
-  const netMax = rateMax([rx, tx], 10 * 1024);
-  if (!s) return <div className="muted">Loading statistics</div>;
-  if (pts.length === 0) return <div className="muted">No samples yet. The server samples every 5 s while the VM is running.</div>;
-  return (
-    <div className="charts">
-      <ChartCard title="CPU" t={t} lines={[{ name: "cpu", color: "var(--chart-1)", values: col((p) => p.cpu) }]} max={100} maxLabel="100%" current={[pct(cur?.cpu)]} />
-      <ChartCard
-        title="Memory"
-        t={t}
-        lines={[{ name: "mem", color: "var(--chart-1)", values: mem }]}
-        max={Math.max(total * 1024, 1)}
-        maxLabel={kib(total)}
-        current={[`${kib(cur?.memUsedKiB)} of ${kib(total)}`]}
-        note={cur && !cur.memGuest ? "allocated; no guest figures" : undefined}
-      />
-      <ChartCard
-        title="Disk I/O"
-        t={t}
-        lines={[
-          { name: "read", color: "var(--chart-1)", values: dr },
-          { name: "write", color: "var(--chart-2)", values: dw },
-        ]}
-        max={diskMax}
-        maxLabel={rate(diskMax)}
-        current={[`read ${rate(cur?.diskRead)}`, `write ${rate(cur?.diskWrite)}`]}
-      />
-      <ChartCard
-        title="Network"
-        t={t}
-        lines={[
-          { name: "rx", color: "var(--chart-1)", values: rx },
-          { name: "tx", color: "var(--chart-2)", values: tx },
-        ]}
-        max={netMax}
-        maxLabel={rate(netMax)}
-        current={[`in ${rate(cur?.netRx)}`, `out ${rate(cur?.netTx)}`]}
-      />
-    </div>
-  );
-}
 
 /** Small meter with a number, for tables. */
 export function Meter({ value, max, label }: { value: number | null | undefined; max: number; label: string }) {

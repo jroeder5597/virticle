@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { get, post, put, VMDetail } from "../api";
 import { ErrorBox, Field, Modal, useAction } from "../ui";
 import CloudInitFields, { cloudInitPayload, cloudInitUsed, CloudInitValues, emptyCloudInit } from "./CloudInit";
-import { AdvancedSection } from "./Disclosure";
+import DialogAdvanced from "./DialogAdvanced";
 import { StatusLine } from "../Checks";
 
 interface CloneInfo {
@@ -77,7 +77,7 @@ export function CloneDialog({ d, base, onClose }: { d: VMDetail; base: string; o
       {!info && !infoError && <p className="muted">Checking what the node supports</p>}
       {infoError && <p className="muted">{infoError}</p>}
       <CloudInitFields value={ci} onChange={setCi} profiles={!!info && !windows} />
-      <AdvancedSection>
+      <DialogAdvanced>
         {d.template && (
           <label className="check">
             <input type="checkbox" checked={fullCopy} onChange={(e) => setFullCopy(e.target.checked)} />
@@ -92,7 +92,7 @@ export function CloneDialog({ d, base, onClose }: { d: VMDetail; base: string; o
           </label>
           {!d.template && info?.sysprepProblem && <small>{info.sysprepProblem}</small>}
         </div>
-      </AdvancedSection>
+      </DialogAdvanced>
       <ErrorBox error={act.error} />
       {result && <StatusLine status="info">{result}</StatusLine>}
       <footer>
@@ -117,7 +117,7 @@ export function ConvertDialog({ d, base, onClose, onDone }: { d: VMDetail; base:
   const blocked = d.state !== "shutoff" && !seal;
   return (
     <Modal title={`Convert ${d.name} to a template`} onClose={onClose}>
-      <p>A template can be cloned, also linked, but not started.</p>
+      <p>A template can be cloned but not started.</p>
       {canReset && (
         <label className="check">
           <input type="checkbox" checked={reset} onChange={(e) => setReset(e.target.checked)} />

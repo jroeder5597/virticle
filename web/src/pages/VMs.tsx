@@ -10,7 +10,7 @@ import { ErrorBox, Field, Modal, NodePicker, PageTitle, StateBadge, useAction, u
 import { powerConfirm, powerLabel } from "../power";
 import { BulkBar } from "./Bulk";
 import { emptyFw, FirmwareFields, fwPayload, FwValues, limitToCaps, OsTypeField, useFwCaps } from "./Firmware";
-import { AdvancedSection } from "./Disclosure";
+import DialogAdvanced from "./DialogAdvanced";
 import { TagChips } from "./Tags";
 import { Meter, pct, useAllStats, VMPoint } from "../charts";
 import { baselineLabel, useCpuBaseline } from "../cpu";
@@ -375,7 +375,7 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
         <label className="check">
           <input type="checkbox" checked={start} onChange={(e) => setStart(e.target.checked)} /> Start after creating
         </label>
-        <AdvancedSection>
+        <DialogAdvanced>
           <Field label="CPU type" hint={CPU_HINT[cpu]}>
             <Select
               label="CPU type"
@@ -400,14 +400,14 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
               options={[{ value: "", label: "None" }, ...images.map((v) => ({ value: v.name, label: `${v.name} (${bytes(v.capacity)})` }))]}
             />
           </Field>
-        </AdvancedSection>
+        </DialogAdvanced>
         <ErrorBox error={act.error} />
         <footer>
           <button type="button" onClick={onClose}>
             Cancel
           </button>
           <button className="primary" disabled={act.busy}>
-            {act.busy ? "Creating" : "Create"}
+            {act.busy ? "Creating" : "Create VM"}
           </button>
         </footer>
       </form>

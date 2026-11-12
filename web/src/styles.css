@@ -153,7 +153,6 @@ table.compact tr:hover { background: none; }
 .note { background: var(--hover); border-radius: var(--radius); padding: 8px 12px; }
 .empty { background: var(--panel); border: 1px dashed var(--line); border-radius: var(--radius); padding: 36px; text-align: center; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 8px; }
 /* loading placeholder: a static block, no animation */
-.skeleton { display: block; min-height: 1em; background: var(--hover); border-radius: 4px; }
 
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow); }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 14px; }
@@ -234,13 +233,6 @@ th.sel, td.sel { width: 28px; padding-right: 0; }
 .bulkbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; margin: 10px 0; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--accent) 7%, transparent); border-radius: 8px; }
 /* live statistics */
 .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 18px 22px; }
-.chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
-.chart-title { font-weight: 600; }
-.chart-now { display: flex; gap: 12px; font-variant-numeric: tabular-nums; }
-.chart-val i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
-.chart-body { position: relative; }
-.chart-max { position: absolute; left: 4px; top: 2px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; pointer-events: none; }
-.chart-foot { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 2px; }
 .plot { display: block; width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; }
 .spark .plot { background: none; border: none; border-bottom: 1px solid var(--line); border-radius: 0; }
 .plot .gridline { stroke: var(--line); stroke-width: 1; }
@@ -257,9 +249,6 @@ th.sel, td.sel { width: 28px; padding-right: 0; }
 .fsbar { display: grid; grid-template-columns: 1fr; gap: 3px; margin-bottom: 9px; }
 .fsbar .row { display: flex; justify-content: space-between; gap: 10px; }
 .menu { position: relative; display: inline-flex; }
-.menu > .menu-list { position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow-pop); z-index: 200; min-width: 230px; padding: 4px; display: grid; }
-.menu > .menu-list button { border: none; text-align: left; background: none; padding: 7px 10px; border-radius: 5px; }
-.menu > .menu-list button:hover:not(:disabled) { background: var(--hover); }
 .menu .split { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; padding: 6px 8px; }
 .menu .main { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 
@@ -278,7 +267,6 @@ th.sel, td.sel { width: 28px; padding-right: 0; }
 .pad { padding: 14px; }
 .marks { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: 8px; }
 .badge.maint { margin-left: 8px; }
-.evacopts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 10px 0; }
 .check { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
 .evacplan { margin-top: 14px; }
 .hostupdates { display: grid; gap: 4px; justify-items: start; }
@@ -288,7 +276,6 @@ th.sel, td.sel { width: 28px; padding-right: 0; }
 .hostupdates { max-width: 230px; }
 .tgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; margin-top: 12px; align-items: start; }
 .tgrid h4 { margin: 0 0 8px; font-size: 13px; }
-.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 10px; }
 .advanced .note { margin: 8px 0; }
 .devlist { max-height: 55dvh; overflow: auto; }
 .marks { display: flex; margin: 4px 0 0; }
@@ -297,7 +284,6 @@ fieldset.plain:disabled input, fieldset.plain:disabled select, fieldset.plain:di
 textarea[readonly] { opacity: 0.8; }
 
 @media (max-width: 760px) {
-  .charts { grid-template-columns: 1fr; }
   .alertpanel { position: fixed; left: 8px; right: 8px; top: 56px; bottom: auto; width: auto; }
 }
 @media (max-width: 760px) {

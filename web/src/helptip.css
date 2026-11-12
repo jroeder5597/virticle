@@ -1,7 +1,0 @@
-.helptip { display: inline-flex; vertical-align: middle; }
-.helptip-btn { padding: 2px; border-radius: 50%; border: 1px solid var(--line); background: none; color: var(--muted); display: inline-flex; line-height: 0; height: auto; }
-.helptip-btn:hover, .helptip-btn:focus-visible { color: var(--accent); border-color: var(--accent); }
-.helptip-pop { position: fixed; z-index: 400; overflow: auto; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-pop); padding: 10px 12px; font-size: 13px; font-weight: 400; text-align: left; text-transform: none; letter-spacing: normal; }
-.helptip-pop h4 { margin: 8px 0 2px; font-size: 13px; }
-.helptip-pop h4:first-child { margin-top: 0; }
-.helptip-pop p { margin: 0; }

@@ -88,26 +88,8 @@ export function localToUtc(hm: string, now: number, zone: string): Conversion | 
   return undefined;
 }
 
-const dayWord = (s: number) => (s < 0 ? " (the previous day)" : s > 0 ? " (the next day)" : "");
-
-/** "03:00 UTC is 22:00 EST (the previous day) in your time zone (America/New_York)". */
-export function describeUtc(hm: string, now: number, zone: string): string | undefined {
-  const c = utcToLocal(hm, now, zone);
-  return c && `${hm} UTC is ${c.time} ${c.zoneName}${dayWord(c.dayShift)} in your time zone (${zone})`;
-}
-
-/** The reverse sentence: what a local time becomes in UTC. */
-export function describeLocal(hm: string, now: number, zone: string): string | undefined {
-  const c = localToUtc(hm, now, zone);
-  return c && `${hm} in your time zone (${zone}) is ${c.time} UTC${dayWord(c.dayShift)}`;
-}
-
 /** A moment as "Tue 3 Mar 2026, 22:00 EST" in a zone. */
 export function formatInstant(t: number, zone: string): string {
   const s = new Intl.DateTimeFormat("en-GB", { timeZone: zone, weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(t));
   return `${s} ${zoneName(t, zone)}`;
-}
-
-export function formatUtc(t: number): string {
-  return new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(t)) + " UTC";
 }

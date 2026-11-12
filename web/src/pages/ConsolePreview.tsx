@@ -128,26 +128,6 @@ function ModeMenu() {
   );
 }
 
-/** The same setting on the Account page. */
-export function ConsolePrefCard() {
-  const [mode, setMode] = useClickMode();
-  return (
-    <section className="card" aria-label="Console preview">
-      <h2>Console preview</h2>
-      <p className="muted">What a click on the console preview of a VM does. Kept with your account, in every browser.</p>
-      <div role="radiogroup" aria-label="Console preview opens">
-        <strong>Console preview opens:</strong>
-        {(Object.keys(CLICK_LABELS) as ClickMode[]).map((m) => (
-          <label key={m} className="pref-opt">
-            <input type="radio" name="console-click" checked={mode === m} onChange={() => setMode(m)} />
-            {CLICK_LABELS[m]}
-          </label>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 export function ConsoleCard({ d }: { d: VMDetail }) {
   const viewer = useRole() === "viewer";
   const [mode] = useClickMode();

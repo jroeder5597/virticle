@@ -38,7 +38,6 @@
 .hwt td.actions .iconbtn:first-child { margin-left: 0; }
 .hwt tbody tr + tr td { border-top: 1px solid var(--line); }
 .hwadd { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
-.hwfoot { margin-top: auto; padding-top: 12px; flex-wrap: wrap; }
 
 /* A section shown in a dialog: no frame of its own. */
 .hwbare { display: block; }
@@ -60,9 +59,6 @@
 .oneline details > div { margin-top: 6px; }
 .hwbare .tgrid, .disc-body .tgrid { margin-top: 8px; }
 
-.field-help { display: flex; gap: 8px; align-items: flex-end; }
-.field-help > .field { flex: 1; min-width: 0; }
-.field-help > .helptip { margin-bottom: 14px; }
 
 /* Narrow: each table row becomes a short block, the long value (path, network) on its own line. */
 @container (max-width: 560px) {
@@ -77,6 +73,7 @@
 }
 /* "Advanced" in a dialog: one box, closed by default. */
 .dlg-adv { margin: 10px 0; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; }
-.dlg-adv .disc-body { margin-top: 10px; }
+.dlgadv { padding-top: 10px; }
+.dlgadv[hidden] { display: none; }
 .disc-head { flex-wrap: wrap; white-space: normal; }
 .disc-sum { flex: 1 1 14em; }
