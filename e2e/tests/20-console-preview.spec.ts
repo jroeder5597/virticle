@@ -129,7 +129,7 @@ test.describe.serial("console preview and extras", () => {
     await pop.close();
   });
 
-  test("inline mode: live console in the card, collapse returns the still image; setting is shared with the Account page", async ({ page }) => {
+  test("inline mode: live console in the card, collapse returns the still image", async ({ page }) => {
     await openVM(page, run);
     await page.getByRole("button", { name: "Console preview click behaviour" }).click();
     await page.getByRole("menuitemradio", { name: /inside the card/ }).click();
@@ -142,10 +142,9 @@ test.describe.serial("console preview and extras", () => {
     await expect(page.locator(".cc-open img")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(".cc .console")).toHaveCount(0);
 
-    await page.goto("/account");
-    const radio = page.getByRole("radiogroup", { name: "Console preview opens" });
-    await expect(radio.getByRole("radio", { name: "inside the card" })).toBeChecked();
-    await radio.getByRole("radio", { name: "in a new tab" }).check();
+    // The setting lives on the VM page only; put it back.
+    await page.getByRole("button", { name: "Console preview click behaviour" }).click();
+    await page.getByRole("menuitemradio", { name: /in a new tab/ }).click();
     await expect.poll(async () => (await (await page.request.get("/api/me/prefs")).json()).consoleClick).toBe("tab");
   });
 

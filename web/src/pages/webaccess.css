@@ -3,6 +3,10 @@
 .wa .card h2 { margin-top: 0; }
 .wa-fp { display: grid; gap: 2px; margin: 6px 0; font-size: 13px; }
 .wa-fp code { overflow-wrap: anywhere; }
+.wa-form { display: grid; gap: 14px; min-width: 0; }
+.wa-radios { display: grid; gap: 6px; margin: 0 0 12px; }
+.wa-radios label { display: flex; align-items: center; gap: 8px; }
+.wa-terms { align-self: center; }
 .wa-check { display: block; margin: 0 0 12px; }
 .wa-check small { display: block; margin-top: 2px; }
 .wa-pending { border-color: var(--accent); }

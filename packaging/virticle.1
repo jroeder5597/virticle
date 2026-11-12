@@ -16,27 +16,21 @@ The package runs it as the systemd service
 .B virticle.service
 as user
 .BR virticle ,
-listening on 127.0.0.1:8080. Open the page and create the administrator
-account on the first visit.
+serving HTTPS with a self-signed certificate on port 8443. The journal says
+which address to open to create the administrator account.
 .SH OPTIONS
 Run
 .B virticle \-help
 for the full list. The main flags are:
 .TP
 .BI \-listen " address"
-Address to serve the web UI and API on (default 127.0.0.1:8080). A
-non-loopback address serves HTTPS with a generated self-signed certificate
-unless \-tls\-cert, \-insecure\-http or \-trusted\-proxy is given.
+Address to serve the web UI and API on. Given, it overrides the settings of
+the Web access page. A non-loopback address serves HTTPS with a generated
+self-signed certificate.
 .TP
 .BI \-data " dir"
-Directory for the database and the controller's SSH key (the service uses
-/var/lib/virticle).
-.TP
-.BI \-tls\-cert " file " \-tls\-key " file"
-PEM certificate and key to serve HTTPS with.
-.TP
-.BI \-trusted\-proxy " list"
-IPs or CIDRs of reverse proxies whose X\-Forwarded\-* headers are believed.
+Directory for the database and the controller's SSH key (default
+/var/lib/virticle if it holds a database, else data).
 .TP
 .B \-no\-scheduler
 Do not run scheduled snapshots and backups from this controller.
@@ -47,9 +41,6 @@ Print the version, commit and build date and exit.
 .TP
 .B VIRTICLE_JUMP_PASSWORD
 Password for node jump hosts.
-.TP
-.B VIRTICLE_VIRTIO_WIN_PATTERN
-Volume name pattern that counts as the virtio\-win ISO.
 .SH FILES
 .TP
 .I /etc/virticle/virticle.env

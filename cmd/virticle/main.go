@@ -21,15 +21,6 @@ import (
 	"virticle/web"
 )
 
-// renameEnv keeps the old name of an environment variable working: its value
-// is used when the new name is not set.
-func renameEnv(old, name string) {
-	if v, ok := os.LookupEnv(old); ok && os.Getenv(name) == "" {
-		os.Setenv(name, v)
-		log.Printf("DEPRECATED: environment variable %s is now called %s; the old name still works for now", old, name)
-	}
-}
-
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "node" {
 		os.Exit(nodeCommand(os.Args[2:])) // node.go
@@ -38,7 +29,7 @@ func main() {
 		os.Exit(webCommand(os.Args[2:]))
 	}
 	listen := flag.String("listen", envDefault("VIRTICLE_LISTEN", "127.0.0.1:8080"), "address to serve the web UI and API on")
-	data := flag.String("data", "data", "directory for the database and the controller's SSH key")
+	data := flag.String("data", defaultDataDir(), "directory for the database and the controller's SSH key")
 	tlsCert := flag.String("tls-cert", envDefault("VIRTICLE_TLS_CERT", ""), "PEM certificate to serve HTTPS with (needs -tls-key)")
 	tlsKey := flag.String("tls-key", envDefault("VIRTICLE_TLS_KEY", ""), "PEM private key for -tls-cert")
 	insecure := flag.Bool("insecure-http", os.Getenv("VIRTICLE_INSECURE_HTTP") != "", "serve plain HTTP on a non-loopback address (passwords and sessions travel unencrypted)")
@@ -51,12 +42,12 @@ func main() {
 	flag.Float64Var(&alerts.Mem, "alert-memory", 90, "host memory use in percent that raises an alert")
 	flag.IntVar(&alerts.CertDays, "alert-cert-days", 30, "alert when the web UI certificate expires within this many days")
 	flag.StringVar(&alerts.Webhook, "alert-webhook", "", "http(s) URL that receives a JSON POST whenever an alert is raised or cleared (empty: no notifications)")
+	flag.Usage = usage
 	flag.Parse()
 	if versionRequested() {
 		return
 	}
-	renameEnv("VIRT_JUMP_PASSWORD", "VIRTICLE_JUMP_PASSWORD")
-	renameEnv("VIRT_VIRTIO_WIN_PATTERN", "VIRTICLE_VIRTIO_WIN_PATTERN")
+	warnDeprecated(log.Printf)
 	if alerts.Webhook != "" {
 		if err := api.ValidateWebhookURL(alerts.Webhook); err != nil {
 			log.Fatal(err)

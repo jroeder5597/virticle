@@ -62,12 +62,17 @@ The package installs:
 | Manual and documentation | `/usr/share/man/man1/virticle.1.gz`, `/usr/share/doc/virticle/` |
 | System user and group | `virticle` |
 
-The service listens on `127.0.0.1:8080` only.
+A new install serves HTTPS with a self-signed certificate on port 8443 of all
+interfaces; the journal line `open https://<address>:8443 to create the
+administrator` says where. An installation from before this default, which has
+an administrator and no stored web settings, keeps listening on
+`127.0.0.1:8080` and the **Web access** page says so. The same rule applies to
+every start without a `-listen` flag: a data directory without users gets the
+HTTPS default, one with users keeps what it has.
 
 | Family | After installing |
 | --- | --- |
-| Debian | The service is enabled and started. |
-| RHEL | The service is not started (distribution convention). Run `sudo systemctl enable --now virticle`. |
+| Debian, RHEL | The service is enabled and started. An upgrade restarts it when it was running. |
 
 Check it with `systemctl status virticle`, `journalctl -u virticle` and
 `virticle version`.
@@ -79,39 +84,33 @@ Check it with `systemctl status virticle`, `journalctl -u virticle` and
 
 The file holds:
 
-- `VIRTICLE_ARGS`: extra flags, for example `-listen`, `-tls-cert`, `-tls-key`,
-  `-trusted-proxy`. `virticle -help` lists them and
-  [reference.md](reference.md#flags) describes each.
+- `VIRTICLE_ARGS`: extra flags, for example `-no-scheduler`. `virticle -help`
+  lists them and [reference.md](reference.md#flags) describes each. The web
+  address and certificate are set on the **Web access** page.
 - `VIRTICLE_JUMP_PASSWORD`: the password for node jump hosts (a jump host is a
   machine the controller connects through to reach a node).
 
-To listen on a port below 1024 (80 or 443), the service needs a capability it
-does not have. Add a drop-in with `sudo systemctl edit virticle`:
-
-    [Service]
-    CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-    AmbientCapabilities=CAP_NET_BIND_SERVICE
+The service may listen on ports below 1024 (80 and 443) so that the **Web
+access** page can use them.
 
 The service is sandboxed (`ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`,
-no new privileges, no capabilities, system call filter). It can write only to
-`/var/lib/virticle`. A certificate given with `-tls-cert` must be readable by
+no new privileges, only the right to bind low ports, system call filter). It can write only to
+`/var/lib/virticle`. A certificate file named on the **Web access** page must be readable by
 the user `virticle`, for example under `/etc/virticle/`.
 
 ## Container
 
     docker build -t virticle .      # in an LXC: podman build --network=host
-    docker run -d --name virticle -p 127.0.0.1:8080:8080 -v virticle-data:/data virticle
+    docker run -d --name virticle -p 127.0.0.1:8443:8443 -v virticle-data:/data virticle
 
 or `docker compose up -d --build` with the `compose.yaml` of this repository.
 
 - The image is based on `gcr.io/distroless/static` and runs as the non-root
   user 65532.
-- All state is in the volume `/data`. Port 8080 is exposed.
-- The container listens on a non-loopback address, so the controller serves
-  HTTPS with a self-signed certificate that it makes in `/data`. Open
-  `https://127.0.0.1:8080`.
-- Behind a reverse proxy that ends TLS, pass `-trusted-proxy <proxy address>`
-  (see [web-tls.md](web-tls.md)).
+- All state is in the volume `/data`. Port 8443 is exposed.
+- The controller serves HTTPS with a self-signed certificate that it makes in
+  `/data`. Open `https://127.0.0.1:8443`. The image passes no `-listen`, so
+  the **Web access** page manages the listener (see [web-tls.md](web-tls.md)).
 - Pass environment variables such as `VIRTICLE_JUMP_PASSWORD` with `-e` or
   `env_file`.
 - No registry has been chosen, so no image is published.
@@ -124,7 +123,7 @@ or `docker compose up -d --build` with the `compose.yaml` of this repository.
    `sha256sum -c --ignore-missing checksums.txt`.
 3. Unpack it and run:
 
-       ./virticle -listen 127.0.0.1:8080 -data ./data
+       ./virticle -data ./data
 
 To build from source, run `make build` (needs Go and Node.js). The result is
 `bin/virticle`. `make dist` cross-compiles linux/amd64 and linux/arm64 into
@@ -132,8 +131,8 @@ To build from source, run `make build` (needs Go and Node.js). The result is
 
 ## First run
 
-1. Open the page: `http://127.0.0.1:8080` for the package, or the address you
-   set.
+1. Open the page: `https://<address>:8443`, the address in the journal line
+   `open ... to create the administrator`.
 2. Create the administrator account. The password needs at least 10
    characters.
 3. Add nodes. If this machine will run your VMs too, choose **Set up this

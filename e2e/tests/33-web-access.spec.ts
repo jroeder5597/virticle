@@ -55,6 +55,24 @@ async function secureContext(browser: Browser, base: string) {
   return ctx;
 }
 
+/** Opens the page's one Advanced section. */
+async function advanced(page: Page) {
+  const b = page.getByRole("button", { name: /^Advanced/ });
+  if ((await b.getAttribute("aria-expanded")) !== "true") await b.click();
+}
+
+/** Chooses a mode: the three certificate choices are up front, the plain and proxy ones are under Advanced. */
+async function setMode(page: Page, label: string) {
+  if (/^(Plain HTTP|Behind a reverse proxy)/.test(label)) await advanced(page);
+  await page.getByRole("radio", { name: label, exact: true }).check();
+}
+
+/** Interface and port of the listener (the host of the lab controller, or all interfaces). */
+async function setListen(page: Page, host: string, port: string | number) {
+  await pick(page, "Interface", host === "127.0.0.1" ? "This machine only (127.0.0.1)" : "All interfaces");
+  await field(page, "Port").fill(String(port));
+}
+
 async function signIn(page: Page, base: string) {
   await page.goto(base + "/");
   await page.getByLabel("Username").fill(env.user);
@@ -79,13 +97,14 @@ test.describe.serial("web access", () => {
     await page.goto("/web-access");
     await expect(page.getByRole("heading", { name: "Web access" })).toBeVisible();
     await expect(page.getByText("HTTP on " + PLAIN)).toBeVisible();
-    await pick(page, "Mode", "Self-signed certificate");
-    await field(page, "HTTPS address").fill(`${u.hostname}:${HTTPS_PORT}`);
+    await setMode(page, "Self-signed certificate");
+    await setListen(page, u.hostname, HTTPS_PORT);
+    await advanced(page);
     await field(page, "Public URL").fill(""); // an earlier run may have left one
     await field(page, "Names").fill(`${u.hostname}\nlocalhost`);
-    await page.getByRole("button", { name: "Check", exact: true }).click();
-    await expect(page.getByRole("list", { name: "Checks" })).toContainText("can be bound");
+    // One button: Apply runs the checks first, then asks to confirm.
     await page.getByRole("button", { name: "Apply", exact: true }).click();
+    await expect(page.getByRole("list", { name: "Checks" })).toContainText("can be bound");
     await dialog(page, "Apply web access settings").getByRole("button", { name: "Apply", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Change waiting for confirmation" })).toBeVisible();
     await expect(page.getByRole("link", { name: HTTPS + "/" })).toBeVisible();
@@ -133,8 +152,8 @@ test.describe.serial("web access", () => {
     await expect.poll(async () => (await fetch(env.base + "/api/status").then((r) => r.status).catch(() => 0)), { timeout: 15_000 }).toBe(0);
 
     // Back to plain HTTP from the HTTPS page, confirmed on the plain origin.
-    await pick(p2, "Mode", "Off (HTTP)");
-    await field(p2, "HTTP address").fill(PLAIN);
+    await setMode(p2, "Plain HTTP, not encrypted");
+    await setListen(p2, u.hostname, u.port);
     await p2.getByRole("button", { name: "Apply", exact: true }).click();
     await dialog(p2, "Apply web access settings").getByRole("button", { name: "Apply", exact: true }).click();
     await expect(p2.getByRole("heading", { name: "Change waiting for confirmation" })).toBeVisible();
@@ -191,9 +210,9 @@ test.describe.serial("web access", () => {
   test("reverse proxy mode shows ready-to-copy configuration for five proxies", async ({ page, context }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.goto("/web-access");
-    await pick(page, "Mode", "Behind a reverse proxy");
+    await setMode(page, "Behind a reverse proxy");
     await field(page, "Public URL").fill("https://vm.e2e.example");
-    await field(page, "HTTP address").fill("127.0.0.1:9090");
+    await setListen(page, "127.0.0.1", 9090);
     for (const [name, needle] of [
       ["nginx", "server_name vm.e2e.example;"],
       ["Apache httpd", "ServerName vm.e2e.example"],
@@ -223,16 +242,37 @@ test.describe.serial("web access", () => {
 
   test("a bad proposal is refused with a check list and changes nothing", async ({ page, api }) => {
     await page.goto("/web-access");
-    await pick(page, "Mode", "ACME (Let's Encrypt)");
+    await setMode(page, "My domain, with a Let's Encrypt certificate");
+    // The terms are accepted by requesting the certificate: a line next to Apply, no checkbox.
+    await expect(page.getByText("By requesting a certificate you accept the")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Let's Encrypt terms of service" })).toBeVisible();
+    await field(page, "Domain names").fill("*.e2e.example");
+    await page.getByRole("button", { name: "Apply", exact: true }).click();
+    await expect(page.getByRole("list", { name: "Checks" })).toContainText("wildcards need DNS validation");
+    await expect(dialog(page)).toHaveCount(0); // a failed check stops before the confirmation
+    expect((await status(api)).settings.mode).toBe("off");
+    // ACME cannot be issued in the lab (no public DNS): a good name passes the checks and reaches the confirmation, which is cancelled.
     await field(page, "Domain names").fill("vm.e2e.example");
-    await page.getByRole("button", { name: "Check", exact: true }).click();
-    await expect(page.getByRole("list", { name: "Checks" })).toContainText("accept the certificate authority");
+    await page.getByRole("button", { name: "Apply", exact: true }).click();
+    await expect(dialog(page, "Apply web access settings")).toBeVisible();
+    await dialog(page, "Apply web access settings").getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(page.getByRole("list", { name: "Checks" })).toContainText("TLS-ALPN-01 is validated on port 443");
     expect((await status(api)).settings.mode).toBe("off");
-    // ACME cannot be issued in the lab (no public DNS): the page shows the status rows only.
-    await page.getByLabel("I accept the certificate authority's terms of service").check();
-    await page.getByRole("button", { name: "Check", exact: true }).click();
-    await expect(page.getByRole("list", { name: "Checks" })).not.toContainText("accept the certificate authority");
+  });
+
+  test("interface and port replace the address field", async ({ page }) => {
+    await page.goto("/web-access");
+    await setMode(page, "Self-signed certificate");
+    await expect(page.getByLabel("HTTPS address")).toHaveCount(0);
+    await page.getByRole("combobox", { name: "Interface", exact: true }).click();
+    const opts = page.getByRole("listbox").last().getByRole("option");
+    await expect(opts.first()).toContainText("All interfaces");
+    await expect(opts.last()).toContainText("This machine only (127.0.0.1)");
+    await page.keyboard.press("Escape");
+    await field(page, "Port").fill("70000");
+    await expect(page.getByText("The port is a number from 1 to 65535.")).toBeVisible();
+    // Everything else the page offers is under the one Advanced section.
+    await expect(page.getByRole("button", { name: /^Advanced/ })).toHaveCount(1);
   });
 });
 
@@ -328,8 +368,8 @@ test.describe.serial("through HAProxy", () => {
     await expect(page.getByText(/^Forwarding headers are believed from 127\.0\.0\.2/)).toBeVisible();
 
     // Leave proxy mode: apply Off through the proxy, confirm on the plain origin.
-    await pick(page, "Mode", "Off (HTTP)");
-    await field(page, "HTTP address").fill(PLAIN);
+    await setMode(page, "Plain HTTP, not encrypted");
+    await setListen(page, u.hostname, u.port);
     await page.getByRole("button", { name: "Apply", exact: true }).click();
     await dialog(page, "Apply web access settings").getByRole("button", { name: "Apply", exact: true }).click();
     // The address stays the same, so the page's next request already arrives on the new listener.

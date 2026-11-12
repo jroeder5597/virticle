@@ -675,3 +675,107 @@ func TestManagerOwnUploadAndRenew(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+// An own certificate needs no Names field: the check reads the names from the
+// certificate itself.
+func TestOwnNamesComeFromCertificate(t *testing.T) {
+	now := time.Now()
+	pemCert, key := testCert(t, []string{"vm.example", "10.0.0.5"}, now.Add(-time.Hour), now.Add(90*24*time.Hour))
+	_, leaf, err := ParseKeyPair(pemCert, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(CertNames(leaf), ","); got != "vm.example,10.0.0.5" {
+		t.Errorf("CertNames = %q", got)
+	}
+	env := noBind
+	env.OwnCertPEM, env.OwnKeyPEM = pemCert, key
+	cs := Validate(Settings{Mode: "own", HTTPSListen: "127.0.0.1:8443"}.Normalize(), env)
+	if HasError(cs) {
+		t.Fatalf("%+v", cs)
+	}
+	found := false
+	for _, c := range cs {
+		if c.Title == "Names" && c.Status == "ok" && strings.Contains(c.Detail, "vm.example") && strings.Contains(c.Detail, "10.0.0.5") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the certificate's names are not reported: %+v", cs)
+	}
+}
+
+func TestFirstRunDefaults(t *testing.T) {
+	d := FirstRunDefaults()
+	if d.Mode != ModeSelfSigned || d.HTTPSListen != ":8443" || len(d.Names) != 0 {
+		t.Errorf("%+v", d)
+	}
+	if o := Defaults(); o.Mode != ModeOff || o.Listen != DefaultListen {
+		t.Errorf("the reset default must stay loopback HTTP: %+v", o)
+	}
+}
+
+func TestListenComposeAndSplit(t *testing.T) {
+	ifaces := []Iface{{Name: "eth0", Addrs: []string{"10.0.0.5", "fd00::5"}}}
+	cases := []struct {
+		host string
+		port int
+		want string
+		cust bool
+	}{
+		{"", 8443, ":8443", false},
+		{"127.0.0.1", 443, "127.0.0.1:443", false},
+		{"10.0.0.5", 8443, "10.0.0.5:8443", false},
+		{"10.9.9.9", 8443, "10.9.9.9:8443", true}, // an address that is gone stays visible
+	}
+	for _, c := range cases {
+		got := ComposeListen(c.host, c.port)
+		if got != c.want {
+			t.Errorf("ComposeListen(%q,%d) = %q, want %q", c.host, c.port, got, c.want)
+		}
+		h, p, cust := SplitListen(got, ifaces)
+		if h != c.host || p != c.port || cust != c.cust {
+			t.Errorf("SplitListen(%q) = %q,%d,%v", got, h, p, cust)
+		}
+	}
+	if h, p, c := SplitListen("0.0.0.0:8443", ifaces); h != "" || p != 8443 || c {
+		t.Errorf("0.0.0.0 must read as all interfaces: %q %d %v", h, p, c)
+	}
+	if ComposeListen("fd00::5", 443) != "[fd00::5]:443" {
+		t.Error("IPv6 must be bracketed")
+	}
+}
+
+func TestInterfacesSkipLoopbackAndLinkLocal(t *testing.T) {
+	for _, f := range Interfaces() {
+		for _, a := range f.Addrs {
+			ip := net.ParseIP(a)
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+				t.Errorf("%s lists %s", f.Name, a)
+			}
+		}
+		if len(f.Addrs) == 0 {
+			t.Errorf("%s has no address", f.Name)
+		}
+	}
+}
+
+// A stored interface address that is gone must not stop the controller.
+func TestStartFallsBackWhenAddressIsGone(t *testing.T) {
+	port := strings.TrimPrefix(freeAddr(t), "127.0.0.1")
+	m, _ := newManager(t)
+	s := Settings{Mode: "selfsigned", HTTPSListen: "192.0.2.1" + port, Names: []string{"localhost"}}.Normalize()
+	used, warn, err := m.StartOrFallBack(s)
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if used.HTTPSListen != port || warn == "" || !strings.Contains(warn, "192.0.2.1") {
+		t.Errorf("used %q, warning %q", used.HTTPSListen, warn)
+	}
+	// Any other failure is still a failure.
+	m2, _ := newManager(t)
+	busy := Settings{Mode: "off", Listen: m.Status("").Listeners[0].Addr}.Normalize()
+	if _, _, err := m2.StartOrFallBack(busy); err == nil {
+		t.Error("a busy port must still fail")
+	}
+}

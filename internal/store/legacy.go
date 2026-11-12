@@ -46,3 +46,9 @@ func exists(p string) bool {
 	_, err := os.Lstat(p)
 	return err == nil
 }
+
+// HasDatabase reports whether dir holds a controller database (the current
+// file or the one of an earlier version).
+func HasDatabase(dir string) bool {
+	return exists(filepath.Join(dir, DBName)) || exists(filepath.Join(dir, legacyDBName))
+}

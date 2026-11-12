@@ -41,6 +41,9 @@ func Describe(c *x509.Certificate) CertInfo {
 	return ci
 }
 
+// CertNames are the host names and IP addresses a leaf certificate covers.
+func CertNames(c *x509.Certificate) []string { return Describe(c).Names }
+
 func fingerprint(der []byte) string {
 	sum := sha256.Sum256(der)
 	h := strings.ToUpper(hex.EncodeToString(sum[:]))

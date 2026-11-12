@@ -51,6 +51,9 @@ var routeLevels = map[string]string{
 	"GET /api/tasks":   viewer,
 	"GET /api/alerts":  viewer,
 
+	"GET /api/alerts/settings": admin,
+	"PUT /api/alerts/settings": admin,
+
 	"GET /api/nodes":                         viewer,
 	"GET /api/local-node":                    admin,
 	"GET /api/cluster/cpu-baseline":          viewer,

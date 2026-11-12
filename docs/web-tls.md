@@ -1,16 +1,22 @@
 # Web access and TLS
 
-The **Web access** page (administrators only, link in the top bar) chooses how the controller serves its web UI and API. You can give the same settings on the command line, so a headless install works without opening the page.
+The **Web access** page (administrators only, under **Settings** in the top bar) chooses how the controller serves its web UI and API. You can give the same settings on the command line, so a headless install works without opening the page.
 
 ![Web access page](img/web-access.png)
 
-| Mode | What it does |
+A new install serves a self-signed certificate on port 8443 of all interfaces, so the page is reachable from another computer at once. The page offers three choices, and the rest under **Advanced**:
+
+| Choice | What it does |
 | --- | --- |
-| Off (HTTP) | Plain HTTP on one address, 127.0.0.1:8080 by default. A non-loopback address shows the row "Sign-ins travel unencrypted". |
-| Self-signed certificate | HTTPS with a certificate the controller makes itself. |
-| Own certificate | HTTPS with a certificate you provide. |
-| ACME | HTTPS with a certificate obtained and renewed from Let's Encrypt or another ACME directory. |
-| Behind a reverse proxy | Plain HTTP on loopback; nginx, Apache, HAProxy, Caddy or Traefik terminates TLS. |
+| Self-signed certificate (default) | HTTPS with a certificate the controller makes itself. |
+| My domain, with a Let's Encrypt certificate | HTTPS with a certificate obtained and renewed from Let's Encrypt (ACME). |
+| My own certificate | HTTPS with a certificate you provide. |
+| Advanced: Plain HTTP, not encrypted | Plain HTTP on one address, 127.0.0.1:8080 after `web reset`. A non-loopback address shows "Sign-ins travel unencrypted". |
+| Advanced: Behind a reverse proxy | Plain HTTP on loopback; nginx, Apache, HAProxy, Caddy or Traefik terminates TLS. |
+
+In every choice with a certificate, **Interface** and **Port** say where to listen. The interface list holds **All interfaces** (default), each network interface of the controller machine that is up and has an address (for example `eth0 (10.0.0.5)`), and **This machine only (127.0.0.1)**. The two fields make the address stored as `httpsListen` (or `listen` for plain HTTP), the same value `virticle web set -https-listen` writes. A stored address that matches no interface is shown as **Custom (address)** and kept. Ports below 1024 work because the packaged service may bind them. If the interface address stored is gone at start (the address was removed from the machine), the controller does not fail: it listens on all interfaces on the same port, logs one line and the page shows a warning.
+
+An installation that has an administrator and no stored web settings (one from before the new default) keeps plain HTTP on `127.0.0.1:8080`; the page shows a one-line notice. Choose a mode there to change it.
 
 In every TLS mode the controller:
 
@@ -23,9 +29,9 @@ HSTS is off by default. The toggle sends `Strict-Transport-Security: max-age=315
 
 ## Applying a change safely
 
-1. Choose **Apply**. The page first runs checks and shows them as a list: the certificate parses and its key matches, it is not expired, its names cover the public URL, the address can be bound, the trusted proxy sends the headers on this very request, and so on. Any failed check blocks the change.
+1. Choose **Apply**. The page first runs checks and shows failures as a list: the certificate parses and its key matches, it is not expired, its names cover the public URL, the address can be bound, the trusted proxy sends the headers on this very request, and so on. Any failed check blocks the change.
 2. The new listener starts at once. The old one stays.
-3. Open the new address, as the page tells you. There, choose **Keep this setting**.
+3. Open the new address, as the page tells you (the address and port you chose; the page says when it moves). There, choose **Keep this setting**.
 4. If nobody confirms within 60 seconds, the new listener is closed and the previous settings return, so a typo cannot lock you out. (`VIRTICLE_WEB_CONFIRM_SECONDS` changes the time, for tests.)
 
 Good to know:
@@ -39,19 +45,19 @@ Good to know:
 
 ## Self-signed
 
-The controller makes an ECDSA P-256 server certificate (no CA) valid 825 days. Subject alternative names are the host names and IP addresses you list; the field is prefilled with the machine's host name and addresses. The key is stored with mode 0600 in the data directory (`tls-key.pem`, `tls-cert.pem`). "Renew certificate" replaces it and serves the new one immediately. The page shows the SHA-256 fingerprint; compare it with the one the browser shows in its warning before you accept the certificate. A certificate that is close to expiry, or lacks a listed name, is replaced at the next start.
+The controller makes an ECDSA P-256 server certificate (no CA) valid 825 days. Subject alternative names are the machine's host name and addresses unless you list others under **Advanced**. The key is stored with mode 0600 in the data directory (`tls-key.pem`, `tls-cert.pem`). "Renew certificate" replaces it and serves the new one immediately. The page shows the SHA-256 fingerprint; compare it with the one the browser shows in its warning before you accept the certificate. A certificate that is close to expiry, or lacks a listed name, is replaced at the next start.
 
 ## Own certificate
 
-Paste a PEM certificate chain (leaf first) and key, or give file paths. Pasted material is validated (the key matches, the leaf is not expired, every listed name and the public URL host are covered) and stored in the data directory (`web-own/`, key mode 0600); the key is never shown again. File paths are re-read when the files change (checked at most every 5 seconds per connection) and on `SIGHUP`, so a renewal by certbot needs only `systemctl reload virticle` or nothing at all. A file that no longer parses keeps the old certificate in use and the page shows the error.
+Paste a PEM certificate chain (leaf first) and key, or give file paths under **Advanced**. The names come from the certificate itself; the checks list them. Pasted material is validated (the key matches, the leaf is not expired, the public URL host is covered) and stored in the data directory (`web-own/`, key mode 0600); the key is never shown again. File paths are re-read when the files change (checked at most every 5 seconds per connection) and on `SIGHUP`, so a renewal by certbot needs only `systemctl reload virticle` or nothing at all. A file that no longer parses keeps the old certificate in use and the page shows the error.
 
 ## ACME
 
-Fields: domain names, contact e-mail (optional), directory URL (Let's Encrypt production by default, staging offered, or any other `https://` directory), and the checkbox accepting the terms. The cache lives in `acme/` in the data directory.
+Fields: domain names and contact e-mail (optional); under **Advanced** the directory (Let's Encrypt production by default, staging offered, or any other `https://` directory). Choosing **Apply** with this mode means accepting the Let's Encrypt terms of service, as the line next to the button says; `virticle web set` needs `-acme-accept-terms`. The cache lives in `acme/` in the data directory.
 
 - TLS-ALPN-01 is answered on the HTTPS address. The certificate authority validates it on port 443, so the HTTPS address must be 443 or port 443 must be forwarded to it.
 - HTTP-01 is answered on the "HTTP redirect address" (everything else there redirects to HTTPS). It must be reachable as port 80.
-- The certificate is requested on the first HTTPS request for a listed name, or with "Request now". The page shows last issuance, expiry and the last error.
+- The certificate is requested on the first HTTPS request for a listed name, or with "Renew now". The page shows last issuance, expiry and the last error.
 - Wildcards (DNS-01) and IP addresses are not supported.
 
 Not exercised end to end: issuance needs public DNS and a reachable port 443, which the test lab does not have. It is covered by unit tests (status tracking from the cache, host policy, HTTP-01 handler) only.
@@ -85,11 +91,11 @@ The complete generated text for all five is checked into `internal/webaccess/tes
 
 ## Command line and environment
 
-The listener flags keep working and take precedence over stored settings: `-listen`, `-tls-cert` with `-tls-key`, `-insecure-http`, `-trusted-proxy`. They can also be set as `VIRTICLE_LISTEN`, `VIRTICLE_TLS_CERT`, `VIRTICLE_TLS_KEY`, `VIRTICLE_INSECURE_HTTP`, `VIRTICLE_TRUSTED_PROXY`. When any of them is set, the page shows the effective settings read-only with the reason. As before, a certificate means HTTPS with it; a loopback or `-insecure-http` address means HTTP; trusted proxies on a private address mean HTTP behind a proxy; any other address gets a self-signed certificate.
+`-listen` (or `VIRTICLE_LISTEN`) takes precedence over stored settings. The older `-tls-cert` with `-tls-key`, `-insecure-http` and `-trusted-proxy` (and their `VIRTICLE_*` variables) still work, are hidden from `-help` and log a deprecation notice. When any of them is set, the page shows the effective settings read-only with the reason. As before, a certificate means HTTPS with it; a loopback or `-insecure-http` address means HTTP; trusted proxies on a private address mean HTTP behind a proxy; any other address gets a self-signed certificate.
 
 Without those flags the stored settings decide, and a headless install can write them:
 
-    virticle web show  -data /var/lib/virticle
+    virticle web show  -data /var/lib/virticle   # -data is the only option of show and reset
     virticle web set   -data /var/lib/virticle -mode selfsigned -https-listen :8443 -names virticle.lan,192.0.2.10
     virticle web set   -data /var/lib/virticle -mode acme -https-listen :443 -http-redirect :80 \
                        -acme-domains virticle.example.org -acme-email ops@example.org -acme-accept-terms
@@ -106,4 +112,4 @@ If you cannot reach the page (wrong firewall, certificate nobody can accept, pro
     virticle web reset -data /var/lib/virticle
     systemctl start virticle
 
-`web reset` stores mode Off on 127.0.0.1:8080 and drops any change waiting for confirmation. Reach it from the machine itself (or an SSH tunnel: `ssh -L 8080:127.0.0.1:8080 host`) and set things up again. If the service file passes `-listen`, `-tls-cert`, `-insecure-http` or `-trusted-proxy`, those flags still win; edit the service file too.
+`web reset` stores mode Off on 127.0.0.1:8080 and drops any change waiting for confirmation. Reach it from the machine itself (or an SSH tunnel: `ssh -L 8080:127.0.0.1:8080 host`) and set things up again. If the service file passes `-listen` (or one of the deprecated listener flags), those flags still win; edit the service file too.

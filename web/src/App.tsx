@@ -1,6 +1,6 @@
 import { Menu, User, LogOut } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import Tree from "./Tree";
 import "./shell.css";
 import { get, post, Role, setUnauthorizedHandler, Task } from "./api";
@@ -15,7 +15,8 @@ import WebAccess from "./pages/WebAccess";
 import Account from "./pages/Account";
 import CloudProfiles from "./pages/CloudProfiles";
 import ConsolePage from "./pages/ConsolePage";
-import { AlertBell } from "./pages/Alerts";
+import { AlertBell, AlertSettings } from "./pages/Alerts";
+import { DropdownMenu } from "./Menu";
 import { RoleContext } from "./auth";
 import { ThemeToggle } from "./theme";
 import TasksDock, { useDockOpen } from "./TasksDock";
@@ -27,6 +28,14 @@ const DOCK_MIN = 96;
 const sidebarMax = () => Math.min(640, window.innerWidth * 0.5);
 const dockMax = () => window.innerHeight * 0.7;
 const px = (v: string | undefined) => (v && Number(v) > 0 ? Number(v) : undefined);
+
+/** The administrator's pages, behind one menu in the top bar. */
+const SETTINGS = [
+  { label: "Users", to: "/users" },
+  { label: "Audit", to: "/audit" },
+  { label: "Web access", to: "/web-access" },
+  { label: "Alerts", to: "/alerts-settings" },
+];
 
 type Session = { needsSetup: boolean; user: string; role: Role };
 
@@ -43,6 +52,7 @@ export default function App() {
   if (dockH && dockOpen) sizes["--dock-h"] = clampSize(dockH, DOCK_MIN, dockMax()) + "px";
   const scroller = useRef<HTMLDivElement>(null);
   const loc = useLocation();
+  const navigate = useNavigate();
   useEffect(() => setDrawer(false), [loc.pathname, loc.search]);
   useEffect(() => {
     scroller.current?.scrollTo(0, 0);
@@ -93,9 +103,13 @@ export default function App() {
         <NavLink to="/datacenter/backups">Backups</NavLink>
         <NavLink to="/datacenter/nodes">Nodes</NavLink>
         <NavLink to="/datacenter/tasks">Tasks</NavLink>
-        {session.role === "admin" && <NavLink to="/users">Users</NavLink>}
-        {session.role === "admin" && <NavLink to="/audit">Audit</NavLink>}
-        {session.role === "admin" && <NavLink to="/web-access">Web access</NavLink>}
+        {session.role === "admin" && (
+          <DropdownMenu
+            className={"settings-menu" + (SETTINGS.some((x) => loc.pathname.startsWith(x.to)) ? " active" : "")}
+            label="Settings"
+            items={SETTINGS.map((x) => ({ label: x.label, run: () => navigate(x.to) }))}
+          />
+        )}
         </div>
         <div className="spacer" />
         <AlertBell />
@@ -120,6 +134,7 @@ export default function App() {
         {session.role === "admin" && <NavLink to="/users">Users</NavLink>}
         {session.role === "admin" && <NavLink to="/audit">Audit</NavLink>}
         {session.role === "admin" && <NavLink to="/web-access">Web access</NavLink>}
+        {session.role === "admin" && <NavLink to="/alerts-settings">Alerts</NavLink>}
         </div>
         <Tree />
         <Resizer axis="x" cssVar="--sidebar-w" pref="sidebarW" min={SIDEBAR_MIN} max={sidebarMax} current={() => document.querySelector(".sidebar")?.getBoundingClientRect().width ?? 260} label="Resize the resource tree" />
@@ -144,6 +159,7 @@ export default function App() {
           {session.role === "admin" && <Route path="/users" element={<Users />} />}
           {session.role === "admin" && <Route path="/audit" element={<Audit />} />}
           {session.role === "admin" && <Route path="/web-access" element={<WebAccess />} />}
+          {session.role === "admin" && <Route path="/alerts-settings" element={<AlertSettings />} />}
           <Route path="*" element={<div className="empty">There is nothing at this address, or your role does not allow it.</div>} />
         </Routes>
       </main>

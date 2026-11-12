@@ -56,6 +56,8 @@ type Manager struct {
 	OnChange func(Settings)
 	// Locked, when not empty, is why the settings cannot be changed.
 	Locked string
+	// Notice, when not empty, is a one-line note the page shows.
+	Notice string
 	// Source says where the settings came from: default, stored or flags.
 	Source string
 
@@ -137,6 +139,7 @@ type Status struct {
 	Settings  Settings    `json:"settings"`
 	Source    string      `json:"source"`
 	Locked    string      `json:"locked,omitempty"`
+	Notice    string      `json:"notice,omitempty"`
 	Listeners []Listener  `json:"listeners"`
 	Pending   *Pending    `json:"pending,omitempty"`
 	Cert      *CertInfo   `json:"cert,omitempty"`
@@ -203,6 +206,28 @@ func (m *Manager) Start(s Settings) error {
 	m.cur, m.set = s, set
 	m.change(s)
 	return nil
+}
+
+// StartOrFallBack is Start, except that a TLS mode whose HTTPS address names an
+// interface address this machine no longer has (EADDRNOTAVAIL) does not fail:
+// it listens on all interfaces on the same port instead. warning says so, for
+// the log and for the Web access page; it is empty otherwise.
+func (m *Manager) StartOrFallBack(s Settings) (used Settings, warning string, err error) {
+	err = m.Start(s)
+	if err == nil || !s.IsTLS() || !errors.Is(err, syscall.EADDRNOTAVAIL) {
+		return s, "", err
+	}
+	_, port, perr := SplitAddr(s.HTTPSListen)
+	if perr != nil {
+		return s, "", err
+	}
+	old := s.HTTPSListen
+	s.HTTPSListen = ComposeListen("", port)
+	if err2 := m.Start(s); err2 != nil {
+		return s, "", err
+	}
+	warning = fmt.Sprintf("The address %s is no longer on this machine, so the web UI listens on all interfaces, port %d. Choose an interface below to change it.", old, port)
+	return s, warning, nil
 }
 
 func (m *Manager) change(s Settings) {
@@ -364,7 +389,7 @@ func (m *Manager) open(s Settings, takeFrom *listenerSet) (set *listenerSet, tak
 		}
 		if lerr != nil {
 			undo()
-			return nil, nil, fmt.Errorf("cannot listen on %s: %v", ep.addr, lerr)
+			return nil, nil, fmt.Errorf("cannot listen on %s: %w", ep.addr, lerr)
 		}
 		set.servers = append(set.servers, m.serve(ep, ln, su))
 	}
@@ -492,6 +517,7 @@ func (m *Manager) Apply(req Request, env CheckEnv) ([]Check, *Pending, error) {
 	p := &pending{prev: prev, prevSet: m.set, next: set, taken: taken, deadline: deadline, gen: set.su.gen}
 	p.timer = time.AfterFunc(m.window(), func() { m.expire(p.gen) })
 	m.pend, m.cur, m.set = p, s, set
+	m.Notice = ""
 	m.change(s)
 	m.logf("web: applied mode %s; going back to %s in %s unless confirmed", s.Mode, prev.Mode, m.window())
 	return cs, m.pendingInfo(env.Host), nil
@@ -705,7 +731,7 @@ func (m *Manager) CertFile() string {
 func (m *Manager) Status(host string) Status {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	st := Status{Settings: m.cur, Source: m.Source, Locked: m.Locked, Pending: m.pendingInfo(host), Window: int(m.window() / time.Second)}
+	st := Status{Settings: m.cur, Source: m.Source, Locked: m.Locked, Notice: m.Notice, Pending: m.pendingInfo(host), Window: int(m.window() / time.Second)}
 	for _, set := range []*listenerSet{m.set, m.prevSet()} {
 		if set == nil {
 			continue

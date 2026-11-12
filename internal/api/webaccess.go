@@ -89,6 +89,8 @@ func (s *Server) webStatus(w http.ResponseWriter, r *http.Request) {
 		"tls":            viewOf(r).HTTPS,
 		"snippets":       webaccess.Snippets(st.Settings),
 		"suggestedNames": webaccess.SuggestedNames(),
+		"interfaces":     webaccess.Interfaces(),
+		"lowPorts":       webaccess.CanBindLowPorts(),
 	})
 }
 

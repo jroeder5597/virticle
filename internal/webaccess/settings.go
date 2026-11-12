@@ -77,6 +77,16 @@ func Defaults() Settings {
 	return Settings{Mode: ModeOff, Listen: DefaultListen, HTTPSListen: ":8443", ACME: ACME{Directory: LetsEncrypt}, TrustedProxies: []string{"127.0.0.1", "::1"}}
 }
 
+// FirstRunDefaults is what a controller with no users and no stored settings
+// does: HTTPS with a self-signed certificate on every interface. The names of
+// the certificate are left empty, which means this machine's host name and
+// addresses.
+func FirstRunDefaults() Settings {
+	d := Defaults()
+	d.Mode = ModeSelfSigned
+	return d
+}
+
 // IsTLS reports whether the mode makes the controller terminate TLS itself.
 func (s Settings) IsTLS() bool {
 	return s.Mode == ModeSelfSigned || s.Mode == ModeOwn || s.Mode == ModeACME
