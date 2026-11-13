@@ -147,6 +147,29 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     await expect(summary.locator("dd.mono").first()).toContainText(/\w/);
   });
 
+  // The file-system freeze is automatic: nothing in the dialogs asks for it. With the agent connected a disk-only snapshot and a
+  // live backup must succeed (the freeze is tried; a failing freeze would be retried without it), and the explicit freeze works too.
+  test("with the agent connected, a disk-only snapshot and a live backup succeed without any freeze option", async ({ page, api }) => {
+    test.setTimeout(300_000);
+    const base = `/nodes/${clone.node}/vms/${clone.uuid}`;
+    expect((await api.vmDetail(clone.node, clone.uuid)).agent).toBe("connected");
+    await openVM(page, clone, "snapshots");
+    await page.getByRole("button", { name: "Take snapshot" }).first().click();
+    const dlg = dialog(page, "Take snapshot");
+    await expect(dlg.getByLabel(/freeze|quiesce/i)).toHaveCount(0);
+    await field(dlg, "Name").fill("frozen");
+    await dlg.getByLabel(/Save the running state too/).uncheck();
+    await dlg.getByRole("button", { name: "Take snapshot" }).click();
+    await expect(dlg).toBeHidden({ timeout: 120_000 });
+    await expect(page.getByRole("treeitem", { name: /^frozen(,|$)/ })).toBeVisible({ timeout: 60_000 });
+    // asking for the freeze by name through the API is accepted by the guest as well
+    await api.post(`${base}/snapshots`, { name: "frozen2", memory: false, quiesce: true });
+    const t = await api.post(`${base}/backup`, { pool: "default" });
+    await api.waitFor("backup task", async () => (await api.get("/tasks")).find((x: any) => x.id === t.task && x.status !== "running" && x.status !== "queued")?.status === "ok", 240_000, 3000);
+    for (const b of (await api.get(`/backups?uuid=${clone.uuid}`)) as any[]) await api.del(`/nodes/${b.node}/backups/${encodeURIComponent(b.pool)}/${encodeURIComponent(b.dir)}`);
+    for (const n of ["frozen2", "frozen"]) await api.del(`${base}/snapshots/${n}`);
+  });
+
   test("delete the clone and its disks, then the template", async ({ page, api }) => {
     // stop the clone, delete it with its disks, then the template
     await api.post(`/nodes/${clone.node}/vms/${clone.uuid}/action`, { action: "poweroff" });
