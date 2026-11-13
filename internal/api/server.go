@@ -137,6 +137,7 @@ func (s *Server) Handler() http.Handler {
 	auth("GET /api/vms", s.listVMs)
 	auth("GET /api/pools", s.listAllPools)
 	auth("GET /api/networks", s.listAllNetworks)
+	auth("GET /api/topology", s.topology)
 	auth("POST /api/nodes/{node}/vms", s.createVM)
 	auth("GET /api/nodes/{node}/vms/{uuid}", s.vmDetail)
 	auth("POST /api/nodes/{node}/vms/{uuid}/action", s.vmAction)
