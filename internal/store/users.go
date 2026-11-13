@@ -43,7 +43,7 @@ const (
 
 var (
 	ErrConflict    = errors.New("conflict")
-	ErrLastAdmin   = errors.New("this would leave no enabled administrator")
+	ErrLastAdmin   = errors.New("this would leave no enabled local administrator")
 	ErrBadPassword = errors.New("current password is wrong")
 	dummyHash, _   = bcrypt.GenerateFromPassword([]byte("dummy"), bcrypt.DefaultCost)
 )
@@ -59,6 +59,8 @@ CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY, time INTEGER NOT NULL, username TEXT NOT NULL, token TEXT NOT NULL DEFAULT '',
   ip TEXT NOT NULL, method TEXT NOT NULL, path TEXT NOT NULL, status INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS audit_time ON audit(time);
+CREATE TABLE IF NOT EXISTS recovery_codes (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, hash TEXT NOT NULL, PRIMARY KEY(user_id, hash));
 `
 
 // migrate brings an existing database up to the current schema. It is safe to
@@ -98,7 +100,28 @@ func migrate(db *sql.DB) error {
 			return err
 		}
 	}
+	// Schema 3: sign-in sources and two-step sign-in. Existing users are local
+	// and have it off.
+	for _, c := range []struct{ name, def string }{
+		{"source", "TEXT NOT NULL DEFAULT 'local'"},
+		{"ext_id", "TEXT NOT NULL DEFAULT ''"},
+		{"totp_secret", "TEXT NOT NULL DEFAULT ''"},
+		{"totp_enabled", "INTEGER NOT NULL DEFAULT 0"},
+		{"totp_step", "INTEGER NOT NULL DEFAULT 0"},
+	} {
+		if !cols[c.name] {
+			if _, err := tx.Exec(`ALTER TABLE users ADD COLUMN ` + c.name + ` ` + c.def); err != nil {
+				return err
+			}
+		}
+	}
 	if _, err := tx.Exec(authSchema); err != nil {
+		return err
+	}
+	if err := addColumn(tx, "sessions", "setup_only", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := addColumn(tx, "audit", "detail", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 	if err := migrateNodes(tx); err != nil {
@@ -107,12 +130,39 @@ func migrate(db *sql.DB) error {
 	return tx.Commit()
 }
 
+// Where an account lives.
+const (
+	SourceLocal = "local"
+	SourceOIDC  = "oidc"
+	SourceLDAP  = "ldap"
+)
+
+// ExternalSessionTTL is how long a session of an account from an identity
+// provider or directory lasts: the role is re-read from the provider at each sign-in.
+const ExternalSessionTTL = 12 * time.Hour
+
 type User struct {
 	ID       int64  `json:"id"`
 	Username string `json:"username"`
 	Role     string `json:"role"`
 	Disabled bool   `json:"disabled"`
 	Created  int64  `json:"created"`
+	// Source is where the account lives: local, oidc or ldap. External
+	// accounts have no local password and take their role from the provider.
+	Source string `json:"source"`
+	// TwoStep is set when the user has the built-in two-step sign-in on.
+	TwoStep bool `json:"twoStep"`
+}
+
+// userCols is the column list scanUser reads.
+const userCols = `id, username, role, disabled, created, source, totp_enabled`
+
+type rowScanner interface{ Scan(dest ...any) error }
+
+func scanUser(r rowScanner) (User, error) {
+	var u User
+	err := r.Scan(&u.ID, &u.Username, &u.Role, &u.Disabled, &u.Created, &u.Source, &u.TwoStep)
+	return u, err
 }
 
 // Principal is who a request acts as. Role is the effective role: for an API
@@ -121,6 +171,9 @@ type Principal struct {
 	User  User
 	Role  string
 	Token string // token name, empty for a cookie session
+	// SetupOnly marks a session of a user who must set up two-step sign-in
+	// and has not yet: it may do nothing else.
+	SetupOnly bool
 }
 
 func hashPassword(pw string) (string, error) {
@@ -174,15 +227,15 @@ func (s *Store) CreateFirstUser(username, password string) (User, error) {
 }
 
 func (s *Store) Users() ([]User, error) {
-	rows, err := s.db.Query(`SELECT id, username, role, disabled, created FROM users ORDER BY username`)
+	rows, err := s.db.Query(`SELECT ` + userCols + ` FROM users ORDER BY username`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := []User{}
 	for rows.Next() {
-		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.Disabled, &u.Created); err != nil {
+		u, err := scanUser(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, u)
@@ -191,9 +244,7 @@ func (s *Store) Users() ([]User, error) {
 }
 
 func (s *Store) User(id int64) (User, error) {
-	var u User
-	err := s.db.QueryRow(`SELECT id, username, role, disabled, created FROM users WHERE id=?`, id).
-		Scan(&u.ID, &u.Username, &u.Role, &u.Disabled, &u.Created)
+	u, err := scanUser(s.db.QueryRow(`SELECT `+userCols+` FROM users WHERE id=?`, id))
 	if err != nil {
 		return u, ErrNotFound
 	}
@@ -216,9 +267,9 @@ func (s *Store) UpdateUser(id int64, u UserUpdate) error {
 		return err
 	}
 	defer tx.Rollback()
-	var role string
+	var role, source string
 	var disabled bool
-	if err := tx.QueryRow(`SELECT role, disabled FROM users WHERE id=?`, id).Scan(&role, &disabled); err != nil {
+	if err := tx.QueryRow(`SELECT role, disabled, source FROM users WHERE id=?`, id).Scan(&role, &disabled, &source); err != nil {
 		return ErrNotFound
 	}
 	newRole, newDisabled := role, disabled
@@ -228,7 +279,7 @@ func (s *Store) UpdateUser(id int64, u UserUpdate) error {
 	if u.Disabled != nil {
 		newDisabled = *u.Disabled
 	}
-	wasAdmin := role == RoleAdmin && !disabled
+	wasAdmin := role == RoleAdmin && !disabled && source == SourceLocal
 	if wasAdmin && !(newRole == RoleAdmin && !newDisabled) {
 		if err := requireOtherAdmin(tx, id); err != nil {
 			return err
@@ -256,7 +307,7 @@ func (s *Store) UpdateUser(id int64, u UserUpdate) error {
 
 func requireOtherAdmin(tx *sql.Tx, id int64) error {
 	var n int
-	if err := tx.QueryRow(`SELECT count(*) FROM users WHERE role='admin' AND disabled=0 AND id<>?`, id).Scan(&n); err != nil {
+	if err := tx.QueryRow(`SELECT count(*) FROM users WHERE role='admin' AND disabled=0 AND source='local' AND id<>?`, id).Scan(&n); err != nil {
 		return err
 	}
 	if n == 0 {
@@ -271,12 +322,12 @@ func (s *Store) DeleteUser(id int64) error {
 		return err
 	}
 	defer tx.Rollback()
-	var role string
+	var role, source string
 	var disabled bool
-	if err := tx.QueryRow(`SELECT role, disabled FROM users WHERE id=?`, id).Scan(&role, &disabled); err != nil {
+	if err := tx.QueryRow(`SELECT role, disabled, source FROM users WHERE id=?`, id).Scan(&role, &disabled, &source); err != nil {
 		return ErrNotFound
 	}
-	if role == RoleAdmin && !disabled {
+	if role == RoleAdmin && !disabled && source == SourceLocal {
 		if err := requireOtherAdmin(tx, id); err != nil {
 			return err
 		}
@@ -315,41 +366,64 @@ func (s *Store) ChangePassword(id int64, current, next, keepSession string) erro
 	return tx.Commit()
 }
 
-// Login checks the credentials and returns a new session token.
-func (s *Store) Login(username, password string) (string, User, error) {
-	var u User
+// CheckPassword verifies a local account's password. A missing, disabled,
+// external or wrong account all give ErrNotFound, after comparable work.
+func (s *Store) CheckPassword(username, password string) (User, error) {
 	var hash string
-	err := s.db.QueryRow(`SELECT id, username, role, disabled, created, pwhash FROM users WHERE username=?`, username).
-		Scan(&u.ID, &u.Username, &u.Role, &u.Disabled, &u.Created, &hash)
+	row := s.db.QueryRow(`SELECT `+userCols+`, pwhash FROM users WHERE username=? AND source='local'`, username)
+	var u User
+	err := row.Scan(&u.ID, &u.Username, &u.Role, &u.Disabled, &u.Created, &u.Source, &u.TwoStep, &hash)
 	if err != nil {
 		// Burn comparable time so a missing user is not distinguishable.
 		bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
-		return "", u, ErrNotFound
+		return User{}, ErrNotFound
 	}
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil || u.Disabled {
-		return "", u, ErrNotFound
+		return User{}, ErrNotFound
 	}
+	return u, nil
+}
+
+// NewSession starts a session. A setupOnly session may only be used to set up
+// two-step sign-in (see Principal.SetupOnly).
+func (s *Store) NewSession(userID int64, ttl time.Duration, setupOnly bool) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		return "", u, err
+		return "", err
 	}
 	token := hex.EncodeToString(b)
 	now := time.Now()
 	s.db.Exec(`DELETE FROM sessions WHERE expires<?`, now.Unix())
-	_, err = s.db.Exec(`INSERT INTO sessions(token, user_id, expires) VALUES(?,?,?)`, token, u.ID, now.Add(sessionTTL).Unix())
+	_, err := s.db.Exec(`INSERT INTO sessions(token, user_id, expires, setup_only) VALUES(?,?,?,?)`, token, userID, now.Add(ttl).Unix(), setupOnly)
+	return token, err
+}
+
+// Login checks a local password and returns a new full session.
+func (s *Store) Login(username, password string) (string, User, error) {
+	u, err := s.CheckPassword(username, password)
+	if err != nil {
+		return "", u, err
+	}
+	token, err := s.NewSession(u.ID, sessionTTL, false)
 	return token, u, err
 }
 
 // SessionUser resolves a cookie session. Disabled users have no session.
 func (s *Store) SessionUser(token string) (Principal, error) {
 	var u User
-	err := s.db.QueryRow(`SELECT u.id, u.username, u.role, u.disabled, u.created FROM sessions s JOIN users u ON u.id=s.user_id
+	var setupOnly bool
+	err := s.db.QueryRow(`SELECT u.id, u.username, u.role, u.disabled, u.created, u.source, u.totp_enabled, s.setup_only FROM sessions s JOIN users u ON u.id=s.user_id
 		WHERE s.token=? AND s.expires>? AND u.disabled=0`, token, time.Now().Unix()).
-		Scan(&u.ID, &u.Username, &u.Role, &u.Disabled, &u.Created)
+		Scan(&u.ID, &u.Username, &u.Role, &u.Disabled, &u.Created, &u.Source, &u.TwoStep, &setupOnly)
 	if err != nil {
 		return Principal{}, ErrNotFound
 	}
-	return Principal{User: u, Role: u.Role}, nil
+	return Principal{User: u, Role: u.Role, SetupOnly: setupOnly}, nil
+}
+
+// EndSetupOnly turns a session that could only set up two-step sign-in into a full one.
+func (s *Store) EndSetupOnly(token string) {
+	s.db.Exec(`UPDATE sessions SET setup_only=0 WHERE token=?`, token)
 }
 
 func (s *Store) Logout(token string) {
@@ -454,11 +528,13 @@ type AuditEntry struct {
 	Method string `json:"method"`
 	Path   string `json:"path"`
 	Status int    `json:"status"`
+	// Detail says what a sign-in or settings request did, where the path and status cannot (never a secret).
+	Detail string `json:"detail,omitempty"`
 }
 
 func (s *Store) AddAudit(e AuditEntry) error {
-	res, err := s.db.Exec(`INSERT INTO audit(time, username, token, ip, method, path, status) VALUES(?,?,?,?,?,?,?)`,
-		e.Time, e.User, e.Token, e.IP, e.Method, e.Path, e.Status)
+	res, err := s.db.Exec(`INSERT INTO audit(time, username, token, ip, method, path, status, detail) VALUES(?,?,?,?,?,?,?,?)`,
+		e.Time, e.User, e.Token, e.IP, e.Method, e.Path, e.Status, e.Detail)
 	if err != nil {
 		return err
 	}
@@ -487,7 +563,7 @@ type AuditFilter struct {
 
 // Audit returns entries newest first.
 func (s *Store) Audit(f AuditFilter) ([]AuditEntry, error) {
-	q := `SELECT id, time, username, token, ip, method, path, status FROM audit WHERE 1=1`
+	q := `SELECT id, time, username, token, ip, method, path, status, detail FROM audit WHERE 1=1`
 	var args []any
 	add := func(cond string, v any) { q += " AND " + cond; args = append(args, v) }
 	if f.User != "" {
@@ -524,7 +600,7 @@ func (s *Store) Audit(f AuditFilter) ([]AuditEntry, error) {
 	out := []AuditEntry{}
 	for rows.Next() {
 		var e AuditEntry
-		if err := rows.Scan(&e.ID, &e.Time, &e.User, &e.Token, &e.IP, &e.Method, &e.Path, &e.Status); err != nil {
+		if err := rows.Scan(&e.ID, &e.Time, &e.User, &e.Token, &e.IP, &e.Method, &e.Path, &e.Status, &e.Detail); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
