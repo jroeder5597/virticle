@@ -330,19 +330,71 @@ func lastLine(s string) string {
 
 // aptUpdateFailed is true when apt-get update reported a source it could not read (it exits with 0 for that).
 func aptUpdateFailed(out string) bool {
+	if len(aptErrLines(out)) > 0 {
+		return true
+	}
 	for _, l := range strings.Split(out, "\n") {
-		if strings.HasPrefix(l, "Err:") || strings.HasPrefix(l, "E:") || strings.Contains(l, "Failed to fetch") || strings.Contains(l, "is not signed") {
+		if strings.HasPrefix(l, "E:") || strings.Contains(l, "Failed to fetch") || strings.Contains(l, "is not signed") {
 			return true
 		}
 	}
 	return false
 }
 
-func aptFailure(out string) string {
-	var bad []string
+// aptErrLines are the "Err:N ..." lines of apt-get update that stand. A download that apt first reported as "Err:"
+// while it tried the next compression format of an optional index (a repository without Translation files) and then
+// gave up on with a later "Ign:N" is not a failure: apt-get update goes on and exits with 0.
+func aptErrLines(out string) []string {
+	var errs []string
+	ids := map[string]bool{} // ids of the lines in errs
 	for _, l := range strings.Split(out, "\n") {
-		if strings.HasPrefix(l, "Err:") || strings.HasPrefix(l, "E:") || strings.HasPrefix(l, "W: Failed to fetch") {
-			bad = append(bad, strings.TrimSpace(l))
+		l = strings.TrimSpace(l)
+		switch {
+		case strings.HasPrefix(l, "Err:"):
+			id := aptLineID(l)
+			if !ids[id] || !contains(errs, l) {
+				errs = append(errs, l)
+			}
+			ids[id] = true
+		case strings.HasPrefix(l, "Ign:"):
+			id := aptLineID(l)
+			if ids[id] {
+				kept := errs[:0]
+				for _, e := range errs {
+					if aptLineID(e) != id {
+						kept = append(kept, e)
+					}
+				}
+				errs = kept
+				delete(ids, id)
+			}
+		}
+	}
+	return errs
+}
+
+func contains(l []string, s string) bool {
+	for _, x := range l {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+// aptLineID is the number apt gives a download in "Err:10 http://... " and "Ign:10 http://...".
+func aptLineID(l string) string {
+	_, rest, _ := strings.Cut(l, ":")
+	id, _, _ := strings.Cut(rest, " ")
+	return id
+}
+
+func aptFailure(out string) string {
+	bad := aptErrLines(out)
+	for _, l := range strings.Split(out, "\n") {
+		l = strings.TrimSpace(l)
+		if (strings.HasPrefix(l, "E:") || strings.HasPrefix(l, "W: Failed to fetch")) && !contains(bad, l) {
+			bad = append(bad, l)
 		}
 	}
 	if len(bad) == 0 {
