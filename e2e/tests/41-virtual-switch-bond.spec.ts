@@ -71,6 +71,40 @@ test.describe.serial("virtual switch with several uplinks", () => {
     expect(after.status.pending).toBeFalsy();
   });
 
+  test("Add virtual switch ticks only a card without an address, and the note names the address that moves", async ({ page, api }) => {
+    let found = false;
+    for (const n of await api.nodes()) {
+      if (n.state !== "online") continue;
+      const st = await api.get(`/nodes/${n.id}/hostnet`).catch(() => undefined);
+      if (!st || !st.supported || st.status?.pending) continue;
+      const free = (st.interfaces as any[]).filter((i) => i.type === "physical" && !i.master);
+      if (free.length === 0) continue;
+      found = true;
+      const hasAddr = (i: any) => (i.addresses as string[]).some((a) => !/^fe80:/i.test(a));
+      const bare = free.filter((i) => !hasAddr(i));
+      await page.goto(`/node/${n.id}/topology`);
+      await page.getByRole("button", { name: "Add virtual switch" }).click();
+      const dlg = page.getByRole("dialog", { name: "Add virtual switch" });
+      const boxes = dlg.getByRole("group", { name: "Uplinks" }).getByRole("checkbox");
+      await expect(boxes).toHaveCount(free.length);
+      const ticked: string[] = [];
+      for (let i = 0; i < free.length; i++) if (await boxes.nth(i).isChecked()) ticked.push(((await boxes.nth(i).evaluate((e) => e.parentElement!.textContent)) ?? "").split(" ")[0]);
+      // a card without an address when there is one, else nothing
+      expect(ticked).toEqual(bare.length > 0 ? [bare[0].name] : []);
+      // a card with an address that is not the controller's: the note says which address moves and that it is not the controller's
+      const other = free.find((i) => hasAddr(i) && i.name !== st.managementInterface);
+      if (other) {
+        for (let i = 0; i < free.length; i++) await boxes.nth(i).uncheck();
+        await dlg.getByRole("group", { name: "Uplinks" }).getByRole("checkbox", { name: new RegExp("^" + other.name + " ") }).check();
+        const ip = (other.addresses as string[]).find((a) => !/^fe80:/i.test(a))!.split("/")[0];
+        await expect(dlg.getByText(`The address ${ip} of ${other.name} moves to the virtual switch and stays the same; it is not the address the controller uses.`)).toBeVisible();
+      }
+      await dlg.getByRole("button", { name: "Cancel" }).click();
+      await expect(dlg).toBeHidden();
+    }
+    test.skip(!found, "no node with a free network card");
+  });
+
   test("Edit uplinks, Edit MTU and Add this node's address open with their fields", async ({ page, api }) => {
     const sw = await managedVlanSwitch(api);
     test.skip(!sw, "no managed VLAN-aware virtual switch with an uplink in this lab");

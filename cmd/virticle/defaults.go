@@ -37,17 +37,36 @@ type choice struct {
 
 const upgradeNotice = "This controller still serves plain HTTP on 127.0.0.1:8080, as before the update. Choose a mode below to reach it from other computers."
 
+// legacyListenEnv names the address an upgraded install keeps answering on. The
+// container image sets it to 0.0.0.0:8080, where the 0.2.0 image listened (with
+// a self-signed certificate), so that a published port keeps reaching the
+// controller. Packages and binaries do not set it.
+const legacyListenEnv = "VIRTICLE_UPGRADE_LISTEN"
+
+func legacyListen() string { return strings.TrimSpace(os.Getenv(legacyListenEnv)) }
+
+func legacyNotice(addr string) string {
+	return "This controller still serves HTTPS with a self-signed certificate on " + addr + ", as before the update. Choose a mode below to change that."
+}
+
 // chooseSettings is the one rule for the listener when no flag is given:
 //   - stored settings are kept;
 //   - no stored settings and an administrator exists (an install from before
 //     this default): keep the old loopback HTTP listener and say so;
+//   - the same, when the environment names an address to keep (the container
+//     image, whose 0.2.0 version listened on 0.0.0.0:8080 with a self-signed
+//     certificate): serve that address the same way;
 //   - no stored settings and no users (a new install): HTTPS with a
 //     self-signed certificate on all interfaces, port 8443. It is stored, so a
 //     restart after the administrator is created keeps it.
-func chooseSettings(stored webaccess.Settings, hasStored, hasUsers bool) choice {
+func chooseSettings(stored webaccess.Settings, hasStored, hasUsers bool, legacy string) choice {
 	switch {
 	case hasStored:
 		return choice{settings: stored, source: "stored"}
+	case hasUsers && legacy != "":
+		ws := webaccess.FirstRunDefaults()
+		ws.HTTPSListen = legacy
+		return choice{settings: ws, source: "default", notice: legacyNotice(legacy)}
 	case hasUsers:
 		return choice{settings: webaccess.Defaults(), source: "default", notice: upgradeNotice}
 	}

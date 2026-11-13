@@ -542,14 +542,85 @@ func TestNetworkdMatch(t *testing.T) {
 		{"[Match]\nMACAddress=52:54:00:AA:BB:CC\nName=eth0\n", true, false},
 		{"[Match]\nMACAddress=52:54:00:00:00:01\n", false, false},
 		{"[Network]\nDHCP=yes\n", true, false},
-		{"[Match]\nType=ether\n", false, true},
+		{"[Match]\nType=ether\n", false, false},
+		{"[Match]\nKind=sit\nName=6rd-*\n", false, false},
+		{"[Match]\nKind=veth\nName=host0\nVirtualization=container\n", false, false},
+		{"[Match]\nKind=!veth\n", true, false},
+		{"[Match]\nType=wlan\nWLANInterfaceType=ad-hoc\n", false, false},
+		{"[Match]\nVirtualization=container\nName=eth0\n", false, false},
+		{"[Match]\nVirtualization=vm\nName=eth0\n", true, false},
 		{"[Match]\nDriver=virtio_net\n", false, true},
 	}
 	for _, c := range cases {
-		got, err := matchNetwork(parseINI(c.ini), l)
+		got, err := matchNetwork(parseINI(c.ini), l, func() (string, string) { return "kvm", "" })
 		if got != c.want || (err != nil) != c.err {
 			t.Errorf("%q: %v %v", c.ini, got, err)
 		}
+	}
+}
+
+// A virtual link is matched by its kind, a wireless one needs a key that is not evaluated.
+func TestNetworkdMatchKinds(t *testing.T) {
+	virt := func() (string, string) { return "", "" }
+	veth := netLink{Name: "ve-x", Kind: "veth"}
+	if ok, err := matchNetwork(parseINI("[Match]\nKind=veth\nName=ve-*\n"), veth, virt); !ok || err != nil {
+		t.Errorf("veth: %v %v", ok, err)
+	}
+	wl := netLink{Name: "wlan0", DevType: "wlan"}
+	if _, err := matchNetwork(parseINI("[Match]\nType=wlan\nWLANInterfaceType=ad-hoc\n"), wl, virt); err == nil {
+		t.Error("a wireless link must not be guessed")
+	}
+	if ok, err := matchNetwork(parseINI("[Match]\nType=wlan\n"), wl, virt); !ok || err != nil {
+		t.Errorf("wlan: %v %v", ok, err)
+	}
+	_, err := matchNetwork(parseINI("[Match]\nDriver=e1000\n"), netLink{Name: "eth0"}, virt)
+	if err == nil || !strings.Contains(err.Error(), "Driver") {
+		t.Errorf("Driver: %v", err)
+	}
+	if e := ndCannotTell("eth0", err); !strings.Contains(e.Error(), "05-eth0.network") {
+		t.Errorf("the refusal says what to do: %v", e)
+	}
+}
+
+// The files systemd ships (Debian 13, Ubuntu 24.04) match by Kind, Type or Virtualization. None of them applies to
+// a plain ethernet card, so a card without a configuration of its own finds no file, and no error. The card with
+// a netplan file finds that one.
+func TestFindNetworkFileStockFiles(t *testing.T) {
+	dir := t.TempDir()
+	lib := filepath.Join(dir, "usr/lib/systemd/network")
+	run := filepath.Join(dir, "run/systemd/network")
+	for _, d := range []string{lib, run} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stock := map[string]string{
+		"80-6rd-tunnel.network":          "[Match]\nKind=sit\nName=6rd-*\n[Network]\nDHCPPrefixDelegation=yes\n",
+		"80-container-host0.network":     "[Match]\nKind=veth\nName=host0\nVirtualization=container\n[Network]\nDHCP=yes\n",
+		"80-container-host0-tun.network": "[Match]\nKind=tun\nName=host0\nVirtualization=container\n[Network]\nDHCP=yes\n",
+		"80-container-vz.network":        "[Match]\nKind=bridge\nName=vz-*\n[Network]\nDHCPServer=yes\n",
+		"80-vm-vt.network":               "[Match]\nKind=tun\nName=vt-*\n[Network]\nDHCPServer=yes\n",
+		"80-wifi-adhoc.network":          "[Match]\nType=wlan\nWLANInterfaceType=ad-hoc\n[Network]\nMulticastDNS=yes\n",
+	}
+	for n, b := range stock {
+		if err := os.WriteFile(filepath.Join(lib, n), []byte(b), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	os.WriteFile(filepath.Join(run, "10-netplan-enp2s0.network"), []byte("[Match]\nPermanentMACAddress=52:54:00:97:af:1b\nName=enp2s0\n[Network]\nDHCP=ipv4\n"), 0o644)
+	c := &Ctx{Cfg: &Config{Prefix: dir, Net: &NetHooks{Run: func(argv []string) (string, error) { return "none\n", nil }}}}
+	f, err := c.findNetworkFile(netLink{Name: "enp8s0", MAC: "52:54:00:b3:33:3a"})
+	if f != nil || err != nil {
+		t.Errorf("a card without a configuration: %v %v", f, err)
+	}
+	f, err = c.findNetworkFile(netLink{Name: "enp2s0", MAC: "52:54:00:97:af:1b"})
+	if err != nil || f == nil || !strings.HasSuffix(f.Path, "10-netplan-enp2s0.network") {
+		t.Errorf("a card with a netplan file: %v %v", f, err)
+	}
+	// A virtual link of the right kind and name does match the stock file.
+	f, err = c.findNetworkFile(netLink{Name: "vt-a", Kind: "tun"})
+	if err != nil || f == nil || !strings.HasSuffix(f.Path, "80-vm-vt.network") {
+		t.Errorf("vt-a: %v %v", f, err)
 	}
 }
 

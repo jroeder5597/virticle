@@ -40,7 +40,11 @@ COPY --from=build /out/virticle /usr/bin/virticle
 COPY --from=build --chown=65532:65532 /out/data /data
 USER 65532:65532
 VOLUME /data
-EXPOSE 8443
+EXPOSE 8443 8080
+# A data volume from 0.2.0 (an administrator, no stored web settings) keeps
+# answering on 0.0.0.0:8080 over HTTPS, where the 0.2.0 image did, until a mode
+# is chosen on the Web access page.
+ENV VIRTICLE_UPGRADE_LISTEN=0.0.0.0:8080
 # No -listen: the controller serves HTTPS with a generated self-signed
 # certificate (kept in /data) on port 8443 until the Web access page says
 # otherwise.

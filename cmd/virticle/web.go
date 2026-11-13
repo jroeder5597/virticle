@@ -98,7 +98,7 @@ func startWeb(srv *api.Server, st *store.Store, data string, f flagListen, nodes
 		if err != nil {
 			log.Fatalf("web access settings: %v", err)
 		}
-		c := chooseSettings(stored, ok, users > 0)
+		c := chooseSettings(stored, ok, users > 0, legacyListen())
 		ws, m.Source, m.Notice, persist = c.settings, c.source, c.notice, c.persist
 	}
 	used, warning, err := m.StartOrFallBack(ws)

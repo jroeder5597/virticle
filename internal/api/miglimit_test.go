@@ -126,6 +126,13 @@ func TestBuildTransferRows(t *testing.T) {
 	if tr.Src.Iface != "enp2s0" || tr.Limit.Applies {
 		t.Errorf("fallback: %+v", tr.Src)
 	}
+	// Two cards on one subnet: the route picks the second card's address, but Settings shows the management
+	// address. The row says which one the data leaves from.
+	nicsT := []hostNIC{migNIC("enp1s0", "10.0.0.5", 1000), migNIC("enp2s0", "10.0.0.15", 1000)}
+	tr = buildTransfer(mk("n1", "10.0.0.5", "", nicsT, ""), mk("n2", "10.0.0.6", "", nicsB, ""), "enp2s0", "10.0.0.15")
+	if !strings.Contains(tr.Row, "n1 sends from 10.0.0.15") || !strings.Contains(tr.Row, "not from 10.0.0.5, the migration address in its Settings") {
+		t.Errorf("two cards on one subnet: %q", tr.Row)
+	}
 	// Virtual cards report no speed.
 	nicsV := []hostNIC{migNIC("ens3", "10.0.0.7", 0)}
 	tr = buildTransfer(mk("n1", "10.0.0.7", "", nicsV, ""), mk("n2", "10.0.0.7", "", nicsV, ""), "ens3", "10.0.0.7")

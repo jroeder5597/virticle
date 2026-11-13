@@ -139,7 +139,7 @@ func egressOf(h *hostconn.Host, ip string) (dev, src string) {
 // sideOf makes the link side of a node whose migration data uses iface with address addr.
 func sideOf(nn nodeNet, iface, addr string) linkSide {
 	return linkSide{
-		Name: nn.Name, Iface: iface, Addr: addr,
+		Name: nn.Name, Iface: iface, Addr: addr, Own: nn.MigIP,
 		Shared:    iface != "" && iface == nn.MgmtIface,
 		SpeedMbps: nicSpeed(nn.NICs, iface),
 		Limit:     storedLimit(nn.Node.MigrationLimit),
@@ -184,17 +184,25 @@ func networkRow(src, dst linkSide) string {
 		return s.Iface
 	}
 	a, b := name(src), name(dst)
+	var row string
 	switch {
 	case a == "" && b == "":
-		return "Migration uses the management network on both nodes" + arrow
+		row = "Migration uses the management network on both nodes" + arrow
 	case a == b:
-		return a + " on both nodes" + arrow
+		row = a + " on both nodes" + arrow
 	case a == "":
-		return fmt.Sprintf("Migration uses the management network on %s and %s on %s%s", src.Name, b, dst.Name, arrow)
+		row = fmt.Sprintf("Migration uses the management network on %s and %s on %s%s", src.Name, b, dst.Name, arrow)
 	case b == "":
-		return fmt.Sprintf("Migration uses %s on %s and the management network on %s%s", a, src.Name, dst.Name, arrow)
+		row = fmt.Sprintf("Migration uses %s on %s and the management network on %s%s", a, src.Name, dst.Name, arrow)
+	default:
+		row = fmt.Sprintf("%s on %s, %s on %s%s", a, src.Name, b, dst.Name, arrow)
 	}
-	return fmt.Sprintf("%s on %s, %s on %s%s", a, src.Name, b, dst.Name, arrow)
+	// The data leaves a node from the address its route to the other node picks. With two cards on one
+	// subnet that need not be the address the node's Settings show, so say so.
+	if src.Addr != "" && src.Own != "" && src.Addr != src.Own {
+		row += fmt.Sprintf(". %s sends from %s, the address its route to %s uses, and not from %s, the migration address in its Settings", src.Name, src.Addr, dst.Name, src.Own)
+	}
+	return row
 }
 
 // transferBetween collects the facts for a transfer from src to the node dstNode (whose host is dst).

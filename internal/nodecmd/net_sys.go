@@ -186,9 +186,20 @@ func (a netAddr) global() bool {
 
 type netLink struct {
 	Name, MAC, State, Kind, SlaveKind, Master string
-	MTU                                       int
-	Addrs                                     []netAddr
-	VLANFiltering                             bool
+	// DevType is DEVTYPE from sysfs (wlan, wwan, ...); empty for a plain ethernet card.
+	DevType       string
+	MTU           int
+	Addrs         []netAddr
+	VLANFiltering bool
+}
+
+// deviceType is what networkd matches with Type=: the sysfs device type, which
+// for a virtual device is its kind.
+func (l netLink) deviceType() string {
+	if l.DevType != "" {
+		return l.DevType
+	}
+	return l.Kind
 }
 
 func (l netLink) globalAddrs() []netAddr {
@@ -276,6 +287,11 @@ func (c *Ctx) readSnap() (*netSnap, error) {
 	if err != nil {
 		return nil, Fail("%v", err)
 	}
+	for i := range links {
+		if links[i].Kind == "" {
+			links[i].DevType = c.sysDevType(links[i].Name)
+		}
+	}
 	s := &netSnap{Links: links, PortVLANs: map[string]string{}}
 	for _, fam := range [][]string{{"-j", "route", "show"}, {"-j", "-6", "route", "show"}} {
 		o, err := c.netRun(append([]string{"ip"}, fam...)...)
@@ -295,6 +311,20 @@ func (c *Ctx) readSnap() (*netSnap, error) {
 		s.PortVLANs = parseBridgeVLANs(o)
 	}
 	return s, nil
+}
+
+// sysDevType reads DEVTYPE from the interface's uevent file.
+func (c *Ctx) sysDevType(name string) string {
+	b, err := os.ReadFile(filepath.Join(c.Cfg.sys(), "class/net", name, "uevent"))
+	if err != nil {
+		return ""
+	}
+	for _, ln := range strings.Split(string(b), "\n") {
+		if v, ok := strings.CutPrefix(ln, "DEVTYPE="); ok {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }
 
 // parseBridgeVLANs reads `bridge -j vlan show`.

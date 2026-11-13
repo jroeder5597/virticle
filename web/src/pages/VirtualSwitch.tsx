@@ -260,7 +260,8 @@ function UplinkPicker(props: { cards: HostNic[]; chosen: Set<string>; onChoose: 
 export function SwitchDialog(props: { node: number; st: HostnetState; mode: SwitchMode; bridge?: HostBridge; uplink?: string; vlanId?: number; onClose: () => void; onChanged: () => void }) {
   const { node, st, mode, bridge } = props;
   const free = freeCards(st);
-  const firstFree = free.find((c) => c.name !== st.managementInterface);
+  // Ticked at the start: a free card without an address; when every card has one, none.
+  const firstFree = free.find((c) => c.name !== st.managementInterface && shownAddrs(c.addresses).length === 0);
   const [name, setName] = useState(st.nextBridgeName || "vsw0");
   const [chosen, setChosen] = useState<Set<string>>(() => new Set(mode === "uplinks" ? bridge?.uplinks ?? (bridge?.uplink ? [bridge.uplink] : []) : props.uplink ? [props.uplink] : firstFree ? [firstFree.name] : []));
   const [bondMode, setBondMode] = useState<string>(bridge?.bondMode || "failover");
@@ -410,7 +411,9 @@ export function SwitchDialog(props: { node: number; st: HostnetState; mode: Swit
               )}
               {mover && (
                 <StatusLine status="info">
-                  This node's address {shownAddrs(mover.addresses).map(addrIP).join(", ")} moves to the virtual switch. The node stays reachable at the same address.
+                  {mover.name === st.managementInterface
+                    ? `This node's address ${shownAddrs(mover.addresses).map(addrIP).join(", ")} moves to the virtual switch. The node stays reachable at the same address.`
+                    : `The address ${shownAddrs(mover.addresses).map(addrIP).join(", ")} of ${mover.name} moves to the virtual switch and stays the same; it is not the address the controller uses.`}
                 </StatusLine>
               )}
               {mgmt && (

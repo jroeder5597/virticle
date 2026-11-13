@@ -75,7 +75,7 @@ last, under [Planned](#planned).
 - [x] HTTPS for the web UI: the **Web access** page (self-signed by default, own certificate, ACME, reverse proxy; interface and port; automatic undo when a change is not confirmed). A fresh install serves HTTPS on port 8443; an existing install keeps its listener. ACME issuance is not tested against the real service
 - [x] Packages and firewall: `.deb` and `.rpm` with a systemd service, `sudo virticle setup` opens the web port in firewalld or ufw, prepare opens the migration ports; a signed apt and dnf repository (fingerprint to be published)
 - [x] Node setup in two clicks: guest disk tools always installed, account `virticle-node`, take-over of a node from another controller, "Set up this machine as a node" when the controller's machine can run VMs
-- [x] Backup and restore of the controller itself (`virticle backup`, `virticle restore`, Settings > Backup, optional daily copy, encryption with a passphrase)
+- [x] Backup and restore of the controller itself (`virticle backup`, `virticle restore`, Settings > Controller backup, optional daily copy, encryption with a passphrase)
 - [x] Bulk actions and tags (tags stored in libvirt `<metadata>`; bulk actions fan out from the browser)
 - [x] Released under the Apache License 2.0 (`LICENSE`, `NOTICE` with third-party licences); release packages are not signed yet
 - [x] Users and roles (admin, operator, viewer), API tokens, audit log, login rate limiting

@@ -24,7 +24,7 @@ How to do the everyday things in the web UI. To install, see
 
 - **Top bar**: the main pages (**Virtual machines**, **Storage**, **Networks**, **Backups**, **Nodes**, **Tasks**), the
   **Settings** menu (administrators), alerts, theme, your account. **Backups** lists the backups of VMs;
-  **Settings > Backup** is the backup of the controller itself.
+  **Settings > Controller backup** is the backup of the controller itself.
 - **Tree** (left): nodes with their VMs, storage and networks. Type in
   **Filter** to narrow it. Right-click an entry for its actions. Drag the edge
   to resize.
@@ -195,7 +195,7 @@ When no snapshot can be taken, the dialog says why and what to delete first.
 4. **Save schedule** sets interval or daily runs and how many to keep.
 
 The **Backups** page lists every backup of every VM on every node. (The backup of the controller itself is under
-**Settings > Backup**: see [controller-backup.md](controller-backup.md).) A backup can be
+**Settings > Controller backup**: see [controller-backup.md](controller-backup.md).) A backup can be
 downloaded as one file and imported on another installation. The format is in
 [reference.md](reference.md#backup-format).
 
@@ -231,7 +231,9 @@ Good to know:
 
 - The streams are encrypted when both nodes are set up. The controller sets
   this up by itself on every prepared node; see **Settings > Encrypted
-  migration** on the node.
+  migration** on the node. If another controller installed the certificates, it
+  says **Set up by another controller**; **Fix** replaces them after you
+  confirm. Virticle never replaces them by itself.
 - A Debian node and a RHEL-family node cannot exchange VMs.
 
 ### Migration network
@@ -257,7 +259,10 @@ A problem with another node is a warning; the setting is saved anyway. The
 data of live migrations, copied files (offline migration, snapshots) and
 backups restored on another node all use this network, so the firewall must
 allow the migration ports and SSH there. The pre-flight row **Migration
-network** names the cards in use.
+network** names the cards in use and the address each node sends from. A node
+sends from the address its route to the other node picks. With two cards on
+one subnet that can differ from the address under **Settings**; the row then
+says so.
 
 When the data travels over the same card as management, the transfer is
 limited so that it cannot fill the link:
@@ -360,9 +365,9 @@ each node has its own button). Nothing else is needed on the node: Virticle writ
 1. Open the node's **Topology** tab and select **Add virtual switch**. On a card under **Unused network cards**, select
    **Use for a new virtual switch** instead.
 2. Enter a name (the dialog offers `vsw0`, `vsw1` and so on) and tick the **Uplinks**: none for an internal switch,
-   one card, or two or more for a bond. The dialog ticks the first free card that is not the card of the node's
-   management address; untick it if you do not want it. A card with an address of its own loses it while it is in the
-   switch (the review says so). With two or more cards the **Mode** select appears.
+   one card, or two or more for a bond. The dialog ticks the first free card that has no address; when every
+   free card has one, nothing is ticked. A card with an address of its own loses it while it is in the switch (the
+   review says so, and says when it is not the address the controller uses). With two or more cards the **Mode** select appears.
    Keep **VLANs** selected if you want VLAN tags. **Advanced** has the allowed VLAN ids (empty allows all), the MTU
    and the time the node waits for the controller to confirm (90 seconds).
 3. Select **Review**. The dialog lists in plain words what will happen on the node; **Details** has the files and
@@ -513,7 +518,7 @@ The **Settings** menu in the top bar is for administrators. **Account** (your na
 | **Settings > Sign-in** | Admin | Require two-step sign-in, sign in through an identity provider (OIDC) or a directory (LDAP). See [sign-in.md](sign-in.md). |
 | **Settings > Web access** | Admin | Interface, port, HTTPS and reverse proxy. See [web-tls.md](web-tls.md). |
 | **Settings > Alerts** | Admin | Where alerts are sent. See [Notifications](#notifications). |
-| **Settings > Backup** | Admin | Download a backup of the controller, or keep a daily one. See [controller-backup.md](controller-backup.md). |
+| **Settings > Controller backup** | Admin | Download a backup of the controller, or keep a daily one. See [controller-backup.md](controller-backup.md). |
 | **Settings > Audit** | Admin | Lists every state-changing request, who made it and from where. |
 | **Account** | Everyone | Change your password, turn two-step sign-in on or off, create API tokens. |
 

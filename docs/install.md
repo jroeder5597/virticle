@@ -100,7 +100,7 @@ The package installs:
 | Program | `/usr/bin/virticle` |
 | Service | `/usr/lib/systemd/system/virticle.service` |
 | Configuration | `/etc/virticle/virticle.env` (upgrades keep your edits) |
-| Manual and documentation | `/usr/share/man/man1/virticle.1.gz`, `/usr/share/doc/virticle/` |
+| Manual and documentation | `/usr/share/man/man1/virticle.1.gz`, `/usr/share/doc/virticle/` (the README and the `docs/` folder with the pictures, laid out as in the repository so that the links work) |
 | System user and group | `virticle` |
 
 A new install serves HTTPS with a self-signed certificate on port 8443 of all
@@ -178,7 +178,8 @@ or `docker compose up -d --build` with the `compose.yaml` of this repository.
 
 - The image is based on `gcr.io/distroless/static` and runs as the non-root
   user 65532.
-- All state is in the volume `/data`. Port 8443 is exposed.
+- All state is in the volume `/data`. Port 8443 is exposed (8080 too, for
+  volumes from 0.2.0, see [From 0.2.0 to 0.3.0](#from-020-to-030)).
 - The controller serves HTTPS with a self-signed certificate that it makes in
   `/data`. Open `https://127.0.0.1:8443`. The image passes no `-listen`, so
   the **Web access** page manages the listener (see [web-tls.md](web-tls.md)).
@@ -299,16 +300,19 @@ What you get without doing anything else: performance history (starts to fill
 at once), alerts for network links, the network drift warning, notifications
 (an alert webhook address from 0.2.0 becomes the destination **Webhook** under
 **Settings > Alerts**), and the daily controller backup (off until you switch
-it on under **Settings > Backup**). Existing VMs keep their firmware. A VM
+it on under **Settings > Controller backup**). Existing VMs keep their firmware. A VM
 keeps the kind of snapshot it already has (see
 [Known limits](reference.md#known-limits)).
 
-**Container.** A data volume from 0.2.0 has an administrator and no stored
-web settings, so the new image, which passes no `-listen`, would listen on
-`127.0.0.1:8080` inside the container, where the published port 8443 cannot
-reach it. Until you set a mode, start the container the old way: publish port
-8080 and add `-listen 0.0.0.0:8080 -data /data` to the command, then choose a
-mode on the **Web access** page. This was not tried on a real container.
+**Container.** The new image keeps a data volume from 0.2.0 (an
+administrator, no stored web settings) answering where 0.2.0 did: HTTPS with a
+self-signed certificate on port 8080 inside the container. Recreate the
+container from the new image with the same `-p 127.0.0.1:8080:8080 -v ...:/data`
+as before and nothing else changes. The **Web access** page says so. When you
+choose a mode there, the controller moves to the port you set (8443 by default),
+so publish that port too. A new volume starts on port 8443 as described under
+[Container](#container). Tried with both images built from the tags `v0.2.0`
+and this version.
 
 ### From 0.1.0
 

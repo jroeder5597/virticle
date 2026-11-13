@@ -74,6 +74,7 @@ type linkSide struct {
 	Iface     string // the interface the migration data of this node uses ("" unknown)
 	Addr      string // its address on that interface, for the sentences
 	Shared    bool   // that interface also carries the node's management address
+	Own       string // the node's migration address as its Settings show it (the management address when none is chosen)
 	SpeedMbps int    // link speed of the interface, 0 when unknown
 	Limit     limitSetting
 }

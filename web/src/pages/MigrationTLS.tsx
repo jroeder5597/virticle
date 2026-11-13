@@ -63,6 +63,8 @@ export default function MigrationTLS({ node, online, admin }: { node: number; on
     });
   // The node's address changed and the certificate does not cover it: the files are ours and unmodified, so issuing again is safe.
   const addressOnly = st.state === "mismatch" && (st.problems ?? []).length > 0 && (st.problems ?? []).every((p) => p.includes("does not cover"));
+  // The certificates came from another controller's CA (the node was prepared by another controller): say so, and Fix replaces them after a confirmation.
+  const otherCA = st.state === "mismatch" && (st.problems ?? []).some((p) => p.startsWith("set up by a different controller or CA"));
   const wrong = st.state !== "ok";
   const status: CheckStatus = st.state === "ok" ? "ok" : st.state === "not set up" ? (st.off ? "info" : "warning") : st.state === "expiring" ? "warning" : "error";
   const word =
@@ -76,7 +78,9 @@ export default function MigrationTLS({ node, online, admin }: { node: number; on
             : "Not set up"
           : st.state === "expired"
             ? "Expired"
-            : "Needs repair";
+            : otherCA
+              ? "Set up by another controller"
+              : "Needs repair";
   const doFix = async () => {
     if (st.state === "mismatch" && !addressOnly) {
       const ok = await confirm.ask({

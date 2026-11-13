@@ -76,10 +76,58 @@ func secByName(secs []iniSec, name string) *iniSec {
 	return nil
 }
 
+// matchList matches value against a networkd list of shell patterns: a pattern
+// with "!" in front excludes, and when there are patterns without it, one of
+// them must match.
+func matchList(v, value string) bool {
+	pos, neg, any := false, false, false
+	for _, p := range strings.Fields(v) {
+		excl := strings.HasPrefix(p, "!")
+		p = strings.TrimPrefix(p, "!")
+		ok, _ := path.Match(p, value)
+		if excl {
+			neg = neg || ok
+			continue
+		}
+		any = true
+		pos = pos || ok
+	}
+	return !neg && (!any || pos)
+}
+
+// hostVirt is what the node runs in, for the match key Virtualization: the
+// virtual machine type and the container type, each empty when there is none.
+type hostVirt func() (vm, container string)
+
+// virtMatches follows systemd's ConditionVirtualization: "yes" is any, "no" is
+// none, "vm" and "container" are the two classes, anything else a type name;
+// "!" in front negates the whole value.
+func virtMatches(v string, vm, container string) bool {
+	neg := strings.HasPrefix(v, "!")
+	v = strings.TrimPrefix(v, "!")
+	var ok bool
+	switch v {
+	case "yes", "true", "1":
+		ok = vm != "" || container != ""
+	case "no", "false", "0":
+		ok = vm == "" && container == ""
+	case "vm":
+		ok = vm != ""
+	case "container":
+		ok = container != ""
+	default:
+		ok = v == vm || v == container
+	}
+	return ok != neg
+}
+
 // matchNetwork evaluates the [Match] section of a .network file for a link.
-// A key that this code does not evaluate is an error: guessing could move the
-// wrong configuration.
-func matchNetwork(secs []iniSec, l netLink) (bool, error) {
+// It evaluates Name, OriginalName, MACAddress, PermanentMACAddress, Kind, Type,
+// WLANInterfaceType and Virtualization, which together cover the files
+// systemd ships in /usr/lib/systemd/network. A key that this code does not
+// evaluate is an error: guessing could move the wrong configuration. virt may
+// be nil.
+func matchNetwork(secs []iniSec, l netLink, virt hostVirt) (bool, error) {
 	m := secByName(secs, "Match")
 	if m == nil {
 		return true, nil
@@ -92,20 +140,7 @@ func matchNetwork(secs []iniSec, l netLink) (bool, error) {
 		}
 		switch k {
 		case "Name", "OriginalName":
-			pos, neg, any := false, false, false
-			for _, p := range strings.Fields(v) {
-				if strings.HasPrefix(p, "!") {
-					if ok, _ := path.Match(p[1:], l.Name); ok {
-						neg = true
-					}
-					continue
-				}
-				any = true
-				if ok, _ := path.Match(p, l.Name); ok {
-					pos = true
-				}
-			}
-			if neg || (any && !pos) {
+			if !matchList(v, l.Name) {
 				return false, nil
 			}
 		case "MACAddress", "PermanentMACAddress":
@@ -116,11 +151,48 @@ func matchNetwork(secs []iniSec, l netLink) (bool, error) {
 			if !ok {
 				return false, nil
 			}
+		case "Kind":
+			// The kernel's link kind (veth, bridge, sit, ...). A physical card has none.
+			if !matchList(v, l.Kind) {
+				return false, nil
+			}
+		case "Type":
+			// The device type from sysfs (wlan, bridge, bond, ...). A physical ethernet card has none.
+			if !matchList(v, l.deviceType()) {
+				return false, nil
+			}
+		case "WLANInterfaceType":
+			if l.deviceType() != "wlan" {
+				return false, nil
+			}
+			return false, fmt.Errorf("it uses the match key %s, and %s is wireless", k, l.Name)
+		case "Virtualization":
+			if virt == nil {
+				return false, fmt.Errorf("it uses the match key %s, which cannot be evaluated here", k)
+			}
+			vm, ctr := virt()
+			if !virtMatches(v, vm, ctr) {
+				return false, nil
+			}
 		default:
 			return false, fmt.Errorf("it uses the match key %s, which cannot be evaluated here", k)
 		}
 	}
 	return true, nil
+}
+
+// detectVirt asks systemd-detect-virt what this node runs in. A failure to ask
+// counts as "none".
+func (c *Ctx) detectVirt() (vm, container string) {
+	ask := func(flag string) string {
+		out, _ := c.netRun("systemd-detect-virt", flag)
+		out = strings.TrimSpace(out)
+		if out == "none" {
+			return ""
+		}
+		return out
+	}
+	return ask("--vm"), ask("--container")
 }
 
 type ndFile struct {
@@ -153,7 +225,7 @@ func (c *Ctx) findNetworkFile(l netLink) (*ndFile, error) {
 		if err != nil {
 			continue
 		}
-		ok, err := matchNetwork(parseINI(string(b)), l)
+		ok, err := matchNetwork(parseINI(string(b)), l, c.detectVirt)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %v", files[n], err)
 		}

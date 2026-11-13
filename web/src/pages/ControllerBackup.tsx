@@ -22,7 +22,7 @@ interface Status {
 const when = (unix: number) => new Date(unix * 1000).toLocaleString();
 const VIA = { cli: "command line", download: "download", daily: "daily backup" };
 
-/** Settings > Backup: the controller's own backup. Restore is only on the command line. */
+/** Settings > Controller backup: the controller's own backup. Restore is only on the command line. */
 export default function ControllerBackup() {
   const [st, setSt] = useState<Status | undefined>();
   const [password, setPassword] = useState("");
@@ -92,7 +92,7 @@ export default function ControllerBackup() {
   return (
     <>
       <div className="head">
-        <h1>Backup</h1>
+        <h1>Controller backup</h1>
       </div>
       <div className="cards">
         <form className="card" onSubmit={download} aria-label="Download backup" autoComplete="off">

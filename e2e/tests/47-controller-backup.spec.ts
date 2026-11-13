@@ -1,4 +1,4 @@
-// Settings > Backup: the controller's own backup. Safe on any lab: it only downloads an archive and looks inside it; nothing is
+// Settings > Controller backup: the controller's own backup. Safe on any lab: it only downloads an archive and looks inside it; nothing is
 // restored (restore is a command on the controller's machine) and the daily copy setting is not touched.
 import { execFileSync } from "child_process";
 import { mkdtempSync, readFileSync } from "fs";
@@ -24,12 +24,12 @@ async function download(page: Page, password: string, passphrase = "", again = p
 }
 
 test.describe("controller backup", () => {
-  test("the Backup page is in the Settings menu and says what a backup holds", async ({ page }) => {
+  test("the Controller backup page is in the Settings menu and says what a backup holds", async ({ page }) => {
     await page.goto("/");
     await page.locator(".topbar").getByRole("button", { name: "Settings" }).click();
-    await page.getByRole("menuitem", { name: "Backup", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Controller backup", exact: true }).click();
     await expect(page).toHaveURL(/\/controller-backup$/);
-    await expect(page.getByRole("heading", { name: "Backup", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Controller backup", exact: true })).toBeVisible();
     await expect(page.getByText("The file contains private keys.")).toBeVisible();
     await expect(page.getByText("It does not hold VMs, storage or networks")).toBeVisible();
     await expect(page.getByText("Restore is done on the command line")).toBeVisible();

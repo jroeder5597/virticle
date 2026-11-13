@@ -328,11 +328,16 @@ func (networkdStack) plan(c *Ctx, in *planInput) (*netPlanned, error) {
 	return ndSetVLANs(in), nil
 }
 
+// ndCannotTell is the refusal when a networkd file uses a match key that is not evaluated.
+func ndCannotTell(card string, err error) error {
+	return Fail("cannot tell which networkd configuration applies to %s: %v. Give %s a file of its own that sorts before it, for example /etc/systemd/network/05-%s.network with [Match] Name=%s and the settings you want, then review again", card, err, card, card, card)
+}
+
 // ndCheckOrder: networkd uses the first .network file that matches a card, by file name; ours must come first.
 func ndCheckOrder(c *Ctx, s *bridgeSpec, l *netLink, has bool) (*ndFile, error) {
 	f, err := c.findNetworkFile(*l)
 	if err != nil && has {
-		return nil, Fail("cannot tell which networkd configuration applies to %s: %v", l.Name, err)
+		return nil, ndCannotTell(l.Name, err)
 	}
 	if f == nil && has {
 		return nil, Fail("%s has addresses, but no networkd file configures them (set by hand with ip?); they cannot be moved safely", l.Name)
@@ -356,7 +361,7 @@ func ndCreate(c *Ctx, in *planInput) (*netPlanned, error) {
 		has := len(up.globalAddrs()) > 0
 		f, err := c.findNetworkFile(*up)
 		if err != nil && (s.MoveAddresses || has) {
-			return nil, Fail("cannot tell which networkd configuration applies to %s: %v", up.Name, err)
+			return nil, ndCannotTell(up.Name, err)
 		}
 		if f == nil && has {
 			return nil, Fail("%s has addresses, but no networkd file configures them (set by hand with ip?); they cannot be moved safely", up.Name)

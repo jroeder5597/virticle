@@ -1,6 +1,6 @@
 package api
 
-// Backup of the controller itself (see internal/ctlbackup): the Backup page's
+// Backup of the controller itself (see internal/ctlbackup): the Controller backup page's
 // status and the download, and the optional daily copy on this server.
 //
 // The download hands out the controller's private keys, so it needs a web

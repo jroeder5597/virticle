@@ -39,7 +39,7 @@ const SETTINGS = [
   { label: "Sign-in", to: "/sign-in" },
   { label: "Web access", to: "/web-access" },
   { label: "Alerts", to: "/alerts-settings" },
-  { label: "Backup", to: "/controller-backup" },
+  { label: "Controller backup", to: "/controller-backup" },
   { label: "Audit", to: "/audit" },
 ];
 

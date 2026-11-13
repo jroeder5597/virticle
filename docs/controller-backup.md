@@ -50,10 +50,10 @@ passphrase on its first line. The result is an [age](https://age-encryption.org)
 file named `...tar.gz.age`; the passphrase cannot be recovered, so write it down
 somewhere other than the backup.
 
-In the web UI: **Settings > Backup > Download backup**. It asks for your
+In the web UI: **Settings > Controller backup > Download backup**. It asks for your
 password again, and for a passphrase if you want the file encrypted.
 
-![Backup page](img/controller-backup.png)
+![Controller backup page](img/controller-backup.png)
 
 For a copy that survives losing the machine, run the command from cron and copy
 the file elsewhere, for example:
@@ -64,7 +64,7 @@ Remove old files yourself; this command keeps all of them.
 
 ### A daily copy on the same server
 
-**Settings > Backup > Keep a daily backup on this server** (off by default)
+**Settings > Controller backup > Keep a daily backup on this server** (off by default)
 writes a backup to `<data directory>/backups/` at 03:30 server time (plus up to
 20 minutes) and keeps the newest 7. These files are not encrypted, because a
 passphrase kept next to the data would protect nothing; only the controller's
@@ -159,7 +159,7 @@ To adopt the nodes with a fresh controller:
    admin@host`. VMs are not touched.
 6. Wait for the node to come online. The new controller trusts the node's host
    key on first use.
-7. Take **Settings > Backup** into use now, so this does not happen twice.
+7. Take **Settings > Controller backup** into use now, so this does not happen twice.
 
 Things to expect:
 

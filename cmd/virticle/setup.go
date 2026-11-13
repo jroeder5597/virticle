@@ -264,7 +264,7 @@ func localSh(script string) (string, error) {
 func storedWebSettings(data string) func() (webaccess.Settings, string, bool, error) {
 	return func() (webaccess.Settings, string, bool, error) {
 		if !store.HasDatabase(data) {
-			c := chooseSettings(webaccess.Settings{}, false, false)
+			c := chooseSettings(webaccess.Settings{}, false, false, legacyListen())
 			return c.settings, c.source, false, nil
 		}
 		dbPath, err := store.DBPath(data, log.Printf)
@@ -287,7 +287,7 @@ func storedWebSettings(data string) func() (webaccess.Settings, string, bool, er
 		if err != nil {
 			return webaccess.Settings{}, "", false, fmt.Errorf("database: %v", err)
 		}
-		c := chooseSettings(stored, ok, users > 0)
+		c := chooseSettings(stored, ok, users > 0, legacyListen())
 		return c.settings, c.source, users > 0, nil
 	}
 }

@@ -34,15 +34,23 @@ func TestPickDataDir(t *testing.T) {
 // HTTPS with a self-signed certificate on all interfaces.
 func TestChooseSettings(t *testing.T) {
 	stored := webaccess.Settings{Mode: "own", HTTPSListen: "10.0.0.5:443"}
-	c := chooseSettings(stored, true, true)
+	c := chooseSettings(stored, true, true, "0.0.0.0:8080")
 	if c.settings.Mode != "own" || c.source != "stored" || c.notice != "" || c.persist {
 		t.Errorf("stored: %+v", c)
 	}
-	c = chooseSettings(webaccess.Settings{}, false, true)
+	c = chooseSettings(webaccess.Settings{}, false, true, "")
 	if c.settings.Mode != webaccess.ModeOff || c.settings.Listen != "127.0.0.1:8080" || c.notice == "" || c.persist {
 		t.Errorf("upgrade without stored settings: %+v", c)
 	}
-	c = chooseSettings(webaccess.Settings{}, false, false)
+	c = chooseSettings(webaccess.Settings{}, false, true, "0.0.0.0:8080")
+	if c.settings.Mode != webaccess.ModeSelfSigned || c.settings.HTTPSListen != "0.0.0.0:8080" || c.notice == "" || c.persist || c.source != "default" {
+		t.Errorf("container upgrade: %+v", c)
+	}
+	c = chooseSettings(webaccess.Settings{}, false, false, "0.0.0.0:8080")
+	if c.settings.HTTPSListen != ":8443" || !c.persist {
+		t.Errorf("fresh container install ignores the upgrade address: %+v", c)
+	}
+	c = chooseSettings(webaccess.Settings{}, false, false, "")
 	if c.settings.Mode != webaccess.ModeSelfSigned || c.settings.HTTPSListen != ":8443" || c.notice != "" || !c.persist {
 		t.Errorf("fresh install: %+v", c)
 	}

@@ -35,7 +35,11 @@ archives:
       - README.md
       - LICENSE
       - NOTICE
+      - ROADMAP.md
+      - CONTRIBUTING.md
+      - SECURITY.md
       - docs/*.md
+      - docs/img/*.png
       - src: packaging/virticle.service
         dst: packaging/virticle.service
       - src: packaging/virticle.env
@@ -80,8 +84,17 @@ nfpms:
         dst: /usr/share/doc/virticle/LICENSE
       - src: NOTICE
         dst: /usr/share/doc/virticle/NOTICE
-      - src: docs/install.md
-        dst: /usr/share/doc/virticle/install.md
+      # The same layout as the repository, so that the links between the files work.
+      - src: ROADMAP.md
+        dst: /usr/share/doc/virticle/ROADMAP.md
+      - src: CONTRIBUTING.md
+        dst: /usr/share/doc/virticle/CONTRIBUTING.md
+      - src: SECURITY.md
+        dst: /usr/share/doc/virticle/SECURITY.md
+      - src: docs/*.md
+        dst: /usr/share/doc/virticle/docs/
+      - src: docs/img/*.png
+        dst: /usr/share/doc/virticle/docs/img/
     overrides:
       deb:
         scripts:

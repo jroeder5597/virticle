@@ -107,7 +107,7 @@ Details are in [docs/install-node.md](docs/install-node.md).
 | Move a VM | **Actions > Migrate**. The pre-flight list says what blocks the move. |
 | See how a VM was doing | The **Performance** tab of the VM or node. |
 | Change the web address, certificate or port | **Settings > Web access** (administrator). A change you do not confirm is undone after 60 seconds. |
-| Back up the controller | **Settings > Backup**, or `sudo virticle backup`. |
+| Back up the controller | **Settings > Controller backup**, or `sudo virticle backup`. |
 
 ![Migration pre-flight](docs/img/migrate.png)
 
