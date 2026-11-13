@@ -102,6 +102,41 @@ func (t systemdTimer) self() string {
 	return NodePath
 }
 
+// bootUnit is the persistent unit that keeps a node from staying on an unconfirmed network change for
+// good: a transient rollback timer does not survive a reboot, this unit does. It does nothing unless a
+// change is pending (ConditionPathExists), and then runs net-boot, which arms the timer again.
+const bootUnitName = "virticle-net-boot.service"
+
+func (c *Ctx) bootUnitText() string {
+	self := NodePath
+	if c.Cfg.Self != "" {
+		self = c.Cfg.Self
+	}
+	return "# Written by virticle (net-apply). Removed together with the node command.\n" +
+		"[Unit]\nDescription=virticle: roll back a host network change that was not confirmed before the node restarted\n" +
+		"ConditionPathExists=" + filepath.Join(c.netDir(), "pending") + "\nAfter=local-fs.target\n\n" +
+		"[Service]\nType=oneshot\nExecStart=" + self + " net-boot\n\n" +
+		"[Install]\nWantedBy=multi-user.target\n"
+}
+
+// ensureBootUnit installs and enables the unit (a no-op when it is in place).
+func (c *Ctx) ensureBootUnit() error {
+	path := c.hostPath("/etc/systemd/system/" + bootUnitName)
+	want := c.bootUnitText()
+	if b, err := os.ReadFile(path); err == nil && string(b) == want {
+		if _, err := c.netRun("systemctl", "is-enabled", bootUnitName); err == nil {
+			return nil
+		}
+	} else if err := c.atomicWrite(path, []byte(want), 0o644); err != nil {
+		return err
+	}
+	if _, err := c.netRun("systemctl", "daemon-reload"); err != nil {
+		return err
+	}
+	_, err := c.netRun("systemctl", "enable", bootUnitName)
+	return err
+}
+
 func rollbackUnit(id string) string { return "virticle-net-rollback-" + id }
 func applyUnit(id string) string    { return "virticle-net-apply-" + id }
 

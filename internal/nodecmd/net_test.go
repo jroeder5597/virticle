@@ -1,6 +1,7 @@
 package nodecmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -590,3 +591,74 @@ func TestHostPathIsNeverRelative(t *testing.T) {
 		t.Errorf("poolRunDir = %q", got)
 	}
 }
+
+func TestNetBootRearmsAnUnconfirmedChange(t *testing.T) {
+	n := newNetNode(t, dhcpNetwork, true)
+	f := n.f
+	n.ok("", "net-boot") // nothing pending: nothing happens
+	if f.index("arm ") >= 0 {
+		t.Fatal("net-boot armed a timer without a pending change")
+	}
+	req := createReq()
+	req.TimeoutSeconds = 120
+	id := n.apply(req)
+	// net-apply installs the persistent unit and enables it, before it arms the timer.
+	unit := readFile(n.abs("etc/systemd/system/virticle-net-boot.service"))
+	for _, want := range []string{"ConditionPathExists=" + n.abs("var/lib/virticle-node/net/pending"), "ExecStart=/usr/local/libexec/virticle-node net-boot", "WantedBy=multi-user.target"} {
+		has(t, "boot unit", unit, want)
+	}
+	if e, a := f.index("run systemctl enable virticle-net-boot.service"), f.index("arm "+id); e < 0 || a < 0 || e > a {
+		t.Errorf("enable at %d, arm at %d", e, a)
+	}
+	n.ok("", "net-run", id)
+
+	// The node restarts: the transient timer is gone.
+	delete(f.armed, id)
+	f.now = f.now.Add(10 * 1e9)
+	n.ok("", "net-boot")
+	if f.armed[id] != 120 {
+		t.Fatalf("armed again for %d s, want 120", f.armed[id])
+	}
+	if st := n.status(); st.Pending == nil || st.Pending.SecondsLeft != 120 {
+		t.Errorf("status after boot: %+v", st.Pending)
+	}
+	// a timer that is armed already is left alone
+	f.active["virticle-net-rollback-"+id+".timer"] = true
+	delete(f.armed, id)
+	n.ok("", "net-boot")
+	if _, again := f.armed[id]; again {
+		t.Error("armed a second timer")
+	}
+	// the timer fires: the change is rolled back
+	delete(f.active, "virticle-net-rollback-"+id+".timer")
+	n.ok("", "net-rollback", id, "timer")
+	if n.state(id) != nodeproto.NetRolledBack {
+		t.Errorf("state %s", n.state(id))
+	}
+	// nothing pending any more
+	delete(f.armed, id)
+	n.ok("", "net-boot")
+	if _, again := f.armed[id]; again {
+		t.Error("armed a timer for a finished change")
+	}
+}
+
+func TestNetBootRollsBackAtOnceWhenItCannotArm(t *testing.T) {
+	n := newNetNode(t, dhcpNetwork, true)
+	f := n.f
+	id := n.apply(createReq())
+	n.ok("", "net-run", id)
+	n.cfg.Net.Timer = failingArm{fakeTimer{f}}
+	n.ok("", "net-boot")
+	st := n.status()
+	if st.Pending != nil || st.Recent[0].State != nodeproto.NetRolledBack || st.Recent[0].Reason != "restart" {
+		t.Fatalf("status: %+v", st)
+	}
+	if f.link("br0") != nil {
+		t.Error("the bridge is still there")
+	}
+}
+
+type failingArm struct{ fakeTimer }
+
+func (failingArm) Arm(string, int) error { return fmt.Errorf("no systemd") }

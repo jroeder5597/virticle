@@ -24,6 +24,7 @@ import (
 //	net-confirm ID              make the change permanent and cancel the rollback timer
 //	net-rollback [ID] [timer]   restore the saved state; without ID the pending change; safe to repeat
 //	net-status                  JSON: the pending change and the last ones
+//	net-boot                    run by a unit at boot: a change still unconfirmed gets its rollback timer again
 //
 // By hand, from the console of a node whose network does not answer:
 //
@@ -37,6 +38,7 @@ func init() {
 	Register("net-confirm", verbNetConfirm)
 	Register("net-rollback", verbNetRollback)
 	Register("net-status", verbNetStatus)
+	Register("net-boot", verbNetBoot)
 }
 
 func (c *Ctx) printJSON(v any) error {
@@ -150,6 +152,12 @@ func verbNetApply(c *Ctx) error {
 		return Fail("cannot record the change, nothing was changed: %v", err)
 	}
 	c.netLog(m.ID, "%s of bridge %s planned with %s; the previous state is saved", m.Action, m.Bridge, st.Name)
+	// The unit that arms the rollback again if the node restarts before the confirmation.
+	if err := c.ensureBootUnit(); err != nil {
+		_ = os.Remove(pending)
+		_ = os.RemoveAll(c.changeDir(m.ID))
+		return Fail("cannot install the boot-time rollback unit, nothing was changed: %v", err)
+	}
 	// The rollback is armed before anything changes.
 	if err := c.netTimer().Arm(m.ID, req.TimeoutSeconds); err != nil {
 		_ = os.Remove(pending)
@@ -242,4 +250,43 @@ func verbNetStatus(c *Ctx) error {
 		return err
 	}
 	return c.printJSON(c.netStatus())
+}
+
+// verbNetBoot runs at every boot (virticle-net-boot.service, only when the pending marker exists). A change that
+// is still unconfirmed now was interrupted by a restart: the transient timer is gone and the controller's
+// task has most likely given up. The change gets the grace period it had at the start, counted from now, so that
+// a controller that is still waiting can confirm, and is rolled back when nobody does. If the timer cannot be armed the
+// change is rolled back at once: a node must never stay on a configuration nobody confirmed.
+func verbNetBoot(c *Ctx) error {
+	if err := c.Need(0, 0, "net-boot"); err != nil {
+		return err
+	}
+	unlock, err := c.netLock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	m := c.pendingMeta()
+	if m == nil {
+		return nil
+	}
+	if out, err := c.netRun("systemctl", "is-active", rollbackUnit(m.ID)+".timer"); err == nil || strings.TrimSpace(out) == "active" {
+		return nil // the timer is armed already (the unit was started by hand)
+	}
+	grace := m.Timeout
+	if grace < 30 {
+		grace = 30
+	}
+	if grace > 600 {
+		grace = 600
+	}
+	c.netLog(m.ID, "the node restarted while the change was %s; arming the rollback again for %d seconds", m.State, grace)
+	if err := c.netTimer().Arm(m.ID, grace); err != nil {
+		c.netLog(m.ID, "cannot arm the rollback timer: %v", err)
+		c.rollbackLocked(m, "restart", "The node restarted before the change was confirmed, so it restored its previous network settings.", true)
+		return nil
+	}
+	m.Deadline = c.netNow().Add(time.Duration(grace) * time.Second)
+	_ = c.saveMeta(m)
+	return nil
 }
