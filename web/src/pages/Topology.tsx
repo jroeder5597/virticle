@@ -263,7 +263,7 @@ function NodeBody({ n, accents, admin, reload }: { n: TopoNode; accents: boolean
     };
   };
   const canAdd = admin && !!st && !blocked;
-  const usable = (u: Uplink) => canAdd && u.type === "physical" && !u.management;
+  const usable = (u: Uplink) => canAdd && u.type === "physical";
   if (n.error) return <div className="error">This node could not be read: {n.error}</div>;
   return (
     <>

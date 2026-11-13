@@ -37,6 +37,7 @@ type fakeNet struct {
 	active  map[string]bool
 	outputs map[string]string // joined argv -> stdout
 	fail    map[string]error  // joined argv prefix -> error
+	failN   map[string]int    // joined argv prefix -> the next N runs fail, then it works
 	onRun   func(f *fakeNet, argv []string)
 	events  []string // "run ARGV", "arm ID", "cancel ID", "detach ID" in order
 	now     time.Time
@@ -45,7 +46,7 @@ type fakeNet struct {
 }
 
 func newFakeNet(t *testing.T) *fakeNet {
-	return &fakeNet{t: t, active: map[string]bool{}, outputs: map[string]string{}, fail: map[string]error{},
+	return &fakeNet{t: t, active: map[string]bool{}, outputs: map[string]string{}, fail: map[string]error{}, failN: map[string]int{},
 		now: time.Date(2026, 11, 13, 10, 0, 0, 0, time.UTC), armed: map[string]int{}}
 }
 
@@ -121,6 +122,12 @@ func (f *fakeNet) run(argv []string) (string, error) {
 	for p, err := range f.fail {
 		if strings.HasPrefix(key, p) {
 			return "", err
+		}
+	}
+	for p, n := range f.failN {
+		if n > 0 && strings.HasPrefix(key, p) {
+			f.failN[p]--
+			return "", fmt.Errorf("Link 2 not known")
 		}
 	}
 	if f.onRun != nil {

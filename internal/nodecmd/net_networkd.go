@@ -378,7 +378,8 @@ func ndTearDown(s *bridgeSpec, ignore bool) []netStep {
 	}
 	steps = append(steps, netStep{Kind: "run", Argv: []string{"ip", "link", "del", s.Bridge}, Ignore: true})
 	if s.Uplink != "" {
-		steps = append(steps, mk("networkctl", "reconfigure", s.Uplink))
+		// Right after the bridge is gone networkd may not know the uplink yet ("Link 2 not known"): try again for a while.
+		steps = append(steps, netStep{Kind: "run", Argv: []string{"networkctl", "reconfigure", s.Uplink}, Secs: 15, Ignore: ignore})
 		if s.MoveAddresses && len(s.UplinkExpect) > 0 {
 			steps = append(steps, netStep{Kind: "wait-addr", Path: s.Uplink, Argv: s.UplinkExpect, Secs: 40, Ignore: ignore})
 		}

@@ -662,3 +662,22 @@ func TestNetBootRollsBackAtOnceWhenItCannotArm(t *testing.T) {
 type failingArm struct{ fakeTimer }
 
 func (failingArm) Arm(string, int) error { return fmt.Errorf("no systemd") }
+
+// networkd may not know the uplink for a moment after the bridge is gone ("Link 2 not known"): the reconfigure is retried.
+func TestNetDeleteRetriesTheUplinkReconfigure(t *testing.T) {
+	n := newNetNode(t, staticNetwork, false)
+	f := n.f
+	id := n.apply(createReq())
+	n.ok("", "net-run", id)
+	n.ok("", "net-confirm", id)
+	f.failN["networkctl reconfigure eth0"] = 3
+	del := nodeproto.NetRequest{Action: nodeproto.NetDelete, Bridge: "br0", LibvirtVersion: libvirt113}
+	id2 := n.apply(del)
+	n.ok("", "net-run", id2)
+	if got := n.state(id2); got != nodeproto.NetApplied {
+		t.Fatalf("state %s, want applied (the retries should have worked)", got)
+	}
+	if f.link("br0") != nil {
+		t.Error("the bridge is still there")
+	}
+}

@@ -36,6 +36,7 @@ const keepChanges = 5
 //	write      write Content to Path (atomic, mode Mode)
 //	remove     remove Path
 //	run        run Argv
+//	run        with Secs set: tried again every second for that long
 //	wait-link  wait until the interface Path exists (Secs seconds)
 //	wait-addr  wait until the interface Path has every address in Argv: "dhcp4" (any global IPv4 address),
 //	           "any" (any global address) or an address with prefix (Secs seconds)
@@ -441,6 +442,15 @@ func (c *Ctx) runStep(s netStep) error {
 		}
 		return nil
 	case "run":
+		if s.Secs > 0 { // tried again every second for Secs seconds (networkd may not know a link yet)
+			return c.waitFor(s.Secs, func() (bool, string) {
+				_, err := c.netRun(s.Argv...)
+				if err != nil {
+					return false, err.Error()
+				}
+				return true, ""
+			})
+		}
 		_, err := c.netRun(s.Argv...)
 		return err
 	case "wait-link":
