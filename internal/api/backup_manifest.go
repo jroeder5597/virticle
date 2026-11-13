@@ -17,7 +17,6 @@ import (
 	"io"
 	"path"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -38,9 +37,10 @@ const (
 )
 
 var (
-	backupDirRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,200}\.vmbackup$`)
-	targetDevRE = regexp.MustCompile(`^[a-z][a-z0-9]{1,7}$`)
-	sha256RE    = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	backupDirRE  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,200}\.vmbackup$`)
+	targetDevRE  = regexp.MustCompile(`^[a-z][a-z0-9]{1,7}$`)
+	sha256RE     = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	checkpointRE = regexp.MustCompile(`^virticle-[A-Za-z0-9._-]{1,80}$`)
 )
 
 const (
@@ -55,6 +55,9 @@ type backupDiskRec struct {
 	VirtualSize uint64 `json:"virtualSize"`
 	Bytes       uint64 `json:"bytes"`
 	SHA256      string `json:"sha256,omitempty"`
+	// Source is the disk's file in the VM when the backup was taken; with the
+	// size it tells whether the next backup can build on this one.
+	Source string `json:"source,omitempty"`
 }
 
 type backupManifest struct {
@@ -72,6 +75,17 @@ type backupManifest struct {
 	NVRAMFormat string   `json:"nvramFormat,omitempty"`
 	TPM         bool     `json:"tpm"` // the VM had a TPM (its state is not saved)
 	Notes       []string `json:"notes"`
+	// Kind is "full" or "incremental"; a backup from before incremental
+	// backups has none and is full. An incremental backup (format 2) holds
+	// only the blocks that changed since its Parent, a backup in the same pool.
+	Kind   string `json:"kind,omitempty"`
+	Parent string `json:"parent,omitempty"` // directory name of the backup this one builds on
+	// Checkpoint is the libvirt checkpoint made with this backup, the point the
+	// next incremental backup counts changes from.
+	Checkpoint string `json:"checkpoint,omitempty"`
+	// FullReason says in words why a backup is full when an incremental one
+	// might have been expected.
+	FullReason string `json:"fullReason,omitempty"`
 }
 
 func (m *backupManifest) createdTime() time.Time {
@@ -95,8 +109,12 @@ func parseBackupManifest(raw []byte) (*backupManifest, error) {
 		return nil, fmt.Errorf("manifest.json is not valid: %w", err)
 	}
 	switch {
-	case m.Format != backupFormat:
-		return nil, fmt.Errorf("unsupported backup format %d (this version reads format %d)", m.Format, backupFormat)
+	case m.Format != backupFormat && m.Format != backupFormatIncremental:
+		return nil, fmt.Errorf("unsupported backup format %d (this version reads formats %d and %d)", m.Format, backupFormat, backupFormatIncremental)
+	case (m.Format == backupFormatIncremental) != (m.Kind == kindIncremental):
+		return nil, errors.New("manifest: the format and the kind of backup do not fit together")
+	case m.Kind != "" && m.Kind != kindFull && m.Kind != kindIncremental:
+		return nil, fmt.Errorf("manifest: unknown kind of backup %q", m.Kind)
 	case !vmNameRE.MatchString(m.VM):
 		return nil, errors.New("manifest: the VM name is not valid")
 	case len(m.Disks) == 0 || len(m.Disks) > backupMaxDisks:
@@ -121,6 +139,19 @@ func parseBackupManifest(raw []byte) (*backupManifest, error) {
 			return nil, fmt.Errorf("manifest: disk %s has a malformed checksum", d.Target)
 		}
 		seenFile[d.File], seenDev[d.Target] = true, true
+	}
+	if m.Kind == kindIncremental {
+		if !backupDirRE.MatchString(m.Parent) {
+			return nil, errors.New("manifest: an incremental backup needs the name of the backup it builds on")
+		}
+	} else if m.Parent != "" {
+		return nil, errors.New("manifest: only an incremental backup has a parent")
+	}
+	if m.Checkpoint != "" && !checkpointRE.MatchString(m.Checkpoint) {
+		return nil, fmt.Errorf("manifest: bad checkpoint name %q", m.Checkpoint)
+	}
+	if len(m.FullReason) > 300 {
+		return nil, errors.New("manifest: the reason is too long")
 	}
 	if m.NVRAM != "" && m.NVRAM != backupNVRAMFile {
 		return nil, fmt.Errorf("manifest: bad NVRAM file name %q", m.NVRAM)
@@ -149,12 +180,18 @@ func (m *backupManifest) files() []string {
 
 // --- libvirt backup XML ---
 
-// backupXML is the <domainbackup> document for a push-mode full backup of the
-// given disks into dir. Other disks (read-only, CD-ROMs) are left out
-// explicitly. No checkpoint is created, so no dirty bitmaps stay behind.
-func backupXML(dir string, disks []migDisk, files map[string]string, skip []string) string {
+// backupXML is the <domainbackup> document for a push-mode backup of the
+// given disks into dir: full, or with incremental set to the name of the
+// checkpoint to count changes from (the file then holds only those blocks).
+// Other disks (read-only, CD-ROMs) are left out explicitly. The checkpoint, if
+// any, is a separate document given to the same call (checkpointXML).
+func backupXML(dir string, disks []migDisk, files map[string]string, skip []string, incremental string) string {
 	var b strings.Builder
-	b.WriteString("<domainbackup mode='push'><disks>")
+	b.WriteString("<domainbackup mode='push'>")
+	if incremental != "" {
+		b.WriteString("<incremental>" + esc(incremental) + "</incremental>")
+	}
+	b.WriteString("<disks>")
 	for _, d := range disks {
 		fmt.Fprintf(&b, "<disk name='%s' backup='yes' type='file'><target file='%s'/><driver type='qcow2'/></disk>",
 			esc(d.Target), esc(dir+"/"+files[d.Target]))
@@ -258,28 +295,10 @@ func parseScan(out, marker, poolDir string) []scanItem {
 // --- retention ---
 
 type retained struct {
-	Key     string // what identifies the backup to the caller
+	Key     string // what identifies the backup to the caller (its directory name)
 	UUID    string
 	Created time.Time
-}
-
-// pruneList returns the backups of vm uuid beyond the newest keep, oldest
-// last. keep < 1 prunes nothing.
-func pruneList(all []retained, uuid string, keep int) []retained {
-	if keep < 1 {
-		return nil
-	}
-	var mine []retained
-	for _, b := range all {
-		if b.UUID == uuid {
-			mine = append(mine, b)
-		}
-	}
-	sort.SliceStable(mine, func(i, j int) bool { return mine[i].Created.After(mine[j].Created) })
-	if len(mine) <= keep {
-		return nil
-	}
-	return mine[keep:]
+	Parent  string // the backup this one builds on ("" for a full backup)
 }
 
 // --- vetting an uploaded archive ---

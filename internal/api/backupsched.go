@@ -135,7 +135,7 @@ func lastBackupTime(dst *hostconn.Host, pool, uuid string) (time.Time, error) {
 	var all []retained
 	for _, it := range items {
 		if it.Err == "" {
-			all = append(all, retained{Key: it.Dir, UUID: it.Manifest.UUID, Created: it.Manifest.createdTime()})
+			all = append(all, it.retained())
 		}
 	}
 	return newestBackup(all, uuid), nil

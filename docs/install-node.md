@@ -352,6 +352,8 @@ virticle-node ALL=(root) NOPASSWD: /usr/local/libexec/virticle-node
 | `tar-pack DIR NAME...` | tar of the named plain files of a backup directory (one that holds `manifest.json`) on stdout |
 | `tar-unpack WORKDIR` | stdin tar into the empty work directory; names with a slash are skipped; if anything but plain single-link files results, the directory is emptied and the call fails |
 | `convert-start WORKDIR SRC FORMAT` | detached `qemu-img convert` of `SRC` to `WORKDIR/out.part`; `FORMAT` is `raw`, `qcow2`, `vpc`, `vhdx` or `vdi`; a qcow2 backing chain must be inside the roots and may not use an external data file |
+| `convert-start WORKDIR SRC qcow2 OVERLAY...` | the same, for incremental backups: `SRC` is the full backup and each `OVERLAY` (up to 32, oldest first) a standalone qcow2 image of the blocks that changed; the result is the disk after the last one |
+| `backup-detach WORKDIR NAME` | removes the backing file reference from a qcow2 image in a work directory (`qemu-img rebase -u -b ""`) |
 | `convert-poll WORKDIR` / `convert-kill WORKDIR` | exit code and progress of that conversion; stop it |
 | `convert-finish WORKDIR DEST` | moves `out.part` to the new file `DEST` (never replaces) and drops the state files |
 | `download URL DEST [sha256\|sha512 HEX]` | the node fetches an `http://` or `https://` URL into the new file `DEST` (see "Downloads and imports" below) |

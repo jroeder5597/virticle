@@ -38,6 +38,13 @@ func (w *bkWork) convert(src, srcFmt, dest string, progress func(float64)) error
 	return w.h.Convert(w.path, src, srcFmt, dest, w.stop, progress)
 }
 
+// convertChain flattens a disk's backups into one new qcow2 file: files is the
+// full backup first, then the incremental ones in order (just the one file for a
+// full backup).
+func (w *bkWork) convertChain(files []string, dest string, progress func(float64)) error {
+	return w.h.ConvertChain(w.path, files[0], "qcow2", files[1:], dest, w.stop, progress)
+}
+
 // readLimited returns a node file's content; larger files are refused.
 func readLimited(h *hostconn.Host, file string, max int) ([]byte, error) {
 	b, err := h.ReadLimited(file, max)
