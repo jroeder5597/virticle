@@ -107,6 +107,7 @@ var routeLevels = map[string]string{
 	"GET /api/pools":                                  viewer,
 	"GET /api/networks":                               viewer,
 	"GET /api/topology":                               viewer,
+	"GET /api/cluster/network-drift":                  viewer,
 	"POST /api/nodes/{node}/vms":                      operator,
 	"GET /api/nodes/{node}/vms/{uuid}":                viewer,
 	"POST /api/nodes/{node}/vms/{uuid}/action":        operator,

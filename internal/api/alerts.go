@@ -158,6 +158,8 @@ func (s *Server) runAlerts(ctx context.Context, every, first time.Duration) {
 
 func (s *Server) gatherAlertInput(now time.Time) alertInput {
 	in := alertInput{Fresh: map[int64]bool{}}
+	linksRead := map[int64]bool{}
+	online := 0
 	for _, n := range s.Nodes.Status() {
 		name := n.Hostname
 		if name == "" {
@@ -172,6 +174,11 @@ func (s *Server) gatherAlertInput(now time.Time) alertInput {
 			continue
 		}
 		in.Fresh[n.ID] = true
+		online++
+		if links, err := readLinkAlerts(h, n.ID, name, n.Addr); err == nil {
+			linksRead[n.ID] = true
+			in.Debounced = append(in.Debounced, links...)
+		}
 		in.Pools = append(in.Pools, gatherPools(h, n.ID, name)...)
 		in.VMs = append(in.VMs, gatherBadVMs(h, n.ID, name)...)
 		if t, ok := s.migCertExpiry(h); ok {
@@ -181,6 +188,18 @@ func (s *Server) gatherAlertInput(now time.Time) alertInput {
 			m.NodeName = name
 			in.Mem = append(in.Mem, m)
 		}
+	}
+	driftRead := true
+	if online >= 2 {
+		rep := s.computeDrift(false)
+		driftRead = len(rep.Unread) == 0
+		in.Debounced = append(in.Debounced, driftAlert(rep)...)
+	}
+	in.Unread = func(a Alert) bool {
+		if a.Kind == "net-drift" {
+			return !driftRead
+		}
+		return !linksRead[a.Node]
 	}
 	in.Conflicts = s.currentConflicts()
 	if jobs, err := s.Store.TasksBy("scheduler", now.Add(-24*time.Hour).Unix()); err == nil {

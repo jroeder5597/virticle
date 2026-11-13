@@ -9,6 +9,7 @@ import { BackupsSection } from "./Backups";
 import { NodeErr, NodeErrors, nodeEvents, nodeLabel, NodePool, poolEvents } from "./dcShared";
 import HostInterfaces from "./HostNics";
 import Networks from "./Networks";
+import NetworkDrift from "./NetworkDrift";
 import Nodes from "./Nodes";
 import Storage from "./Storage";
 import StartPanel from "./StartPanel";
@@ -49,8 +50,18 @@ export default function Datacenter() {
       {tab === "summary" && <Summary />}
       {tab === "vms" && <VMs />}
       {tab === "storage" && <Storage allNodes />}
-      {tab === "network" && <Networks allNodes after={(nodes) => nodes.length > 0 && <HostInterfaces nodes={nodes} />} />}
-      {tab === "topology" && <Topology />}
+      {tab === "network" && (
+        <>
+          <NetworkDrift />
+          <Networks allNodes after={(nodes) => nodes.length > 0 && <HostInterfaces nodes={nodes} />} />
+        </>
+      )}
+      {tab === "topology" && (
+        <>
+          <NetworkDrift />
+          <Topology />
+        </>
+      )}
       {tab === "backups" && <BackupsSection />}
       {tab === "nodes" && <Nodes />}
       {tab === "tasks" && <Tasks />}

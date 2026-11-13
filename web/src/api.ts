@@ -108,7 +108,7 @@ export interface VMDetail extends VM {
   firmware: string;
   boot: string[];
   disks: { target: string; bus: string; device: string; format?: string; source?: string; readOnly: boolean; capacity?: number; allocation?: number; bootOrder?: number }[];
-  nics: { mac: string; type: string; source: string; model?: string; ips: string[]; linkState: string; bootOrder?: number }[];
+  nics: { mac: string; type: string; source: string; model?: string; ips: string[]; linkState: string; bootOrder?: number; limitDown?: number; limitUp?: number }[];
   hasVNC: boolean;
   hasSerial: boolean;
   /** Serial devices of the running definition; serialPending says the saved one differs. */
@@ -260,7 +260,7 @@ export interface AgentHelp {
 
 export interface Alert {
   id: string;
-  kind: "node-down" | "pool-usage" | "host-memory" | "failed-job" | "vm-state" | "tls-expiry";
+  kind: "node-down" | "pool-usage" | "host-memory" | "failed-job" | "vm-state" | "tls-expiry" | "scheduler-conflict" | "net-link" | "net-bond" | "net-drift";
   severity: "warning" | "critical";
   title: string;
   message: string;

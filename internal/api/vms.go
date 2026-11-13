@@ -158,6 +158,14 @@ type domainXML struct {
 			Boot struct {
 				Order int `xml:"order,attr"`
 			} `xml:"boot"`
+			Bandwidth struct {
+				Inbound struct {
+					Average uint64 `xml:"average,attr"`
+				} `xml:"inbound"`
+				Outbound struct {
+					Average uint64 `xml:"average,attr"`
+				} `xml:"outbound"`
+			} `xml:"bandwidth"`
 		} `xml:"interface"`
 		Graphics []struct {
 			Type   string `xml:"type,attr"`
@@ -201,6 +209,9 @@ type vmNIC struct {
 	// LinkState is "up" or "down"; BootOrder is 0 when not set.
 	LinkState string `json:"linkState"`
 	BootOrder int    `json:"bootOrder,omitempty"`
+	// LimitDown and LimitUp are the speed limits in Mbit/s (download to the guest, upload from it); absent when unlimited.
+	LimitDown float64 `json:"limitDown,omitempty"`
+	LimitUp   float64 `json:"limitUp,omitempty"`
 }
 
 type vmDetail struct {
@@ -357,7 +368,8 @@ func (s *Server) vmDetail(w http.ResponseWriter, r *http.Request) {
 		if link == "" {
 			link = "up"
 		}
-		d.NICs = append(d.NICs, vmNIC{MAC: i.MAC.Address, Type: i.Type, Source: src, Model: i.Model.Type, IPs: addrs, LinkState: link, BootOrder: i.Boot.Order})
+		d.NICs = append(d.NICs, vmNIC{MAC: i.MAC.Address, Type: i.Type, Source: src, Model: i.Model.Type, IPs: addrs, LinkState: link, BootOrder: i.Boot.Order,
+			LimitDown: kbpsToMbit(i.Bandwidth.Inbound.Average), LimitUp: kbpsToMbit(i.Bandwidth.Outbound.Average)})
 	}
 	if sum.State != "shutoff" {
 		// Boot order is only ever edited in the saved definition, so show that
