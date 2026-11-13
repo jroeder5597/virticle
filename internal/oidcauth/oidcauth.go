@@ -9,8 +9,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -137,8 +139,8 @@ func (p *Provider) oauth(redirect string) *oauth2.Config {
 type Identity struct {
 	Subject string
 	Issuer  string
-	Name    string   // sign-in name from the user claim
-	Display string   // full name
+	Name    string // sign-in name from the user claim
+	Display string // full name
 	Email   string
 	Groups  []string
 	Raw     map[string]any
@@ -234,4 +236,27 @@ func (p *Provider) EndSessionURL(returnTo string) string {
 	q.Set("post_logout_redirect_uri", returnTo)
 	u.RawQuery = q.Encode()
 	return u.String()
+}
+
+// CountKeys fetches a JWKS address and counts the keys in it.
+func CountKeys(ctx context.Context, jwksURI string) (int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURI, nil)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("the provider answered %s", resp.Status)
+	}
+	var set struct {
+		Keys []json.RawMessage `json:"keys"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&set); err != nil {
+		return 0, err
+	}
+	return len(set.Keys), nil
 }

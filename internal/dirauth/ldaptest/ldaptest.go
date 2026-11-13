@@ -35,7 +35,7 @@ type Server struct {
 	AD        bool              // advertise Active Directory in the rootDSE
 	CAPEM     string            // the CA that signed the server certificate
 
-	mu   sync.Mutex
+	mu    sync.Mutex
 	plain net.Listener
 	tlsL  net.Listener
 	cfg   *tls.Config

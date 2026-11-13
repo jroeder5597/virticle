@@ -154,7 +154,10 @@ func TestActiveDirectoryNestedGroups(t *testing.T) {
 
 func TestTestReport(t *testing.T) {
 	_, cfg := fixture(t, false)
-	steps := Test(cfg, "alice", "")
+	steps, res := Test(cfg, "alice", "")
+	if res == nil || res.DN != aliceD {
+		t.Errorf("no result: %+v", res)
+	}
 	var text []string
 	for _, s := range steps {
 		if !s.OK {
@@ -168,17 +171,17 @@ func TestTestReport(t *testing.T) {
 			t.Errorf("report lacks %q:\n%s", w, all)
 		}
 	}
-	steps = Test(cfg, "nobody", "")
+	steps, _ = Test(cfg, "nobody", "")
 	if last := steps[len(steps)-1]; last.OK || !strings.Contains(last.Text, "not found") {
 		t.Errorf("%+v", steps)
 	}
-	steps = Test(cfg, "alice", "wrong")
+	steps, _ = Test(cfg, "alice", "wrong")
 	if last := steps[len(steps)-1]; last.OK || !strings.Contains(last.Text, "wrong username or password") {
 		t.Errorf("%+v", steps)
 	}
 	bad := cfg
 	bad.URL = "ldaps://127.0.0.1:1"
-	steps = Test(bad, "", "")
+	steps, _ = Test(bad, "", "")
 	if len(steps) != 1 || steps[0].OK {
 		t.Errorf("%+v", steps)
 	}

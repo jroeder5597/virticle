@@ -81,6 +81,12 @@ var routeLevels = map[string]string{
 	"POST /api/nodes/{node}/hostnet/rollback": admin,
 	"GET /api/nodes/{node}/hostnet/peers":     admin,
 
+	"POST /api/users/{id}/reset-2fa": admin,
+	"GET /api/signin":                admin,
+	"PUT /api/signin":                admin,
+	"POST /api/signin/oidc/test":     admin,
+	"POST /api/signin/ldap/test":     admin,
+
 	"GET /api/users":         admin,
 	"POST /api/users":        admin,
 	"PUT /api/users/{id}":    admin,
@@ -88,10 +94,15 @@ var routeLevels = map[string]string{
 	"GET /api/audit":         admin,
 
 	// Own account: every role, session only (see accountSession).
-	"POST /api/account/password":      viewer,
-	"GET /api/account/tokens":         viewer,
-	"POST /api/account/tokens":        viewer,
-	"DELETE /api/account/tokens/{id}": viewer,
+	"GET /api/account/2fa":                 viewer,
+	"POST /api/account/2fa/begin":          viewer,
+	"POST /api/account/2fa/confirm":        viewer,
+	"POST /api/account/2fa/disable":        viewer,
+	"POST /api/account/2fa/recovery-codes": viewer,
+	"POST /api/account/password":           viewer,
+	"GET /api/account/tokens":              viewer,
+	"POST /api/account/tokens":             viewer,
+	"DELETE /api/account/tokens/{id}":      viewer,
 
 	// Own UI preferences: every role, session only.
 	"GET /api/me/prefs": viewer,
@@ -241,6 +252,7 @@ type reqInfo struct {
 	login       bool   // a login, setup or logout request: audited even without a session
 	session     string // cookie session token; empty for bearer-token requests
 	userID      int64
+	detail      string // what the request did, for the audit log (never a secret)
 }
 
 type infoKey struct{}
@@ -292,6 +304,10 @@ func (s *Server) requireAuth(pattern string, next http.HandlerFunc) http.Handler
 			return
 		}
 		info.user, info.token, info.session, info.userID = p.User.Username, p.Token, session, p.User.ID
+		if session != "" && !twoStepRoutes[pattern] && s.mustSetUpTwoStep(p.User) {
+			deny(w, http.StatusForbidden, "two-step sign-in must be set up first: open the Account page")
+			return
+		}
 		if store.RoleRank(p.Role) < store.RoleRank(need) {
 			deny(w, http.StatusForbidden, fmt.Sprintf("forbidden: this needs the %s role, you are %s", need, p.Role))
 			return
@@ -442,7 +458,7 @@ func (s *Server) audit(r *http.Request, info *reqInfo, status int, start time.Ti
 		return
 	}
 	err := s.Store.AddAudit(store.AuditEntry{
-		Time: start.Unix(), User: info.user, Token: info.token, IP: viewOf(r).IP, Method: r.Method, Path: r.URL.Path, Status: status,
+		Time: start.Unix(), User: info.user, Token: info.token, IP: viewOf(r).IP, Method: r.Method, Path: r.URL.Path, Status: status, Detail: info.detail,
 	})
 	if err != nil {
 		logf("audit: %v", err)

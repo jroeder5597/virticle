@@ -206,3 +206,8 @@ func (s *Store) UpsertExternal(source, extID, username, role string) (User, erro
 	}
 	return u, tx.Commit()
 }
+
+// EndSessions signs the user out everywhere.
+func (s *Store) EndSessions(userID int64) {
+	s.db.Exec(`DELETE FROM sessions WHERE user_id=?`, userID)
+}

@@ -168,12 +168,13 @@ type Step struct {
 }
 
 // Test walks the same steps as a sign-in and reports each one. user may be
-// empty (only connect and bind), password may be empty (do not check it).
-func Test(cfg Config, user, password string) []Step {
+// empty (only connect and bind), password may be empty (do not check it). The
+// result is set when the user was found.
+func Test(cfg Config, user, password string) ([]Step, *Result) {
 	var steps []Step
 	note := func(ok bool, text string) { steps = append(steps, Step{ok, text}) }
 	if err := cfg.Validate(); err != nil {
-		return []Step{{false, err.Error()}}
+		return []Step{{false, err.Error()}}, nil
 	}
 	res, err := run(cfg, user, password, note)
 	if err != nil {
@@ -182,10 +183,12 @@ func Test(cfg Config, user, password string) []Step {
 			text = "That user was not found."
 		}
 		note(false, text)
-		return steps
+		return steps, nil
 	}
-	_ = res
-	return steps
+	if user == "" {
+		return steps, nil
+	}
+	return steps, &res
 }
 
 func run(cfg Config, user, password string, note func(bool, string)) (Result, error) {

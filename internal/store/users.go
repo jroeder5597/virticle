@@ -118,9 +118,6 @@ func migrate(db *sql.DB) error {
 	if _, err := tx.Exec(authSchema); err != nil {
 		return err
 	}
-	if err := addColumn(tx, "sessions", "setup_only", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
 	if err := addColumn(tx, "audit", "detail", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
@@ -171,9 +168,6 @@ type Principal struct {
 	User  User
 	Role  string
 	Token string // token name, empty for a cookie session
-	// SetupOnly marks a session of a user who must set up two-step sign-in
-	// and has not yet: it may do nothing else.
-	SetupOnly bool
 }
 
 func hashPassword(pw string) (string, error) {
@@ -384,9 +378,8 @@ func (s *Store) CheckPassword(username, password string) (User, error) {
 	return u, nil
 }
 
-// NewSession starts a session. A setupOnly session may only be used to set up
-// two-step sign-in (see Principal.SetupOnly).
-func (s *Store) NewSession(userID int64, ttl time.Duration, setupOnly bool) (string, error) {
+// NewSession starts a session that lasts ttl.
+func (s *Store) NewSession(userID int64, ttl time.Duration) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
@@ -394,7 +387,7 @@ func (s *Store) NewSession(userID int64, ttl time.Duration, setupOnly bool) (str
 	token := hex.EncodeToString(b)
 	now := time.Now()
 	s.db.Exec(`DELETE FROM sessions WHERE expires<?`, now.Unix())
-	_, err := s.db.Exec(`INSERT INTO sessions(token, user_id, expires, setup_only) VALUES(?,?,?,?)`, token, userID, now.Add(ttl).Unix(), setupOnly)
+	_, err := s.db.Exec(`INSERT INTO sessions(token, user_id, expires) VALUES(?,?,?)`, token, userID, now.Add(ttl).Unix())
 	return token, err
 }
 
@@ -404,26 +397,20 @@ func (s *Store) Login(username, password string) (string, User, error) {
 	if err != nil {
 		return "", u, err
 	}
-	token, err := s.NewSession(u.ID, sessionTTL, false)
+	token, err := s.NewSession(u.ID, sessionTTL)
 	return token, u, err
 }
 
 // SessionUser resolves a cookie session. Disabled users have no session.
 func (s *Store) SessionUser(token string) (Principal, error) {
 	var u User
-	var setupOnly bool
-	err := s.db.QueryRow(`SELECT u.id, u.username, u.role, u.disabled, u.created, u.source, u.totp_enabled, s.setup_only FROM sessions s JOIN users u ON u.id=s.user_id
+	err := s.db.QueryRow(`SELECT u.id, u.username, u.role, u.disabled, u.created, u.source, u.totp_enabled FROM sessions s JOIN users u ON u.id=s.user_id
 		WHERE s.token=? AND s.expires>? AND u.disabled=0`, token, time.Now().Unix()).
-		Scan(&u.ID, &u.Username, &u.Role, &u.Disabled, &u.Created, &u.Source, &u.TwoStep, &setupOnly)
+		Scan(&u.ID, &u.Username, &u.Role, &u.Disabled, &u.Created, &u.Source, &u.TwoStep)
 	if err != nil {
 		return Principal{}, ErrNotFound
 	}
-	return Principal{User: u, Role: u.Role, SetupOnly: setupOnly}, nil
-}
-
-// EndSetupOnly turns a session that could only set up two-step sign-in into a full one.
-func (s *Store) EndSetupOnly(token string) {
-	s.db.Exec(`UPDATE sessions SET setup_only=0 WHERE token=?`, token)
+	return Principal{User: u, Role: u.Role}, nil
 }
 
 func (s *Store) Logout(token string) {

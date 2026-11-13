@@ -88,7 +88,7 @@ func TestTwoStepState(t *testing.T) {
 	if n, _ := s.RecoveryCodesLeft(u.ID); n != 1 {
 		t.Errorf("left %d", n)
 	}
-	tok, _ := s.NewSession(u.ID, time.Hour, false)
+	tok, _ := s.NewSession(u.ID, time.Hour)
 	if err := s.ResetTwoStep(u.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -104,19 +104,6 @@ func TestTwoStepState(t *testing.T) {
 	}
 	if ok, _ := s.UseTwoStepStep(u.ID, 500); ok {
 		t.Error("a step was accepted while off")
-	}
-}
-
-func TestSetupOnlySession(t *testing.T) {
-	s := open(t)
-	u, _ := s.CreateUser("u", "password one", RoleOperator)
-	tok, _ := s.NewSession(u.ID, time.Hour, true)
-	if p, err := s.SessionUser(tok); err != nil || !p.SetupOnly {
-		t.Fatalf("%+v %v", p, err)
-	}
-	s.EndSetupOnly(tok)
-	if p, _ := s.SessionUser(tok); p.SetupOnly {
-		t.Fatal("still limited")
 	}
 }
 
