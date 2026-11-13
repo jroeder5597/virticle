@@ -92,7 +92,10 @@ func TestStripBackingStore(t *testing.T) {
 
 func TestBackupXML(t *testing.T) {
 	d := []migDisk{{Target: "vda"}, {Target: "vdb"}}
-	x := backupXML("/p/.w", d, map[string]string{"vda": "vda.qcow2", "vdb": "vdb.qcow2"}, []string{"sda"})
+	x := backupXML("/p/.w", d, map[string]string{"vda": "vda.qcow2", "vdb": "vdb.qcow2"}, []string{"sda"}, "")
+	if strings.Contains(x, "incremental") {
+		t.Errorf("a full backup names no checkpoint: %s", x)
+	}
 	for _, want := range []string{"mode='push'", "<disk name='vda' backup='yes' type='file'><target file='/p/.w/vda.qcow2'/><driver type='qcow2'/></disk>", "<disk name='sda' backup='no'/>"} {
 		if !strings.Contains(x, want) {
 			t.Errorf("missing %q in %s", want, x)
@@ -116,18 +119,18 @@ func TestParseScan(t *testing.T) {
 	}
 }
 
-func TestPruneList(t *testing.T) {
+func TestPruneFullBackups(t *testing.T) {
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	var all []retained
 	for i := 0; i < 5; i++ {
 		all = append(all, retained{Key: "a" + string(rune('0'+i)), UUID: "u1", Created: base.Add(time.Duration(i) * time.Hour)})
 	}
 	all = append(all, retained{Key: "other", UUID: "u2", Created: base.Add(-time.Hour)})
-	p := pruneList(all, "u1", 2)
-	if len(p) != 3 || p[0].Key != "a2" || p[2].Key != "a0" {
+	p := pruneChains(all, "u1", 2, "")
+	if len(p) != 3 || p[0] != "a2" || p[2] != "a0" {
 		t.Fatalf("%+v", p)
 	}
-	if len(pruneList(all, "u1", 0)) != 0 || len(pruneList(all, "u1", 9)) != 0 || len(pruneList(all, "u2", 1)) != 0 {
+	if len(pruneChains(all, "u1", 0, "")) != 0 || len(pruneChains(all, "u1", 9, "")) != 0 || len(pruneChains(all, "u2", 1, "")) != 0 {
 		t.Fatal("pruned too much")
 	}
 }

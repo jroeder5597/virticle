@@ -1051,6 +1051,9 @@ func (m *migRun) spread(lo, hi, f float64) {
 
 func (m *migRun) run() error {
 	m.progress(0.01)
+	// Change tracking for backups does not travel with a VM: the next backup on the
+	// target is a full one. (Not tried without this step: a migration never carries bitmaps, so none are worth keeping.)
+	dropBackupCheckpoints(m.src, m.dom)
 	var err error
 	if m.plan.Mode == "offline" {
 		err = m.runOffline()

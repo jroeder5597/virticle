@@ -135,7 +135,7 @@ func lastBackupTime(dst *hostconn.Host, pool, uuid string) (time.Time, error) {
 	var all []retained
 	for _, it := range items {
 		if it.Err == "" {
-			all = append(all, retained{Key: it.Dir, UUID: it.Manifest.UUID, Created: it.Manifest.createdTime()})
+			all = append(all, it.retained())
 		}
 	}
 	return newestBackup(all, uuid), nil
@@ -187,7 +187,7 @@ func (s *Server) runBackupSchedule(srcID int64, h *hostconn.Host, dom libvirt.Do
 	if dstID == 0 {
 		dstID = srcID
 	}
-	no := false // a scheduled backup records no checksums and freezes nothing
+	no := false // a scheduled backup freezes nothing and checksums only what may become part of a chain (see measure)
 	r := schedRequest()
 	target := backupTarget(dom.Name, fmt.Sprintf("node %d", dstID), bs.Pool)
 	failed := func(err error) {

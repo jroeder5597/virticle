@@ -386,6 +386,9 @@ func (s *Server) revertSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 	err = s.taskAsync(r, "snapshot revert", dom.Name+"@"+sn.Name, h.Name, func(func(float64)) error {
 		defer refreshPools(h)
+		// The disks go back in time without the change tracking of backups noticing:
+		// the next backup has to be a full one.
+		dropBackupCheckpoints(h, dom)
 		return h.DomainRevertToSnapshot(sn, uint32(flags))
 	})
 	if err != nil {

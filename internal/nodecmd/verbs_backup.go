@@ -2,6 +2,7 @@ package nodecmd
 
 import (
 	"archive/tar"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,10 +20,10 @@ import (
 )
 
 // The backup verbs: df, files-size, backup-scan, tar-pack, tar-unpack,
-// convert-start, convert-poll, convert-kill, convert-finish, and convert-run,
-// the detached half of convert-start (it takes the same arguments and checks
-// them again, so running it by hand is the same as convert-start in the
-// foreground).
+// backup-detach, convert-start, convert-poll, convert-kill, convert-finish,
+// and convert-run, the detached half of convert-start (it takes the same
+// arguments and checks them again, so running it by hand is the same as
+// convert-start in the foreground).
 
 func init() {
 	Register("df", verbDF)
@@ -30,6 +31,7 @@ func init() {
 	Register("backup-scan", verbBackupScan)
 	Register("tar-pack", verbTarPack)
 	Register("tar-unpack", verbTarUnpack)
+	Register("backup-detach", verbBackupDetach)
 	Register("convert-start", verbConvertStart)
 	Register("convert-run", verbConvertRun)
 	Register("convert-poll", verbConvertPoll)
@@ -430,12 +432,20 @@ func unpackAll(r io.Reader, dirfd int) error {
 
 var convertFormats = map[string]bool{"raw": true, "qcow2": true, "vpc": true, "vhdx": true, "vdi": true}
 
+// convertMaxChain is the most images (the full backup and the incremental
+// ones on top of it) one conversion reads.
+const convertMaxChain = 33
+
 // convertPrep checks the arguments of convert-start and convert-run. It
-// returns the work directory (its Ref and open descriptor) and the canonical
-// source path.
+// returns the work directory (its Ref and open descriptor) and what qemu-img
+// reads: the canonical source path or, when overlay images follow the
+// format, a json: description of the chain (see chainSource).
 func convertPrep(c *Ctx) (*Ref, int, string, error) {
 	if !convertFormats[c.Args[2]] {
 		return nil, -1, "", Die("unsupported format")
+	}
+	if len(c.Args) > 3 && c.Args[2] != "qcow2" {
+		return nil, -1, "", Die("a chain of images is read as qcow2 only")
 	}
 	w, wfd, err := workDirArg(c, c.Args[0])
 	if err != nil {
@@ -446,27 +456,88 @@ func convertPrep(c *Ctx) (*Ref, int, string, error) {
 		w.Close()
 		return nil, -1, "", err
 	}
-	s, err := c.ResolveRead(c.Args[1])
+	var paths []string
+	for _, arg := range append([]string{c.Args[1]}, c.Args[3:]...) {
+		s, err := c.ResolveRead(arg)
+		if err != nil {
+			return fail(err)
+		}
+		st, ok, _ := s.Lstat()
+		path := s.Path
+		s.Close()
+		if !ok || !isRegMode(st.Mode) {
+			return fail(Fail("%s is not a regular file", arg))
+		}
+		if c.Args[2] == "qcow2" {
+			if len(c.Args) > 3 {
+				// Part of a chain: a standalone image; the chain is given on the command line, not by a backing file.
+				if bn, berr := HeaderBacking(path); berr != nil || bn != "" {
+					return fail(Die("%s is not a standalone image", arg))
+				}
+			} else if err := c.CheckChain(path); err != nil {
+				return fail(err)
+			}
+			out, err := c.CombinedOutput("qemu-img", "info", "-U", "-f", "qcow2", "--output=json", "--", path)
+			if _, ok := err.(*Error); ok {
+				return fail(err)
+			}
+			if strings.Contains(string(out), `"data-file"`) {
+				return fail(Die("%s uses an external data file", arg))
+			}
+		}
+		paths = append(paths, path)
+	}
+	if len(paths) == 1 {
+		return w, wfd, paths[0], nil
+	}
+	return w, wfd, chainSource(paths), nil
+}
+
+// chainSource is the json: file name that makes qemu-img read the images
+// (oldest first) as one backing chain, whatever their headers say.
+func chainSource(oldestFirst []string) string {
+	node := ""
+	for _, p := range oldestFirst {
+		file, _ := json.Marshal(p)
+		n := `{"driver":"qcow2","file":{"driver":"file","filename":` + string(file) + `}`
+		if node != "" {
+			n += `,"backing":` + node
+		}
+		node = n + "}"
+	}
+	return "json:" + node
+}
+
+// backup-detach WORKDIR NAME: remove the backing file from the header of the
+// qcow2 image WORKDIR/NAME. QEMU writes an incremental backup as an image
+// that sits on the VM's own disk; once detached it is a standalone image of
+// only the changed blocks, which a restore never needs the VM for (the chain
+// of backups is given to convert-start instead).
+func verbBackupDetach(c *Ctx) error {
+	if err := c.Need(2, 2, "backup-detach WORKDIR NAME"); err != nil {
+		return err
+	}
+	w, wfd, err := workDirArg(c, c.Args[0])
 	if err != nil {
-		return fail(err)
+		return err
 	}
-	defer s.Close()
-	if st, ok, _ := s.Lstat(); !ok || !isRegMode(st.Mode) {
-		return fail(Fail("%s is not a regular file", c.Args[1]))
+	defer w.Close()
+	defer unix.Close(wfd)
+	if !nameOK(c.Args[1]) {
+		return Die("unsupported file name")
 	}
-	if c.Args[2] == "qcow2" {
-		if err := c.CheckChain(s.Path); err != nil {
-			return fail(err)
-		}
-		out, err := c.CombinedOutput("qemu-img", "info", "-U", "-f", "qcow2", "--output=json", "--", s.Path)
+	if _, ok := regularAt(wfd, c.Args[1]); !ok {
+		return Fail("%s is not a regular file", c.Args[1])
+	}
+	file := w.Path + "/" + c.Args[1]
+	out, err := c.CombinedOutput("qemu-img", "rebase", "-u", "-f", "qcow2", "-b", "", "--", file)
+	if err != nil {
 		if _, ok := err.(*Error); ok {
-			return fail(err)
+			return err
 		}
-		if strings.Contains(string(out), `"data-file"`) {
-			return fail(Die("%s uses an external data file", c.Args[1]))
-		}
+		return Fail("qemu-img could not detach %s: %s", c.Args[1], strings.TrimSpace(string(out)))
 	}
-	return w, wfd, s.Path, nil
+	return nil
 }
 
 func removeFiles(dirfd int, names ...string) {
@@ -488,12 +559,15 @@ func writeSmall(dirfd int, name string, flags int, content string) error {
 	return err
 }
 
-// convert-start WORKDIR SRC FORMAT: start qemu-img convert of SRC to
-// WORKDIR/out.part, detached from this process and from the SSH session. The
+// convert-start WORKDIR SRC FORMAT [OVERLAY...]: start qemu-img convert of SRC to
+// WORKDIR/out.part, detached from this process and from the SSH session. With
+// OVERLAY images (qcow2, oldest first, each a standalone image holding only
+// what changed since the one before) the result is the state after the last
+// one: the incremental backups of a VM flattened. The
 // state lives in WORKDIR: qpid (pid of qemu-img), rc (its exit code) and
 // prog.log. The detached part is this program again, run as convert-run.
 func verbConvertStart(c *Ctx) error {
-	if err := c.Need(3, 3, "convert-start WORKDIR SRC FORMAT"); err != nil {
+	if err := c.Need(3, 2+convertMaxChain, "convert-start WORKDIR SRC FORMAT [OVERLAY...]"); err != nil {
 		return err
 	}
 	w, wfd, _, err := convertPrep(c)
@@ -513,7 +587,7 @@ func verbConvertStart(c *Ctx) error {
 			self = exe
 		}
 	}
-	cmd := exec.Command(self, "convert-run", c.Args[0], c.Args[1], c.Args[2])
+	cmd := exec.Command(self, append([]string{"convert-run"}, c.Args...)...)
 	cmd.Env = []string{"PATH=" + FixedPath, "LC_ALL=C"}
 	cmd.Dir = "/"
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
@@ -539,7 +613,7 @@ func verbConvertStart(c *Ctx) error {
 // qemu-img in the foreground, records its pid (qpid) and exit code (rc) and
 // leaves no out.part behind when it failed or was stopped.
 func verbConvertRun(c *Ctx) error {
-	if err := c.Need(3, 3, "convert-run WORKDIR SRC FORMAT"); err != nil {
+	if err := c.Need(3, 2+convertMaxChain, "convert-run WORKDIR SRC FORMAT [OVERLAY...]"); err != nil {
 		return err
 	}
 	w, wfd, src, err := convertPrep(c)

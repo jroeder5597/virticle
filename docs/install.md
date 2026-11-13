@@ -265,7 +265,7 @@ made when the schema version does not change.
 ### From 0.2.0 to 0.3.0
 
 Nodes need to be prepared again, because the node command has a new version
-(protocol 14, it was 10). Until you do, a node shows "prepared by an older
+(protocol 15, it was 10). Until you do, a node shows "prepared by an older
 version" and the features that need root on it are off: migration, backups,
 downloads into a pool, and the network changes. VMs keep
 running.
