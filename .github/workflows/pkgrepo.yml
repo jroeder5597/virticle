@@ -1,0 +1,99 @@
+name: pkgrepo
+
+# Rebuilds the signed apt and dnf repository from the packages of every
+# published (not draft, not pre-release) release and deploys it to GitHub
+# Pages: https://jroeder5597.github.io/virticle/
+# One-time setup: Settings > Pages > Source: GitHub Actions. See docs/install.md.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pkgrepo
+  cancel-in-progress: false
+
+jobs:
+  repo:
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends apt-utils createrepo-c rpm gnupg
+
+      - name: Download the packages of all published releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p packages
+          tags=$(gh release list --limit 1000 --json tagName,isDraft,isPrerelease \
+            --jq '.[] | select(.isDraft | not) | select(.isPrerelease | not) | .tagName')
+          [ -n "$tags" ] || { echo "::error::no published release found"; exit 1; }
+          for tag in $tags; do
+            echo "release $tag"
+            gh release download "$tag" --dir packages --pattern '*.deb' --pattern '*.rpm' --skip-existing
+          done
+          ls -l packages
+
+      - name: Import the signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          if [ -z "$GPG_PRIVATE_KEY" ]; then
+            echo "::error::The Actions secret GPG_PRIVATE_KEY is not set (Settings > Secrets and variables > Actions). It must hold the ASCII-armoured private key. GPG_PASSPHRASE is optional."
+            exit 1
+          fi
+          umask 077
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          mkdir -p "$GNUPGHOME"
+          printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --quiet --import
+          echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+          if [ -n "$GPG_PASSPHRASE" ]; then
+            printf '%s' "$GPG_PASSPHRASE" > "$RUNNER_TEMP/gpg-pass"
+            echo "GPG_PASSPHRASE_FILE=$RUNNER_TEMP/gpg-pass" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build the repository
+        env:
+          BASE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+        run: packaging/repo/build-repo.sh packages site
+
+      - name: Show the key fingerprint
+        run: |
+          fpr=$(gpg --batch --with-colons --show-keys site/virticle.asc | awk -F: '$1=="fpr"{print $10; exit}')
+          {
+            echo "### Package repository"
+            echo
+            echo "Signing key fingerprint: \`$fpr\`"
+            echo
+            echo "Packages:"
+            echo '```'
+            ls site/apt/pool/main/v/virticle site/rpm | grep -E '\.(deb|rpm)$'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove the key from the runner
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/gnupg" "$RUNNER_TEMP/gpg-pass"
+
+      - uses: actions/configure-pages@v5.0.0
+
+      - uses: actions/upload-pages-artifact@v3.0.1
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4.0.5
