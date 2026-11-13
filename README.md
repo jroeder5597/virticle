@@ -33,13 +33,15 @@ Pick one.
 
 | Way | Commands |
 | --- | --- |
-| Package, Debian or Ubuntu | `sudo apt-get install ./virticle_<version>_amd64.deb` |
-| Package, RHEL family | `sudo dnf install ./virticle-<version>-1.x86_64.rpm` |
+| Package repository (preferred) | Add the signed apt or dnf repository once, then `sudo apt install virticle` or `sudo dnf install virticle`. Steps in [docs/install.md](docs/install.md#install-from-the-package-repository). |
+| Downloaded package, Debian or Ubuntu | `sudo apt-get install ./virticle_<version>_amd64.deb` |
+| Downloaded package, RHEL family | `sudo dnf install ./virticle-<version>-1.x86_64.rpm` |
 | Container | `docker compose up -d --build` |
 | From source (needs Go and Node.js) | `make build` then `./bin/virticle -data ./data` |
 
 Download packages from
-[Releases](https://github.com/jroeder5597/virticle/releases). After installing
+[Releases](https://github.com/jroeder5597/virticle/releases). Later versions
+arrive with `apt upgrade` or `dnf upgrade` when you use the repository. After installing
 a package, run `sudo virticle setup` once: it opens the web port in the
 firewall (firewalld or ufw) and prints the address to open. A package runs
 a systemd service that serves HTTPS with a self-signed certificate on port

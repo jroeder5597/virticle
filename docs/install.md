@@ -7,7 +7,7 @@ manages (the "nodes") except SSH access and libvirt. To get a node ready, see
 
 On this page:
 
-- [Package](#package-debian-ubuntu-rhel-like), [container](#container) or [binary](#binary)
+- [Package repository](#install-from-the-package-repository) (preferred), [downloaded package](#package-from-a-download-debian-ubuntu-rhel-like), [container](#container) or [binary](#binary)
 - [First run](#first-run)
 - [Upgrading from 0.1.0](#upgrading-from-010)
 - [Upgrade and rollback](#upgrade-and-rollback)
@@ -30,13 +30,54 @@ Releases are at <https://github.com/jroeder5597/virticle/releases>. Below,
 
 | Install type | Notes |
 | --- | --- |
-| `.deb` (Debian, Ubuntu) and `.rpm` (RHEL family) | Include a systemd service. Installed on a fresh Fedora 43 and a fresh Ubuntu 24.04 machine and followed through to a running VM. Not signed: check downloads against `checksums.txt`. |
+| `.deb` (Debian, Ubuntu) and `.rpm` (RHEL family) | Include a systemd service. Installed on a fresh Fedora 43 and a fresh Ubuntu 24.04 machine and followed through to a running VM. The files on the Releases page are not signed (check them against `checksums.txt`); the package repository below is signed. |
 | `.tar.gz` | The plain binary. |
 | Container | Built from the source tree. No image is published. |
 
 The controller is pure Go (no CGO, no C libraries), so the binary is static.
 
-## Package (Debian, Ubuntu, RHEL-like)
+## Install from the package repository
+
+This is the preferred way. The repository is signed, and later versions arrive
+with your normal updates (`sudo apt upgrade` or `sudo dnf upgrade`). It serves
+Linux amd64 and arm64.
+
+**Debian, Ubuntu**
+
+1. Add the signing key:
+
+       sudo install -d -m 0755 /etc/apt/keyrings
+       sudo curl -fsSL https://jroeder5597.github.io/virticle/virticle.gpg -o /etc/apt/keyrings/virticle.gpg
+
+2. Add the repository:
+
+       echo "deb [signed-by=/etc/apt/keyrings/virticle.gpg] https://jroeder5597.github.io/virticle/apt stable main" | sudo tee /etc/apt/sources.list.d/virticle.list
+
+3. Install:
+
+       sudo apt update
+       sudo apt install virticle
+
+**Fedora, Rocky Linux, AlmaLinux, RHEL**
+
+1. Add the repository (it names the signing key):
+
+       sudo curl -fsSL https://jroeder5597.github.io/virticle/virticle.repo -o /etc/yum.repos.d/virticle.repo
+
+2. Install. `dnf` shows the key's fingerprint and asks you to accept it once:
+
+       sudo dnf install virticle
+
+**Check the key.** The fingerprint of the signing key is
+`FINGERPRINT-TO-BE-FILLED`. For Debian and Ubuntu, `gpg --show-keys
+/etc/apt/keyrings/virticle.gpg` prints it. For dnf, compare it with the one
+`dnf` shows before you accept. The same fingerprint is on
+<https://jroeder5597.github.io/virticle/>.
+
+**Then run the setup.** The package never opens the firewall. Run
+`sudo virticle setup` once after installing (described below).
+
+## Package from a download (Debian, Ubuntu, RHEL-like)
 
 Choose one way. In both, replace `1.2.3` with the version you want.
 
@@ -233,6 +274,8 @@ script. VMs, networks and pools on the node are not touched.
 
 To upgrade, do one of these:
 
+- From the package repository: `sudo apt update && sudo apt upgrade` or
+  `sudo dnf upgrade`. Same as the next item for your settings and the service.
 - Install the newer package: `sudo apt-get install ./virticle_NEW.deb` or
   `sudo dnf upgrade ./virticle-NEW.rpm`. Your edits in
   `/etc/virticle/virticle.env` are kept, and the package restarts a running
