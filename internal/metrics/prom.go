@@ -49,7 +49,7 @@ func (o *promOut) add(name, help, typ string, labels []string, v float64) {
 		b.WriteByte('}')
 	}
 	b.WriteByte(' ')
-	b.WriteString(strconv.FormatFloat(v, 'g', -1, 64))
+	b.WriteString(strconv.FormatFloat(v, 'f', -1, 64))
 	f.lines = append(f.lines, b.String())
 }
 

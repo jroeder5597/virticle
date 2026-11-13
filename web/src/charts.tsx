@@ -26,7 +26,8 @@ export interface AllStats {
   vms: Record<string, VMPoint>; // "node/uuid"
 }
 
-const POLL_MS = 5000;
+// The collector samples every 15 seconds (internal/stats), so polling faster only repeats the same values.
+const POLL_MS = 15000;
 
 /** Polls `path` while mounted and the tab is visible. Keeps the old data on a failed poll so charts do not blink. */
 export function usePoll<T>(path: string | null, ms = POLL_MS): T | undefined {

@@ -16,9 +16,11 @@ import Tasks from "./Tasks";
 import Topology from "./Topology";
 import VMs from "./VMs";
 import "../datacenter.css";
+import { DatacenterPerformance } from "./Performance";
 
 const TABS = [
   ["summary", "Summary"],
+  ["performance", "Performance"],
   ["vms", "Virtual machines"],
   ["storage", "Storage"],
   ["network", "Network"],
@@ -47,6 +49,7 @@ export default function Datacenter() {
         ))}
       </div>
       {tab === "summary" && <Summary />}
+      {tab === "performance" && <DatacenterPerformance />}
       {tab === "vms" && <VMs />}
       {tab === "storage" && <Storage allNodes />}
       {tab === "network" && <Networks allNodes after={(nodes) => nodes.length > 0 && <HostInterfaces nodes={nodes} />} />}

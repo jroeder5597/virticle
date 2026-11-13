@@ -8,6 +8,7 @@ import { ErrorBox, StateBadge, useAction } from "../ui";
 import { SerialConsole, VNCConsole } from "./Console";
 import Hardware from "./Hardware";
 import SnapshotsTab from "./Snapshots";
+import { PerformanceTab } from "./Performance";
 import BackupsTab from "./Backups";
 import VMActions from "./VMActions";
 import Overview from "./VMOverview";
@@ -63,6 +64,7 @@ export default function VMDetailPage() {
   };
   const tabs = [
     ["overview", "Overview"],
+    ["performance", "Performance"],
     ["hardware", "Hardware"],
     ["console", "Console"],
     ["snapshots", "Snapshots"],
@@ -93,6 +95,7 @@ export default function VMDetailPage() {
         ))}
       </div>
       {tab === "overview" && <Overview d={d} base={base} onChanged={vm.reload} />}
+      {tab === "performance" && <PerformanceTab kind="vm" id={uuid} passthrough={d.passthroughDevices > 0} />}
       {tab === "hardware" && <Hardware d={d} base={base} onChanged={vm.reload} />}
       {tab === "console" && <ConsoleTab d={d} base={base} onChanged={vm.reload} />}
       {tab === "snapshots" && <SnapshotsTab d={d} base={base} />}

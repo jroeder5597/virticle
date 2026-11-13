@@ -14,12 +14,14 @@ import MigrationTLS from "./MigrationTLS";
 import Networks from "./Networks";
 import Storage from "./Storage";
 import Topology from "./Topology";
+import { PerformanceTab } from "./Performance";
 import VMs from "./VMs";
 import "../node.css";
 import { StatusLine } from "../Checks";
 
 const TABS = [
   ["summary", "Summary"],
+  ["performance", "Performance"],
   ["vms", "Virtual machines"],
   ["storage", "Storage"],
   ["network", "Network"],
@@ -94,6 +96,7 @@ export default function NodeDetail() {
       ) : (
         <>
           {tab === "summary" && <Summary n={n} alerts={alerts} />}
+          {tab === "performance" && <PerformanceTab kind="node" id={String(id)} />}
           {tab === "vms" && <VMs fixedNode={id} />}
           {tab === "storage" && <Storage fixedNode={id} />}
           {tab === "network" && <NetworkTab id={id} />}

@@ -248,6 +248,11 @@ func TestQueryShapeGapsAndEvents(t *testing.T) {
 		default:
 			rows = []Row{vmRow("a", 2, 30, DevRow{Kind: "disk", Name: "vda", Vals: [nDev]float64{1000, 2000, 1, 2, 3, NaN}})}
 		}
+		if i >= 20 && i < 40 {
+			// The node itself was read during the gap, so the VM was really off.
+			nv := blankRow(len(nodeCols))
+			rows = append(rows, Row{Ent: "node:1", Label: "n1", Vals: nv})
+		}
 		if i%10 == 0 {
 			// Another VM and a node, to check that they do not leak into the answer.
 			rows = append(rows, vmRow("b", 1, 99))
@@ -301,6 +306,26 @@ func TestQueryShapeGapsAndEvents(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
 	if len(lines) != 81 || !strings.HasPrefix(lines[0], "time,cpu") {
 		t.Errorf("csv: %d lines, header %q", len(lines), lines[0])
+	}
+}
+
+func TestGapWithoutNodeRowsIsNotAStop(t *testing.T) {
+	d, now := newDB(t, time.Unix(1_800_000_000, 0))
+	base := now.Unix()/15*15 - 1200
+	for i := 0; i < 80; i++ {
+		if i >= 20 && i < 40 {
+			continue // the controller was not running: no VM row, no node row
+		}
+		if err := d.Insert(Batch{T: base + int64(i)*15, Rows: []Row{vmRow("a", 1, 20)}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := d.Query(Request{Kind: "vm", ID: "a", From: time.Unix(base, 0), To: time.Unix(base+1199, 0), Groups: []string{"cpu"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Events) != 0 {
+		t.Errorf("a collection gap is not a VM event: %+v", res.Events)
 	}
 }
 

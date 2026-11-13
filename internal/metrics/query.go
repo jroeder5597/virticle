@@ -20,7 +20,7 @@ type Request struct {
 	From   time.Time
 	To     time.Time
 	Groups []string // cpu, memory, disk, network, storage, gpu; empty means all
-	Device string   // a device id from Result.Devices; empty means all (sum)
+	Device string   // device ids from Result.Devices, comma separated, one per group; empty means all (sum)
 }
 
 // Vals is a series; NaN is written as null.
@@ -231,9 +231,18 @@ func (d *DB) Query(req Request) (*Result, error) {
 	devGroup := func(g string) bool {
 		return req.Kind == "node" && (g == "disk" || g == "network") || g == "storage" || g == "gpu"
 	}
+	// Device ids are "kind:name"; several can be given, comma separated, one
+	// per group (a disk and a card at once).
+	devOf := map[string]string{}
+	for _, dv := range strings.Split(req.Device, ",") {
+		kind, _, _ := strings.Cut(dv, ":")
+		if k := kindOf(kind); k != nil && k.Entity == req.Kind {
+			devOf[k.Group] = dv
+		}
+	}
 	wantCol := func(name string) bool {
 		g := groupOf(name)
-		return g != "" && inGroup[g] && !(devGroup(g) || (req.Device != "" && (g == "disk" || g == "network")))
+		return g != "" && inGroup[g] && !(devGroup(g) || devOf[g] != "")
 	}
 	exprs, names := selectExprs(wideCols, tier, func(s string) bool { return wantCol(s) || (s == "node" && req.Kind == "vm") })
 	if len(names) > 0 {
@@ -251,7 +260,16 @@ func (d *DB) Query(req Request) (*Result, error) {
 	}
 	if nodes, ok := res.Series["\x00node"]; ok {
 		delete(res.Series, "\x00node")
-		res.Events = events(res.T, step, nodes, now, req.To)
+		res.Events = events(res.T, step, nodes, now, req.To, func(a, b, node int64) bool {
+			// The VM's row is missing: it was off only if its node was read meanwhile.
+			nent, ok := d.lookup("node:" + itoa(node))
+			if !ok {
+				return false
+			}
+			var have int64
+			d.db.QueryRow(fmt.Sprintf("SELECT count(*) FROM %s WHERE ent=? AND t>? AND t<?", tableFor("node", tier)), nent, a, b).Scan(&have)
+			return have*2 >= (b-a)/Tiers[tier].Step-1
+		})
 	}
 
 	// Devices present in the range, and the groups' series from them.
@@ -269,13 +287,10 @@ func (d *DB) Query(req Request) (*Result, error) {
 	}
 	for _, g := range use {
 		switch {
-		case req.Device != "":
-			kind, _, _ := strings.Cut(req.Device, ":")
+		case devOf[g] != "":
+			kind, _, _ := strings.Cut(devOf[g], ":")
 			k := kindOf(kind)
-			if k == nil || k.Entity != req.Kind || k.Group != g {
-				continue
-			}
-			id, ok := d.lookup(req.Device)
+			id, ok := d.lookup(devOf[g])
 			if !ok {
 				continue
 			}
@@ -419,8 +434,10 @@ func (d *DB) deviceSeries(k *DevKind, ids []int64, suffix string, ent int64, tie
 }
 
 // events finds starts, stops and moves of a VM from the node column of the
-// answer: no value for two steps or more is a stop followed by a start.
-func events(t []int64, step int64, node Vals, now, to time.Time) []Event {
+// answer: no value for two steps or more is a stop followed by a start, when
+// up says that the node itself was read in the meantime (otherwise the
+// controller or the node was away and nothing is known about the VM).
+func events(t []int64, step int64, node Vals, now, to time.Time, up func(a, b, node int64) bool) []Event {
 	out := []Event{}
 	lastSeen := -1
 	missing := 0
@@ -430,11 +447,13 @@ func events(t []int64, step int64, node Vals, now, to time.Time) []Event {
 			continue
 		}
 		if lastSeen < 0 {
-			if missing >= 2 {
+			if missing >= 2 && up(t[0], t[i], int64(v)) {
 				out = append(out, Event{T: t[i], Kind: "started", Node: int64(v)})
 			}
 		} else if missing >= 2 {
-			out = append(out, Event{T: t[lastSeen], Kind: "stopped"}, Event{T: t[i], Kind: "started", Node: int64(v)})
+			if up(t[lastSeen], t[i], int64(node[lastSeen])) {
+				out = append(out, Event{T: t[lastSeen], Kind: "stopped"}, Event{T: t[i], Kind: "started", Node: int64(v)})
+			}
 		} else if v != node[lastSeen] {
 			out = append(out, Event{T: t[i], Kind: "migrated", Node: int64(v)})
 		}
@@ -447,7 +466,7 @@ func events(t []int64, step int64, node Vals, now, to time.Time) []Event {
 		if now.Unix() < end {
 			end = now.Unix()
 		}
-		if end-t[lastSeen] > 3*step {
+		if end-t[lastSeen] > 3*step && up(t[lastSeen], end, int64(node[lastSeen])) {
 			out = append(out, Event{T: t[lastSeen], Kind: "stopped"})
 		}
 	}
