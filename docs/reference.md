@@ -259,9 +259,11 @@ applies it at once with `ip link set` (cards last when it goes down, first when 
 switch is deleted, the card gets its earlier MTU back. libvirt 11.3 and 11.10 refuse `<mtu>` in a network with `forward mode='bridge'`, so
 networks on a host bridge cannot carry it; a guest needs the MTU in its own settings (not tried in the lab).
 
-**Protocol 12.** The node command protocol is 12 (it was 11): the request and the saved state of a switch have new fields and the
-controller shows bond and VLAN device state. A node prepared with protocol 11 shows "prepare the node again". (The old node command would
-also refuse the new requests, because it rejects fields it does not know; the version check gives the clear message instead.)
+**Protocol 13.** The node command protocol is 13 (it was 11). Virtual switches (bonds, the node's address on a VLAN, MTU: new
+fields in the request and the saved state of a switch, bond and VLAN device state) and the migration network with its automatic
+limit each raised it to 12 on their own branch; 13 is the number of the two together, so a node prepared with only one of them is not
+current. A node prepared with an older version shows "prepare the node again". (The old node command would also refuse the new
+requests, because it rejects fields it does not know; the version check gives the clear message instead.)
 
 **What it refuses.** Ports of a bond (or of a bridge) as uplinks, and cards that are already in another bond; an uplink that is already a port; wireless, virtual and
 libvirt-managed (`virbr*`, `vnet*`) interfaces; changing an interface that carries the controller's connection without
