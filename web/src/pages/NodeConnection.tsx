@@ -100,7 +100,8 @@ export default function ConnectionCard({ n, admin }: { n: NodeStatus; admin: boo
 
   // One warning: the node is not prepared (or was prepared by an older version), or else the first thing that needs root and is off.
   const unprepared = n.state === "online" && info?.detectedPrivilege === "none";
-  const older = !!info?.privilegeNote?.includes("older version");
+  // An old script ("prepared by an older version") or an old node command ("the installed node command is version N and this controller ships M").
+  const older = !!info?.privilegeNote && /older version|installed node command is version/.test(info.privilegeNote);
   const blocked = info ? Object.values(info.capabilities).filter((c) => !c.ok) : [];
   const hostKeyError = !!n.error && n.error.includes("key mismatch");
   return (
