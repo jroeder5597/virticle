@@ -242,3 +242,49 @@ func TestVLANStillUsed(t *testing.T) {
 		t.Errorf("other bridge: %v", err)
 	}
 }
+
+func TestNextSwitchName(t *testing.T) {
+	for _, c := range []struct {
+		taken []string
+		want  string
+	}{
+		{nil, "vsw0"},
+		{[]string{"eth0", "vsw0"}, "vsw1"},
+		{[]string{"vsw1"}, "vsw0"},
+		{[]string{"vsw0", "vsw1", "vsw2"}, "vsw3"},
+	} {
+		if got := nextSwitchName(c.taken); got != c.want {
+			t.Errorf("nextSwitchName(%v) = %s, want %s", c.taken, got, c.want)
+		}
+	}
+}
+
+func TestSameNetworkPeers(t *testing.T) {
+	br := func(name string, managed, aware bool, vlans string) nodeproto.NetBridge {
+		return nodeproto.NetBridge{Name: name, Managed: managed, VLANFiltering: aware, VLANs: vlans}
+	}
+	others := []peerNode{
+		{Node: 2, Name: "b", Bridges: []nodeproto.NetBridge{br("vsw0", true, true, "2-4094")}},
+		{Node: 3, Name: "a", Bridges: []nodeproto.NetBridge{br("vsw0", true, true, "10,20")}},
+		{Node: 4, Name: "c", Bridges: []nodeproto.NetBridge{br("vsw0", false, true, "2-4094")}},                            // not made by Virticle
+		{Node: 5, Name: "d", Bridges: []nodeproto.NetBridge{br("vsw0", true, false, "")}},                                  // no VLANs
+		{Node: 6, Name: "e", Bridges: []nodeproto.NetBridge{br("vsw0", true, true, "2-4094")}, Networks: []string{"vs-a"}}, // has it
+		{Node: 7, Name: "f", Bridges: []nodeproto.NetBridge{br("vsw1", true, true, "2-4094")}},                             // other name
+	}
+	names := func(c []peerChoice) string {
+		s := ""
+		for _, p := range c {
+			s += p.Name
+		}
+		return s
+	}
+	if got := names(sameNetworkPeers("vsw0", "vs-a", 30, others)); got != "b" {
+		t.Errorf("vlan 30: %q, want b", got)
+	}
+	if got := names(sameNetworkPeers("vsw0", "vs-a", 20, others)); got != "ab" {
+		t.Errorf("vlan 20: %q, want ab", got)
+	}
+	if got := names(sameNetworkPeers("vsw0", "vs-a", 0, others)); got != "abd" {
+		t.Errorf("untagged: %q, want abd", got)
+	}
+}

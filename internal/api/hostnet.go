@@ -37,6 +37,9 @@ const (
 	hostnetCallLimit  = 15 * time.Second
 	hostnetNudgeEvery = 10 * time.Second
 
+	// hostnetWaiting is the task progress once the node has started the change and the task waits for it to come back.
+	hostnetWaiting = 0.2
+
 	// MsgNodeDidNotReturn is what the task says when the node does not answer again.
 	MsgNodeDidNotReturn = "The node did not come back in time. It restores its previous network settings by itself; check again in a minute."
 )
@@ -72,6 +75,21 @@ type hostnetState struct {
 	Interfaces          []hostNIC           `json:"interfaces"`
 	Bridges             []hostnetBridge     `json:"bridges"`
 	Status              nodeproto.NetStatus `json:"status"`
+	// NextBridgeName is the first free name of the form vsw0, vsw1 ... for a new virtual switch.
+	NextBridgeName string `json:"nextBridgeName"`
+}
+
+// nextSwitchName returns the first of vsw0, vsw1 ... that no interface of the node already uses.
+func nextSwitchName(taken []string) string {
+	used := map[string]bool{}
+	for _, t := range taken {
+		used[t] = true
+	}
+	for i := 0; ; i++ {
+		if n := "vsw" + strconv.Itoa(i); !used[n] {
+			return n
+		}
+	}
 }
 
 func libvirtVer(v uint64) string { return fmt.Sprintf("%d.%d.%d", v/1000000, v/1000%1000, v%1000) }
@@ -194,6 +212,14 @@ func (s *Server) hostnetState(id int64, h *hostconn.Host) (hostnetState, error) 
 		}
 	}
 	sort.Slice(st.Bridges, func(i, j int) bool { return st.Bridges[i].Name < st.Bridges[j].Name })
+	taken := []string{}
+	for _, n := range nics {
+		taken = append(taken, n.Name)
+	}
+	for _, b := range st.Bridges {
+		taken = append(taken, b.Name)
+	}
+	st.NextBridgeName = nextSwitchName(taken)
 	return st, nil
 }
 
@@ -351,8 +377,8 @@ func (s *Server) hostnetApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	node := h.Name
-	err = s.taskAsync(r, "host network", req.Bridge, node, func(func(float64)) error {
-		return s.hostnetRun(id, h, req)
+	err = s.taskAsync(r, "host network", req.Bridge, node, func(progress func(float64)) error {
+		return s.hostnetRun(id, h, req, progress)
 	})
 	if err != nil {
 		fail(w, err)
@@ -391,11 +417,13 @@ func (s *Server) hostnetRollback(w http.ResponseWriter, r *http.Request) {
 }
 
 // hostnetRun is the task: apply, wait for the node to come back, confirm.
-func (s *Server) hostnetRun(id int64, h *hostconn.Host, req nodeproto.NetRequest) error {
+func (s *Server) hostnetRun(id int64, h *hostconn.Host, req nodeproto.NetRequest, progress func(float64)) error {
 	res, err := h.NetApply(req)
 	if err != nil {
 		return hostnetNodeRefusal(err)
 	}
+	// The change is saved and started on the node: from here on the task is waiting for the node (the UI shows this step).
+	progress(hostnetWaiting)
 	w := netWaiter{
 		node: func() (netNode, error) {
 			cur, err := s.Nodes.Host(id)
@@ -561,4 +589,89 @@ func (v *linuxVLAN) vlanXML(bridge string, tag int) (string, error) {
 		return "", badRequest("VLAN " + strconv.Itoa(tag) + " is not allowed on the bridge " + bridge + " (its uplink allows: " + allowed + ")")
 	}
 	return fmt.Sprintf("  <vlan><tag id='%d'/></vlan>\n", tag), nil
+}
+
+// --- the same network on the other nodes ---
+
+// peerNode is what the "same network on other nodes" helper needs to know about one other node.
+type peerNode struct {
+	Node     int64
+	Name     string
+	Bridges  []nodeproto.NetBridge
+	Networks []string // names of its libvirt networks
+}
+
+type peerChoice struct {
+	Node int64  `json:"node"`
+	Name string `json:"name"`
+}
+
+// sameNetworkPeers lists the nodes on which a network of the given name can be made on a managed virtual
+// switch of the same name: the node has that switch, has no network of that name yet and, for a VLAN tag
+// (vlan > 0), the switch filters VLANs and allows the tag.
+func sameNetworkPeers(bridge, network string, vlan int, others []peerNode) []peerChoice {
+	out := []peerChoice{}
+	for _, p := range others {
+		ok := false
+		for _, b := range p.Bridges {
+			if b.Name != bridge || !b.Managed {
+				continue
+			}
+			ok = vlan == 0 || (b.VLANFiltering && nodeproto.VLANAllowed(b.VLANs, vlan))
+		}
+		for _, n := range p.Networks {
+			if n == network {
+				ok = false
+			}
+		}
+		if ok {
+			out = append(out, peerChoice{Node: p.Node, Name: p.Name})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// hostnetPeers is GET .../hostnet/peers?bridge=&network=&vlan=: the other nodes that could get the same network.
+func (s *Server) hostnetPeers(w http.ResponseWriter, r *http.Request) {
+	id, _, err := s.host(r)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	q := r.URL.Query()
+	bridge, network := q.Get("bridge"), q.Get("network")
+	vlan, _ := strconv.Atoi(q.Get("vlan"))
+	if bridge == "" || network == "" {
+		fail(w, badRequest("bridge and network are required"))
+		return
+	}
+	res := gatherNodes(s, nodeTimeout, func(h *hostconn.Host) ([]peerNode, error) {
+		cfg, _ := s.Nodes.ConfigOfHost(h)
+		if cfg.ID == id {
+			return nil, nil
+		}
+		info, err := h.NetInfo()
+		if err != nil {
+			return nil, err
+		}
+		nets, err := collectNetworks(h)
+		if err != nil {
+			return nil, err
+		}
+		p := peerNode{Node: cfg.ID, Bridges: info.Bridges}
+		for _, n := range nets {
+			p.Networks = append(p.Networks, n.Name)
+		}
+		return []peerNode{p}, nil
+	})
+	others := []peerNode{}
+	for _, r := range res {
+		if len(r.Items) == 1 { // a node that failed or is not prepared is left out
+			p := r.Items[0]
+			p.Name = r.Name
+			others = append(others, p)
+		}
+	}
+	writeJSON(w, map[string]any{"nodes": sameNetworkPeers(bridge, network, vlan, others)})
 }

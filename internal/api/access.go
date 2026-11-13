@@ -79,6 +79,7 @@ var routeLevels = map[string]string{
 	"POST /api/nodes/{node}/hostnet/plan":     admin,
 	"POST /api/nodes/{node}/hostnet/apply":    admin,
 	"POST /api/nodes/{node}/hostnet/rollback": admin,
+	"GET /api/nodes/{node}/hostnet/peers":     admin,
 
 	"GET /api/users":         admin,
 	"POST /api/users":        admin,

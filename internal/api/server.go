@@ -127,6 +127,7 @@ func (s *Server) Handler() http.Handler {
 	auth("POST /api/nodes/{node}/hostnet/plan", s.hostnetPlan)
 	auth("POST /api/nodes/{node}/hostnet/apply", s.hostnetApply)
 	auth("POST /api/nodes/{node}/hostnet/rollback", s.hostnetRollback)
+	auth("GET /api/nodes/{node}/hostnet/peers", s.hostnetPeers)
 	auth("GET /api/stats", s.allStats)
 	auth("GET /api/nodes/{node}/stats", s.nodeStats)
 	auth("GET /api/nodes/{node}/vms/{uuid}/stats", s.vmStats)
