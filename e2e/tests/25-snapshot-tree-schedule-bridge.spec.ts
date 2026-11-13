@@ -209,18 +209,19 @@ test.describe.serial("snapshot tree, delete dialog, schedule, bridge picker", ()
     expect((await snaps(api)).length).toBe(2); // planning changed nothing
   });
 
-  test("an external snapshot on this AppArmor node is shown disabled with the reason", async ({ page, api, n1 }) => {
+  test("a running VM on an AppArmor node can only take snapshots with its running state, and the dialog says why", async ({ page, api, n1 }) => {
     vm2 = await createCirros(api, n1, NAME2, { start: true });
-    await api.post(`/nodes/${n1}/vms/${vm2.uuid}/snapshots`, { name: "x1", memory: false });
-    const list = await api.get(`/nodes/${n1}/vms/${vm2.uuid}/snapshots`);
-    test.skip(list[0].kind !== "external" || list[0].deletable, "this node can delete external snapshots");
-    expect(list[0].reason).toContain("AppArmor");
+    const o = await api.get(`/nodes/${n1}/vms/${vm2.uuid}/snapshot-options`);
+    test.skip(o.diskOnly.allowed, "this node can delete snapshots made without the running state");
+    expect(o.diskOnly.reason).toContain("running state");
+    expect(await api.call("POST", `/nodes/${n1}/vms/${vm2.uuid}/snapshots`, { name: "x1", memory: false }, [400])).toMatchObject({ error: o.diskOnly.reason });
     await openVM(page, vm2, "snapshots");
-    await node(page, "x1").getByRole("button", { name: "Delete x1" }).click();
-    const dlg = dialog(page, "Delete x1");
-    await expect(dlg.getByRole("checkbox", { name: "Select x1" })).toBeDisabled();
-    await expect(dlg.locator(".srow", { hasText: "x1" })).toContainText("AppArmor");
-    await expect(dlg.getByRole("button", { name: /^Delete \d+ snapshot/ })).toBeDisabled();
+    await page.getByRole("button", { name: "Take snapshot" }).first().click();
+    const dlg = dialog(page, "Take snapshot");
+    const box = dlg.getByLabel(/Save the running state too/);
+    await expect(box).toBeChecked();
+    await expect(box).toBeDisabled();
+    await expect(dlg.getByText(o.diskOnly.reason)).toBeVisible();
     await page.keyboard.press("Escape");
   });
 

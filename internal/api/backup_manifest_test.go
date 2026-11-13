@@ -38,6 +38,7 @@ func TestParseManifest(t *testing.T) {
 		},
 		"bad sha":    func(m *backupManifest) { m.Disks[0].SHA256 = "abc" },
 		"nvram name": func(m *backupManifest) { m.NVRAM = "/etc/passwd" },
+		"nvram fmt":  func(m *backupManifest) { m.NVRAM, m.NVRAMFormat = "nvram.fd", "vmdk" },
 	}
 	for name, mut := range cases {
 		m := goodManifest()
@@ -197,5 +198,21 @@ func TestParseManifestFromBeforeRename(t *testing.T) {
 	}
 	if backupAppVersion != "virticle dev" {
 		t.Fatalf("new manifests carry %q", backupAppVersion)
+	}
+}
+
+// A manifest from before qcow2 variable stores has no nvramFormat; a new one records it.
+func TestManifestNVRAMFormat(t *testing.T) {
+	old := `{"format":1,"vm":"a","uuid":"0dc0f2ac-2086-4f51-9633-9d6952479016","created":"2026-11-10T19:30:00Z","sourceNode":"n","appVersion":"x","live":false,` +
+		`"disks":[{"target":"vda","file":"vda.qcow2","format":"qcow2","virtualSize":1,"bytes":1}],"nvram":"nvram.fd","tpm":false,"notes":[]}`
+	m, err := parseBackupManifest([]byte(old))
+	if err != nil || m.NVRAMFormat != "" {
+		t.Fatalf("old manifest: %+v %v", m, err)
+	}
+	g := goodManifest()
+	g.NVRAM, g.NVRAMFormat = "nvram.fd", "qcow2"
+	raw, _ := json.Marshal(g)
+	if m, err := parseBackupManifest(raw); err != nil || m.NVRAMFormat != "qcow2" {
+		t.Fatalf("new manifest: %+v %v", m, err)
 	}
 }

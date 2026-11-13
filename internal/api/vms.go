@@ -569,7 +569,16 @@ func (s *Server) vmDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(paths) > 0 {
-		deps, err := linkedClones(h, paths)
+		extra, err := vmOwnedExtras(h, dom, paths)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		paths = append(paths, extra...)
+		// Overlays and memory files of the VM's own snapshots rest on its
+		// base disk and are removed with it; anything else built on these
+		// files (a linked clone) blocks the delete.
+		deps, err := dependentVolumes(h, paths, paths)
 		if err != nil {
 			fail(w, err)
 			return
@@ -583,7 +592,11 @@ func (s *Server) vmDelete(w http.ResponseWriter, r *http.Request) {
 	err = s.task(r, "delete", dom.Name, h.Name, func(func(float64)) error {
 		flags := libvirt.DomainUndefineManagedSave | libvirt.DomainUndefineSnapshotsMetadata |
 			libvirt.DomainUndefineNvram | libvirt.DomainUndefineCheckpointsMetadata | libvirt.DomainUndefineTpm
+		restore := withTPMForCleanup(h, dom)
 		if err := h.DomainUndefineFlags(dom, flags); err != nil {
+			if restore != "" {
+				_, _ = h.DomainDefineXMLFlags(restore, 0)
+			}
 			return err
 		}
 		refreshed := false

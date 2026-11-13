@@ -240,7 +240,7 @@ func (s *Server) vmClone(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var uuid string
+	var uuid, nvramNote string
 	err = s.task(r, "clone", q.Name+" (from "+src.Name+")", h.Name, func(progress func(float64)) error {
 		var created []libvirt.StorageVol
 		var defined *libvirt.Domain
@@ -345,6 +345,7 @@ func (s *Server) vmClone(w http.ResponseWriter, r *http.Request) {
 		}
 		defined = &dom
 		uuid = cluster.FormatUUID(dom.UUID)
+		nvramNote = useQcow2Nvram(h, dom)
 		progress(0.98)
 		if q.Start {
 			if err := h.DomainCreate(dom); err != nil {
@@ -358,6 +359,9 @@ func (s *Server) vmClone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := map[string]any{"uuid": uuid, "sysprep": mechanism, "guest": guest}
+	if nvramNote != "" {
+		resp["warning"] = nvramNote
+	}
 	if err != nil {
 		resp["startError"] = err.Error()
 	}

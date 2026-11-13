@@ -65,6 +65,8 @@ type Config struct {
 	Pools func(c *Ctx) []string
 	// NVRAMDir is the UEFI NVRAM directory, an allowed root of its own.
 	NVRAMDir string
+	// ShareDir is where firmware templates live (default /usr/share).
+	ShareDir string
 	// Prefix is put in front of the /etc paths of the migration certificate
 	// verbs and of qemu.conf. Empty in production.
 	Prefix string

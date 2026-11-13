@@ -9,7 +9,7 @@ import Select from "../Select";
 import { ErrorBox, Field, Modal, NodePicker, PageTitle, StateBadge, useAction, useConfirm } from "../ui";
 import { powerConfirm, powerLabel } from "../power";
 import { BulkBar } from "./Bulk";
-import { emptyFw, FirmwareFields, fwPayload, FwValues, limitToCaps, OsTypeField, useFwCaps } from "./Firmware";
+import { emptyFw, FirmwareFields, fwPayload, FwValues, limitToCaps, OsTypeField, useDiskFirmware, useFwCaps } from "./Firmware";
 import DialogAdvanced from "./DialogAdvanced";
 import { TagChips } from "./Tags";
 import { Meter, pct, useAllStats, VMPoint } from "../charts";
@@ -226,6 +226,12 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
     if (caps) setFw((v) => limitToCaps(v, caps));
   }, [caps]);
 
+  // A disk that already has an operating system may start with only one firmware; the choice follows it.
+  const disk = useDiskFirmware(node, pool, source === "image" || source === "existing" ? media : "");
+  useEffect(() => {
+    if (disk.only && fw.firmware !== disk.only) setFw((v) => ({ ...v, firmware: disk.only!, secureBoot: disk.only === "uefi" && v.secureBoot }));
+  }, [disk.only, fw.firmware]);
+
   // The suggested disk size fits the chosen pool: 20 GiB, or what is free
   // when the pool has less.
   useEffect(() => {
@@ -308,6 +314,7 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
             <input type="number" min={64} step={64} value={memoryMiB} onChange={(e) => setMemory(Number(e.target.value))} />
           </Field>
         </div>
+        {fw.firmware === "uefi" && memoryMiB < 512 && <p className="note">UEFI guests usually need at least 512 MiB to boot.</p>}
         <ErrorBox error={capsError} />
         <OsTypeField value={fw} caps={caps} onChange={setFw} />
         <Field label="Install from" group>
@@ -343,6 +350,7 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
             <Select label="Base image" value={media} onChange={setMedia} placeholder="Choose an image" options={images.map((v) => ({ value: v.name, label: `${v.name} (${bytes(v.capacity)})` }))} />
           </Field>
         )}
+        {disk.only && <p className="note">This disk starts with {disk.only === "bios" ? "BIOS" : "UEFI"} only.</p>}
         {source === "image" && images.length === 0 && pool && (
           <p className="muted">
             No images in this pool. <Link to={`/node/${node}/storage?pool=${encodeURIComponent(pool)}&catalogue=1`}>Get a cloud image from the catalogue</Link>.
@@ -388,7 +396,7 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
               ]}
             />
           </Field>
-          <FirmwareFields value={fw} caps={caps} onChange={setFw} />
+          <FirmwareFields value={fw} caps={caps} disk={disk} onChange={setFw} />
           <Field label="Existing volume" hint="Use a volume of the chosen pool as the disk as it is, not copied.">
             <Select
               label="Existing volume"

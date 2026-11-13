@@ -85,7 +85,7 @@ What you can do with a node:
    - **Disk image**: copies a cloud image. Open **Cloud-init** to set the
      user, password and SSH key. The guest agent is installed too.
    - **Empty disk**.
-3. For Windows, set **Guest OS type** to **Windows**: it picks UEFI, Secure
+3. A Linux VM gets UEFI firmware unless you choose BIOS under **Advanced** (a node without UEFI firmware gets BIOS). UEFI guests usually need at least 512 MiB. For Windows, set **Guest OS type** to **Windows**: it picks UEFI, Secure
    Boot and a virtual TPM for you.
 4. **Advanced** holds the CPU type, firmware, Secure Boot, TPM and **Existing
    volume** (use a volume as the disk as it is). Leave **CPU type** on

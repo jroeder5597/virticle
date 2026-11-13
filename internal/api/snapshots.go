@@ -16,27 +16,15 @@ import (
 	"virticle/internal/hostconn"
 )
 
-// Snapshot strategy (libvirt 11.3 on Debian 13, verified on the lab):
+// Snapshot kinds (libvirt 11.3 on Debian 13, verified on the lab): see snapkind.go, which decides the kind of a
+// new snapshot in one place. A VM keeps one kind until all its snapshots are deleted.
 //
-//   - shut off: INTERNAL (inside the qcow2 file, no new files). Create,
-//     revert and delete all work. Offline external snapshots can be created
-//     and reverted but deleting them fails and leaks overlay files.
-//   - running/paused with memory: INTERNAL by default (QEMU savevm; the guest
-//     is paused while memory is written). Create, revert and delete all work.
-//     UEFI guests default to EXTERNAL instead because internal snapshots of
-//     pflash firmware are not generally possible. EXTERNAL can be requested:
-//     it keeps the guest running and writes "<vm>.<snap>.qcow2" and
-//     "<vm>.<snap>.mem" next to the disk (the layout the migration feature
-//     relies on), but see the delete caveat below.
-//   - running/paused disk-only (optionally quiesced): EXTERNAL, the only
-//     kind libvirt offers for a live disk-only snapshot.
-//
-// Caveat found on the lab: deleting an external snapshot merges data into a
-// backing file, and with libvirt's AppArmor driver the write is often denied
-// ("Could not open ...: Permission denied"). libvirt then marks the disk as
-// being in an unfinished snapshot delete. The error is passed to the user.
-//
-// Internal and external snapshots can live in one tree.
+// An internal snapshot lives inside the qcow2 file and always works for create, revert and delete. An external one
+// is an overlay file (plus "<vm>.<snap>.mem" when the running state is saved) next to the disk. Deleting an external
+// snapshot merges the overlay into its backing file; with libvirt's AppArmor driver that write is denied once the
+// per-VM profile has been generated from the domain definition ("block-commit: Permission denied"), and libvirt
+// leaves the disk marked as being in an unfinished snapshot delete. Nodes with AppArmor therefore only get
+// internal snapshots.
 
 var snapNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$`)
 
@@ -46,8 +34,11 @@ const snapNameRule = "snapshot name must start with a letter or digit and contai
 type snapDomXML struct {
 	OS struct {
 		Firmware string `xml:"firmware,attr"`
-		NVRAM    string `xml:"nvram"`
-		Loader   struct {
+		NVRAM    struct {
+			Format string `xml:"format,attr"`
+			Path   string `xml:",chardata"`
+		} `xml:"nvram"`
+		Loader struct {
 			Type string `xml:"type,attr"`
 		} `xml:"loader"`
 	} `xml:"os"`
@@ -263,25 +254,27 @@ func (s *Server) createSnapshot(r *http.Request, h *hostconn.Host, dom libvirt.D
 	}
 
 	switch q.Mode {
-	case "", "internal", "external":
+	case "", kindInternal, kindExternal:
 	default:
 		return "", badRequest(`mode must be "", "internal" or "external"`)
 	}
-	uefi := dx.OS.Firmware == "efi" || dx.OS.Loader.Type == "pflash" || dx.OS.NVRAM != ""
-	external := false
-	switch {
-	case !active:
-		if q.Mode == "external" {
-			return "", badRequest("external snapshots of a VM that is shut off cannot be deleted reliably; use an internal snapshot")
-		}
-	case !q.Memory:
-		if q.Mode == "internal" {
-			return "", badRequest("libvirt only supports external snapshots for a live snapshot without memory")
-		}
-		external = true
-	default:
-		external = q.Mode == "external" || (q.Mode == "" && (uefi || autoExternal(h, dom)))
+	list, err := snapshotList(h, dom)
+	if err != nil {
+		return "", err
 	}
+	in, err := snapInputsOf(h, dom, list)
+	if err != nil {
+		return "", err
+	}
+	in.Active, in.WithState = active, q.Memory
+	choice := chooseSnapshotKind(in)
+	if !choice.Allowed {
+		return "", badRequest(choice.Reason)
+	}
+	if q.Mode != "" && q.Mode != choice.Kind {
+		return "", badRequest("this VM can only take " + choice.Kind + " snapshots right now; leave the mode empty")
+	}
+	external := choice.Kind == kindExternal
 
 	var (
 		body  strings.Builder
@@ -479,39 +472,26 @@ func refreshPools(h *hostconn.Host) {
 // apparmorNodes caches, per node name, whether QEMU is confined by AppArmor.
 var apparmorNodes sync.Map
 
-// autoExternal decides the kind of a live snapshot with memory when the
-// request leaves it open. External snapshots keep the guest running and
-// survive live migration, so they are preferred. Exceptions: nodes that
-// confine QEMU with AppArmor, where libvirt cannot merge the overlays again
-// on delete ("block-commit: Permission denied"; seen on Debian 13, while
-// SELinux nodes are fine), and VMs whose current snapshot is internal,
-// because libvirt cannot delete an external snapshot with an internal parent.
-func autoExternal(h *hostconn.Host, dom libvirt.Domain) bool {
-	if cur, err := h.DomainSnapshotCurrent(dom, 0); err == nil {
-		if raw, err := h.DomainSnapshotGetXMLDesc(cur, 0); err == nil {
-			var x struct {
-				Memory struct {
-					Snapshot string `xml:"snapshot,attr"`
-				} `xml:"memory"`
-				Disks []struct {
-					Snapshot string `xml:"snapshot,attr"`
-				} `xml:"disks>disk"`
-			}
-			if xml.Unmarshal([]byte(raw), &x) == nil {
-				internal := x.Memory.Snapshot == "internal"
-				for _, d := range x.Disks {
-					internal = internal || d.Snapshot == "internal"
-				}
-				if internal {
-					return false
-				}
-			}
-		}
+// snapInputsOf gathers the facts chooseSnapshotKind needs, apart from the VM state and the request.
+func snapInputsOf(h *hostconn.Host, dom libvirt.Domain, list []snapInfo) (snapInputs, error) {
+	raw, err := h.DomainGetXMLDesc(dom, 0)
+	if err != nil {
+		return snapInputs{}, err
 	}
-	if _, known := apparmorKnown(h); !known {
-		return false
+	var dx snapDomXML
+	if err := xml.Unmarshal([]byte(raw), &dx); err != nil {
+		return snapInputs{}, err
 	}
-	return !nodeIsAppArmor(h)
+	st, _, _, _, _, err := h.DomainGetInfo(dom)
+	if err != nil {
+		return snapInputs{}, err
+	}
+	// libvirt refuses internal snapshots of pflash firmware unless its variable store is qcow2; VMs made before
+	// that stay on external ones.
+	rawUEFI := (dx.OS.Firmware == "efi" || dx.OS.Loader.Type == "pflash" || strings.TrimSpace(dx.OS.NVRAM.Path) != "") && dx.OS.NVRAM.Format != "qcow2"
+	in := snapInputs{Active: stateName(st) != "shutoff", RawNVRAM: rawUEFI, AppArmor: nodeIsAppArmor(h)}
+	in.HasInt, in.HasExt = treeKinds(list)
+	return in, nil
 }
 
 func apparmorKnown(h *hostconn.Host) (bool, bool) {

@@ -339,6 +339,7 @@ virticle-node ALL=(root) NOPASSWD: /usr/local/libexec/virticle-node
 | `write PATH MAXBYTES [MODE]` | stdin to a new file, at most `MAXBYTES` bytes; `MODE` 600 or 644 |
 | `mkworkdir DIR TAG` / `chmod-work MODE DIR` | private work directory `DIR/.virticle-TAG.XXXXXX`; its mode (700 or 711) |
 | `qemu-img-info PATH [chain] [FORMAT]` | `qemu-img info` as JSON; every backing file must also be inside a root |
+| `disk-boot PATH` | what an existing disk image can start with: reads its first 64 KiB through `qemu-img dd` and prints the partition table kind, whether an EFI System Partition and a BIOS boot partition exist, and whether the first sector has boot code (JSON; nothing is mounted or run) |
 | `sha256 PATH` | SHA-256 of a file |
 | `tools-missing NAME...` | which of `qemu-img ssh scp tar sha256sum` are missing |
 | `df DIR` | free bytes of the file system that holds `DIR` |

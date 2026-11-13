@@ -67,8 +67,11 @@ type backupManifest struct {
 	Live       bool            `json:"live"` // taken while the VM was running
 	Disks      []backupDiskRec `json:"disks"`
 	NVRAM      string          `json:"nvram,omitempty"` // file name of the saved UEFI variables
-	TPM        bool            `json:"tpm"`             // the VM had a TPM (its state is not saved)
-	Notes      []string        `json:"notes"`
+	// NVRAMFormat is the on-disk format of the saved UEFI variables: "qcow2"
+	// or "raw". Backups from before qcow2 stores have none, which means raw.
+	NVRAMFormat string   `json:"nvramFormat,omitempty"`
+	TPM         bool     `json:"tpm"` // the VM had a TPM (its state is not saved)
+	Notes       []string `json:"notes"`
 }
 
 func (m *backupManifest) createdTime() time.Time {
@@ -121,6 +124,9 @@ func parseBackupManifest(raw []byte) (*backupManifest, error) {
 	}
 	if m.NVRAM != "" && m.NVRAM != backupNVRAMFile {
 		return nil, fmt.Errorf("manifest: bad NVRAM file name %q", m.NVRAM)
+	}
+	if m.NVRAMFormat != "" && m.NVRAMFormat != "raw" && m.NVRAMFormat != "qcow2" {
+		return nil, fmt.Errorf("manifest: bad NVRAM format %q", m.NVRAMFormat)
 	}
 	return &m, nil
 }
