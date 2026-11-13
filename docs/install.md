@@ -25,11 +25,12 @@ Releases are at <https://github.com/jroeder5597/virticle/releases>. Below,
 | Controller | Other operating systems or architectures | Not built |
 | Node | Debian 13 | Tested |
 | Node | Rocky Linux 10 | Tested |
+| Controller and node on one machine | Fedora 43 (firewalld, SELinux enforcing), Ubuntu 24.04 (ufw, AppArmor, libvirt 10.0) | Tested |
 | Node | Any other distribution with libvirt and SSH | Not tested |
 
 | Install type | Notes |
 | --- | --- |
-| `.deb` (Debian, Ubuntu) and `.rpm` (RHEL family) | Include a systemd service. Not yet installed on a clean machine in testing. Not signed: check downloads against `checksums.txt`. |
+| `.deb` (Debian, Ubuntu) and `.rpm` (RHEL family) | Include a systemd service. Installed on a fresh Fedora 43 and a fresh Ubuntu 24.04 machine and followed through to a running VM. Not signed: check downloads against `checksums.txt`. |
 | `.tar.gz` | The plain binary. |
 | Container | Built from the source tree. No image is published. |
 
@@ -81,6 +82,9 @@ The package does not touch the firewall. Run this once after installing:
 It opens the web port when firewalld or ufw is active, makes sure the service
 runs, and prints the address to open. Running it again changes nothing; if you
 later change the web port, run it again and it moves the rule to the new port.
+The **Web access** page tells you to run it while a port change waits for
+confirmation: setup then opens the new port and keeps the old one open, so run
+it once more after you chose **Keep this setting** to close the old port.
 `sudo virticle setup --check` only looks, and `sudo virticle setup --undo`
 removes the firewall rule it added (do this before you uninstall). Then open
 the address it prints.
@@ -117,7 +121,9 @@ The service may listen on ports below 1024 (80 and 443) so that the **Web
 access** page can use them.
 
 The service is sandboxed (`ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`,
-no new privileges, only the right to bind low ports, system call filter). It can write only to
+no new privileges, only the right to bind low ports, system call filter, only
+the address families IPv4, IPv6, Unix and netlink; netlink is how it lists the
+network interfaces for the **Web access** page). It can write only to
 `/var/lib/virticle`. A certificate file named on the **Web access** page must be readable by
 the user `virticle`, for example under `/etc/virticle/`.
 
