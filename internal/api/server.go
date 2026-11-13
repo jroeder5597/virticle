@@ -70,6 +70,7 @@ type Server struct {
 
 	notifyOnce sync.Once // notify.go
 	notify     *notifier
+	takeOvers  sync.Map // node id -> true: taken over from another controller, see markTakeOver
 }
 
 type ctxKey struct{}
@@ -91,6 +92,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc(pattern, s.requireAuth(pattern, h))
 	}
 	s.startStatsSampler()
+	s.startControllerBackup()
 
 	pub("GET /api/status", s.status)
 	pub("POST /api/setup", s.setup)
@@ -127,6 +129,9 @@ func (s *Server) Handler() http.Handler {
 	auth("GET /api/me/prefs", s.getPrefs)
 	auth("PUT /api/me/prefs", s.putPrefs)
 	auth("GET /api/audit", s.auditLog)
+	auth("GET /api/controller-backup", s.ctlBackupStatus)
+	auth("PUT /api/controller-backup", s.putCtlBackup)
+	auth("POST /api/controller-backup/download", s.ctlBackupDownload)
 	s.webRoutes(auth)
 
 	auth("GET /api/nodes", s.listNodes)

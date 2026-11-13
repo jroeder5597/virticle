@@ -8,6 +8,8 @@
 | `virticle version` | Prints version, commit and build date. |
 | `virticle setup [--check] [--undo]` | Run once on the controller's machine after installing, as root (`sudo virticle setup`). Opens the web port in firewalld or ufw, makes sure the service runs and prints the address to open. `--check` changes nothing; `--undo` removes the firewall rule it added. Takes `-data`. See [install.md](install.md#package-debian-ubuntu-rhel-like). |
 | `virticle node prepare\|unprepare` | Prepares a host as a node, or undoes it. See [install-node.md](install-node.md). |
+| `virticle backup [-o FILE\|DIR] [--encrypt] [--passphrase-file FILE]` | Writes the controller's own data (database, SSH key, certificates) to one file, while the controller runs. Takes `-data`. |
+| `virticle restore FILE` | Puts such a file back; the controller must be stopped. Takes `-data` and `--passphrase-file`. See [controller-backup.md](controller-backup.md). |
 | `virticle web show\|set\|reset` | Reads or changes the stored web access settings. `show` and `reset` take only `-data`. See [web-tls.md](web-tls.md). |
 
 ## Flags
@@ -119,6 +121,9 @@ earlier versions no longer exist.
   - `secret.key`: the one key that encrypts every stored secret (two-step sign-in seeds, identity provider and
     directory passwords, alert webhook addresses and signing secrets), created on first use, mode 0600. Keep it with
     the database; without it those secrets must be entered again. An older `settings.key` is renamed to it.
+  - `migration-ca/`: the certificate authority of encrypted migration.
+  - `backups/`: the daily controller backups (when switched on); `last-backup.json`: the time of the last backup; `.virticle.lock`: held while the controller runs.
+  - `virticle backup` writes everything above that cannot be rebuilt into one file; see [controller-backup.md](controller-backup.md).
 - **Memory only**: live stats (about 10 minutes), alert state, rate-limit
   counters.
 

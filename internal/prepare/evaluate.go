@@ -14,6 +14,8 @@ type Plan struct {
 	Distro  Distro
 	Missing []string // packages that are not installed yet
 	Want    []string // all packages wanted
+	// OtherKeys are key lines of another controller in the login account's authorized keys.
+	OtherKeys []string
 }
 
 // Evaluate turns what was found into the check rows, in the order they are
@@ -126,21 +128,23 @@ func Evaluate(p Plan, o Options) []Row {
 	}
 
 	// Another controller
+	other := []string{}
+	for _, id := range f.Controllers {
+		if id != o.InstanceID {
+			other = append(other, id)
+		}
+	}
 	switch {
+	case len(p.OtherKeys) > 0 && o.TakeOver:
+		add("controller", "Other controller", Warning, "This node was managed by another Virticle controller. Its SSH key is removed from the node, so that controller can no longer manage it")
+	case len(p.OtherKeys) > 0:
+		add("controller", "Other controller", Error, "This node was managed by another Virticle controller. Take it over? The other controller's SSH key is removed from the node, so that controller can no longer manage it. VMs are not touched")
 	case len(f.Controllers) == 0:
 		add("controller", "Other controller", OK, "No sign of another controller")
+	case len(other) == 0:
+		add("controller", "Other controller", OK, "Only this controller has taken scheduled snapshots here")
 	default:
-		other := []string{}
-		for _, id := range f.Controllers {
-			if id != o.InstanceID {
-				other = append(other, id)
-			}
-		}
-		if len(other) == 0 {
-			add("controller", "Other controller", OK, "Only this controller has taken scheduled snapshots here")
-		} else {
-			add("controller", "Other controller", Warning, "Another controller ("+strings.Join(other, ", ")+") runs snapshot schedules on this host; two controllers would both run them")
-		}
+		add("controller", "Other controller", Warning, "Another controller ("+strings.Join(other, ", ")+") runs snapshot schedules on this host; two controllers would both run them")
 	}
 
 	// Existing VMs

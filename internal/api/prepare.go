@@ -25,6 +25,8 @@ type prepareReq struct {
 
 	AllowRoot bool `json:"allowRoot"`
 	Minimal   bool `json:"minimal"`
+	// TakeOver answers "This node was managed by another Virticle controller. Take it over?" with yes.
+	TakeOver bool `json:"takeOver"`
 
 	// The web interface no longer sends these; they are still accepted for
 	// scripts. Extras is ignored (the guest disk tools are always installed,
@@ -101,7 +103,7 @@ func (s *Server) prepareStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	o := prepare.Options{User: req.User, UseExisting: req.UseExisting, Confirm: req.Confirm, AllowRoot: req.AllowRoot,
-		From: strings.TrimSpace(req.From), Minimal: req.Minimal, ControllerKey: s.PubKey, InstanceID: s.InstanceID}
+		From: strings.TrimSpace(req.From), Minimal: req.Minimal, ControllerKey: s.PubKey, InstanceID: s.InstanceID, TakeOver: req.TakeOver}
 	if err := o.Validate(); err != nil {
 		fail(w, badRequest(err.Error()))
 		return

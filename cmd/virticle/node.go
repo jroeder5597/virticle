@@ -20,7 +20,7 @@ import (
 
 const nodeUsage = `usage:
   virticle node prepare   [--check] [--minimal] [--root] [--user NAME] [--use-existing-user[=NAME]] [--confirm]
-                          [--from ADDR] [--jump user@host]
+                          [--from ADDR] [--take-over] [--jump user@host]
                           [--identity FILE] [--password-stdin] [--data DIR] [user@]host[:port]
   virticle node unprepare [--user NAME] [--root] [--jump user@host] [--identity FILE]
                           [--password-stdin] [--data DIR] [user@]host[:port]
@@ -80,6 +80,7 @@ func nodeCommand(args []string) int {
 		jump     = fs.String("jump", "", "user@host to connect through")
 		identity = fs.String("identity", "", "administrator's private key file (the SSH agent is used as well)")
 		pwStdin  = fs.Bool("password-stdin", false, "read the administrator's password from standard input")
+		takeOver = fs.Bool("take-over", false, "the node was managed by another Virticle controller: remove that controller's SSH key from the node")
 		data     = fs.String("data", defaultDataDir(), "the controller's data directory (its key and known_hosts)")
 	)
 	fs.Var(&existing, "use-existing-user", "the account already exists: only add the key (and with --confirm groups and the sudo rule)")
@@ -136,7 +137,7 @@ func nodeCommand(args []string) int {
 	}
 
 	o := prepare.Options{User: *user, UseExisting: existing.on, Confirm: *confirm, AllowRoot: *root,
-		From: *from, Minimal: *minimal, ControllerKey: pub, InstanceID: instance}
+		From: *from, Minimal: *minimal, ControllerKey: pub, InstanceID: instance, TakeOver: *takeOver}
 	if existing.name != "" {
 		o.User = existing.name
 	}

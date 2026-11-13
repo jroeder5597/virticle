@@ -127,16 +127,47 @@ func (e serverEnsurer) Ensure(id int64) error {
 	if err != nil {
 		return err
 	}
-	switch info.State {
-	case migpki.StateOK:
-		return nil
-	case migpki.StateMismatch:
-		if !addressOnlyMismatch(info.Status) {
-			return errors.New("the certificate files on the node were not installed by this controller or were changed; press Fix to replace them")
+	forced := e.s.tookOver(id)
+	install, force, err := migAutoAction(info.State, addressOnlyMismatch(info.Status), forced && fromOtherCA(info.Status))
+	if err != nil || !install {
+		if err == nil && forced {
+			e.s.takeOverDone(id)
+		}
+		return err
+	}
+	_, err = s.installMigTLS(id, h, migTLSReq{Force: force}, func(float64) {})
+	if err == nil && forced {
+		e.s.takeOverDone(id)
+	}
+	return err
+}
+
+// fromOtherCA is true when the node's certificates were set up by a different controller's CA.
+func fromOtherCA(st migpki.Status) bool {
+	for _, p := range st.Problems {
+		if strings.HasPrefix(p, "set up by a different controller or CA") {
+			return true
 		}
 	}
-	_, err = s.installMigTLS(id, h, migTLSReq{}, func(float64) {})
-	return err
+	return false
+}
+
+// migAutoAction decides what the automatic setup does with a node's certificate files, given their state. A
+// node that was just taken over from another controller has that controller's certificates; they are replaced
+// (the old files are kept as *.virticle-orig). Otherwise files that are not ours are never touched.
+func migAutoAction(state string, addressOnly, takenOver bool) (install, force bool, err error) {
+	switch state {
+	case migpki.StateOK:
+		return false, false, nil
+	case migpki.StateMismatch:
+		switch {
+		case takenOver:
+			return true, true, nil
+		case !addressOnly:
+			return false, false, errors.New("the certificate files on the node were not installed by this controller or were changed; press Fix to replace them")
+		}
+	}
+	return true, false, nil
 }
 
 // addressOnlyMismatch is true when the node's address changed and the certificate does not cover it: the files are ours and
@@ -181,3 +212,10 @@ func (s *Server) startMigAuto() {
 		}
 	}()
 }
+
+// markTakeOver remembers that a node was just taken over from another controller, until its migration
+// certificates have been dealt with. It is kept in memory only: after a restart the node simply shows its
+// state and the Fix button.
+func (s *Server) markTakeOver(id int64)  { s.takeOvers.Store(id, true) }
+func (s *Server) tookOver(id int64) bool { _, ok := s.takeOvers.Load(id); return ok }
+func (s *Server) takeOverDone(id int64)  { s.takeOvers.Delete(id) }

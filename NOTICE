@@ -11,5 +11,7 @@ This product bundles third-party software under their own licences:
 - go-oidc and golang.org/x/oauth2 (OpenID Connect sign-in; Apache License 2.0 and BSD 3-Clause), go-jose (Apache License 2.0),
   go-ldap/ldap and go-asn1-ber (LDAP sign-in; MIT License), skip2/go-qrcode (QR codes; MIT License),
   golang.org/x/term (BSD 3-Clause); gozxing (Apache License 2.0) is used by a test only
+- age and hpke (filippo.io/age, filippo.io/hpke), BSD 3-Clause License:
+  encryption of controller backups
 - Go modules listed in go.mod, under BSD, MIT, ISC, Apache 2.0 and MPL 2.0
   licences

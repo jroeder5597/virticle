@@ -197,6 +197,11 @@ func (t *alertTracker) step(in alertInput, now time.Time) (raised, cleared, all 
 		if j.Status != "failed" {
 			continue
 		}
+		if j.Kind == cbTaskKind {
+			add(Alert{ID: "job:" + cbTaskKind, Kind: "failed-job", Severity: "warning", Title: "The daily backup of the controller failed", Link: "/controller-backup",
+				Message: fmt.Sprintf("The backup written to the backups folder failed at %s: %s", time.Unix(j.Finished, 0).Format("2006-01-02 15:04:05"), j.Error)})
+			continue
+		}
 		add(Alert{ID: fmt.Sprintf("job:%s:%s:%s", j.Kind, j.Node, jobVM(j.Target)), Kind: "failed-job", Severity: "warning",
 			Title: fmt.Sprintf("Scheduled %s of %s failed", j.Kind, jobVM(j.Target)), Link: "/tasks",
 			Message: fmt.Sprintf("%s on %s failed at %s: %s", j.Kind, j.Node, time.Unix(j.Finished, 0).Format("2006-01-02 15:04:05"), j.Error)})

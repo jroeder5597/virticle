@@ -117,7 +117,7 @@ rule.
 
 ```
 virticle node prepare [--check] [--minimal] [--root] [--user NAME] [--use-existing-user[=NAME]] [--confirm]
-                      [--from ADDR] [--jump user@host]
+                      [--from ADDR] [--take-over] [--jump user@host]
                       [--identity FILE] [--password-stdin] [--data DIR] [user@]host[:port]
 ```
 
@@ -130,6 +130,7 @@ virticle node prepare [--check] [--minimal] [--root] [--user NAME] [--use-existi
 | `--use-existing-user NAME` | For an account you manage yourself. Prepare reports what is missing (groups, login shell, sudo rule). It changes nothing about the account except adding the controller's key. With `--confirm` it also adds the groups and the sudo rule. The account needs a login shell such as `/bin/sh`. |
 | `--confirm` | Only with `--use-existing-user`: add the groups and the sudo rule. |
 | `--from ADDR` | Adds `from="ADDR"` to the key, so it works only from the controller's address. |
+| `--take-over` | The node trusts another Virticle controller's key (prepare then stops and asks): remove that key. See [controller-backup.md](controller-backup.md#c-there-is-no-backup-and-the-controller-is-lost). |
 | `--jump user@host` | Reaches the node through a jump host. |
 | `--identity FILE`, `--password-stdin` | How you sign in as administrator (default: your SSH agent). |
 | `--data DIR` | The controller's data directory (its key, `known_hosts`, instance id). Default `data`. |

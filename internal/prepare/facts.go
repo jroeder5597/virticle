@@ -384,6 +384,10 @@ type Options struct {
 	Minimal       bool   // leave out the guest disk tools
 	ControllerKey string // the controller's public key line
 	InstanceID    string // this controller's instance id, to tell other controllers apart
+	// TakeOver is the administrator's answer to "This node was managed by another Virticle controller. Take it over?".
+	// Without it a node that trusts another controller's key is not changed; with it the other controller's key is
+	// removed from the node's authorized keys.
+	TakeOver bool
 }
 
 // ServiceUser is the account the controller will log in as. With no name given
@@ -471,4 +475,29 @@ func AuthorizedKeyLine(o Options) string {
 		opts += `,from="` + o.From + `"`
 	}
 	return opts + " " + blob + " virticle-controller"
+}
+
+// controllerComment is the comment on every key line a controller installs.
+const controllerComment = "virticle-controller"
+
+// OtherControllerKeys returns the key lines among authorized_keys lines that
+// belong to a controller other than the one with public key ours: lines
+// commented "virticle-controller" with a different key. Other keys, such as
+// an administrator's own, are never counted.
+func OtherControllerKeys(lines []string, ours string) []string {
+	mine, _ := KeyBlob(ours)
+	var out []string
+	for _, l := range lines {
+		f := strings.Fields(l)
+		for i := 0; i+1 < len(f); i++ {
+			if !strings.HasPrefix(f[i], "ssh-") && !strings.HasPrefix(f[i], "ecdsa-") && !strings.HasPrefix(f[i], "sk-") {
+				continue
+			}
+			if strings.Join(f[i+2:], " ") == controllerComment && f[i]+" "+f[i+1] != mine {
+				out = append(out, l)
+			}
+			break
+		}
+	}
+	return out
 }

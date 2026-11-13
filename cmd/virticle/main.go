@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"flag"
 	"log"
 	"os"
@@ -17,6 +18,7 @@ import (
 
 	"virticle/internal/api"
 	"virticle/internal/cluster"
+	"virticle/internal/ctlbackup"
 	"virticle/internal/store"
 	"virticle/web"
 )
@@ -30,6 +32,12 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "user" {
 		os.Exit(userCommand(os.Args[2:]))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "backup" {
+		os.Exit(backupCommand(os.Args[2:]))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "restore" {
+		os.Exit(restoreCommand(os.Args[2:]))
 	}
 	if len(os.Args) > 1 && os.Args[1] == "web" {
 		os.Exit(webCommand(os.Args[2:]))
@@ -74,6 +82,16 @@ func main() {
 
 	if err := os.MkdirAll(*data, 0o700); err != nil {
 		log.Fatal(err)
+	}
+	// One controller per data directory: a second one, or a restore, is refused.
+	lock, err := ctlbackup.LockDataDir(*data)
+	switch {
+	case errors.Is(err, ctlbackup.ErrLocked):
+		log.Fatalf("another Virticle controller is already running on %s", *data)
+	case err != nil:
+		log.Printf("WARNING: could not lock %s (%v); a restore cannot tell that this controller runs", *data, err)
+	default:
+		defer lock.Close()
 	}
 	keyFile := filepath.Join(*data, "id_ed25519")
 	pub, err := ensureKey(keyFile)
