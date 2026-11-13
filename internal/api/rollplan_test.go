@@ -510,3 +510,12 @@ func TestRollingAlertFollowsTheNewestRun(t *testing.T) {
 		t.Fatal("a dismissed run raises nothing")
 	}
 }
+
+func TestInterruptedMoveNamesFileAndNode(t *testing.T) {
+	err := interruptedMoveError("web1", "node-b", []string{"Volume web1.qcow2: already exists on node-b at /var/lib/libvirt/images/web1.qcow2; remove or rename it first"})
+	for _, want := range []string{"web1", "/var/lib/libvirt/images/web1.qcow2", "node-b", "still runs here", "Continue"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("%q is missing from %q", want, err)
+		}
+	}
+}

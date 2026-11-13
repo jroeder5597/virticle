@@ -161,6 +161,8 @@ earlier versions no longer exist.
 - A failed run is retried after 5 minutes and raises an alert.
 - Run one controller per set of nodes. With several, start all but one with
   `-no-scheduler`.
+- Two controllers of different versions must never manage the same nodes: an older controller's retention does not know
+  the incremental chains and deletes backups that a newer chain needs.
 
 ## Backup format
 
@@ -202,6 +204,9 @@ backup restores as a new VM or as the original, and exports to one
   checkpoint's bitmap in the read-only base image, where libvirt cannot remove it; it stays there and QEMU keeps updating it.
   A libvirt restart during a backup leaves a temporary bitmap in the VM; the next backup removes it through the QEMU
   monitor (libvirt marks the VM as tainted in its log) and carries on.
+- A controller that stops in the middle of a backup leaves its hidden work directory (`.virticle-bk.XXXXXX`) in the pool
+  directory. The next backup removes work directories in which nothing has changed for an hour, when no other backup of
+  that controller is running.
 
 ## Node access
 

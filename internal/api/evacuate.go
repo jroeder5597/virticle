@@ -75,7 +75,7 @@ func (s *Server) buildEvacPlan(srcID int64, src *hostconn.Host, req evacReq) (ev
 		}
 		if t.Online {
 			if h, err := s.Nodes.Host(n.ID); err == nil {
-				if free, err := h.NodeGetFreeMemory(); err == nil {
+				if free, err := h.AvailableMemory(); err == nil {
 					t.FreeKiB = free / 1024
 				} else {
 					t.Online = false

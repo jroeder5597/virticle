@@ -49,6 +49,23 @@ func (h *Host) ScanBackups(dir, marker string) string {
 	return out
 }
 
+// StaleWork lists the backup work directories of dir in which nothing has changed for the given number of
+// minutes (what a backup leaves behind when the controller stops while it runs). A node command without
+// the verb answers with an error.
+func (h *Host) StaleWork(dir string, minutes int) ([]string, error) {
+	out, err := h.run("work-stale", dir, strconv.Itoa(minutes))
+	if err != nil {
+		return nil, nodeErr(out, err)
+	}
+	var res []string
+	for _, l := range strings.Split(out, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			res = append(res, l)
+		}
+	}
+	return res, nil
+}
+
 // TarPack writes a tar of the named files of the backup directory dir to out.
 func (h *Host) TarPack(ctx context.Context, dir string, names []string, out io.Writer) error {
 	return h.pipe(ctx, "tar-pack", append([]string{dir}, names...), nil, out)

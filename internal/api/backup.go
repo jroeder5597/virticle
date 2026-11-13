@@ -236,7 +236,42 @@ func (s *Server) planBackup(srcID int64, src *hostconn.Host, dom libvirt.Domain,
 			return nil, err
 		}
 	}
+	bkRuns.Lock()
+	idle := len(bkRuns.m) == 0
+	bkRuns.Unlock()
+	if idle { // no backup of this controller can own a work directory right now
+		sweepStaleWork(m.dst, m.dstDir)
+		if m.remote {
+			sweepStaleWork(m.src, m.srcDir)
+		}
+	}
 	return m, nil
+}
+
+// staleWorkMinutes is how long a backup work directory must be untouched before it counts as left behind by a
+// controller that stopped (or lost its connection) while the backup ran. A running backup keeps writing.
+const staleWorkMinutes = 60
+
+// sweepStaleWork removes the work directories that backups left in dir on h when the controller stopped in the
+// middle of them. The failed backup's own message names them, but only until the controller restarts; this is
+// what removes them afterwards. Best effort: a node command without the verb, or a directory that will not go,
+// only costs a log line.
+func sweepStaleWork(h *hostconn.Host, dir string) {
+	stale, err := h.StaleWork(dir, staleWorkMinutes)
+	if err != nil {
+		return
+	}
+	for _, d := range stale {
+		if !strings.HasPrefix(d, strings.TrimSuffix(dir, "/")+"/.virticle-bk.") {
+			continue
+		}
+		wd := &bkWork{h: h, path: d}
+		if err := wd.remove(); err != nil {
+			log.Printf("backup: cannot remove the leftover work directory %s on %s: %v", d, h.Name, err)
+			continue
+		}
+		log.Printf("backup: removed the leftover work directory %s on %s (an interrupted backup)", d, h.Name)
+	}
 }
 
 // defaultBackupReq is what a request body that leaves fields out means:
