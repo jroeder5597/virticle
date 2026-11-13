@@ -197,6 +197,8 @@ func (s *Server) Handler() http.Handler {
 	auth("POST /api/nodes/{node}/vms/{uuid}/migrate/check", s.needs("migration", s.migrateCheck))
 	auth("POST /api/nodes/{node}/vms/{uuid}/migrate", s.needs("migration", s.migrate))
 	auth("POST /api/nodes/{node}/vms/{uuid}/migrate/cancel", s.migrateCancel)
+	auth("GET /api/nodes/{node}/migration-network", s.migNetGet)
+	auth("PUT /api/nodes/{node}/migration-network", s.migNetPut)
 	auth("GET /api/nodes/{node}/migration-tls", s.migTLSStatus)
 	auth("POST /api/nodes/{node}/migration-tls", s.migTLSSetup)
 	auth("DELETE /api/nodes/{node}/migration-tls", s.migTLSRemove)

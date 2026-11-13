@@ -116,6 +116,9 @@ type migPlan struct {
 	MemKiB     uint64
 	TLS        bool   // memory and NBD disk streams are encrypted (migtls.go)
 	TLSName    string // host name QEMU verifies the target's certificate against
+	// LimitMbit is the cap on the transfer in Mbit/s, 0 when it is not limited (miglimit.go). A request's
+	// bandwidthMiB replaces it.
+	LimitMbit int
 }
 
 func (p *migPlan) active() bool { return p.Mode != "offline" }
@@ -575,6 +578,9 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 
 	s.checkTargetFiles(dst, plan, &c)
 
+	// Which network the data uses, and the limit on it.
+	s.checkMigrationNetwork(src, dst, req, plan, &c)
+
 	// Node to node SSH.
 	s.checkNodeTransfer(src, dst, dstNode.Node, plan, &c)
 
@@ -823,6 +829,7 @@ func (s *Server) launchMigration(r *http.Request, srcID int64, h *hostconn.Host,
 	if err != nil {
 		return nil, pre, badRequest(err.Error())
 	}
+	ep.RateBps = plan.rateBps(req)
 	m := &migRun{s: s, src: h, dst: dst, dom: dom, plan: plan, req: req, ep: ep}
 	migRuns.Lock()
 	if _, busy := migRuns.m[plan.UUID]; busy {
@@ -1239,8 +1246,8 @@ func (m *migRun) perform(flags libvirt.DomainMigrateFlags, lo, hi float64) error
 		return err
 	}
 	var params []libvirt.TypedParam
-	if m.req.BandwidthMiB > 0 {
-		params = append(params, libvirt.TypedParam{Field: libvirt.MigrateParamBandwidth, Value: *libvirt.NewTypedParamValueUllong(m.req.BandwidthMiB)})
+	if bw := m.plan.bandwidthMiB(m.req); bw > 0 {
+		params = append(params, libvirt.TypedParam{Field: libvirt.MigrateParamBandwidth, Value: *libvirt.NewTypedParamValueUllong(bw)})
 	}
 	// Name the destination explicitly so that nothing depends on the source
 	// resolving the host name the destination's libvirtd reports: the memory

@@ -3,6 +3,7 @@ package nodecmd
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -696,10 +697,17 @@ func (cr *countReader) Read(p []byte) (int, error) {
 }
 
 func verbPeerSend(c *Ctx) error {
-	if err := c.Need(6, 6, "peer-send HOST PORT USER SRC DST MODE"); err != nil {
+	if err := c.Need(6, 7, "peer-send HOST PORT USER SRC DST MODE [BYTES_PER_SECOND]"); err != nil {
 		return err
 	}
 	host, port, user, src, dst, mode := c.Args[0], c.Args[1], c.Args[2], c.Args[3], c.Args[4], c.Args[5]
+	var rate uint64 // bytes per second, 0: not limited
+	if len(c.Args) == 7 {
+		if !numOK(c.Args[6]) {
+			return Die("unsupported rate")
+		}
+		rate, _ = strconv.ParseUint(c.Args[6], 10, 64)
+	}
 	if err := peerArgs(host, port, user); err != nil {
 		return err
 	}
@@ -728,7 +736,7 @@ func verbPeerSend(c *Ctx) error {
 	}
 	defer f.Close()
 	size := st.Size
-	body := &countReader{r: io.LimitReader(f, size)}
+	body := &countReader{r: NewRateReader(context.Background(), io.LimitReader(f, size), rate)}
 	stdin := io.MultiReader(strings.NewReader(fmt.Sprintf("virticle-peer 1 recv %s %d %s\n", mode, size, dst)), body)
 	stop := make(chan struct{})
 	stopped := make(chan struct{})

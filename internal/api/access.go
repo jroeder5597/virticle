@@ -154,6 +154,8 @@ var routeLevels = map[string]string{
 	"POST /api/nodes/{node}/vms/{uuid}/migrate/check":              operator,
 	"POST /api/nodes/{node}/vms/{uuid}/migrate":                    operator,
 	"POST /api/nodes/{node}/vms/{uuid}/migrate/cancel":             operator,
+	"GET /api/nodes/{node}/migration-network":                      viewer,
+	"PUT /api/nodes/{node}/migration-network":                      admin,
 	"GET /api/nodes/{node}/migration-tls":                          viewer,
 	"POST /api/nodes/{node}/migration-tls":                         admin,
 	"DELETE /api/nodes/{node}/migration-tls":                       admin,

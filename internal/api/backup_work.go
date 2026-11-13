@@ -73,7 +73,10 @@ func (s *Server) checkBackupTransfer(src, dst *hostconn.Host, n store.Node) (mig
 		return ep, badRequest(err.Error())
 	}
 	if _, err := src.Run(reachCmd(ep.Host, ep.port())); err != nil {
-		return ep, badRequest(fmt.Sprintf("%s cannot open a TCP connection to %s port %s", src.Name, ep.Host, ep.port()))
+		return ep, badRequest(sshBlockedMsg(src.Name, ep, n))
+	}
+	if t, err := s.transferBetween(src, dst); err == nil {
+		ep.RateBps = t.RateBps() // the automatic limit on a shared link (miglimit.go)
 	}
 	if err := s.ensurePeerTrust(src, dst, n, ep); err != nil {
 		return ep, badRequest(err.Error())

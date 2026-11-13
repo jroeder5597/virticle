@@ -100,11 +100,16 @@ func (h *Host) PeerPing(host, port, user string) error {
 
 // PeerSend sends the file src of this node to user@host:port, where the
 // node command there creates dst (which must not exist) with the given mode (three
-// octal digits). progress, when set, is called with bytes sent and total.
-func (h *Host) PeerSend(ctx context.Context, host, port, user, src, dst, mode string, progress func(done, total uint64)) error {
+// octal digits). rate limits the transfer to that many bytes per second (0: not limited). progress, when
+// set, is called with bytes sent and total.
+func (h *Host) PeerSend(ctx context.Context, host, port, user, src, dst, mode string, rate uint64, progress func(done, total uint64)) error {
 	var tail []string
 	done := false
-	cmd, err := h.nodeCmd("peer-send", host, port, user, src, dst, mode)
+	args := []string{host, port, user, src, dst, mode}
+	if rate > 0 {
+		args = append(args, strconv.FormatUint(rate, 10))
+	}
+	cmd, err := h.nodeCmd("peer-send", args...)
 	if err != nil {
 		return err
 	}

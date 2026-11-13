@@ -180,6 +180,18 @@ func (m *Manager) SetMaintenance(id int64, on bool) {
 	}
 }
 
+// SetMigration updates the in-memory copy of a node's migration network and limit; the connection stays.
+func (m *Manager) SetMigration(id int64, addr, limit string) {
+	m.mu.Lock()
+	n := m.nodes[id]
+	m.mu.Unlock()
+	if n != nil {
+		n.mu.Lock()
+		n.cfg.MigrationAddr, n.cfg.MigrationLimit = addr, limit
+		n.mu.Unlock()
+	}
+}
+
 // SetMigTLSOff updates the in-memory copy of a node's "encrypted migration removed by hand" flag.
 func (m *Manager) SetMigTLSOff(id int64, off bool) {
 	m.mu.Lock()
