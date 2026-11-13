@@ -52,13 +52,14 @@ func (c *Ctx) unitActive(unit string) bool {
 func (c *Ctx) detectStack() stackInfo {
 	switch {
 	case c.unitActive("NetworkManager") && c.HasTool("nmcli"):
-		return stackInfo{Name: "networkmanager", Tested: false, Supported: true, impl: nmStack{}}
+		return stackInfo{Name: "networkmanager", Tested: true, Supported: true, impl: nmStack{}} // tried on Rocky Linux 10 (NetworkManager 1.56)
 	case c.unitActive("systemd-networkd"):
 		name := "networkd"
 		if m, _ := filepath.Glob(c.hostPath("etc/netplan/*.yaml")); len(m) > 0 {
 			name = "netplan-networkd"
 		}
-		return stackInfo{Name: name, Tested: false, Supported: true, impl: networkdStack{}}
+		// Tried on a real node: netplan with networkd (Debian 13). Plain networkd runs the same code, but was not.
+		return stackInfo{Name: name, Tested: name == "netplan-networkd", Supported: true, impl: networkdStack{}}
 	}
 	if b, err := os.ReadFile(c.hostPath("/etc/network/interfaces")); err == nil {
 		for _, l := range strings.Split(string(b), "\n") {
