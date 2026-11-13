@@ -156,7 +156,7 @@ function TwoStepSection({ cfg, save }: { cfg: Config; save: (p: { require2fa: st
 }
 
 function OidcSection({ cfg, save }: { cfg: Oidc; save: (o: object) => Promise<void> }) {
-  const [d, setD] = useState({ ...cfg });
+  const [d, setD] = useState({ ...cfg, defaultRole: cfg.defaultRole || "none" });
   const [secret, setSecret] = useState("");
   const [steps, setSteps] = useState<Step[] | undefined>();
   const [saved, setSaved] = useState(false);
@@ -240,7 +240,7 @@ function OidcSection({ cfg, save }: { cfg: Oidc; save: (o: object) => Promise<vo
 }
 
 function LdapSection({ cfg, save }: { cfg: Ldap; save: (o: object) => Promise<void> }) {
-  const [d, setD] = useState({ ...cfg });
+  const [d, setD] = useState({ ...cfg, defaultRole: cfg.defaultRole || "none" });
   const [pw, setPw] = useState("");
   const [testUser, setTestUser] = useState("");
   const [testPw, setTestPw] = useState("");

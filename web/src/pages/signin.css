@@ -21,3 +21,7 @@
 .signin .or { text-align: center; margin: 6px 0; }
 .signin .provider-btn { width: 100%; }
 .signin .notice { margin: 6px 0; }
+
+/* Users: five or six buttons per row must wrap rather than push Delete out of the window. */
+table.users td.actions { white-space: normal; min-width: 220px; }
+table.users td.actions > * { margin: 3px 0 3px 6px; }

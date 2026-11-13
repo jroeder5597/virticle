@@ -32,7 +32,7 @@ export default function Users() {
         Administrators manage everything, including users and nodes. Operators manage virtual machines, storage and networks. Viewers can look but not change anything, and cannot open consoles.
       </p>
       <ErrorBox error={loadError ?? act.error} />
-      <table>
+      <table className="users">
         <thead>
           <tr>
             <th>User</th>

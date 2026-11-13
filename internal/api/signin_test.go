@@ -677,4 +677,3 @@ func TestLDAPTestButton(t *testing.T) {
 		t.Errorf("jo: %s", w.Body)
 	}
 }
-

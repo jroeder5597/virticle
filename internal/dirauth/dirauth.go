@@ -132,6 +132,9 @@ func (c Config) dial(note func(bool, string)) (*ldap.Conn, error) {
 	default:
 		if err := conn.StartTLS(tlsCfg); err != nil {
 			conn.Close()
+			if ldap.IsErrorWithCode(err, ldap.LDAPResultProtocolError) || ldap.IsErrorWithCode(err, ldap.LDAPResultUnavailable) {
+				return nil, &UnreachableError{errors.New("the server does not offer StartTLS: use an ldaps:// address, or allow plain LDAP under Advanced if the network is trusted")}
+			}
 			return nil, unreachable(fmt.Errorf("StartTLS failed: %w", err))
 		}
 		note(true, "Connected and switched to an encrypted connection (StartTLS); the certificate is trusted.")
@@ -143,6 +146,10 @@ func unreachable(err error) error {
 	var ua x509.UnknownAuthorityError
 	var hn x509.HostnameError
 	var ci x509.CertificateInvalidError
+	var le *ldap.Error
+	if errors.As(err, &le) && le.Err != nil && le.ResultCode == ldap.ErrorNetwork {
+		err = le.Err // "dial tcp ...: connection refused" reads better than the LDAP wrapper
+	}
 	msg := err.Error()
 	switch {
 	case errors.As(err, &ua), errors.As(err, &ci), strings.Contains(msg, "unknown authority"), strings.Contains(msg, "certificate has expired"):
@@ -274,11 +281,16 @@ func run(cfg Config, user, password string, note func(bool, string)) (Result, er
 				list = append(list, g)
 			}
 		}
-		if n := cnOf(dn); n != "" {
-			names = append(names, n)
-		} else {
-			names = append(names, dn)
+		n := cnOf(dn)
+		if n == "" {
+			n = dn
 		}
+		for _, have := range names {
+			if strings.EqualFold(have, n) {
+				return
+			}
+		}
+		names = append(names, n)
 	}
 	for _, g := range e.GetAttributeValues(memberOf) {
 		add(g)

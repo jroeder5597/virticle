@@ -43,6 +43,8 @@ pattern that counts as the virtio-win ISO).
 
 ## Roles
 
+People can also sign in through an identity provider or a directory, and local accounts can use two-step sign-in; see [sign-in.md](sign-in.md). `virticle user reset-2fa USER` and `virticle user reset-password USER` are the shell recovery commands.
+
 | Role | Can |
 | --- | --- |
 | `viewer` | Read everything except the audit log. Cannot open a console. |

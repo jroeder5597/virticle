@@ -9,15 +9,17 @@ require (
 	github.com/go-asn1-ber/asn1-ber v1.5.8
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/go-ldap/ldap/v3 v3.4.15
+	github.com/makiuchi-d/gozxing v0.1.1
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	golang.org/x/crypto v0.58.0
 	golang.org/x/oauth2 v0.38.0
+	golang.org/x/term v0.47.0
 	modernc.org/sqlite v1.62.0
 )
 
 require (
 	github.com/Azure/go-ntlmssp v0.1.1 // indirect
-	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
-	golang.org/x/term v0.47.0 // indirect
+	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 )
 
 require (

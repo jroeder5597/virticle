@@ -106,6 +106,7 @@ func (s *Server) oidcStart(w http.ResponseWriter, r *http.Request) {
 func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	info := infoOf(r)
 	info.login = true
+	info.pattern = "GET /api/oidc/callback"
 	ip := "i:" + clientIP(r)
 	if s.limiter.locked(ip) > 0 {
 		signInError(w, r, "Too many failed sign-ins. Try again in a few minutes.")

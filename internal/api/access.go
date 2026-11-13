@@ -230,6 +230,8 @@ var routeLevels = map[string]string{
 // auditedGets are read-only routes that are still recorded: opening a console
 // is a control action.
 var auditedGets = map[string]bool{
+	// A sign-in through the identity provider ends here; it is a GET only because the browser is redirected back.
+	"GET /api/oidc/callback":                  true,
 	"GET /api/nodes/{node}/vms/{uuid}/vnc":    true,
 	"GET /api/nodes/{node}/vms/{uuid}/serial": true,
 	// An export hands out disk contents.
