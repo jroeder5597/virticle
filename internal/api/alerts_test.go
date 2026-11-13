@@ -155,3 +155,19 @@ func TestValidateWebhookURL(t *testing.T) {
 		}
 	}
 }
+
+// A node whose pools cannot be listed (a stuck call on a dead share) still raises the storage alert, from the
+// shares it saw last time and the probe of their mounts.
+func TestStorageAlertsFor(t *testing.T) {
+	known := []knownNFS{{Pool: "share", Server: "nfs1", Path: "/mnt/share"}, {Pool: "other", Server: "nfs2", Path: "/mnt/other"}}
+	got := storageAlertsFor(3, "n5", known, map[string]mountState{"/mnt/share": mountDown, "/mnt/other": mountUp})
+	if len(got) != 1 || got[0].ID != "nfs:3:share" || got[0].Kind != "storage-unavailable" {
+		t.Fatalf("alerts = %+v", got)
+	}
+	if got := storageAlertsFor(3, "n5", known, map[string]mountState{"/mnt/share": mountUp, "/mnt/other": mountUp}); len(got) != 0 {
+		t.Errorf("healthy shares raised %+v", got)
+	}
+	if got := storageAlertsFor(3, "n5", known, nil); len(got) != 0 {
+		t.Errorf("no answer yet must not raise: %+v", got)
+	}
+}

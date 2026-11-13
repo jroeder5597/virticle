@@ -112,6 +112,8 @@ After the update the node is checked with the checks of prepare (libvirt service
 setting for NFS, swtpm file owner, the migration firewall service); what the update undid is put right, anything else stops the run.
 A restart that does not come back within 12 minutes stops the run; look at the machine, then press **Continue**.
 A VM that does not shut down by itself within 3 minutes also stops it (it is never powered off by force).
+A restart you do yourself, with VMs running, is different on Debian and Ubuntu: the system's `libvirt-guests` service shuts the VMs
+down one after the other and waits up to 5 minutes for each that ignores the shutdown request. The rolling update moves the VMs first.
 
 ## Virtual machines
 
@@ -490,6 +492,10 @@ the definition. Snapshots stay valid: their data is in the shared files.
   (volume lists, snapshot and clone pages of a VM on it, disk moves, starting or
   changing such a VM) is refused with a message that says the storage is away.
   Other storage and other VMs on the node are not affected.
+  On Debian and Ubuntu nodes (one libvirt daemon for everything) the pages that
+  list that node's storage or read a VM's definition answer within a few
+  seconds that the node's storage is not answering, instead of showing the
+  share as Unavailable. The alert is raised all the same.
 - A VM with a disk on it keeps running, its network and its memory-only work go
   on, and anything that needs its disk waits, then continues, without errors
   and without losing data, when the server is back. The VM page shows a note.
@@ -502,7 +508,10 @@ the definition. Snapshots stay valid: their data is in the shared files.
 - A node that boots while the server is away boots normally. Its libvirt
   storage service waits for the mount, VMs on that share do not start at boot,
   and the share is mounted by Virticle once the server answers (within an hour
-  of the boot). Start those VMs by hand afterwards.
+  of the boot). Start those VMs by hand afterwards. On Debian and Ubuntu, where
+  libvirt is one daemon, all of libvirt waits for the mount: the node shows
+  Offline until the server answers, and about 20 seconds after that libvirt is
+  back with the share mounted and its autostart VMs running.
 - Restarting a node while the server is away takes several minutes: the node
   waits for the server before it lets go of the mount.
 

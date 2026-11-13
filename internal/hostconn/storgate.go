@@ -106,6 +106,24 @@ func (g *storGate) hold(fn func()) error {
 
 // The methods below shadow the ones of the embedded libvirt connection and add the gate.
 
+// DomainGetXMLDesc and DomainGetBlockInfo are in the gate as well: on a node with one monolithic libvirt daemon
+// (Debian, Ubuntu) they wait behind a stuck NFS call too, even for the XML of a shut-off VM (seen in the lab with
+// "virsh dumpxml" during a server outage), and each one that waits holds one of the connection's five slots. Without
+// the gate a few VM pages used them all and the VM list and the node page timed out too.
+func (h *Host) DomainGetXMLDesc(d libvirt.Domain, flags libvirt.DomainXMLFlags) (xml string, err error) {
+	if gerr := h.gate.call(func() { xml, err = h.Libvirt.DomainGetXMLDesc(d, flags) }); gerr != nil {
+		return "", gerr
+	}
+	return
+}
+
+func (h *Host) DomainGetBlockInfo(d libvirt.Domain, path string, flags uint32) (allocation, capacity, physical uint64, err error) {
+	if gerr := h.gate.call(func() { allocation, capacity, physical, err = h.Libvirt.DomainGetBlockInfo(d, path, flags) }); gerr != nil {
+		return 0, 0, 0, gerr
+	}
+	return
+}
+
 func (h *Host) ConnectListAllStoragePools(need int32, flags libvirt.ConnectListAllStoragePoolsFlags) (pools []libvirt.StoragePool, n uint32, err error) {
 	if gerr := h.gate.call(func() { pools, n, err = h.Libvirt.ConnectListAllStoragePools(need, flags) }); gerr != nil {
 		return nil, 0, gerr

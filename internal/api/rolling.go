@@ -1034,10 +1034,14 @@ func (e *rollExec) pUpdate(n *rollNode) (string, bool, error) {
 		return "", false, err
 	}
 	start := func() error {
+		// Record before starting: a controller that stops between the two finds the start recorded, and the
+		// update on the node running or not started (updateVerdict); recorded after, a restart would try to
+		// start a second update ("a package update is already running").
+		e.mutate(func(r *rollRun) { n.UpdateStarted, n.UpdateAt = true, time.Now().Unix() })
 		if out, err := h.RunNode("update-start"); err != nil {
+			e.mutate(func(r *rollRun) { n.UpdateStarted = false })
 			return fmt.Errorf("the update could not be started: %s", strings.TrimSpace(out))
 		}
-		e.mutate(func(r *rollRun) { n.UpdateStarted, n.UpdateAt = true, time.Now().Unix() })
 		return nil
 	}
 	e.mu.Lock()
@@ -1047,6 +1051,9 @@ func (e *rollExec) pUpdate(n *rollNode) (string, bool, error) {
 		if err := start(); err != nil {
 			return "", false, err
 		}
+		e.mu.Lock()
+		at = n.UpdateAt
+		e.mu.Unlock()
 	}
 	deadline := time.Now().Add(rollUpdateMax)
 	errSince := time.Time{}
@@ -1069,8 +1076,8 @@ func (e *rollExec) pUpdate(n *rollNode) (string, bool, error) {
 			continue
 		}
 		errSince = time.Time{}
-		switch {
-		case st.State == nodeproto.UpdateNone || (st.State != nodeproto.UpdateRunning && st.Started+30 < at):
+		switch updateVerdict(st, at) {
+		case updateStartAgain:
 			// An old result, or none: the start was lost (the controller stopped between recording and starting).
 			e.mu.Lock()
 			at = time.Now().Unix()
@@ -1078,9 +1085,12 @@ func (e *rollExec) pUpdate(n *rollNode) (string, bool, error) {
 			if err := start(); err != nil {
 				return "", false, err
 			}
-		case st.State == nodeproto.UpdateRunning:
+		case updateWait:
 			time.Sleep(rollPoll)
-		case st.State == nodeproto.UpdateFailed:
+		case updateFailed:
+			// The next Continue must start the update again: the failed result on the node is this run's own, and
+			// reading it again would only report the same failure.
+			e.mutate(func(r *rollRun) { n.UpdateStarted = false })
 			return "", false, errors.New(st.Error + ". Fix the cause on the node (the log is /var/lib/virticle-update/update.log) and press Continue to try the update again")
 		default: // ok
 			e.mutate(func(r *rollRun) {
@@ -1098,6 +1108,27 @@ func (e *rollExec) pUpdate(n *rollNode) (string, bool, error) {
 			return d, false, nil
 		}
 	}
+}
+
+// What pUpdate does with the update state it reads from the node.
+const (
+	updateStartAgain = "start"
+	updateWait       = "wait"
+	updateFailed     = "failed"
+	updateDone       = "done"
+)
+
+// updateVerdict decides from the node's update state; at is when this run started the update.
+func updateVerdict(st nodeproto.UpdateStatus, at int64) string {
+	switch {
+	case st.State == nodeproto.UpdateNone || (st.State != nodeproto.UpdateRunning && st.Started+30 < at):
+		return updateStartAgain
+	case st.State == nodeproto.UpdateRunning:
+		return updateWait
+	case st.State == nodeproto.UpdateFailed:
+		return updateFailed
+	}
+	return updateDone
 }
 
 func firstN(s []string, n int) []string {

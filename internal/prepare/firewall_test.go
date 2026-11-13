@@ -78,7 +78,7 @@ func newFwHost(t *testing.T, tools ...string) *fwHost {
 	os.WriteFile(filepath.Join(h.state, "added"), []byte("ufw allow 22/tcp\n"), 0o644)
 	os.WriteFile(filepath.Join(h.state, "log"), nil, 0o644)
 	// A PATH of our own: only the basic tools and the ones of this test.
-	for _, name := range []string{"sh", "grep", "sed", "tr", "sort", "cat", "head", "ls", "rm", "mv", "cp", "printf"} {
+	for _, name := range []string{"sh", "grep", "sed", "tr", "sort", "cat", "head", "ls", "rm", "mv", "cp", "printf", "awk"} {
 		if p, err := exec.LookPath(name); err == nil {
 			os.Symlink(p, filepath.Join(h.dir, name))
 		}
@@ -91,6 +91,12 @@ func newFwHost(t *testing.T, tools ...string) *fwHost {
 			os.WriteFile(filepath.Join(h.dir, "ufw"), []byte(fakeUfw), 0o755)
 		case "nft":
 			os.WriteFile(filepath.Join(h.dir, "nft"), []byte("#!/bin/sh\necho 'table inet filter { chain input { type filter hook input priority 0; } }'\n"), 0o755)
+		case "nft-libvirt": // only libvirt's own table for its NAT network
+			os.WriteFile(filepath.Join(h.dir, "nft"), []byte("#!/bin/sh\nprintf 'table ip libvirt_network {\\n\\tchain input {\\n\\t\\ttype filter hook input priority filter + 1; policy accept;\\n\\t}\\n}\\n'\n"), 0o755)
+		case "iptables-libvirt": // policy ACCEPT and libvirt's jump
+			os.WriteFile(filepath.Join(h.dir, "iptables"), []byte("#!/bin/sh\nprintf -- '-P INPUT ACCEPT\\n-A INPUT -j LIBVIRT_INP\\n'\n"), 0o755)
+		case "iptables-drop": // an administrator's rule next to libvirt's
+			os.WriteFile(filepath.Join(h.dir, "iptables"), []byte("#!/bin/sh\nprintf -- '-P INPUT ACCEPT\\n-A INPUT -j LIBVIRT_INP\\n-A INPUT -p tcp --dport 80 -j DROP\\n'\n"), 0o755)
 		}
 	}
 	return h
@@ -326,6 +332,22 @@ func TestNoFirewallAndNftablesOnly(t *testing.T) {
 	row, _ = ApplyFirewall(h.run, FirewallSpec{Service: NodeFirewallService})
 	if row.Status != OK || !strings.Contains(row.Detail, "Nothing to remove") {
 		t.Errorf("nft remove: %+v", row)
+	}
+}
+
+// libvirt's own firewall rules for its NAT network are not a firewall the administrator has to open ports in.
+func TestLibvirtOwnRulesAreNotAFirewall(t *testing.T) {
+	for _, tool := range []string{"nft-libvirt", "iptables-libvirt"} {
+		h := newFwHost(t, tool)
+		f := ParseFirewallFacts(mustRun(t, h, FirewallCheckScript(NodeFirewall())))
+		if f.Kind != "none" || f.Nft {
+			t.Errorf("%s: facts %+v", tool, f)
+		}
+	}
+	h := newFwHost(t, "iptables-drop")
+	f := ParseFirewallFacts(mustRun(t, h, FirewallCheckScript(NodeFirewall())))
+	if !f.Nft {
+		t.Errorf("an administrator's rule next to libvirt's was not seen: %+v", f)
 	}
 }
 
