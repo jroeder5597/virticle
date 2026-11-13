@@ -12,14 +12,16 @@ Virticle look the same.
 
 | Area | Features |
 | --- | --- |
-| VMs | Create from cloud images, ISOs or templates. Clone. cloud-init. UEFI, Secure Boot, virtual TPM. Hot-plug hardware. Edit the libvirt XML. |
+| VMs | Create from cloud images, ISOs or templates. Clone. cloud-init. UEFI by default, Secure Boot, virtual TPM. Hot-plug hardware. Speed limit per network card. Edit the libvirt XML. |
 | Consoles | VNC and serial, in the browser. |
-| Migration | Live and offline, between nodes, with a list of pre-flight checks. Node maintenance and evacuation. |
-| Snapshots and backups | Manual or scheduled, with retention. Restore, export, import. |
-| Storage and networks | Pools, volumes, uploads, an image catalogue. NAT and bridged networks, DHCP reservations. |
+| Migration | Live and offline, between nodes, with a list of pre-flight checks. Node maintenance and evacuation. A migration network per node, with an automatic limit on a shared link. |
+| Snapshots and backups | Manual or scheduled, with retention. Restore, export, import. Backup and restore of the controller itself. |
+| Storage | Pools, volumes, uploads, an image catalogue. |
+| Networks | NAT and bridged networks, DHCP reservations. Virtual switches with VLANs, several uplinks (failover or LACP), rollback if a change cuts the node off. A topology view per datacenter and per node. Warnings when nodes differ. |
+| Monitoring | Performance history for 7 days with charts, a `/metrics` endpoint for Prometheus, alerts, and notifications to Slack, Mattermost, Discord or a webhook. |
 | Passthrough | PCI devices and GPUs. |
-| Access | Users with three roles, API tokens, audit log, task log, alerts. |
-| HTTPS | Self-signed, your own certificate, ACME, or behind a reverse proxy. |
+| Access | Users with three roles, two-step sign-in, sign-in through OIDC or LDAP, API tokens, audit log, task log. |
+| HTTPS | Self-signed (the default), your own certificate, ACME, or behind a reverse proxy. |
 
 ## Quick start
 
@@ -40,67 +42,50 @@ Pick one.
 | From source (needs Go and Node.js) | `make build` then `./bin/virticle -data ./data` |
 
 Download packages from
-[Releases](https://github.com/jroeder5597/virticle/releases). Later versions
-arrive with `apt upgrade` or `dnf upgrade` when you use the repository. After installing
-a package, run `sudo virticle setup` once: it opens the web port in the
-firewall (firewalld or ufw) and prints the address to open. A package runs
-a systemd service that serves HTTPS with a self-signed certificate on port
-8443 of all interfaces. The container does the same (compose.yaml publishes it
-on `127.0.0.1`). More in
-[docs/install.md](docs/install.md).
+[Releases](https://github.com/jroeder5597/virticle/releases). A package runs a
+systemd service that serves HTTPS with a self-signed certificate on port 8443
+of all interfaces. It does not touch the firewall: run `sudo virticle setup`
+once. It opens the web port in firewalld or ufw and prints the address to
+open. The container serves the same on port 8443 (compose.yaml publishes it on
+`127.0.0.1`). More in [docs/install.md](docs/install.md).
 
 ### 2. Create the administrator
 
-1. Open the address that `sudo virticle setup` printed, `https://<address>:8443` (the journal says the same: `journalctl -u virticle`). Your browser warns about the self-signed certificate. A source build started by hand in a data directory without users does the same.
+1. Open the address that `sudo virticle setup` printed, `https://<address>:8443`
+   (the journal says the same: `journalctl -u virticle`). Your browser warns
+   about the self-signed certificate. A source build started by hand in a data
+   directory without users behaves the same.
 2. Choose a user name and a password of at least 10 characters.
 
 ### 3. Add a node
 
-**The machine the controller runs on.** If the controller is installed on the
-machine that will run your virtual machines, the **Datacenter** page offers
-**Set up this machine as a node** while there are no nodes. SSH must be running
-on the machine (`sudo systemctl enable --now sshd`).
-
-1. Open **Datacenter**.
-2. Choose **Set up this machine as a node**.
-3. Enter an administrator login for this machine (root, or a user that may use
-   sudo). It is used once and is not stored.
-4. Choose **Prepare**. When it has finished without errors the node is added.
-
-To add another machine:
-
 A node is a Linux host with hardware virtualisation. Debian 13 and Rocky
-Linux 10 are tested. A node is prepared when you add it. Preparing
-installs libvirt and QEMU and sets up the access the controller needs.
+Linux 10 are tested. Adding a node prepares it: libvirt, QEMU and a small
+node command are installed and the access the controller needs is set up.
+Nothing on the host is removed. A host that already runs libvirt is prepared
+the same way, and its networks, pools and VMs stay as they are.
+
+**The machine the controller runs on.** While there are no nodes, the
+**Datacenter** page offers **Set up this machine as a node**. SSH must be
+running on the machine (`sudo systemctl enable --now sshd`). Enter an
+administrator login for this machine (root, or a user that may use sudo; used
+once, not stored) and choose **Add node**.
+
+**Another machine.**
 
 1. Open **Nodes**, then **Add node**.
 2. Enter the address and an administrator login for the host. It is used once
    and is not stored.
-3. Choose **Check** to see what would change. It changes nothing. Then
-   choose **Add node**, which prepares the host and adds it. There is nothing
-   else to tick, except **Root access instead of a service account** if you
-   want that.
+3. Choose **Check** to see what would change. It changes nothing. Then choose
+   **Add node**, which prepares the host and adds it.
 
 ![Add node dialog](docs/img/add-node.png)
 
-You can prepare from a shell instead: `virticle node prepare admin@host`.
-Add `--check` to change nothing.
-
-Prepare gives the controller one of two kinds of access:
-
-| Access | What the controller uses | When to choose it |
-| --- | --- | --- |
-| **Service account** (default) | The account `virticle-node`. It may run the node command as root through one sudo rule, and nothing else. | Almost always. |
-| **Root** (`--root`) | The root account. | You do not want an extra account on the node. |
-
-The node command is `virticle-node`, a small program that prepare installs on
-the node. The controller runs it over SSH when something needs root. No
-service runs on the node. Details are in
-[docs/install-node.md](docs/install-node.md).
-
-A host that already runs libvirt is prepared the same way. Its networks,
-pools and VMs stay as they are. The host that runs the controller can be a
-node too; the controller's own account `virticle` is not used for that.
+From a shell: `virticle node prepare admin@host` (add `--check` to change
+nothing). The controller signs in to the node as the account `virticle-node`,
+which may run the node command as root through one sudo rule and nothing else.
+**Root access instead of a service account** (`--root`) is the alternative.
+Details are in [docs/install-node.md](docs/install-node.md).
 
 ### 4. Create a VM
 
@@ -120,7 +105,9 @@ node too; the controller's own account `virticle` is not used for that.
 | See what happened | Look at the **Tasks** panel at the bottom. Every action shows progress and result. Long actions run in the background. |
 | Read a status | A green, yellow or red dot with the word Ok, Warning or Error. |
 | Move a VM | **Actions > Migrate**. The pre-flight list says what blocks the move. |
-| Switch to HTTPS or a reverse proxy | **Web access** (administrator). No restart. A change you do not confirm is undone after 60 seconds. |
+| See how a VM was doing | The **Performance** tab of the VM or node. |
+| Change the web address, certificate or port | **Settings > Web access** (administrator). A change you do not confirm is undone after 60 seconds. |
+| Back up the controller | **Settings > Backup**, or `sudo virticle backup`. |
 
 ![Migration pre-flight](docs/img/migrate.png)
 
@@ -128,13 +115,13 @@ Live migration is coordinated by the controller. Memory and disk data go
 directly from node to node. When a migration or restore has to copy files,
 they also go from node to node, with a key that the controller sets up. That
 key can only deliver a new file into a storage pool. You set up nothing by
-hand. The **SSH between nodes** row of the pre-flight list shows whether it
-works.
+hand.
 
-## Upgrading from 0.1.0
+## Upgrading
 
-Nodes prepared with 0.1.0 must be prepared again. Steps are in
-[docs/install.md](docs/install.md#upgrading-from-010).
+Upgrade the package, then prepare every node again (the node command has a new
+version). Steps for 0.2.0 to 0.3.0, and for older versions, are in
+[docs/install.md](docs/install.md#upgrading).
 
 ## Documentation
 
@@ -142,13 +129,14 @@ Nodes prepared with 0.1.0 must be prepared again. Steps are in
 | --- | --- |
 | Use the UI, with screenshots, and fix common problems | [docs/user-guide.md](docs/user-guide.md) |
 | Install, upgrade, roll back, uninstall | [docs/install.md](docs/install.md) |
-| Back up the controller, restore it, move it, recover without a backup | [docs/controller-backup.md](docs/controller-backup.md) |
 | Prepare a node, see what is installed on it, audit the node command | [docs/install-node.md](docs/install-node.md) |
+| Back up the controller, restore it, move it, recover without a backup | [docs/controller-backup.md](docs/controller-backup.md) |
 | Set up HTTPS, ACME or a reverse proxy | [docs/web-tls.md](docs/web-tls.md) |
 | Two-step sign-in, sign-in with an identity provider (OIDC) or a directory (LDAP, Active Directory) | [docs/sign-in.md](docs/sign-in.md) |
-| Look up flags, roles, API tokens, data, schedules, limits | [docs/reference.md](docs/reference.md) |
+| Feed Prometheus or Grafana | [docs/metrics.md](docs/metrics.md) |
+| Look up commands, flags, roles, API tokens, data, schedules, limits | [docs/reference.md](docs/reference.md) |
 | Build, test, release | [docs/development.md](docs/development.md) |
-| See what is done, untested and open | [ROADMAP.md](ROADMAP.md) |
+| See what is done, untested and planned | [ROADMAP.md](ROADMAP.md) |
 
 ## Contributing and security
 
@@ -160,9 +148,12 @@ Nodes prepared with 0.1.0 must be prepared again. Steps are in
 Early release. Tested: a controller on Linux amd64, and nodes on Debian 13
 and Rocky Linux 10, each in both access modes.
 
-Not tested: arm64, ACME certificate
-issuance. A Debian node and a RHEL-family node cannot exchange VMs. Packages
-are not signed. No container image is published.
+Not tested: arm64, ACME certificate issuance, LACP against a real switch,
+sign-in with identity providers other than the test provider, and virtual
+switches on nodes that use ifupdown (refused) or plain systemd-networkd. A
+Debian node and a RHEL-family node cannot exchange VMs. The files on the
+Releases page are not signed (the package repository is). No container image
+is published.
 
 ## Licence
 

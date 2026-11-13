@@ -6,11 +6,12 @@
 | --- | --- |
 | `virticle [flags]` | Runs the controller. |
 | `virticle version` | Prints version, commit and build date. |
-| `virticle setup [--check] [--undo]` | Run once on the controller's machine after installing, as root (`sudo virticle setup`). Opens the web port in firewalld or ufw, makes sure the service runs and prints the address to open. `--check` changes nothing; `--undo` removes the firewall rule it added. Takes `-data`. See [install.md](install.md#package-debian-ubuntu-rhel-like). |
+| `virticle setup [--check] [--undo]` | Run once on the controller's machine after installing, as root (`sudo virticle setup`). Opens the web port in firewalld or ufw, makes sure the service runs and prints the address to open. `--check` changes nothing; `--undo` removes the firewall rule it added. Takes `-data`. See [install.md](install.md#setup-open-the-firewall). |
 | `virticle node prepare\|unprepare` | Prepares a host as a node, or undoes it. See [install-node.md](install-node.md). |
 | `virticle backup [-o FILE\|DIR] [--encrypt] [--passphrase-file FILE]` | Writes the controller's own data (database, SSH key, certificates) to one file, while the controller runs. Takes `-data`. |
 | `virticle restore FILE` | Puts such a file back; the controller must be stopped. Takes `-data` and `--passphrase-file`. See [controller-backup.md](controller-backup.md). |
 | `virticle web show\|set\|reset` | Reads or changes the stored web access settings. `show` and `reset` take only `-data`. See [web-tls.md](web-tls.md). |
+| `virticle user reset-2fa\|reset-password USER` | Recovery on the controller's machine: turn two-step sign-in off for a user, or set a new password for a local account. Takes `-data` and, for `reset-password`, `--password-stdin`. See [sign-in.md](sign-in.md#two-step-sign-in-authenticator-app). |
 
 ## Flags
 
@@ -18,8 +19,9 @@
 | --- | --- | --- |
 | `-data` | `/var/lib/virticle` if it exists and holds a database, else `data` | Directory for the database and the controller's SSH key. Also for `virticle web` and `virticle node`. |
 | `-listen` | none | Address of the web UI and API. Given, it overrides what the **Web access** page stores and makes that page read-only. Leave it out to manage web access from the UI. |
+| `-version` | | Print the version, commit and build date and exit (same as `virticle version`). |
 | `-no-scheduler` | off | Do not run scheduled snapshots and backups from this controller. |
-| `-alert-webhook` | empty | Deprecated. URL that receives a JSON POST when an alert is raised or cleared. Given, it is listed on the **Alerts** page as one more destination that cannot be edited. |
+| `-alert-webhook` | empty | Deprecated. URL that receives a JSON POST when an alert is raised or cleared. Given, it is listed under **Settings > Alerts** as one more destination that cannot be edited. |
 
 Without `-listen` and without stored web settings, a data directory with no
 users serves HTTPS with a self-signed certificate on port 8443 of all
@@ -27,7 +29,7 @@ interfaces; one that already has users keeps plain HTTP on `127.0.0.1:8080`.
 
 Deprecated, hidden from `-help`, and still working with a notice in the log:
 `-tls-cert`, `-tls-key`, `-insecure-http`, `-trusted-proxy` (use the **Web
-access** page or `virticle web set`), `-alert-webhook` (use **Alerts**), and `-alert-pool-warn` (85),
+access** page or `virticle web set`), `-alert-webhook` (use **Settings > Alerts**), and `-alert-pool-warn` (85),
 `-alert-pool-critical` (95), `-alert-memory` (90), `-alert-cert-days` (30),
 whose defaults stay.
 
@@ -187,7 +189,7 @@ A node is reached in one of two ways. Both run the same program as root: the nod
 A node that has neither is "Not prepared": the features that need root are off. A node whose account has general
 passwordless sudo but no node command is also not prepared.
 
-## Host bridges
+## Host bridges (virtual switches)
 
 A node's Linux bridges can be created, changed and deleted from the controller (admin only, API
 `/api/nodes/{node}/hostnet`; `GET .../hostnet/peers?bridge=&network=&vlan=` lists the other nodes that have a managed bridge of that name and no network of that name, for the UI's "create the same network" box). Only Linux bridges are handled; Open vSwitch is not. The change touches the network the
@@ -259,11 +261,9 @@ applies it at once with `ip link set` (cards last when it goes down, first when 
 switch is deleted, the card gets its earlier MTU back. libvirt 11.3 and 11.10 refuse `<mtu>` in a network with `forward mode='bridge'`, so
 networks on a host bridge cannot carry it; a guest needs the MTU in its own settings (not tried in the lab).
 
-**Protocol 13.** The node command protocol is 13 (it was 11). Virtual switches (bonds, the node's address on a VLAN, MTU: new
-fields in the request and the saved state of a switch, bond and VLAN device state) and the migration network with its automatic
-limit each raised it to 12 on their own branch; 13 is the number of the two together, so a node prepared with only one of them is not
-current. A node prepared with an older version shows "prepare the node again". (The old node command would also refuse the new
-requests, because it rejects fields it does not know; the version check gives the clear message instead.)
+**Protocol 13.** The node command protocol is 13 (0.2.0 had 10). A node prepared with an older version shows "prepared
+by an older version" and must be prepared again ([install.md](install.md#upgrading)); the old node command would also
+refuse the new requests, because it rejects fields it does not know.
 
 **What it refuses.** Ports of a bond (or of a bridge) as uplinks, and cards that are already in another bond; an uplink that is already a port; wireless, virtual and
 libvirt-managed (`virbr*`, `vnet*`) interfaces; changing an interface that carries the controller's connection without
@@ -297,12 +297,3 @@ The node's own addresses on a VLAN are described below.
 - No high availability, no shared-storage features, no replication.
 - Not verified end to end: ACME issuance, the packages and the systemd service
   on a clean machine, arm64. See [ROADMAP.md](../ROADMAP.md).
-
-## Upgrading from the working name virt-proj
-
-Replace the binary and start it with the same `-data` directory.
-
-- `virt-proj.db` is renamed to `virticle.db` at start.
-- The old `VIRT_JUMP_PASSWORD` and `VIRT_VIRTIO_WIN_PATTERN` names no longer
-  work; use the `VIRTICLE_` names.
-- Per-VM metadata in the old namespace is read and moved on the next write.

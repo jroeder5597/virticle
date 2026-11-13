@@ -40,8 +40,9 @@ There is no other way. A login that has general passwordless sudo but no node co
 
 ## The controller host as a node
 
-The machine that runs the controller can also be a node. Prepare it like any other host, with its own address. The two
-accounts on that machine are separate:
+The machine that runs the controller can also be a node: choose **Set up this machine as a node** on the **Datacenter**
+page while there are no nodes (see the [README](../README.md#3-add-a-node)), or prepare it like any other host, with its
+own address. The two accounts on that machine are separate:
 
 | Account | Made by | Used for |
 | --- | --- | --- |
@@ -72,7 +73,10 @@ Prepare runs these steps in order:
    - free space under `/var/lib/libvirt/images`
    - SELinux or AppArmor, and time sync
    - whether libvirt is installed, and its version
-   - whether another controller runs snapshot schedules there
+   - whether another Virticle controller manages the node (its key is in the account's `authorized_keys`) or runs
+     snapshot schedules there. For a node that another controller manages, the dialog asks **Take over node** and the
+     command line needs `--take-over`; the other controller's key is then removed (see
+     [controller-backup.md](controller-backup.md#c-there-is-no-backup-and-the-controller-is-lost))
    - how many VMs exist (existing VMs are left alone)
 
    Prepare never reboots the host. If a reboot or kernel parameter is needed (for IOMMU), a row says so.
@@ -135,8 +139,9 @@ virticle node prepare [--check] [--minimal] [--root] [--user NAME] [--use-existi
 | `--identity FILE`, `--password-stdin` | How you sign in as administrator (default: your SSH agent). |
 | `--data DIR` | The controller's data directory (its key, `known_hosts`, instance id). Default `data`. |
 
-The web dialog has no options except **Root access instead of a service account**. The other options are for the
-command line. `virticle node unprepare` takes `--user`, `--root`, `--jump`, `--identity`, `--password-stdin` and
+The web dialog has one choice, **Root access instead of a service account**, and under **Advanced** a jump host and
+**Already prepared: connect without an administrator login** (for a host that you prepared in a shell: enter its
+address and SSH user, `virticle-node` or `root`). The other options are for the command line. `virticle node unprepare` takes `--user`, `--root`, `--jump`, `--identity`, `--password-stdin` and
 `--data`.
 
 The host key of the node is recorded in the controller's `known_hosts` the first time it is seen.
@@ -144,9 +149,9 @@ The host key of the node is recorded in the controller's `known_hosts` the first
 ## Upgrade and unprepare
 
 **Upgrade.** When the controller says that a node was "prepared by an older version", run prepare again. This happens
-when the node command there reports another protocol version, or is still the old shell script from 0.1.0. Prepare
-replaces the node command and removes the old script. Steps for 0.1.0 are in
-[install.md](install.md#upgrading-from-010).
+when the node command there reports another protocol version (after every controller upgrade that changes it), or is
+still the old shell script from 0.1.0. Prepare replaces the node command and removes the old script. The steps are in
+[install.md](install.md#upgrading).
 
 **Nodes prepared by 0.2.0.** They have the account `virticle` (made by prepare, with the comment "virticle service
 account"). Preparing them again keeps that account. It does not make `virticle-node`.
@@ -279,7 +284,7 @@ for:
 - **downloading** images and the image catalogue into a pool,
 - **importing** disks and OVAs,
 - **moving a disk** to another pool,
-- **host bridges**: Linux bridges with VLAN filtering, with a rollback on the node,
+- **virtual switches**: Linux bridges with VLANs, bonds, addresses on a VLAN and MTU, with a rollback on the node,
 - **cloning with guest preparation** (`virt-sysprep`, from the guest disk tools; not there after `prepare --minimal`).
 
 Backup export and import stream through the controller to and from the browser.

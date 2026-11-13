@@ -53,6 +53,8 @@ somewhere other than the backup.
 In the web UI: **Settings > Backup > Download backup**. It asks for your
 password again, and for a passphrase if you want the file encrypted.
 
+![Backup page](img/controller-backup.png)
+
 For a copy that survives losing the machine, run the command from cron and copy
 the file elsewhere, for example:
 
@@ -175,7 +177,7 @@ Things to expect:
 Before a start applies a database schema change, the controller copies the
 database to `virticle.db.bak-<old version>-<time>` in the data directory (the
 newest 3 are kept). To go back to the previous version, follow
-[Upgrade and rollback](install.md#upgrade-and-rollback): stop the service, put
+[Roll back](install.md#roll-back): stop the service, put
 that copy back as `virticle.db`, install the old version, start it.
 
 If you have a backup made before the upgrade (the daily copy on the server

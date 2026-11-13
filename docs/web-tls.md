@@ -1,6 +1,6 @@
 # Web access and TLS
 
-The **Web access** page (administrators only, under **Settings** in the top bar) chooses how the controller serves its web UI and API. You can give the same settings on the command line, so a headless install works without opening the page.
+The **Web access** page (administrators only: **Settings > Web access**) chooses how the controller serves its web UI and API. You can give the same settings on the command line, so a headless install works without opening the page.
 
 ![Web access page](img/web-access.png)
 

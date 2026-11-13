@@ -9,8 +9,7 @@ On this page:
 
 - [Package repository](#install-from-the-package-repository) (preferred), [downloaded package](#package-from-a-download-debian-ubuntu-rhel-like), [container](#container) or [binary](#binary)
 - [First run](#first-run)
-- [Upgrading from 0.1.0](#upgrading-from-010)
-- [Upgrade and rollback](#upgrade-and-rollback)
+- [Upgrading](#upgrading), with the steps from 0.2.0 and from 0.1.0, and how to roll back
 - [Uninstall](#uninstall)
 
 Releases are at <https://github.com/jroeder5597/virticle/releases>. Below,
@@ -115,6 +114,8 @@ HTTPS default, one with users keeps what it has.
 | Family | After installing |
 | --- | --- |
 | Debian, RHEL | The service is enabled and started. An upgrade restarts it when it was running. |
+
+### Setup: open the firewall
 
 The package does not touch the firewall. Run this once after installing:
 
@@ -224,75 +225,113 @@ The directory holds:
 
 | File | Content |
 | --- | --- |
-| `virticle.db` | Users, password hashes, API token hashes, node list, task and audit logs |
+| `virticle.db` | Users, password hashes, API token hashes, node list, web access and alert settings, task and audit logs |
 | `id_ed25519`, `id_ed25519.pub` | The controller's SSH key for the nodes |
 | `known_hosts` | Host keys of the nodes |
 | `instance-id` | Identifier of this controller |
+| `secret.key` | The key that encrypts stored secrets (two-step seeds, sign-in and notification secrets) |
 | `tls-cert.pem`, `tls-key.pem` | The certificate, when the controller made one |
+| `metrics.db` | The performance history (7 days). Can be deleted; only the history is lost |
+| `backups/` | The daily controller backups, when switched on |
+
+The full list is in [reference.md](reference.md#where-state-lives).
 
 Back it up with `sudo virticle backup`, which works while the controller runs
 (not by copying files). VMs, networks and storage live in libvirt on the nodes,
 not here. See [controller-backup.md](controller-backup.md) for backup, restore,
 moving the controller and recovery without a backup.
 
-## Upgrading from 0.1.0
+## Upgrading
 
-Version 0.2.0 manages nodes in a new way. **Nodes prepared with 0.1.0 must be
-prepared again.** Until you do, the node shows "prepared by an older version".
-The features that need root on the node, such as migration, backups and
-downloads into a pool, are off for it.
-
-What changed on the nodes:
-
-- The root shell script from 0.1.0 is replaced by the node command
-  (`virticle-node`). It is a small program that is run on demand. No service
-  runs on a node.
-- There are now exactly two kinds of access: **Service account** and **Root**.
-  Full sudo and "add a node without preparing it" no longer exist.
-- Any two nodes can exchange files, including a Service account node with a
-  Root node.
-
-Steps:
-
-1. Install the new controller package, or replace the binary, and restart the
-   controller. See [Upgrade and rollback](#upgrade-and-rollback).
-2. For each node, prepare it again. Use either way:
-   - In the web UI: open the node, then **Settings > Prepare this node**.
-   - In a shell: `virticle node prepare admin@host`. Add `--root` if the node
-     is a Root node.
-3. Open the node in the web UI. **Settings** no longer warns that the node is
-   not prepared.
-
-A node that you added with full sudo, or as root without preparing it, needs
-the same step. Nodes that 0.2.0 prepared keep their account `virticle` when you
-prepare them again; no second account is made. Newly prepared nodes use the
-account `virticle-node`. A running controller notices a newly prepared node within about
-30 seconds. Preparing again replaces the node command and removes the old
-script. VMs, networks and pools on the node are not touched.
-
-## Upgrade and rollback
-
-To upgrade, do one of these:
+This is the one place for upgrade steps. To upgrade the controller, do one of
+these:
 
 - From the package repository: `sudo apt update && sudo apt upgrade` or
-  `sudo dnf upgrade`. Same as the next item for your settings and the service.
+  `sudo dnf upgrade`.
 - Install the newer package: `sudo apt-get install ./virticle_NEW.deb` or
   `sudo dnf upgrade ./virticle-NEW.rpm`. Your edits in
-  `/etc/virticle/virticle.env` are kept, and the package restarts a running
-  service.
+  `/etc/virticle/virticle.env` are kept.
 - Rebuild the image and recreate the container.
 - Replace the binary and restart it.
 
-Before a start applies a database schema change, the controller copies the
-database to `virticle.db.bak-<oldversion>-<timestamp>` in the data directory
-and logs the file name.
+A package restarts a running service. Before a start applies a database schema
+change, the controller copies the database to
+`virticle.db.bak-<oldversion>-<timestamp>` in the data directory and logs the
+file name (find it with `journalctl -u virticle`, look for `database schema`).
+The copy is a consistent single file, the newest 3 are kept, and no copy is
+made when the schema version does not change.
 
-- The copy is a consistent single file.
-- The newest 3 copies are kept.
-- No copy is made when the schema version does not change.
-- To find the line, run `journalctl -u virticle` and look for `database schema`.
+### From 0.2.0 to 0.3.0
 
-Rollback to the previous version:
+Nodes need to be prepared again, because the node command has a new version
+(protocol 13, it was 10). Until you do, a node shows "prepared by an older
+version" and the features that need root on it are off: migration, backups,
+downloads into a pool, and the network changes. VMs keep
+running.
+
+1. **Upgrade the controller** as above. A backup first is a good idea:
+   `sudo virticle backup -o /root/backups/` (see
+   [controller-backup.md](controller-backup.md)).
+2. **Check the web address.** The new HTTPS default (self-signed, port 8443)
+   applies to **fresh installs only**. A data directory that already has users
+   and no stored web settings keeps serving plain HTTP on `127.0.0.1:8080`, as
+   before. The **Web access** page says so. To reach the controller from other
+   computers, choose a mode on that page. Settings you stored with 0.2.0 are
+   kept.
+3. **Run `sudo virticle setup`** if you want it to open the web port in the
+   firewall. The package never does this by itself. You do not need it when
+   the controller keeps listening on `127.0.0.1`. Run it again after you
+   change the web port.
+4. **Prepare each node again.** Either way works:
+   - In the web UI: open the node, then **Settings > Prepare this node**.
+   - In a shell: `virticle node prepare admin@host`. Add `--root` if the node
+     is a Root node.
+
+   Preparing replaces the node command and now also opens the migration ports
+   (TCP `49152` to `49215`) in firewalld or ufw. A node that 0.2.0 prepared
+   keeps its account `virticle`; new nodes use `virticle-node`. VMs, networks
+   and pools are not touched. A running controller notices a prepared node
+   within about 30 seconds.
+5. **Open each node** and check that **Settings** no longer warns that the node
+   is not prepared.
+
+What you get without doing anything else: performance history (starts to fill
+at once), alerts for network links, the network drift warning, notifications
+(an alert webhook address from 0.2.0 becomes the destination **Webhook** under
+**Settings > Alerts**), and the daily controller backup (off until you switch
+it on under **Settings > Backup**). Existing VMs keep their firmware. A VM
+keeps the kind of snapshot it already has (see
+[Known limits](reference.md#known-limits)).
+
+**Container.** A data volume from 0.2.0 has an administrator and no stored
+web settings, so the new image, which passes no `-listen`, would listen on
+`127.0.0.1:8080` inside the container, where the published port 8443 cannot
+reach it. Until you set a mode, start the container the old way: publish port
+8080 and add `-listen 0.0.0.0:8080 -data /data` to the command, then choose a
+mode on the **Web access** page. This was not tried on a real container.
+
+### From 0.1.0
+
+0.2.0 manages nodes in a new way, so **nodes prepared with 0.1.0 must be
+prepared again**, as in step 4 above (use `--root` for a node that you gave
+root). The root shell script of 0.1.0 is replaced by the node command; the
+prepare removes the old script. There are now exactly two kinds of access,
+**Service account** and **Root**: full sudo and "add a node without preparing
+it" no longer exist, so such a node needs the same step. Then upgrade on to
+0.3.0 as above.
+
+### From the working name virt-proj
+
+Replace the binary and start it with the same `-data` directory.
+
+- `virt-proj.db` is renamed to `virticle.db` at start.
+- The old `VIRT_JUMP_PASSWORD` and `VIRT_VIRTIO_WIN_PATTERN` names no longer
+  work; use the `VIRTICLE_` names.
+- Per-VM metadata in the old namespace is read and moved on the next write.
+
+### Roll back
+
+To go back to the previous version:
 
 1. Stop the service: `sudo systemctl stop virticle`.
 2. Restore the copy, with the service user as owner:
@@ -310,8 +349,9 @@ A backup made before the upgrade does the same for the whole data directory:
 `sudo virticle restore FILE` with the service stopped
 ([controller-backup.md](controller-backup.md#d-roll-back-an-upgrade)).
 
-Rolling back the controller does not bring back the shell script that
-0.1.0 used on the nodes. Preparing a node again with 0.2.0 removes that script.
+Rolling back the controller does not undo the node command. A node that was
+prepared again keeps the new one and shows "prepared by an older version"
+to the old controller; prepare it again with the old version.
 
 ## Uninstall
 

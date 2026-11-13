@@ -51,7 +51,21 @@ when a verb changes in a way an older controller or node cannot use.
 2. The `release` workflow runs goreleaser and creates a **draft** GitHub
    release with `.tar.gz`, `.deb`, `.rpm` (amd64, arm64) and `checksums.txt`.
 3. Review the draft and publish it.
+4. Publishing starts the `pkgrepo` workflow, which rebuilds the signed apt and
+   dnf repository from all published releases and deploys it to GitHub Pages
+   (`packaging/repo/build-repo.sh`; one-time setup in
+   [install.md](install.md#install-from-the-package-repository)).
 
 Local dry run that publishes nothing: `make package` (needs goreleaser).
 
-Not set up yet: a container registry, package signing.
+Not set up yet: a container registry. The files of a release are not signed;
+the package repository is.
+
+## Documentation screenshots
+
+The images in `docs/img` are 1280 pixels wide, taken in the dark theme from a
+running controller with real content. Before taking one, replace anything that
+must not be published: addresses of the lab, host names, jump hosts, e-mail
+addresses, passwords and keys. Look at every image afterwards. When the UI
+changes, retake the images that show it; `python3` with Pillow can reduce the
+size (quantise to 256 colours).

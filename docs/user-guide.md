@@ -12,16 +12,19 @@ How to do the everyday things in the web UI. To install, see
 - [Backups](#backups)
 - [Migration](#migration)
 - [Storage](#storage)
-- [Networks](#networks)
+- [Networks](#networks): [topology](#network-topology), [virtual switches](#virtual-switches)
+- [Notifications](#notifications)
 - [Performance](#performance)
-- [Users, tokens and the audit log](#users-tokens-and-the-audit-log)
+- [Settings, users and tokens](#settings-users-and-tokens)
 - [Troubleshooting](#troubleshooting)
 
 ## The screen
 
 ![Datacenter summary](img/datacenter.png)
 
-- **Top bar**: the main pages, alerts, theme, your account.
+- **Top bar**: the main pages (**Virtual machines**, **Storage**, **Networks**, **Backups**, **Nodes**, **Tasks**), the
+  **Settings** menu (administrators), alerts, theme, your account. **Backups** lists the backups of VMs;
+  **Settings > Backup** is the backup of the controller itself.
 - **Tree** (left): nodes with their VMs, storage and networks. Type in
   **Filter** to narrow it. Right-click an entry for its actions. Drag the edge
   to resize.
@@ -57,14 +60,21 @@ To add another host:
    The only option is **Root access instead of a service account**; leave it
    off unless you want Root. See [install-node.md](install-node.md).
 3. For a host that you already prepared in a shell, open **Advanced** and
-   choose **Already prepared**. Enter its address and SSH user
-   (`virticle-node` for a Service account, `root` for Root). A node prepared
-   by version 0.2.0 uses `virticle`.
+   choose **Already prepared: connect without an administrator login**. Enter
+   its address and SSH user (`virticle-node` for a Service account, `root`
+   for Root). A node prepared by version 0.2.0 uses `virticle`. A host that
+   another Virticle controller manages makes the check stop with **Take over
+   node**: see [controller-backup.md](controller-backup.md#c-there-is-no-backup-and-the-controller-is-lost).
 
 ![Add node dialog](img/add-node.png)
 
 When the node's **Settings** say it was prepared by an older version, choose
-**Prepare this node** there.
+**Prepare this node** there (after an upgrade: see [install.md](install.md#upgrading)).
+
+A node has the tabs **Summary**, **Performance**, **Virtual machines**, **Storage**, **Network**, **Topology**,
+**Updates** and **Settings**.
+
+![Node settings](img/node-settings.png)
 
 What you can do with a node:
 
@@ -86,12 +96,14 @@ What you can do with a node:
    - **Disk image**: copies a cloud image. Open **Cloud-init** to set the
      user, password and SSH key. The guest agent is installed too.
    - **Empty disk**.
-3. A Linux VM gets UEFI firmware unless you choose BIOS under **Advanced** (a node without UEFI firmware gets BIOS). UEFI guests usually need at least 512 MiB. For Windows, set **Guest OS type** to **Windows**: it picks UEFI, Secure
-   Boot and a virtual TPM for you.
-4. **Advanced** holds the CPU type, firmware, Secure Boot, TPM and **Existing
-   volume** (use a volume as the disk as it is). Leave **CPU type** on
-   **Cluster baseline** unless you need host features: it is the best CPU every
-   online node can run, so live migration works.
+3. A Linux VM gets UEFI firmware unless you choose BIOS under **Advanced** (a node without UEFI firmware gets BIOS).
+   UEFI guests usually need at least 512 MiB. For Windows, set **Guest OS type** to **Windows**: it picks UEFI,
+   Secure Boot and a virtual TPM for you.
+4. **Advanced** holds the CPU type, **Firmware**, Secure Boot, TPM and **Existing volume** (use a volume as the
+   disk as it is). When you pick an existing volume, Virticle looks at its first sectors: a disk without an EFI
+   system partition can only start with BIOS, and a disk with one and no BIOS boot code only with UEFI. The
+   other choice is then greyed out with a note. Leave **CPU type** on **Cluster baseline** unless you need host
+   features: it is the best CPU every online node can run, so live migration works.
 5. **Create**. Every new VM gets a serial console.
 
 ### Manage
@@ -107,10 +119,10 @@ What you can do with a node:
 | Power | Start, stop and restart, gracefully or forced. |
 | Edit Settings | Name, CPU, memory, and the other Hardware cards. |
 | Snapshots | Take, manage, schedule. |
-| Clone | Clone the VM. A template is cloned linked; **Advanced** offers a full copy. |
+| Clone | Clone the VM (shut it down first). A template is cloned linked; **Advanced** offers a full copy. |
 | Convert to template | Optionally resets the identity of a running guest. **Convert back to a VM** undoes it. |
 | Migrate | To another node, or move a disk to another pool. |
-| More | **Edit XML**, and **Delete VM** (its disks are deleted too unless you untick the box). |
+| More | **Edit XML**, and **Delete VM** (shut the VM down first; its disks are deleted too unless you untick the box). |
 
 Sync guest clock is under **Power**.
 
@@ -155,10 +167,25 @@ Sync guest clock is under **Power**.
 
 - **Take snapshot** runs as a task with a progress bar.
 - The tree shows which snapshot the VM is based on (**You are here**).
-- The round arrow reverts; the bin deletes.
+- The round arrow reverts; the bin deletes. **Delete snapshots** deletes several.
 - **Set up schedule**: interval or daily, keep the newest N.
-- A snapshot with memory pauses the guest while memory is saved. A disk-only
-  snapshot does not.
+
+**You do not choose the kind of snapshot.** Virticle picks the one that works on the node (internal, in the disk
+file, or external, in extra files). A running VM can save its running state with the snapshot, which pauses the guest
+while memory is written; without it the guest keeps running and the snapshot is of the disks only.
+
+![Take snapshot dialog](img/snapshot-dialog.png)
+
+**Save the running state too** is greyed out, with a hint underneath, when only one answer works for this VM:
+
+- A VM keeps one kind of snapshot until all its snapshots are deleted, because libvirt cannot delete a snapshot tree
+  that mixes both kinds. If the earlier snapshots need the running state, the box stays ticked; the hint says so and
+  that deleting them lets you choose again.
+- On a node that confines QEMU with AppArmor (Debian), only snapshots with the running state can be deleted reliably, so
+  the box stays ticked while the VM runs.
+- A VM that is shut off has no running state: the dialog says "Shut off: disk only."
+
+When no snapshot can be taken, the dialog says why and what to delete first.
 
 ## Backups
 
@@ -167,7 +194,8 @@ Sync guest clock is under **Power**.
 3. **Restore** a backup as a new VM or over the original.
 4. **Save schedule** sets interval or daily runs and how many to keep.
 
-The **Backups** page lists every backup on every node. A backup can be
+The **Backups** page lists every backup of every VM on every node. (The backup of the controller itself is under
+**Settings > Backup**: see [controller-backup.md](controller-backup.md).) A backup can be
 downloaded as one file and imported on another installation. The format is in
 [reference.md](reference.md#backup-format).
 
@@ -221,6 +249,8 @@ transfer:
 2. Pick the card, for example `enp2s0 (10.0.1.5), 10 Gb/s`. **Same as
    management** is the default.
 
+![Migration network dialog](img/migration-network.png)
+
 Saving checks that the other nodes can reach the address on the migration
 ports and on SSH, and renews the node's encryption certificate for it at once.
 A problem with another node is a warning; the setting is saved anyway. The
@@ -270,9 +300,11 @@ dedicated migration network.
 
 The **Topology** tab, on the Datacenter page (all nodes) and on each node page (that node), draws how virtual
 machines reach the network, like a VMware standard switch. Viewers and operators see it read-only; administrators can
-change it (see [Virtual switches](#virtual-switches)). **Refresh** reloads it; it also reloads
-by itself when networks or virtual machines change. In the Datacenter view the first three nodes are open and the
-others open on a click, and a network that has the same name on several nodes gets the same coloured edge.
+change it (see [Virtual switches](#virtual-switches)). **Refresh** reloads it; it also reloads by itself when
+networks or virtual machines change. In the Datacenter view the first three nodes are open and the others open on a
+click, and a network that has the same name on several nodes gets the same coloured edge.
+
+![Topology of a node with a virtual switch](img/topology.png)
 
 | Part | What it is |
 | --- | --- |
@@ -287,10 +319,15 @@ so a guest with a fixed address shows none. Uplinks of Open vSwitch bridges are 
 
 ### Network alerts
 
-The alerts (bell in the top bar, and [Notifications](#notifications)) include two about network links, checked every minute and raised
-only when seen twice in a row: **Network card X on Y has no link** (a warning; critical when it is the only uplink of
-a bridge that carries the node's address or has running virtual machines) and **bond runs on 1 of 2 cards** or
-**LACP is not answered by the switch**. Cards that belong to no bridge or bond and carry no address never alert.
+The alerts (bell in the top bar, and [Notifications](#notifications)) include some about network links, checked every
+minute and raised only when seen twice in a row:
+
+- **Network card X on Y has no link**: a warning; critical when it is the only uplink of a bridge that carries the
+  node's address or has running virtual machines.
+- **BOND on Y runs on 1 of 2 cards**: a bond has lost a card.
+- **LACP is not answered by the switch for BOND on Y**.
+
+Cards that belong to no bridge or bond and carry no address never alert.
 
 ### Networks that differ between nodes
 
@@ -318,16 +355,22 @@ each node has its own button). Nothing else is needed on the node: Virticle writ
 
 **Add a virtual switch**
 
+![Add virtual switch dialog](img/virtual-switch.png)
+
 1. Open the node's **Topology** tab and select **Add virtual switch**. On a card under **Unused network cards**, select
    **Use for a new virtual switch** instead.
 2. Enter a name (the dialog offers `vsw0`, `vsw1` and so on) and tick the **Uplinks**: none for an internal switch,
-   one card, or two or more for a bond. With two or more cards the **Mode** select appears.
+   one card, or two or more for a bond. The dialog ticks the first free card that is not the card of the node's
+   management address; untick it if you do not want it. A card with an address of its own loses it while it is in the
+   switch (the review says so). With two or more cards the **Mode** select appears.
    Keep **VLANs** selected if you want VLAN tags. **Advanced** has the allowed VLAN ids (empty allows all), the MTU
    and the time the node waits for the controller to confirm (90 seconds).
 3. Select **Review**. The dialog lists in plain words what will happen on the node; **Details** has the files and
    commands.
-4. Select **Apply**. The dialog shows three steps: applying on the node, waiting for the node, confirmed. You can close
-   it; the result is also in the task log.
+4. Select **Apply**. The dialog shows three steps: applying on the node, waiting for the node (with the seconds left
+   before the node undoes the change), confirmed. You can close it; the result is also in the task log.
+
+![A change waiting for confirmation](img/virtual-switch-apply.png)
 
 **Several uplinks.** Two or more cards on one switch work as a bond: if a cable or a card fails, the node and its virtual
 machines stay connected. Choose the mode when you add the switch or later under **Edit uplinks**:
@@ -383,8 +426,10 @@ node prepared with an older version of Virticle must be prepared again.
 
 ## Notifications
 
-Alerts show in the bell in the top bar. **Alerts** (admin) lists where else they are sent: Slack, Mattermost,
-Discord, or any web address (a webhook). Nothing is sent until you add a destination.
+Alerts show in the bell in the top bar. **Settings > Alerts** (administrators) lists where else they are sent: Slack,
+Mattermost, Discord, or any web address (a webhook). Nothing is sent until you add a destination.
+
+![Notifications](img/notifications.png)
 
 **Add destination** asks for a type, a name and the URL. Messages are sent when an alert is raised and when it
 clears, for warnings and critical alerts. **Send test message** checks a destination at once and tells you in plain
@@ -414,6 +459,8 @@ when an alert clears, and, for a webhook, a secret that signs every body.
   address saved by an earlier version became the destination **Webhook** when you upgraded.
 
 ## Performance
+
+![Performance tab of a VM](img/performance.png)
 
 The **Performance** tab of a VM and of a node shows what happened in the last hour, 6 hours, 24 hours or 7 days, for
 troubleshooting ("why was it slow at 03:00?"). The controller records every online node and all its VMs every 15
@@ -456,14 +503,24 @@ each name opens that VM's Performance tab with the same range. The Datacenter ha
 The history is stored in `metrics.db` in the data directory; deleting the file only loses the history. To feed Grafana or
 another tool, see [metrics.md](metrics.md).
 
-## Users, tokens and the audit log
+## Settings, users and tokens
+
+The **Settings** menu in the top bar is for administrators. **Account** (your name in the top bar) is for everyone.
 
 | Page | Who | What it does |
 | --- | --- | --- |
-| **Users** | Admin | Add accounts as viewer, operator or admin. See [Roles](reference.md#roles). |
-| **Account** | Everyone | Change your password, create API tokens. |
-| **Audit** | Admin | Lists every state-changing request, who made it and from where. |
-| **Web access** | Admin | HTTPS and reverse proxy settings. See [web-tls.md](web-tls.md). |
+| **Settings > Users** | Admin | Add accounts as viewer, operator or admin; reset a user's two-step sign-in. See [Roles](reference.md#roles). |
+| **Settings > Sign-in** | Admin | Require two-step sign-in, sign in through an identity provider (OIDC) or a directory (LDAP). See [sign-in.md](sign-in.md). |
+| **Settings > Web access** | Admin | Interface, port, HTTPS and reverse proxy. See [web-tls.md](web-tls.md). |
+| **Settings > Alerts** | Admin | Where alerts are sent. See [Notifications](#notifications). |
+| **Settings > Backup** | Admin | Download a backup of the controller, or keep a daily one. See [controller-backup.md](controller-backup.md). |
+| **Settings > Audit** | Admin | Lists every state-changing request, who made it and from where. |
+| **Account** | Everyone | Change your password, turn two-step sign-in on or off, create API tokens. |
+
+![Account page with two-step sign-in on](img/account.png)
+
+API tokens are described in [reference.md](reference.md#api-tokens). To read the numbers with Prometheus or Grafana, see
+[metrics.md](metrics.md).
 
 ## Troubleshooting
 
@@ -472,7 +529,10 @@ another tool, see [metrics.md](metrics.md).
 | Node shows Offline | Node **Settings > Test connection**. It names the failing step. |
 | Guest agent "Not responding" | Install and start `qemu-guest-agent` in the VM. |
 | Migration blocked | Read the red pre-flight row. Usually a missing network or pool on the target, or a firewall between the nodes (SSH between nodes, Migration ports). |
-| Migration or backup refused for a node | **Settings** says the node is not prepared: it has no node command, or one from an older version. Choose **Prepare this node** there, or run `virticle node prepare` for it again (see [install.md](install.md#upgrading-from-010)). |
+| Migration or backup refused for a node | **Settings** says the node is not prepared: it has no node command, or one from an older version. Choose **Prepare this node** there, or run `virticle node prepare` for it again (see [install.md](install.md#upgrading)). |
+| A virtual switch change did not stay | The node did not come back in time and restored its previous settings. Read the line in the node's **Topology** tab, check the cable and address, and try again. From the node's console: [reference.md](reference.md#host-bridges-virtual-switches). |
+| Charts have gaps | The VM was not running, or the node or the controller could not be read. Nothing is drawn as zero. |
 | Locked out after a web access change | Wait 60 seconds for the automatic revert, or run `virticle web reset` and restart. |
+| Lost the phone with the authenticator | An administrator chooses **Reset two-step sign-in** for you. If you are the only administrator: `virticle user reset-2fa USER` on the controller. See [sign-in.md](sign-in.md#two-step-sign-in-authenticator-app). |
 | "No ISO images on this node" | Upload one under **Storage**. |
 | A task failed | **Tasks** shows the libvirt error in the Result column. |

@@ -9,23 +9,28 @@ Virticle signs people in three ways, and they can be combined:
 The local administrator account always works, whatever is set up here. It is the way back in if a provider or directory is
 down or wrongly set. There is no setting that hides the local form.
 
-Settings are under **Settings, Sign-in** (administrators). Every change to them is written to the audit log (never with a secret).
+Settings are under **Settings > Sign-in** (administrators). Every change to them is written to the audit log (never with a secret).
+
+![Sign-in settings](img/sign-in.png)
 
 ## Two-step sign-in (authenticator app)
 
 Standard time-based one-time passwords (RFC 6238: SHA-1, 6 digits, 30 seconds). Works with Google Authenticator, Microsoft
 Authenticator, Duo Mobile (as a third-party account), Authy, 1Password and other authenticator apps.
 
-**Turn it on** (each user, under My account): Turn on two-step sign-in, scan the QR code (or type the key), enter one code.
+**Turn it on** (each user, on the **My account** page, opened with your name in the top bar): choose **Turn on two-step sign-in**, scan the QR code (or type the key), enter one code.
 Ten one-time recovery codes are then shown once; copy or download them and keep them safe. They are stored hashed.
 
-**Sign in**: after the correct password a second page asks for the 6-digit code, or a recovery code. The session only exists
+**Sign in**: after the correct password a second page asks for the 6-digit code, or a recovery code.
+
+![Second step of the sign-in](img/two-step-code.png)
+ The session only exists
 after both steps. A code works once (the same code is refused a second time), and the previous and next 30-second code are
 accepted to allow for a phone clock that is a little off. Wrong codes count toward the same rate limit as wrong passwords.
 
 **Turn it off** needs the password and a current code. **New recovery codes** needs the same.
 
-**Require two-step sign-in for** (Settings, Sign-in): *Nobody (each user decides)* (default), *Administrators* or *Everyone*.
+**Require two-step sign-in for** (**Settings > Sign-in**): *Nobody (each user decides)* (default), *Administrators* or *Everyone*.
 Someone who must have it and has not set it up is taken to the set-up page right after signing in and can do nothing else
 until it is done (this also applies to sessions that are already open). It does not apply to people who sign in through an
 identity provider: the provider's own second factor applies there. Directory users can use it, and the setting applies to them.
@@ -55,7 +60,7 @@ stored secrets cannot be read again: reset two-step sign-in for the users and re
 Standard authorization code flow with PKCE. Virticle reads `<issuer>/.well-known/openid-configuration`, checks the ID token
 signature (against the provider's keys, which may rotate), issuer, audience, expiry and nonce, and uses the `state` parameter.
 
-In Settings, Sign-in, **Identity provider (OIDC)**:
+In **Settings > Sign-in**, **Identity provider (OIDC)**:
 
 | Field | What to enter |
 | --- | --- |

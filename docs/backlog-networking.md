@@ -7,19 +7,12 @@ it. Written on 2026-11-13 for a later session.
 For what exists today, see [user-guide.md](user-guide.md) (Networks, Virtual
 switches, Network topology) and [reference.md](reference.md) (Host bridges).
 
-## Being built now (not backlog)
+## What is built
 
-So this list is not misread: these were approved and are in progress or done.
-
-- Virtual switches: Linux bridges with VLANs, created from the UI with
-  automatic rollback.
-- Several uplinks per switch (failover, LACP).
-- An address for the node on a VLAN.
-- MTU per switch.
-- Migration network chosen per node, with an automatic limit on a shared link.
-- Alerts for a network card without link and for a degraded bond.
-- A warning when networks differ between nodes.
-- A speed limit per VM network card.
+Virtual switches with VLANs, several uplinks, node addresses on a VLAN, MTU, the
+migration network, network alerts, the drift warning and the speed limit per
+network card are built. They are described in the
+[user guide](user-guide.md#networks), not here.
 
 ## Node networking
 
