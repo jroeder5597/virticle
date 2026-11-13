@@ -583,6 +583,10 @@ func (s *Server) createNetwork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var doc string
+	if req.XML == "" && req.Mode == "bridge" && !req.OVS && req.VLAN != 0 {
+		// build checks the tag against what the node says about the bridge, so ask first.
+		req.linuxVLAN = linuxVLANFor(h, req.BridgeName)
+	}
 	if req.XML != "" {
 		var x netXML
 		if err := xml.Unmarshal([]byte(req.XML), &x); err != nil || x.Name == "" {
@@ -599,9 +603,6 @@ func (s *Server) createNetwork(w http.ResponseWriter, r *http.Request) {
 	} else if doc, err = req.build(existing); err != nil {
 		fail(w, err)
 		return
-	}
-	if req.XML == "" && req.Mode == "bridge" && !req.OVS && req.VLAN != 0 {
-		req.linuxVLAN = linuxVLANFor(h, req.BridgeName)
 	}
 	if req.XML == "" && req.Mode == "bridge" && !req.OVS {
 		if _, err := h.Run("test -d /sys/class/net/" + shellQuote(req.BridgeName) + "/bridge"); err != nil {
