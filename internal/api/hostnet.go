@@ -240,7 +240,36 @@ func (s *Server) hostnetRequest(id int64, h *hostconn.Host, b hostnetBody) (node
 			return req, err
 		}
 	}
+	if req.Action == nodeproto.NetSetVLAN {
+		list, err := collectNetworks(h)
+		if err != nil {
+			return req, err
+		}
+		if err := vlanStillUsed(req, list); err != nil {
+			return req, err
+		}
+	}
 	return req, nil
+}
+
+// vlanStillUsed refuses a VLAN change that would cut the tag of a libvirt network on the bridge.
+func vlanStillUsed(req nodeproto.NetRequest, nets []networkInfo) error {
+	canon, err := nodeproto.ParseVLANs(req.VLANs)
+	if err != nil {
+		return nil // the node reports the bad list
+	}
+	for _, n := range nets {
+		if n.Bridge != req.Bridge || n.VLAN == 0 {
+			continue
+		}
+		if !req.VLANAware {
+			return badRequest(fmt.Sprintf("the libvirt network %s uses VLAN %d on the bridge %s; delete or change it first", n.Name, n.VLAN, req.Bridge))
+		}
+		if !nodeproto.VLANAllowed(canon, n.VLAN) {
+			return badRequest(fmt.Sprintf("the libvirt network %s uses VLAN %d on the bridge %s, which the new list (%s) would not allow; delete or change the network first", n.Name, n.VLAN, req.Bridge, canon))
+		}
+	}
+	return nil
 }
 
 // checkHostnetRequest is the part of the checks that needs no node.

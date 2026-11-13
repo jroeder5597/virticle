@@ -222,3 +222,23 @@ func TestLibvirtNetworkOnVLANAwareBridge(t *testing.T) {
 		t.Errorf("ovs: %v\n%s", err, got)
 	}
 }
+
+func TestVLANStillUsed(t *testing.T) {
+	nets := []networkInfo{{Name: "a", Bridge: "br0", VLAN: 10}, {Name: "b", Bridge: "br1", VLAN: 99}, {Name: "c", Bridge: "br0"}}
+	req := nodeproto.NetRequest{Action: nodeproto.NetSetVLAN, Bridge: "br0", VLANAware: true, VLANs: "10,20-30"}
+	if err := vlanStillUsed(req, nets); err != nil {
+		t.Errorf("tag 10 stays allowed: %v", err)
+	}
+	req.VLANs = "20-30"
+	if err := vlanStillUsed(req, nets); err == nil || !strings.Contains(err.Error(), "network a uses VLAN 10") {
+		t.Errorf("tag 10 would be cut: %v", err)
+	}
+	req.VLANAware, req.VLANs = false, ""
+	if err := vlanStillUsed(req, nets); err == nil {
+		t.Error("turning filtering off cuts tag 10")
+	}
+	req.Bridge = "br2"
+	if err := vlanStillUsed(req, nets); err != nil {
+		t.Errorf("other bridge: %v", err)
+	}
+}
