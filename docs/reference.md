@@ -288,7 +288,7 @@ applies it at once with `ip link set` (cards last when it goes down, first when 
 switch is deleted, the card gets its earlier MTU back. libvirt 11.3 and 11.10 refuse `<mtu>` in a network with `forward mode='bridge'`, so
 networks on a host bridge cannot carry it; a guest needs the MTU in its own settings (not tried in the lab).
 
-**Protocol 15.** The node command protocol is 15 (0.2.0 had 10). A node prepared with an older version shows "prepared
+**Protocol 16.** The node command protocol is 16 (0.2.0 had 10). A node prepared with an older version shows "prepared
 by an older version" and must be prepared again ([install.md](install.md#upgrading)); the old node command would also
 refuse the new requests, because it rejects fields it does not know. Protocol 14 (incremental backups): `convert-start` takes the
 incremental images after the format, and `backup-detach` is new.
