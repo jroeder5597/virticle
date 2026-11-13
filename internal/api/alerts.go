@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -150,6 +151,11 @@ func (s *Server) gatherAlertInput(now time.Time) alertInput {
 func gatherPools(h *hostconn.Host, node int64, nodeName string) ([]alertPool, []Alert) {
 	pools, _, err := h.ConnectListAllStoragePools(1, 0)
 	if err != nil {
+		if errors.Is(err, hostconn.ErrStorageBusy) {
+			// A node with one libvirt daemon (Debian, Ubuntu) cannot list its pools while a call on a dead NFS
+			// share is stuck, which is exactly when the alert is needed: probe the shares seen last time.
+			return nil, knownNFSAlerts(h, node, nodeName)
+		}
 		return nil, nil
 	}
 	type active struct {
@@ -158,6 +164,7 @@ func gatherPools(h *hostconn.Host, node int64, nodeName string) ([]alertPool, []
 	}
 	var act []active
 	var mounts []string
+	var known []knownNFS
 	for _, pl := range pools {
 		if a, err := h.StoragePoolIsActive(pl); err != nil || a == 0 {
 			continue
@@ -169,8 +176,10 @@ func gatherPools(h *hostconn.Host, node int64, nodeName string) ([]alertPool, []
 		act = append(act, active{pl, x})
 		if x.Type == "netfs" && x.Target.Path != "" {
 			mounts = append(mounts, x.Target.Path)
+			known = append(known, knownNFS{Pool: pl.Name, Server: x.Source.Host.Name, Path: x.Target.Path})
 		}
 	}
+	rememberNFS(node, known)
 	health := nfsProber.peek(h, mounts)
 	var out []alertPool
 	var alerts []Alert
@@ -253,4 +262,37 @@ func (s *Server) listAlerts(w http.ResponseWriter, r *http.Request) {
 	// The pool-usage thresholds travel along so pickers can colour pools by the same limits.
 	c := alertConfig{PoolWarn: s.Alerts.PoolWarn, PoolCrit: s.Alerts.PoolCrit}.withDefaults()
 	writeJSON(w, map[string]any{"alerts": out, "poolWarn": c.PoolWarn, "poolCritical": c.PoolCrit})
+}
+
+// knownNFS is an NFS pool of a node as the last successful look at its pools saw it.
+type knownNFS struct{ Pool, Server, Path string }
+
+var lastNFS sync.Map // node id -> []knownNFS
+
+func rememberNFS(node int64, k []knownNFS) { lastNFS.Store(node, k) }
+
+// knownNFSAlerts is the storage alerts of a node whose pools cannot be listed: the shares seen last time are probed
+// (the probe is a shell command on the node and never waits for libvirt).
+func knownNFSAlerts(h *hostconn.Host, node int64, nodeName string) []Alert {
+	v, ok := lastNFS.Load(node)
+	if !ok {
+		return nil
+	}
+	k := v.([]knownNFS)
+	paths := make([]string, len(k))
+	for i, p := range k {
+		paths[i] = p.Path
+	}
+	return storageAlertsFor(node, nodeName, k, nfsProber.peek(h, paths))
+}
+
+// storageAlertsFor turns the probe answers for the known shares into alerts: one for each that does not answer.
+func storageAlertsFor(node int64, nodeName string, k []knownNFS, health map[string]mountState) []Alert {
+	var out []Alert
+	for _, p := range k {
+		if st, probed := health[p.Path]; probed && st != mountUp {
+			out = append(out, storageAlert(node, nodeName, p.Pool, p.Server, st))
+		}
+	}
+	return out
 }
