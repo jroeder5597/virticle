@@ -5,6 +5,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // nvram-new TEMPLATE DST: make a qcow2 UEFI variable store from the firmware
@@ -65,6 +66,20 @@ func verbNvramNew(c *Ctx) error {
 		cmd.ExtraFiles = []*os.File{f}
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return Fail("qemu-img convert failed: %s", strings.TrimSpace(string(out)))
+		}
+		// The store belongs to the emulator account that owns the NVRAM
+		// directory (qemu on Rocky and Fedora, libvirt-qemu on Debian). Left
+		// to root, libvirt cannot see the file as that account, takes it for
+		// missing and fails the start with "conversion of the nvram template
+		// to another target format is not supported".
+		if !c.Cfg.Unprivileged {
+			if st, err := os.Stat(c.Cfg.NVRAMDir); err == nil {
+				if sys, ok := st.Sys().(*syscall.Stat_t); ok {
+					if err := f.Chown(int(sys.Uid), int(sys.Gid)); err != nil {
+						return Fail("cannot hand the variable store to its owner: %v", err)
+					}
+				}
+			}
 		}
 		return nil
 	})

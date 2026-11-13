@@ -331,6 +331,11 @@ func (s *Server) vmClone(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return rollback(err)
 		}
+		if n, ok := parseNvramEl(raw); ok && n.Format == "qcow2" {
+			// The source's qcow2 store names itself as template; the clone's
+			// new store is built from the distribution's template.
+			newXML = withRawNvramTemplate(newXML, rawNvramTemplate(raw, n))
+		}
 
 		if mechanism == mechVirtSysprep {
 			progress(float64(len(plan)) / float64(len(plan)+1))

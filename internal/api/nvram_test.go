@@ -26,11 +26,27 @@ func TestWithQcow2Nvram(t *testing.T) {
 	n, _ := parseNvramEl(nvramRawXML)
 	out := withQcow2Nvram(nvramRawXML, n, "/var/lib/libvirt/qemu/nvram/a_VARS.qcow2")
 	if !nvramIsQcow2(out) || !strings.Contains(out, ">/var/lib/libvirt/qemu/nvram/a_VARS.qcow2</nvram>") ||
-		!strings.Contains(out, "templateFormat='raw'") || strings.Contains(out, "a_VARS.fd") {
+		!strings.Contains(out, "template='/var/lib/libvirt/qemu/nvram/a_VARS.qcow2' templateFormat='qcow2'") || strings.Contains(out, "a_VARS.fd") {
 		t.Errorf("rewritten: %s", out)
 	}
 	if !strings.Contains(out, "OVMF_CODE_4M.fd") {
 		t.Error("the rest of the definition must stay")
+	}
+	if strings.Contains(out, "firmware=") {
+		t.Errorf("libvirt must not pick the firmware again at start: %s", out)
+	}
+}
+
+func TestWithoutFirmwareSelection(t *testing.T) {
+	in := "<domain><os firmware='efi'>\n    <type>hvm</type>\n    <firmware>\n      <feature enabled='yes' name='secure-boot'/>\n    </firmware>\n    <loader readonly='yes' secure='yes' type='pflash' format='raw'>/c.fd</loader>\n  </os></domain>"
+	out := withoutFirmwareSelection(in)
+	for _, bad := range []string{"firmware", "<feature"} {
+		if strings.Contains(out, bad) {
+			t.Errorf("%q left in %s", bad, out)
+		}
+	}
+	if !strings.Contains(out, "<os>") || !strings.Contains(out, "secure='yes'") || !strings.Contains(out, "<type>hvm</type>") {
+		t.Errorf("rest must stay: %s", out)
 	}
 }
 
@@ -58,5 +74,25 @@ func TestParseMigDomainNVRAMFormat(t *testing.T) {
 	d, _ = parseMigDomain(`<domain><name>a</name><uuid>x</uuid><os><type arch='x86_64' machine='q35'>hvm</type><nvram>/n/a.fd</nvram></os></domain>`)
 	if d.NVRAMFormat != "raw" {
 		t.Errorf("default format %q", d.NVRAMFormat)
+	}
+}
+
+func TestRawNvramTemplate(t *testing.T) {
+	n, _ := parseNvramEl(nvramRawXML)
+	if got := rawNvramTemplate(nvramRawXML, n); got != "/usr/share/OVMF/OVMF_VARS_4M.fd" {
+		t.Errorf("raw store: %q", got)
+	}
+	out := withQcow2Nvram(nvramRawXML, n, "/var/lib/libvirt/qemu/nvram/a_VARS.qcow2")
+	n2, _ := parseNvramEl(out)
+	if got := rawNvramTemplate(out, n2); got != "" {
+		t.Errorf("a self-named template without metadata must give nothing, got %q", got)
+	}
+	withMeta := strings.Replace(out, "<os", "<metadata><virticle:meta xmlns:virticle='x'><virticle:nvram template='/usr/share/OVMF/OVMF_VARS_4M.fd'/></virticle:meta></metadata><os", 1)
+	if got := rawNvramTemplate(withMeta, n2); got != "/usr/share/OVMF/OVMF_VARS_4M.fd" {
+		t.Errorf("from metadata: %q", got)
+	}
+	back := withRawNvramTemplate(strings.Replace(out, ">/var/lib/libvirt/qemu/nvram/a_VARS.qcow2</nvram>", "></nvram>", 1), "/usr/share/OVMF/OVMF_VARS_4M.fd")
+	if !strings.Contains(back, "<nvram template='/usr/share/OVMF/OVMF_VARS_4M.fd' templateFormat='raw' format='qcow2'></nvram>") {
+		t.Errorf("clone: %s", back)
 	}
 }
