@@ -287,14 +287,17 @@ addresses. Each copy has its own disks, so no data is destroyed, but the copies 
 fail over when you know the node is down.
 
 **When the old node comes back.** Its VM is marked **Stale copy**: replication from it is switched off, it is powered off at
-once if it is running (within a minute of the node returning), it cannot be started, and an alert is raised. Its disks are never
+once if it is running (within a minute of the node returning, or of the controller returning if it was down), it cannot be started,
+and an alert is raised. Everything this decision needs is stored on the nodes, in the VMs: a controller that was down during the
+failover, or restored from an older backup, finds the same answer. Its disks are never
 deleted by Virticle.
 
 1. Open the stale copy and choose **Replicate back**: the running VM is copied to this node as a new replica (a full copy), and
    the stale copy and its disks are deleted when that copy is complete. Or **Delete VM** to discard the old copy.
 2. When the copy is current, open the replica on the old node and use **Planned failover** to fail back.
 
-After a planned failover the old VM is marked stale and replication back starts by itself. "Replicate back" is always a
+After a planned failover the old VM is marked stale and replication back starts by itself (if the controller stopped at that
+moment, the old VM is still marked when it is back, and **Replicate back** on it does the rest). "Replicate back" is always a
 full copy: the changes since the failover cannot be told apart from the old copy's own, and a copy that is not provably equal
 is worse than a slow one. Which of two VMs is the old copy is decided by a counter that every failover raises by one, never by
 the clocks of the nodes.

@@ -209,6 +209,16 @@ func (s *Server) planRestore(src *backupRef, req restoreReq) (*restorePlan, erro
 // VM on the target node when replace was asked for.
 func (p *restorePlan) checkOriginal() error {
 	u, _ := cluster.ParseUUID(p.man.UUID)
+	// The standby of the VM that is being replaced holds its replica: the same identity, but it is the VM's own copy,
+	// which the next replication run brings up to date, so it is no obstacle.
+	replTo := int64(0)
+	if hd, err := p.s.Nodes.Host(p.dstID); err == nil && p.req.Replace {
+		if d, err := hd.DomainLookupByUUID(u); err == nil {
+			if m, _ := domainMeta(hd, d); parseReplication(m) != nil {
+				replTo = parseReplication(m).TargetNode
+			}
+		}
+	}
 	for _, n := range p.s.Nodes.Status() {
 		h, err := p.s.Nodes.Host(n.ID)
 		if err != nil {
@@ -216,6 +226,9 @@ func (p *restorePlan) checkOriginal() error {
 		}
 		byName, errN := h.DomainLookupByName(p.man.VM)
 		byUUID, errU := h.DomainLookupByUUID(u)
+		if n.ID == replTo && n.ID != p.dstID && errU == nil && errN == nil && byName.UUID == byUUID.UUID && isReplicaDomain(h, byUUID) {
+			continue
+		}
 		if errN != nil && errU != nil {
 			continue
 		}

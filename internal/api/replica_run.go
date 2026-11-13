@@ -207,6 +207,7 @@ var reMetadataEl = regexp.MustCompile(`(?s)<metadata>.*?</metadata>|<metadata\s*
 // refused here, before a task exists.
 func (s *Server) planReplica(srcID int64, src *hostconn.Host, dom libvirt.Domain, cfg replConfig, final bool) (*replRun, error) {
 	sweepWork()
+	s.sweepReplicaOrphans(srcID, src)
 	if pers, err := src.DomainIsPersistent(dom); err != nil || pers == 0 {
 		return nil, badRequest("this VM is transient (only running, not defined); define it first")
 	}
@@ -226,6 +227,7 @@ func (s *Server) planReplica(srcID int64, src *hostconn.Host, dom libvirt.Domain
 		return nil, badRequest("the standby node is not connected: " + err.Error())
 	}
 	dn, _ := s.nodeStatus(cfg.TargetNode)
+	s.sweepReplicaOrphans(cfg.TargetNode, dst)
 	// The setting names the standby by number and by name. A controller that was set up again (nodes added in another
 	// order) numbers its nodes differently: a number that now belongs to another node must not receive the copy.
 	if cfg.TargetName != "" && dst.Name != cfg.TargetName {
@@ -813,7 +815,10 @@ func (r *replRun) send(wd *bkWork, seq int, nvram string, total uint64) error {
 			if m.cancelled.Load() {
 				return errBackupCancelled
 			}
-			return fmt.Errorf("sending %s to %s failed: %w", d.File, r.dst.Name, err)
+			if free, ferr := bkFreeBytes(r.dst, r.pd.Dir); ferr == nil && free < 64<<20 {
+				return fmt.Errorf("%s ran out of space in %s while the copy was being written: %s are left. The earlier copy is kept as it is; free some space there or choose a bigger pool", r.dst.Name, r.pd.Dir, fmtBytes(uint64(free)))
+			}
+			return fmt.Errorf("the copy of %s to %s was interrupted (the connection or the node command on %s stopped): %w. The earlier copy is kept as it is; the next run sends it again", d.File, r.dst.Name, r.dst.Name, err)
 		}
 		done += d.Size
 		if d.SHA != "" {

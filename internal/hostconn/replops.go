@@ -101,3 +101,24 @@ func (h *Host) ReplList(work string) (map[string]uint64, error) {
 	}
 	return res, nil
 }
+
+// WorkList returns the replication work directories directly in a pool directory, with their modification time (unix seconds).
+func (h *Host) WorkList(dir string) (map[string]int64, error) {
+	out, err := h.RunNode("work-ls", dir)
+	if err != nil {
+		return nil, nodeErr(out, err)
+	}
+	res := map[string]int64{}
+	for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
+		i := strings.LastIndexByte(l, '|')
+		if i <= 0 {
+			continue
+		}
+		n, err := strconv.ParseInt(l[i+1:], 10, 64)
+		if err != nil {
+			continue
+		}
+		res[l[:i]] = n
+	}
+	return res, nil
+}
