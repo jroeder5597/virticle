@@ -6,7 +6,7 @@ package nodeproto
 const (
 	// Version is the protocol number `virticle-node version` prints. Raise it
 	// whenever a verb changes in a way an older controller or node cannot use.
-	Version = "13"
+	Version = "14"
 	// Path is where the node command is installed on a node.
 	Path = "/usr/local/libexec/virticle-node"
 )

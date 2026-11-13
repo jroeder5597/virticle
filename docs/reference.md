@@ -168,13 +168,34 @@ A directory `<vm>-<UTC timestamp>.vmbackup` in a directory-backed pool:
 
 - `manifest.json`: VM name and UUID, time, source node, disks, SHA-256 checksums (not for scheduled backups).
 - `domain.xml`: the VM definition.
-- `<target>.qcow2`: one flattened image per writable disk.
+- `<target>.qcow2`: one flattened image per writable disk. In an incremental backup it holds only the blocks that changed
+  since the parent, and has no backing file.
 - `nvram.fd`: for UEFI guests; the manifest records its format (`nvramFormat`: `qcow2`, or `raw` for VMs made before qcow2 stores).
 
 A running VM is backed up with libvirt's backup API and keeps running. The
 directory is renamed into place last, so a backup is complete or absent. A
 backup restores as a new VM or as the original, and exports to one
 `.vmexport.tar`.
+
+### Incremental backups
+
+- Each backup of a running VM with qcow2 disks leaves a libvirt checkpoint (a QEMU dirty bitmap per disk), named
+  `virticle-<time>-<random>`, with the target (`node:pool`) as its description. The next backup asks libvirt for the blocks
+  changed since the checkpoint of the newest backup that still has one.
+- The manifest of an incremental backup is format 2 (an older Virticle refuses it instead of restoring part of a disk) and adds
+  `kind`, `parent` (a backup in the same pool) and `checkpoint`. A full backup stays format 1, with `kind`, `checkpoint`,
+  `fullReason` and the disks' `source` added; backups from before have none of these and count as full.
+- A backup is full when: the VM is shut off (copied with qemu-img, no checkpoint); a disk is not qcow2; libvirt is older
+  than 7.0; no earlier backup of the VM in the target has its checkpoint any more (restart after a killed QEMU, migration,
+  restore, snapshot revert, disk move); the disks (target, file, size) differ from the parent's; a backup in the chain is
+  missing or its files differ from the manifest; the chain already has 7 backups; or libvirt refuses the incremental
+  backup (then the VM's checkpoints are dropped and a full backup is made).
+- The checkpoints of the same target older than the new one are deleted after a backup; a VM keeps at most 4. A failed or
+  cancelled backup deletes the checkpoint it made.
+- Retention keeps the newest N and every backup they build on, and deletes newest first. A restore reads the chain with one
+  `qemu-img convert` over a `json:` description of the images; nothing reads the VM's disks.
+- Snapshot revert, migration (live or offline) and disk move drop the VM's checkpoints first. Taking an internal snapshot or
+  a resize keeps them. An external snapshot moves the disk to a new file, so the next backup is full.
 
 ## Node access
 
@@ -261,9 +282,10 @@ applies it at once with `ip link set` (cards last when it goes down, first when 
 switch is deleted, the card gets its earlier MTU back. libvirt 11.3 and 11.10 refuse `<mtu>` in a network with `forward mode='bridge'`, so
 networks on a host bridge cannot carry it; a guest needs the MTU in its own settings (not tried in the lab).
 
-**Protocol 13.** The node command protocol is 13 (0.2.0 had 10). A node prepared with an older version shows "prepared
+**Protocol 14.** The node command protocol is 14 (0.2.0 had 10). A node prepared with an older version shows "prepared
 by an older version" and must be prepared again ([install.md](install.md#upgrading)); the old node command would also
-refuse the new requests, because it rejects fields it does not know.
+refuse the new requests, because it rejects fields it does not know. Protocol 14 (incremental backups): `convert-start` takes the
+incremental images after the format, and `backup-detach` is new.
 
 **What it refuses.** Ports of a bond (or of a bridge) as uplinks, and cards that are already in another bond; an uplink that is already a port; wireless, virtual and
 libvirt-managed (`virbr*`, `vnet*`) interfaces; changing an interface that carries the controller's connection without

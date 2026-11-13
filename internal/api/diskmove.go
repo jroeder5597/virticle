@@ -626,6 +626,8 @@ type moveRun struct {
 
 func (m *moveRun) run() error {
 	m.progress(0.01)
+	// The new file has none of the change tracking that backups use.
+	dropBackupCheckpoints(m.h, m.dom)
 	var err error
 	if m.f.Running {
 		err = m.runLive()

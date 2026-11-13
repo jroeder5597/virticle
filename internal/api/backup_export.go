@@ -7,6 +7,7 @@ package api
 // nothing is held in memory or on the controller.
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -54,6 +55,13 @@ func (s *Server) exportBackup(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	var chain []chainLink
+	if m.kindOf() == kindIncremental {
+		if chain, err = b.loadChain(m); err != nil {
+			fail(w, err)
+			return
+		}
+	}
 	var total uint64
 	names := m.files()
 	for _, d := range m.Disks {
@@ -62,8 +70,23 @@ func (s *Server) exportBackup(w http.ResponseWriter, r *http.Request) {
 	// Explicit plain member names, so the archive can be vetted on import.
 	out := &streamOut{w: w, filename: m.VM + ".vmexport.tar", total: total}
 	err = s.task(r, "backup export", b.name, b.h.Name, func(progress func(float64)) error {
+		dir := b.dir
 		out.progress = progress
-		return b.h.TarPack(r.Context(), b.dir, names, out)
+		if chain != nil {
+			// An export is one self-contained file, so an incremental backup is put
+			// together with the ones it builds on first (a full backup in the export).
+			flat, fm, err := b.flatten(m, chain, func(f float64) { progress(f * 0.5) })
+			if err != nil {
+				return err
+			}
+			defer flat.remove()
+			dir, names, out.total = flat.path, fm.files(), 0
+			for _, d := range fm.Disks {
+				out.total += d.Bytes
+			}
+			out.progress = func(f float64) { progress(0.5 + f*0.5) }
+		}
+		return b.h.TarPack(r.Context(), dir, names, out)
 	})
 	if err != nil {
 		if !out.started {
@@ -72,6 +95,59 @@ func (s *Server) exportBackup(w http.ResponseWriter, r *http.Request) {
 			logf("export of %s failed after %d bytes: %v", b.dir, out.n.Load(), err)
 		}
 	}
+}
+
+// flatten puts the disks of an incremental backup together with the backups it
+// builds on, into a work directory in the same pool, with a manifest that
+// describes a full backup. The caller removes the directory.
+func (b *backupRef) flatten(m *backupManifest, chain []chainLink, progress func(float64)) (wd *bkWork, fm *backupManifest, err error) {
+	if wd, err = newWork(b.h, b.pd.Dir, "ex"); err != nil {
+		return nil, nil, err
+	}
+	defer func() {
+		if err != nil {
+			wd.remove()
+		}
+	}()
+	cp := *m
+	cp.Format, cp.Kind, cp.Parent, cp.Checkpoint, cp.Disks = backupFormat, kindFull, "", "", nil
+	cp.FullReason = fmt.Sprintf("Put together from %d backups when exported.", len(chain))
+	for i, d := range m.Disks {
+		var files []string
+		for _, l := range chain {
+			ld, ok := l.diskOf(d.Target)
+			if !ok {
+				return nil, nil, badRequest("the backup " + l.Dir + " has no disk " + d.Target)
+			}
+			files = append(files, l.path(b)+"/"+ld.File)
+		}
+		lo, n := float64(i), float64(len(m.Disks))
+		if err = wd.convertChain(files, wd.file(d.File), func(f float64) { progress((lo + f) / n) }); err != nil {
+			return nil, nil, fmt.Errorf("putting %s together: %w", d.File, err)
+		}
+		info, err := bkQemuInfo(b.h, wd.file(d.File))
+		if err != nil {
+			return nil, nil, err
+		}
+		st, err := b.h.Stat(wd.file(d.File))
+		if err != nil || !st[0].Exists {
+			return nil, nil, fmt.Errorf("cannot read %s: %v", d.File, err)
+		}
+		cp.Disks = append(cp.Disks, backupDiskRec{Target: d.Target, File: d.File, Format: "qcow2", VirtualSize: uint64(info.VirtualSize), Bytes: st[0].Size, Source: d.Source})
+	}
+	if err = b.h.Copy(b.dir+"/domain.xml", wd.file("domain.xml")); err != nil {
+		return nil, nil, err
+	}
+	if m.NVRAM != "" {
+		if err = b.h.Copy(b.dir+"/"+m.NVRAM, wd.file(m.NVRAM)); err != nil {
+			return nil, nil, err
+		}
+	}
+	mj, _ := json.MarshalIndent(&cp, "", "  ")
+	if err = writeNodeFile(b.h, wd.file("manifest.json"), mj); err != nil {
+		return nil, nil, err
+	}
+	return wd, &cp, nil
 }
 
 // importBackup stores an uploaded export in a pool as a backup directory.

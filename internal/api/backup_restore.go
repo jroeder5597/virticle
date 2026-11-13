@@ -36,6 +36,7 @@ type restorePlan struct {
 	s       *Server
 	src     *backupRef
 	man     *backupManifest
+	chain   []chainLink // the backups this one rests on, the full one first; this backup is the last
 	domXML  string
 	req     restoreReq
 	dst     *hostconn.Host
@@ -61,6 +62,9 @@ func (s *Server) planRestore(src *backupRef, req restoreReq) (*restorePlan, erro
 		return nil, err
 	}
 	p := &restorePlan{s: s, src: src, man: man, req: req, vols: map[string]string{}, oldPath: map[string]string{}}
+	if p.chain, err = src.loadChain(man); err != nil {
+		return nil, err
+	}
 	raw, err := readLimited(src.h, src.dir+"/domain.xml", backupMaxXML)
 	if err != nil {
 		return nil, badRequest(err.Error())
@@ -82,12 +86,18 @@ func (s *Server) planRestore(src *backupRef, req restoreReq) (*restorePlan, erro
 		if p.oldPath[d.Target] == "" {
 			return nil, badRequest("domain.xml has no disk " + d.Target + " that the manifest lists")
 		}
-		info, err := bkQemuInfo(src.h, src.dir+"/"+d.File) // refuses backing files and the like
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", d.File, err)
-		}
-		if info.Format != "qcow2" {
-			return nil, badRequest(d.File + " is not a qcow2 image")
+		for _, l := range p.chain {
+			ld, ok := l.diskOf(d.Target)
+			if !ok {
+				return nil, badRequest("the backup " + l.Dir + " that this one builds on has no disk " + d.Target)
+			}
+			info, err := bkQemuInfo(src.h, l.path(src)+"/"+ld.File) // refuses backing files and the like
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", ld.File, err)
+			}
+			if info.Format != "qcow2" {
+				return nil, badRequest(ld.File + " is not a qcow2 image")
+			}
 		}
 	}
 
@@ -140,7 +150,7 @@ func (s *Server) planRestore(src *backupRef, req restoreReq) (*restorePlan, erro
 			return nil, badRequest("volume name " + v + " is not valid")
 		}
 		p.vols[d.Target] = v
-		need += d.Bytes
+		need += p.chainBytes(d.Target)
 		if p.old != nil {
 			continue // the replaced VM's files go away first; checked against its disks below
 		}
@@ -178,6 +188,16 @@ func (s *Server) planRestore(src *backupRef, req restoreReq) (*restorePlan, erro
 		dn, _ := s.nodeStatus(p.dstID)
 		if p.ep, err = s.checkBackupTransfer(src.h, p.dst, dn.Node); err != nil {
 			return nil, err
+		}
+	}
+	if len(p.chain) > 1 {
+		// An incremental backup is put together on the node that holds the backups first.
+		var flat uint64 = importFreeMargin
+		for _, d := range man.Disks {
+			flat += p.chainBytes(d.Target)
+		}
+		if sf, err := bkFreeBytes(src.h, src.pd.Dir); err != nil || uint64(sf) < flat {
+			return nil, badRequest(fmt.Sprintf("not enough free space in %s on %s to put the incremental backup together: about %s needed", src.pd.Dir, src.h.Name, fmtBytes(flat)))
 		}
 	}
 	return p, nil
@@ -403,38 +423,65 @@ func (p *restorePlan) run(progress func(float64)) (uuid string, err error) {
 	// Stage the disks.
 	var total uint64
 	for _, d := range p.man.Disks {
-		total += d.Bytes + 1
+		total += p.chainBytes(d.Target) + 1
 	}
 	var done uint64
 	staged := map[string]string{}
-	for _, d := range p.man.Disks {
-		srcFile := p.src.dir + "/" + d.File
-		stage := wd.file(p.vols[d.Target])
-		if d.SHA256 != "" {
-			sum, serr := src.SHA256(srcFile)
-			if serr != nil {
-				return "", serr
-			}
-			if sum != d.SHA256 {
-				return "", fmt.Errorf("%s is damaged: its SHA-256 is %s, the manifest says %s", d.File, sum, d.SHA256)
-			}
+	// A restore of an incremental backup puts the chain together on the node
+	// that holds the backups, in a work directory of its own.
+	var srcWd *bkWork
+	if len(p.chain) > 1 && p.remote {
+		if srcWd, err = newWork(src, p.src.pd.Dir, "rs"); err != nil {
+			return "", err
 		}
-		base, span := done, d.Bytes+1
-		if p.remote {
-			if cerr := copyToNode(context.Background(), src, dst, p.ep, srcFile, stage, "600", func(sent uint64) {
+		defer srcWd.remove()
+	}
+	for _, d := range p.man.Disks {
+		stage := wd.file(p.vols[d.Target])
+		var files []string
+		for _, l := range p.chain {
+			ld, _ := l.diskOf(d.Target)
+			f := l.path(p.src) + "/" + ld.File
+			if ld.SHA256 != "" {
+				sum, serr := src.SHA256(f)
+				if serr != nil {
+					return "", serr
+				}
+				if sum != ld.SHA256 {
+					return "", fmt.Errorf("%s of the backup %s is damaged: its SHA-256 is %s, the manifest says %s", ld.File, l.Dir, sum, ld.SHA256)
+				}
+			}
+			files = append(files, f)
+		}
+		base, span := done, p.chainBytes(d.Target)+1
+		prog := func(f float64) { progress(0.02 + 0.8*(float64(base)+f*float64(span))/float64(total)) }
+		switch {
+		case p.remote && len(p.chain) == 1:
+			if cerr := copyToNode(context.Background(), src, dst, p.ep, files[0], stage, "600", func(sent uint64) {
 				progress(0.02 + 0.8*(float64(base)+float64(sent))/float64(total))
 			}); cerr != nil {
 				return "", fmt.Errorf("copying %s to %s failed: %w", d.File, dst.Name, cerr)
 			}
-		} else if cerr := wd.convert(srcFile, "qcow2", stage, func(f float64) {
-			progress(0.02 + 0.8*(float64(base)+f*float64(span))/float64(total))
-		}); cerr != nil {
-			return "", fmt.Errorf("copying %s: %w", d.File, cerr)
+		case p.remote:
+			flat := srcWd.file(p.vols[d.Target])
+			if cerr := srcWd.convertChain(files, flat, func(f float64) { prog(f * 0.5) }); cerr != nil {
+				return "", fmt.Errorf("putting %s together: %w", d.File, cerr)
+			}
+			if cerr := copyToNode(context.Background(), src, dst, p.ep, flat, stage, "600", func(sent uint64) {
+				prog(0.5 + 0.5*float64(sent)/float64(span))
+			}); cerr != nil {
+				return "", fmt.Errorf("copying %s to %s failed: %w", d.File, dst.Name, cerr)
+			}
+			_ = src.Remove(flat)
+		default:
+			if cerr := wd.convertChain(files, stage, prog); cerr != nil {
+				return "", fmt.Errorf("copying %s: %w", d.File, cerr)
+			}
 		}
 		if info, ierr := bkQemuInfo(dst, stage); ierr != nil || info.Format != "qcow2" {
 			return "", fmt.Errorf("the copy of %s is not a valid qcow2 image on %s", d.File, dst.Name)
 		}
-		done += d.Bytes + 1
+		done += p.chainBytes(d.Target) + 1
 		staged[d.Target] = stage
 		progress(0.02 + 0.8*float64(done)/float64(total))
 	}

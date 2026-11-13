@@ -77,7 +77,16 @@ func convertProgress(log string) (float64, bool) {
 // gives up (the caller then calls RemoveWork, which stops qemu-img).
 // progress receives 0..1.
 func (h *Host) Convert(work, src, srcFmt, dest string, stop func() bool, progress func(float64)) error {
-	if out, err := h.RunNode("convert-start", work, src, srcFmt); err != nil || out != "started" {
+	return h.ConvertChain(work, src, srcFmt, nil, dest, stop, progress)
+}
+
+// ConvertChain is Convert for a VM's backups: src is the full backup and
+// overlays the incremental backups on top of it, oldest first (qcow2 images
+// that hold only the blocks that changed). dest receives the VM's disk as it
+// was at the last of them.
+func (h *Host) ConvertChain(work, src, srcFmt string, overlays []string, dest string, stop func() bool, progress func(float64)) error {
+	args := append([]string{work, src, srcFmt}, overlays...)
+	if out, err := h.RunNode("convert-start", args...); err != nil || out != "started" {
 		return fmt.Errorf("cannot start qemu-img: %s", firstLineOf(out, err))
 	}
 	deadline := time.Now().Add(6 * time.Hour)
@@ -112,6 +121,15 @@ func (h *Host) Convert(work, src, srcFmt, dest string, stop func() bool, progres
 	}
 	if out, err := h.RunNode("convert-finish", work, dest); err != nil {
 		return fmt.Errorf("cannot move the result into the pool: %s", firstLineOf(out, err))
+	}
+	return nil
+}
+
+// DetachBacking removes the backing file reference from the qcow2 image
+// name in the work directory work.
+func (h *Host) DetachBacking(work, name string) error {
+	if out, err := h.RunNode("backup-detach", work, name); err != nil {
+		return fmt.Errorf("cannot detach %s: %s", name, firstLineOf(out, err))
 	}
 	return nil
 }

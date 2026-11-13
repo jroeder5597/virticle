@@ -94,9 +94,9 @@ func TestBackupScheduleDueAndLast(t *testing.T) {
 	if d.due(time.Date(2026, 1, 2, 4, 0, 0, 0, time.UTC), time.Date(2026, 1, 2, 3, 5, 0, 0, time.UTC)) {
 		t.Error("already done today")
 	}
-	// retention is the existing pruneList: with keepLast 2 the oldest goes
-	pr := pruneList(append(all, retained{Key: "d", UUID: "u1", Created: t0}), "u1", 2)
-	if len(pr) != 1 || pr[0].Key != "a" {
+	// retention: with keepLast 2 the oldest goes
+	pr := pruneChains(append(all, retained{Key: "d", UUID: "u1", Created: t0}), "u1", 2, "")
+	if len(pr) != 1 || pr[0] != "a" {
 		t.Errorf("prune %v", pr)
 	}
 }

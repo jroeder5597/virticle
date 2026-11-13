@@ -199,6 +199,26 @@ The **Backups** page lists every backup of every VM on every node. (The backup o
 downloaded as one file and imported on another installation. The format is in
 [reference.md](reference.md#backup-format).
 
+### Full and incremental backups
+
+You do not choose. The list shows each backup as **Full** or **Incremental**, with its own size.
+
+| | |
+|---|---|
+| Full | Every disk is copied whole. |
+| Incremental | Only what changed since the earlier backup of the same VM in the same pool. Small and quick. |
+
+- The first backup of a running VM is full, and so is every 7th, which keeps restores short.
+- A backup is also full, with the reason shown under it, when the VM was shut off, a disk is not qcow2, a disk was added,
+  removed, resized or moved, a snapshot was taken or reverted, the VM was moved or restored or stopped unexpectedly, or an
+  earlier backup is missing or damaged.
+- **Restore** works from any entry; Virticle puts the earlier backups it needs together. A backup whose earlier backups are
+  missing cannot be restored, and says so.
+- **Keep the newest** counts backups. An incremental backup is never kept without the backups it needs, so a few more than
+  that number can stay for a while.
+- **Delete** on a backup that later incremental backups need deletes them too, and the dialog says how many.
+- **Export** of an incremental backup puts it together into one full backup file.
+
 ## Migration
 
 ![Migration pre-flight](img/migrate.png)

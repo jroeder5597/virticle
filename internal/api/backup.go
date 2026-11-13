@@ -2,12 +2,15 @@ package api
 
 // Backing up a VM to a directory-backed pool on this or another node.
 //
-//   - A running VM is backed up with libvirt's backup API (push mode, full,
-//     no checkpoint): QEMU copies the disks while the guest keeps running and
-//     nothing is left behind in the domain (no snapshot, bitmap or checkpoint).
-//     The job is polled for progress and can be aborted.
+//   - A running VM is backed up with libvirt's backup API (push mode): QEMU
+//     copies the disks while the guest keeps running. Each backup leaves a
+//     libvirt checkpoint (a QEMU dirty bitmap per disk), and the next backup
+//     copies only what changed since it, an incremental backup. Whenever that
+//     cannot be done safely the backup is a full one (backup_chain.go decides).
+//     The job is polled for progress and can be aborted; an aborted or failed
+//     backup leaves no checkpoint behind.
 //   - A shut-off VM is backed up with qemu-img convert, which also flattens
-//     backing chains.
+//     backing chains. It is always a full backup and makes no checkpoint.
 //   - Files are first written to a hidden work directory inside a pool on the
 //     node that has the disks; for another node they are copied with scp (as
 //     migration does) into a work directory in the target pool. The manifest
@@ -74,6 +77,10 @@ type bkRun struct {
 	dstPool  string
 	ep       migEndpoint // how the source reaches the target node
 	remote   bool
+	plan     backupPlan // full or incremental, and on what (see decideBackup)
+	target   string     // targetKey of the destination
+	ckName   string     // the checkpoint this run created ("" = none yet)
+	changed  uint64     // bytes libvirt expects an incremental backup to copy
 	progress func(float64)
 	ctx      context.Context // cancelled by cancel(); ends a running node to node transfer
 	stopCtx  context.CancelFunc
@@ -132,6 +139,7 @@ func (s *Server) planBackup(srcID int64, src *hostconn.Host, dom libvirt.Domain,
 	}
 
 	var need uint64
+	allQcow2 := true
 	for _, d := range m.md.Disks {
 		if d.Device != "disk" || d.ReadOnly {
 			m.skip = append(m.skip, d.Target)
@@ -152,6 +160,9 @@ func (s *Server) planBackup(srcID int64, src *hostconn.Host, dom libvirt.Domain,
 			return nil, err
 		}
 		bd := bkDisk{migDisk: d, File: d.Target + ".qcow2", Actual: chainActual(out), Virt: chain[0].VirtualSize}
+		if chain[0].Format != "qcow2" {
+			allQcow2 = false
+		}
 		need += bd.Actual
 		m.disks = append(m.disks, bd)
 	}
@@ -182,6 +193,15 @@ func (s *Server) planBackup(srcID int64, src *hostconn.Host, dom libvirt.Domain,
 	free, err := bkFreeBytes(m.dst, pd.Dir)
 	if err != nil {
 		return nil, err
+	}
+	m.target = targetKey(m.dst.Name, req.Pool)
+	m.plan = s.planIncremental(m, pd, allQcow2)
+	if m.plan.Kind == kindIncremental {
+		// Only the changed blocks are copied; libvirt knows how many.
+		if n, ok := changedBytes(src, dom, m.plan.ParentCheckpoint); ok {
+			m.changed = n
+			need = n + n/8 + importFreeMargin
+		}
 	}
 	if uint64(free) < need {
 		return nil, badRequest(fmt.Sprintf("not enough free space in %s on %s: %s available, about %s needed", pd.Dir, m.dst.Name, fmtBytes(uint64(free)), fmtBytes(need)))
@@ -248,7 +268,7 @@ func (s *Server) vmBackup(w http.ResponseWriter, r *http.Request) {
 	if m.live {
 		mode = "live"
 	}
-	writeJSON(w, map[string]any{"task": id, "mode": mode})
+	writeJSON(w, map[string]any{"task": id, "mode": mode, "kind": m.plan.Kind, "reason": m.plan.Reason})
 }
 
 // backupTarget names a backup task: the VM and where it goes.
@@ -348,6 +368,7 @@ func (m *bkRun) run() (err error) {
 	var dstWork *bkWork
 	defer func() {
 		if err != nil {
+			m.removeNewCheckpoint()
 			var left []string
 			for _, wd := range []*bkWork{srcWork, dstWork} {
 				if wd != nil {
@@ -374,8 +395,17 @@ func (m *bkRun) run() (err error) {
 		if err := m.src.ChmodWork(srcWork.path, "711"); err != nil {
 			return fmt.Errorf("chmod: %w", err)
 		}
-		if err = m.liveBackup(srcWork, 0.02, copyHi); err != nil {
+		if err = m.liveBackup(srcWork, stamp, 0.02, copyHi); err != nil {
 			return err
+		}
+		if m.plan.Kind == kindIncremental {
+			// QEMU leaves the file resting on the VM's own disk; cut that tie, so that a
+			// backup never refers to anything outside the backups.
+			for _, d := range m.disks {
+				if err = m.src.DetachBacking(srcWork.path, d.File); err != nil {
+					return err
+				}
+			}
 		}
 	} else if err = m.offlineBackup(srcWork, 0.02, copyHi); err != nil {
 		return err
@@ -387,6 +417,10 @@ func (m *bkRun) run() (err error) {
 	man := &backupManifest{
 		Format: backupFormat, VM: m.name, UUID: m.uuid, Created: stamp.Format(time.RFC3339), SourceNode: m.src.Name,
 		AppVersion: backupAppVersion, Live: m.live, TPM: m.md.TPM, Notes: []string{noteSnapshots, noteTPM},
+		Kind: m.plan.Kind, Checkpoint: m.ckName, FullReason: m.plan.Reason,
+	}
+	if m.plan.Kind == kindIncremental {
+		man.Format, man.Parent, man.FullReason = backupFormatIncremental, m.plan.Parent, ""
 	}
 	if m.md.NVRAM != "" {
 		if !safePathRE.MatchString(m.md.NVRAM) {
@@ -414,7 +448,7 @@ func (m *bkRun) run() (err error) {
 		return err
 	}
 	for _, d := range m.disks {
-		man.Disks = append(man.Disks, backupDiskRec{Target: d.Target, File: d.File, Format: "qcow2", VirtualSize: d.Virt, Bytes: d.Size, SHA256: d.SHA})
+		man.Disks = append(man.Disks, backupDiskRec{Target: d.Target, File: d.File, Format: "qcow2", VirtualSize: d.Virt, Bytes: d.Size, SHA256: d.SHA, Source: d.Path})
 	}
 
 	dstWork = srcWork
@@ -451,6 +485,7 @@ func (m *bkRun) run() (err error) {
 	m.progress(0.98)
 	// From here on the backup exists; the work directories are gone.
 	srcWork, dstWork = nil, nil
+	m.cleanCheckpoints()
 	if m.req.KeepLast > 0 {
 		if perr := m.s.pruneBackups(m.dst, m.dstPool, m.uuid, m.req.KeepLast, finalName); perr != nil {
 			return fmt.Errorf("backup %s was written, but pruning older backups failed: %w", finalName, perr)
@@ -459,8 +494,11 @@ func (m *bkRun) run() (err error) {
 	return nil
 }
 
-// liveBackup runs libvirt's push-mode backup and follows the job.
-func (m *bkRun) liveBackup(wd *bkWork, lo, hi float64) error {
+// liveBackup runs libvirt's push-mode backup and follows the job. It starts
+// the plan's backup, and if libvirt will not do an incremental one (bitmaps
+// broken, for instance after a QEMU that was killed) it drops the VM's
+// checkpoints and makes a full backup instead.
+func (m *bkRun) liveBackup(wd *bkWork, stamp time.Time, lo, hi float64) error {
 	files := map[string]string{}
 	var plain []migDisk
 	for _, d := range m.disks {
@@ -477,11 +515,45 @@ func (m *bkRun) liveBackup(wd *bkWork, lo, hi float64) error {
 	}
 	m.inJob.Store(true)
 	defer m.inJob.Store(false)
-	bxml := backupXML(wd.path, plain, files, m.skip)
-	err := m.src.DomainBackupBegin(m.dom, bxml, libvirt.OptString{}, flags)
-	if err != nil && auto {
-		// The automatic freeze must never make the backup fail.
-		err = m.src.DomainBackupBegin(m.dom, bxml, libvirt.OptString{}, flags&^backupBeginQuiesce)
+	begin := func() error {
+		incr := ""
+		if m.plan.Kind == kindIncremental {
+			incr = m.plan.ParentCheckpoint
+		}
+		bxml := backupXML(wd.path, plain, files, m.skip, incr)
+		var cxml libvirt.OptString
+		name := ""
+		if m.plan.Checkpoint {
+			var x string
+			name, x = m.newCheckpoint(stamp)
+			cxml = libvirt.OptString{x}
+		}
+		err := m.src.DomainBackupBegin(m.dom, bxml, cxml, flags)
+		if err != nil && auto {
+			// The automatic freeze must never make the backup fail.
+			err = m.src.DomainBackupBegin(m.dom, bxml, cxml, flags&^backupBeginQuiesce)
+		}
+		if err == nil {
+			m.ckName = name
+		}
+		return err
+	}
+	err := begin()
+	if err != nil && m.plan.Kind == kindIncremental {
+		if cerr := m.checkCancel(); cerr != nil {
+			return cerr
+		}
+		// libvirt would not build on the checkpoint: its bitmap is broken or gone.
+		log.Printf("backup %s: incremental backup refused (%v); making a full one", m.name, err)
+		dropBackupCheckpoints(m.src, m.dom)
+		m.plan = backupPlan{Kind: kindFull, Reason: whyRefused, Checkpoint: true}
+		err = begin()
+	}
+	if err != nil && m.plan.Checkpoint {
+		// Tracking changes is an extra; the backup itself must still work.
+		log.Printf("backup %s: no checkpoint (%v); making the backup without one", m.name, err)
+		m.plan = backupPlan{Kind: kindFull, Reason: whyNoCheckpoint}
+		err = begin()
 	}
 	if err != nil {
 		return fmt.Errorf("starting the backup job: %w", err)
@@ -651,7 +723,8 @@ func (m *bkRun) copyOver(from, to *bkWork, man *backupManifest, lo, hi float64) 
 // --- retention ---
 
 // pruneBackups deletes the backups of VM uuid in a pool beyond the newest
-// keep. The backup just written (just) is never deleted.
+// keep, except those a kept backup builds on (an incremental backup is useless
+// without its parent). The backup just written (just) is never deleted.
 func (s *Server) pruneBackups(h *hostconn.Host, pool, uuid string, keep int, just string) error {
 	_, pd, err := destPool(h, pool)
 	if err != nil {
@@ -664,15 +737,13 @@ func (s *Server) pruneBackups(h *hostconn.Host, pool, uuid string, keep int, jus
 	var all []retained
 	for _, it := range items {
 		if it.Err == "" {
-			all = append(all, retained{Key: it.Dir, UUID: it.Manifest.UUID, Created: it.Manifest.createdTime()})
+			all = append(all, it.retained())
 		}
 	}
 	var errs []string
-	for _, b := range pruneList(all, uuid, keep) {
-		if b.Key == just {
-			continue
-		}
-		if err := removeBackupDir(h, pd.Dir, b.Key); err != nil {
+	// Newest first, so that a failure half way leaves no backup without its parent.
+	for _, key := range pruneChains(all, uuid, keep, just) {
+		if err := removeBackupDir(h, pd.Dir, key); err != nil {
 			errs = append(errs, err.Error())
 		}
 	}
@@ -713,6 +784,13 @@ type backupEntry struct {
 	VMNodeName string `json:"vmNodeName,omitempty"`
 	VMShutOff  bool   `json:"vmShutOff,omitempty"`
 	ExportName string `json:"exportName,omitempty"`
+	// Chain is how many backups a restore of this one reads (1 for a full
+	// backup). ChainError says why it cannot be restored when a backup it
+	// builds on is missing. Dependents is how many later backups build on this
+	// one, and are deleted with it.
+	Chain      int    `json:"chain,omitempty"`
+	ChainError string `json:"chainError,omitempty"`
+	Dependents int    `json:"dependents,omitempty"`
 }
 
 // scanPool lists the backups in one pool directory (one find on the node).
@@ -794,6 +872,7 @@ func (s *Server) listBackups(uuidFilter string) []backupEntry {
 		}(n.ID, h, name)
 	}
 	wg.Wait()
+	annotateChains(out)
 	for i := range out {
 		if out[i].Manifest != nil {
 			if w, ok := exists[out[i].Manifest.UUID]; ok {
@@ -825,6 +904,42 @@ func (s *Server) listBackupsHandler(w http.ResponseWriter, r *http.Request) {
 		list = []backupEntry{}
 	}
 	writeJSON(w, list)
+}
+
+// annotateChains fills in what the list says about incremental backups, per
+// pool: the length of each chain, a missing link, and what depends on it.
+func annotateChains(list []backupEntry) {
+	type pool struct {
+		by  map[string]*backupManifest
+		all []retained
+	}
+	pools := map[string]*pool{}
+	key := func(e backupEntry) string { return strconv.FormatInt(e.Node, 10) + "/" + e.Pool }
+	for _, e := range list {
+		if e.Manifest == nil {
+			continue
+		}
+		p := pools[key(e)]
+		if p == nil {
+			p = &pool{by: map[string]*backupManifest{}}
+			pools[key(e)] = p
+		}
+		p.by[e.Dir] = e.Manifest
+		p.all = append(p.all, retained{Key: e.Dir, UUID: e.Manifest.UUID, Created: e.Manifest.createdTime(), Parent: e.Manifest.Parent})
+	}
+	for i := range list {
+		e := &list[i]
+		if e.Manifest == nil {
+			continue
+		}
+		p := pools[key(*e)]
+		if chain, err := chainOf(p.by, e.Dir); err != nil {
+			e.ChainError = err.Error()
+		} else {
+			e.Chain = len(chain)
+		}
+		e.Dependents = len(dependentsOf(p.all, e.Dir))
+	}
 }
 
 // backupRef is a backup located by the URL: node, pool and directory name.
@@ -868,7 +983,11 @@ func (s *Server) backupFromURL(r *http.Request) (*backupRef, error) {
 // load reads and vets the backup's manifest and checks that every file is
 // there with the size the manifest records.
 func (b *backupRef) load() (*backupManifest, error) {
-	raw, err := readLimited(b.h, b.dir+"/manifest.json", backupMaxManifest)
+	return loadBackup(b.h, b.dir)
+}
+
+func loadBackup(h *hostconn.Host, dir string) (*backupManifest, error) {
+	raw, err := readLimited(h, dir+"/manifest.json", backupMaxManifest)
 	if err != nil {
 		return nil, badRequest("not a backup: " + err.Error())
 	}
@@ -877,7 +996,7 @@ func (b *backupRef) load() (*backupManifest, error) {
 		return nil, badRequest(err.Error())
 	}
 	files := m.files()
-	sizes, err := b.h.FilesSize(b.dir, files)
+	sizes, err := h.FilesSize(dir, files)
 	if err != nil {
 		return nil, badRequest("cannot read the backup directory: " + err.Error())
 	}
@@ -896,13 +1015,97 @@ func (b *backupRef) load() (*backupManifest, error) {
 	return m, nil
 }
 
+// chainLink is one backup a restore reads.
+type chainLink struct {
+	Dir string
+	Man *backupManifest
+}
+
+func (l chainLink) path(b *backupRef) string { return b.pd.Dir + "/" + l.Dir }
+
+func (l chainLink) diskOf(target string) (backupDiskRec, bool) {
+	for _, d := range l.Man.Disks {
+		if d.Target == target {
+			return d, true
+		}
+	}
+	return backupDiskRec{}, false
+}
+
+// loadChain returns the backups that restoring m needs, the full one first and
+// m last (just m for a full backup). Every one of them is read and checked: a
+// missing or damaged link is reported by name, not as a failure half way
+// through a restore.
+func (b *backupRef) loadChain(m *backupManifest) ([]chainLink, error) {
+	by := map[string]*backupManifest{b.name: m}
+	for cur := m; cur.kindOf() == kindIncremental; {
+		if len(by) > maxChainWalk {
+			return nil, badRequest("the chain of backups is too long")
+		}
+		if _, seen := by[cur.Parent]; seen {
+			return nil, badRequest("the chain of backups loops")
+		}
+		pm, err := loadBackup(b.h, b.pd.Dir+"/"+cur.Parent)
+		if err != nil {
+			return nil, badRequest("this backup cannot be restored: the earlier backup " + cur.Parent + " it builds on is not usable (" + err.Error() + "). Restore a backup that comes before it.")
+		}
+		by[cur.Parent] = pm
+		cur = pm
+	}
+	order, err := chainOf(by, b.name)
+	if err != nil {
+		return nil, badRequest("this backup cannot be restored: " + err.Error())
+	}
+	out := make([]chainLink, len(order))
+	for i, d := range order {
+		out[i] = chainLink{Dir: d, Man: by[d]}
+	}
+	return out, nil
+}
+
+// chainBytes is how much of the disk target the chain holds.
+func (p *restorePlan) chainBytes(target string) uint64 {
+	var n uint64
+	for _, l := range p.chain {
+		if d, ok := l.diskOf(target); ok {
+			n += d.Bytes
+		}
+	}
+	return n
+}
+
+func (it scanned) retained() retained {
+	return retained{Key: it.Dir, UUID: it.Manifest.UUID, Created: it.Manifest.createdTime(), Parent: it.Manifest.Parent}
+}
+
 func (s *Server) deleteBackup(w http.ResponseWriter, r *http.Request) {
 	b, err := s.backupFromURL(r)
 	if err != nil {
 		fail(w, err)
 		return
 	}
+	// Backups that build on this one are useless without it. Deleting it
+	// takes them along, but only when the caller says so.
+	var later []string
+	if items, serr := scanPool(b.h, b.pd); serr == nil {
+		var all []retained
+		for _, it := range items {
+			if it.Err == "" {
+				all = append(all, it.retained())
+			}
+		}
+		later = dependentsOf(all, b.name)
+	}
+	if len(later) > 0 && r.URL.Query().Get("withLater") != "1" {
+		fail(w, badRequest(fmt.Sprintf("%d later backup(s) build on this one and would be deleted with it: %s. Delete them as well, or keep this one.", len(later), strings.Join(later, ", "))))
+		return
+	}
 	err = s.task(r, "backup delete", b.name, b.h.Name, func(func(float64)) error {
+		for _, d := range later { // newest first: no backup is ever left without its parent
+			if err := removeBackupDir(b.h, b.pd.Dir, d); err != nil {
+				return err
+			}
+		}
 		return removeBackupDir(b.h, b.pd.Dir, b.name)
 	})
 	if err != nil {

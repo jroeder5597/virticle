@@ -19,6 +19,10 @@ interface Manifest {
   disks: { target: string; file: string; virtualSize: number; bytes: number; sha256?: string }[];
   nvram?: string;
   notes: string[];
+  /** "full" or "incremental"; backups from before incremental backups have none and are full. */
+  kind?: "full" | "incremental";
+  /** Why a backup is full when an incremental one might have been expected. */
+  fullReason?: string;
 }
 export interface BackupEntry {
   node: number;
@@ -34,10 +38,19 @@ export interface BackupEntry {
   vmNode?: number;
   vmNodeName?: string;
   vmShutOff?: boolean;
+  /** How many backups a restore reads (1 for a full backup), and why it cannot be restored when a link is missing. */
+  chain?: number;
+  chainError?: string;
+  /** Later backups that build on this one and go with it when it is deleted. */
+  dependents?: number;
 }
+
+const isIncremental = (b: BackupEntry) => b.manifest?.kind === "incremental";
 
 const when = (iso: string) => new Date(iso).toLocaleString();
 const url = (b: BackupEntry) => `/nodes/${b.node}/backups/${encodeURIComponent(b.pool)}/${encodeURIComponent(b.dir)}`;
+
+const hasLaterOnes = (n?: number) => (n ?? 0) > 0;
 
 const notIncluded = "A backup holds the VM's current state: snapshots are not included, and neither is TPM state (a restored VM starts with an empty TPM).";
 
@@ -125,22 +138,27 @@ function BackupNow(props: { d: VMDetail; onClose: () => void; onDone: () => void
   const [pool, setPool] = useState("");
   const [keep, setKeep] = useState(7);
   const [task, setTask] = useState(0);
+  const [kind, setKind] = useState("");
   const base = `/nodes/${d.node}/vms/${d.uuid}`;
   const submit = async () => {
     await act.run(async () => {
-      const r = await post<{ task: number }>(`${base}/backup`, { targetNode: node === d.node ? 0 : node, pool, keepLast: keep });
+      const r = await post<{ task: number; kind: string }>(`${base}/backup`, { targetNode: node === d.node ? 0 : node, pool, keepLast: keep });
+      setKind(r.kind);
       setTask(r.task);
     });
   };
   return (
     <Modal title={`Back up ${d.name}`} onClose={props.onClose}>
       {task ? (
-        <TaskFollow id={task} onDone={props.onDone} onCancel={() => post(`${base}/backup/cancel`)} />
+        <>
+          <p className="muted">{kind === "incremental" ? "Incremental backup: only what changed since the last backup is copied." : "Full backup: the whole disks are copied."}</p>
+          <TaskFollow id={task} onDone={props.onDone} onCancel={() => post(`${base}/backup/cancel`)} />
+        </>
       ) : (
         <>
-          <p className="muted">Copies the VM's disks as they are now; snapshots and TPM state are not included.</p>
+          <p className="muted">Copies what changed since the last backup when that is possible, otherwise the whole disks. Snapshots and TPM state are not included.</p>
           <Target node={node} pool={pool} setNode={setNode} setPool={setPool} />
-          <Field label="Keep the newest" hint="Older backups of this VM in this pool are deleted. 0 keeps all.">
+          <Field label="Keep the newest" hint="Older backups of this VM in this pool are deleted, except those a kept incremental backup builds on. 0 keeps all.">
             <input type="number" min={0} max={1000} value={keep} onChange={(e) => setKeep(Number(e.target.value))} />
           </Field>
           <ErrorBox error={act.error} />
@@ -248,7 +266,7 @@ function BackupTable(props: { list: BackupEntry[]; global?: boolean; reload: () 
   const [deleting, setDeleting] = useState<BackupEntry | undefined>();
   const act = useAction();
   const remove = async (b: BackupEntry) => {
-    if (await act.run(() => del(url(b)))) {
+    if (await act.run(() => del(url(b) + (hasLaterOnes(b.dependents) ? "?withLater=1" : "")))) {
       setDeleting(undefined);
       props.reload();
     }
@@ -261,6 +279,7 @@ function BackupTable(props: { list: BackupEntry[]; global?: boolean; reload: () 
           <tr>
             {props.global && <th>VM</th>}
             <th>Taken</th>
+            <th>Type</th>
             <th>Where</th>
             <th>Disks</th>
             <th className="num">Size</th>
@@ -280,6 +299,12 @@ function BackupTable(props: { list: BackupEntry[]; global?: boolean; reload: () 
                 {b.manifest && <div className="muted">{b.manifest.live ? "live" : "shut off"}{b.manifest.nvram ? ", UEFI variables" : ""}</div>}
                 {b.error && <StatusLine status="error">{b.error}</StatusLine>}
               </td>
+              <td>
+                {b.manifest && <strong>{isIncremental(b) ? "Incremental" : "Full"}</strong>}
+                {b.manifest && isIncremental(b) && <div className="muted">changes only; needs {b.chain ? b.chain - 1 : "?"} earlier {b.chain === 2 ? "backup" : "backups"}</div>}
+                {b.manifest && !isIncremental(b) && b.manifest.fullReason && <div className="muted">{b.manifest.fullReason}</div>}
+                {b.chainError && <StatusLine status="error">Cannot be restored: {b.chainError}</StatusLine>}
+              </td>
               <td title={b.path}>
                 {b.nodeName}: {b.pool}
               </td>
@@ -287,8 +312,12 @@ function BackupTable(props: { list: BackupEntry[]; global?: boolean; reload: () 
               <td className="num">{bytes(b.size)}</td>
               <td className="num">
                 <div className="actions" style={{ justifyContent: "flex-end" }}>
-                  {b.manifest && <button onClick={() => setRestoring(b)}>Restore</button>}
-                  {b.manifest && role !== "viewer" && (
+                  {b.manifest && (
+                    <button disabled={!!b.chainError} onClick={() => setRestoring(b)}>
+                      Restore
+                    </button>
+                  )}
+                  {b.manifest && role !== "viewer" && !b.chainError && (
                     <a className="button" href={"/api" + url(b) + "/export"} download title="Download as one tar file">
                       Export
                     </a>
@@ -308,6 +337,11 @@ function BackupTable(props: { list: BackupEntry[]; global?: boolean; reload: () 
           <p>
             Delete the backup <strong>{deleting.dir}</strong> on {deleting.nodeName}? This cannot be undone.
           </p>
+          {hasLaterOnes(deleting.dependents) && (
+            <p>
+              {deleting.dependents} later incremental {deleting.dependents === 1 ? "backup builds" : "backups build"} on this one and {deleting.dependents === 1 ? "is" : "are"} deleted with it.
+            </p>
+          )}
           <div className="actions">
             <button className="danger" disabled={act.busy} onClick={() => remove(deleting)}>
               Delete
