@@ -77,3 +77,4 @@
 .dlgadv[hidden] { display: none; }
 .disc-head { flex-wrap: wrap; white-space: normal; }
 .disc-sum { flex: 1 1 14em; }
+.drift { margin: 0 0 12px; }

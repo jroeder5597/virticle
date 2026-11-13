@@ -260,7 +260,7 @@ export interface AgentHelp {
 
 export interface Alert {
   id: string;
-  kind: "node-down" | "pool-usage" | "host-memory" | "failed-job" | "vm-state" | "tls-expiry";
+  kind: "node-down" | "pool-usage" | "host-memory" | "failed-job" | "vm-state" | "tls-expiry" | "scheduler-conflict" | "net-link" | "net-bond" | "net-drift";
   severity: "warning" | "critical";
   title: string;
   message: string;
