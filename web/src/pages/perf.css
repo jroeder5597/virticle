@@ -1,0 +1,61 @@
+/* Performance tab. Series colours are the project's validated categorical order (blue, orange, violet,
+   green, pink), stepped for each theme; lines also differ by dash pattern so colour is never the only cue. */
+.perf {
+  --pf-1: #00bfff;
+  --pf-2: #ffa500;
+  --pf-3: #d6a8ff;
+  --pf-4: #5be38d;
+  --pf-5: #ff7f9f;
+  --pf-band: rgba(255, 255, 255, 0.5);
+}
+:root[data-theme="light"] .perf {
+  --pf-1: #2a78d6;
+  --pf-2: #eb6834;
+  --pf-3: #6250d6;
+  --pf-4: #008300;
+  --pf-5: #c2185b;
+  --pf-band: rgba(0, 0, 0, 0.5);
+}
+.pctl { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; margin-bottom: 10px; }
+.pfield { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--muted); }
+.pfield input[type="datetime-local"] { width: 200px; max-width: 100%; }
+.pspacer { flex: 1; }
+a.pdl { padding: 6px 10px; color: var(--link); border-radius: var(--radius); text-decoration: none; }
+a.pdl:hover { background: var(--hover); }
+.pchips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+main .pchips button.pchip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; color: var(--muted); }
+main .pchips button.pchip.on { color: var(--text); border-color: var(--accent); font-weight: 600; }
+.pnote { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
+.preadout {
+  position: sticky; top: 0; z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 6px 10px; margin-bottom: 8px; font-size: 13px; height: 6.4em; overflow-y: auto; box-shadow: var(--shadow);
+}
+.preadout.muted { color: var(--muted); }
+.prgrid { display: flex; flex-wrap: wrap; gap: 2px 18px; margin-top: 3px; }
+.prp { display: flex; flex-wrap: wrap; gap: 0 10px; }
+.pevtxt { margin-left: 10px; color: var(--warn); }
+.pchart { margin: 0 0 14px; }
+.pchart figcaption { display: flex; flex-wrap: wrap; gap: 2px 14px; align-items: baseline; margin-bottom: 2px; }
+.ptitle { font-weight: 600; }
+.plegend { display: flex; flex-wrap: wrap; gap: 0 12px; font-size: 13px; color: var(--muted); }
+.pkey { display: inline-flex; align-items: center; gap: 4px; }
+.pframe { width: 100%; }
+.psvg { display: block; touch-action: pan-y; user-select: none; cursor: crosshair; }
+.pgrid { stroke: var(--line); stroke-width: 1; opacity: 0.7; }
+.paxis { stroke: var(--muted); stroke-width: 1; }
+.ptick { fill: var(--muted); font-size: 11px; font-family: var(--sans); }
+.pcross { stroke: var(--text); stroke-width: 1; opacity: 0.6; }
+.pdot { stroke: var(--panel); stroke-width: 2; }
+.psel { fill: var(--accent); opacity: 0.2; }
+.pevline { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 3; }
+.pevshape { fill: var(--text); stroke: var(--panel); stroke-width: 1; }
+.pbusy { margin-top: 20px; }
+.pbusy h2 { font-size: 16px; margin: 0 0 8px; }
+.pbusy h3 { font-size: 14px; margin: 0 0 4px; }
+.pbgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px 20px; }
+.pbcol td, .pbcol th { padding: 3px 6px; }
+@media (max-width: 700px) {
+  .preadout { height: 11em; }
+  .pfield { flex: 1 1 140px; }
+  .pfield input[type="datetime-local"] { width: 100%; }
+}

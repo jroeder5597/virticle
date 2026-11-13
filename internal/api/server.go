@@ -160,6 +160,9 @@ func (s *Server) Handler() http.Handler {
 	auth("GET /api/stats", s.allStats)
 	auth("GET /api/nodes/{node}/stats", s.nodeStats)
 	auth("GET /api/nodes/{node}/vms/{uuid}/stats", s.vmStats)
+	auth("GET /api/metrics/query", s.metricsQuery)
+	auth("GET /api/metrics/overview", s.metricsOverview)
+	auth("GET /metrics", s.promMetrics)
 	auth("GET /api/nodes/{node}/vms/{uuid}/guest", s.vmGuest)
 	auth("GET /api/nodes/{node}/vms/{uuid}/agent-help", s.vmAgentHelp)
 
