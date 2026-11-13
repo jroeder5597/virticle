@@ -66,12 +66,12 @@ func (s *Server) destJSON(d notifyDest, host, tail string) destJSON {
 
 func (s *Server) listDests(w http.ResponseWriter, r *http.Request) {
 	out := []destJSON{}
+	n := s.notifier()
 	rows, err := s.Store.NotifyDests()
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	n := s.notifier()
 	n.sync()
 	live := map[string]notifyDest{}
 	for _, d := range s.loadDests() {

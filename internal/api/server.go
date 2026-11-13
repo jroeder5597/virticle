@@ -73,6 +73,7 @@ type ctxKey struct{}
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.startSnapshotScheduler()
+	s.notifier() // moves the webhook of earlier versions before anything reads the destinations
 	s.startAlerts()
 	s.startMigAuto()
 	s.startCPUBaseline()

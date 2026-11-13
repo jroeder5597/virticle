@@ -113,6 +113,7 @@ var deprecatedFlags = map[string]string{
 	"alert-pool-critical": "it will be removed; the default stays",
 	"alert-memory":        "it will be removed; the default stays",
 	"alert-cert-days":     "it will be removed; the default stays",
+	"alert-webhook":       "use the Notifications page; the address stays as one more, read-only destination there",
 }
 
 var deprecatedEnvs = map[string]string{
