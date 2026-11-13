@@ -359,17 +359,40 @@ func stepSwtpmCA(r *Runner) (string, bool, error) {
 	return d, ch, nil
 }
 
+// selinuxNFSScript lets VMs use disk files on NFS shares under SELinux: the boolean virt_use_nfs. Without it a
+// VM whose disk is on NFS fails to start with "permission denied" and an AVC denial in the audit log. Nothing
+// is changed where SELinux is absent or switched off, or the boolean is already on.
+const selinuxNFSScript = `
+command -v getenforce >/dev/null 2>&1 && command -v setsebool >/dev/null 2>&1 || exit 0
+[ "$(getenforce 2>/dev/null)" = Disabled ] && exit 0
+getsebool virt_use_nfs >/dev/null 2>&1 || exit 0
+[ "$(getsebool virt_use_nfs | awk '{print $NF}')" = on ] && exit 0
+setsebool -P virt_use_nfs on || { echo "could not turn on the SELinux setting virt_use_nfs (VMs cannot use NFS storage without it)"; exit 1; }
+echo "turned on the SELinux setting virt_use_nfs (VMs may use disks on NFS storage)"; echo @@changed`
+
+func stepSELinuxNFS(r *Runner) (string, bool, error) {
+	out, err := r.root(selinuxNFSScript, "")
+	if err != nil {
+		return "", false, fmt.Errorf("%w: %s", err, firstLines(out, 6))
+	}
+	d, ch := parseStep(out)
+	return d, ch, nil
+}
+
 func stepPackages(r *Runner, p Plan, o Options) (string, bool, error) {
 	d, ch, err := stepPackageInstall(r, p, o)
 	if err != nil {
 		return d, ch, err
 	}
-	d2, ch2, err := stepSwtpmCA(r)
-	if err != nil {
-		return "", ch, err
-	}
-	if d2 != "" {
-		return d + "; " + strings.ToLower(d2[:1]) + d2[1:], ch || ch2, nil
+	for _, extra := range []func(*Runner) (string, bool, error){stepSwtpmCA, stepSELinuxNFS} {
+		d2, ch2, err := extra(r)
+		if err != nil {
+			return "", ch, err
+		}
+		if d2 != "" {
+			d += "; " + strings.ToLower(d2[:1]) + d2[1:]
+			ch = ch || ch2
+		}
 	}
 	return d, ch, nil
 }

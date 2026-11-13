@@ -126,28 +126,44 @@ func qemuInfo(h *hostconn.Host, file string) (importImgInfo, error) {
 // poolDir is the directory of a running directory-like pool.
 type poolDir struct{ Name, Dir string }
 
+// poolDirs lists the running directory-like pools. An NFS pool whose mount does not answer is left out
+// (poolhealth.go): listing or scanning it would wait for the dead server.
 func poolDirs(h *hostconn.Host) ([]poolDir, error) {
+	out, _, err := poolDirsHealth(h)
+	return out, err
+}
+
+// poolDirsHealth is poolDirs plus the names of the NFS pools that were left out because they do not answer.
+func poolDirsHealth(h *hostconn.Host) (ok []poolDir, unavailable []string, err error) {
 	pools, _, err := h.ConnectListAllStoragePools(1, libvirt.ConnectListStoragePoolsActive)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	var out []poolDir
+	var all []poolDir
+	var nfs []string
 	for _, p := range pools {
 		raw, err := h.StoragePoolGetXMLDesc(p, 0)
 		if err != nil {
 			continue
 		}
-		var px struct {
-			Type   string `xml:"type,attr"`
-			Target struct {
-				Path string `xml:"path"`
-			} `xml:"target"`
-		}
+		var px poolXML
 		if xml.Unmarshal([]byte(raw), &px) == nil && (px.Type == "dir" || px.Type == "fs" || px.Type == "netfs") && strings.HasPrefix(px.Target.Path, "/") {
-			out = append(out, poolDir{p.Name, strings.TrimRight(px.Target.Path, "/")})
+			d := poolDir{p.Name, strings.TrimRight(px.Target.Path, "/")}
+			all = append(all, d)
+			if px.Type == "netfs" {
+				nfs = append(nfs, d.Dir)
+			}
 		}
 	}
-	return out, nil
+	health := nfsProber.probe(h, nfs)
+	for _, d := range all {
+		if st, probed := health[d.Dir]; probed && st != mountUp {
+			unavailable = append(unavailable, d.Name)
+			continue
+		}
+		ok = append(ok, d)
+	}
+	return ok, unavailable, nil
 }
 
 func hasControl(s string) bool {
@@ -165,7 +181,7 @@ func resolveSource(h *hostconn.Host, src importSource) (string, error) {
 	var file string
 	switch {
 	case src.Volume != "":
-		pool, err := h.StoragePoolLookupByName(src.Pool)
+		pool, err := lookupPool(h, src.Pool)
 		if err != nil {
 			return "", err
 		}
@@ -203,9 +219,14 @@ func resolveSource(h *hostconn.Host, src importSource) (string, error) {
 
 // destPool returns the directory of the running dir pool the result goes to.
 func destPool(h *hostconn.Host, name string) (libvirt.StoragePool, poolDir, error) {
-	dirs, err := poolDirs(h)
+	dirs, down, err := poolDirsHealth(h)
 	if err != nil {
 		return libvirt.StoragePool{}, poolDir{}, err
+	}
+	for _, d := range down {
+		if d == name {
+			return libvirt.StoragePool{}, poolDir{}, badRequest("the NFS pool " + name + " on " + h.Name + " is unavailable: the NFS server does not answer. Nothing was started; try again when the server is back")
+		}
 	}
 	for _, d := range dirs {
 		if d.Name == name {

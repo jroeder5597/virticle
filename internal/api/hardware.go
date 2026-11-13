@@ -544,7 +544,7 @@ func (s *Server) hwDiskAdd(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	pool, err := c.h.StoragePoolLookupByName(req.Pool)
+	pool, err := lookupPool(c.h, req.Pool)
 	if err != nil {
 		fail(w, err)
 		return
@@ -845,7 +845,7 @@ func (s *Server) hwCDROMMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	source := ""
 	if req.Volume != "" {
-		pool, err := c.h.StoragePoolLookupByName(req.Pool)
+		pool, err := lookupPool(c.h, req.Pool)
 		if err != nil {
 			fail(w, err)
 			return

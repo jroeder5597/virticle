@@ -453,7 +453,7 @@ func (s *Server) vmAction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	actions := map[string]func() error{
-		"start":    func() error { return h.DomainCreate(dom) },
+		"start":    func() error { return nfsStartHint(h, h.DomainCreate(dom)) },
 		"shutdown": func() error { return h.DomainShutdown(dom) },
 		"reboot":   func() error { return h.DomainReboot(dom, 0) },
 		"poweroff": func() error { return h.DomainDestroy(dom) },

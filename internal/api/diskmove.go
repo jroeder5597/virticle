@@ -366,7 +366,7 @@ func (s *Server) movePlan(h *hostconn.Host, dom libvirt.Domain, target string, r
 		c.bad("Target pool", "choose a target pool")
 		return f, c
 	}
-	dp, err := h.StoragePoolLookupByName(req.Pool)
+	dp, err := lookupPool(h, req.Pool)
 	if err != nil {
 		c.bad("Target pool", "no pool "+req.Pool+" on this node")
 		return f, c

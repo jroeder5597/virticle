@@ -8,6 +8,7 @@ import { bytes, del, get, NodeStatus, Pool, post, uploadVolume, Volume } from ".
 import { orEvents, useLive } from "../live";
 import { useLiveDebounced } from "../liveDebounced";
 import DownloadVolume from "./DownloadVolume";
+import { SharedStorage } from "./SharedStorage";
 import ImageCatalogue from "./ImageCatalogue";
 import { AlertMarks, useAlerts } from "./Alerts";
 import ImportDialog from "./Import";
@@ -31,6 +32,7 @@ export default function Storage({ fixedNode, allNodes }: { fixedNode?: number; a
     if (qs.has("catalogue") || qs.has("pool")) setQs({}, { replace: true });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [creating, setCreating] = useState(false);
+  const [addingShared, setAddingShared] = useState(false);
   const [filterNode, setFilterNode] = useState(0); // all-nodes mode: 0 is every node
   const [text, setText] = useState("");
   const all = nodes.data?.nodes ?? [];
@@ -84,13 +86,19 @@ export default function Storage({ fixedNode, allNodes }: { fixedNode?: number; a
         {fixedNode === undefined ? <PageTitle>Storage</PageTitle> : <h2>Storage pools</h2>}
         <div className="actions">
           {fixedNode === undefined && !allNodes && <NodePicker auto nodes={all} value={node} onChange={setNode} />}
-          <button className="primary" disabled={!createNode} onClick={() => setCreating(true)}>
+          {allNodes && (
+            <button className="primary" disabled={online.length === 0} onClick={() => setAddingShared(true)}>
+              Add shared storage
+            </button>
+          )}
+          <button className={allNodes ? "" : "primary"} disabled={!createNode} onClick={() => setCreating(true)}>
             New pool
           </button>
         </div>
       </div>
       <ErrorBox error={(allNodes ? every.error : single.error) ?? act.error} />
       <NodeErrors errors={every.data?.errors} />
+      {allNodes && <SharedStorage nodes={all} adding={addingShared} onAddClose={() => setAddingShared(false)} />}
       {allNodes && <NodeFilter nodes={all} value={filterNode} onChange={setFilterNode} text={text} onText={setText} placeholder="Search pools by name, type or state" shown={shown.length} total={rows.length} />}
       {allNodes && loaded && shown.length === 0 ? (
         <div className="empty">{rows.length ? "No pool matches the filter." : "No storage pools on the connected nodes."}</div>
@@ -116,9 +124,10 @@ export default function Storage({ fixedNode, allNodes }: { fixedNode?: number; a
                   <AlertMarks alerts={alerts} match={(a) => a.id === `pool:${p.node}:${p.name}`} />
                 </td>
                 {allNodes && <td>{p.nodeName}</td>}
-                <td>{p.type}</td>
+                <td>{typeName[p.type] ?? p.type}</td>
                 <td>
                   <StateBadge state={p.state} />
+                  {p.detail && <div className="muted">{p.detail}</div>}
                 </td>
                 {!allNodes && <td className="mono">{p.target}</td>}
                 <td>
@@ -345,29 +354,29 @@ function CreateVolume({ base, pool, onClose }: { base: string; pool: Pool; onClo
   );
 }
 
+/** How a pool type is named in the table. */
+const typeName: Record<string, string> = { dir: "Directory", netfs: "NFS", fs: "Filesystem", logical: "LVM", iscsi: "iSCSI" };
+
 const poolTypes: Record<string, string> = {
   dir: "Directory",
-  netfs: "NFS share (untested)",
   logical: "LVM volume group (untested)",
   iscsi: "iSCSI target (untested)",
   xml: "Custom (XML) (untested)",
 };
 const dirDefault = (name: string) => (name ? `/var/lib/libvirt/images/${name}` : "");
-const mountDefault = (name: string) => (name ? `/mnt/${name}` : "");
 
 function CreatePool({ node: initialNode, nodes, onClose, onDone }: { node: number; nodes?: NodeStatus[]; onClose: () => void; onDone: () => void }) {
   const [node, setNode] = useState(initialNode);
   const [type, setType] = useState("dir");
   const [f, setF] = useState({ name: "", target: "", sourceHost: "", sourcePath: "", sourceName: "", xml: "" });
-  // The directory and the NFS mount point follow the name until the user types their own.
-  const [typed, setTyped] = useState<{ dir?: string; mount?: string }>({});
+  // The directory follows the name until the user types their own.
+  const [typed, setTyped] = useState<{ dir?: string }>({});
   const dir = typed.dir ?? dirDefault(f.name);
-  const mount = typed.mount ?? mountDefault(f.name);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   const act = useAction();
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const target = type === "dir" ? dir : type === "netfs" ? mount : "";
+    const target = type === "dir" ? dir : "";
     const body = type === "xml" ? { xml: f.xml } : { ...f, target, xml: "", type };
     if (await act.run(() => post(`/nodes/${node}/pools`, body))) {
       onDone();
@@ -401,26 +410,6 @@ function CreatePool({ node: initialNode, nodes, onClose, onDone }: { node: numbe
           <Field label="Other storage types">
             <Select label="Other storage types" value={type} onChange={setType} options={Object.entries(poolTypes).map(([k, v]) => ({ value: k, label: v }))} />
           </Field>
-          {type === "netfs" && (
-            <>
-              <div className="grid2">
-                <Field label="NFS server">
-                  <input value={f.sourceHost} onChange={set("sourceHost")} required placeholder="nas.example.lan" />
-                </Field>
-                <Field label="Export path">
-                  <input value={f.sourcePath} onChange={set("sourcePath")} required placeholder="/export/vms" />
-                </Field>
-              </div>
-              <Field label="Mount point on the node">
-                <input
-                  value={mount}
-                  onChange={(e) => setTyped({ ...typed, mount: e.target.value })}
-                  required
-                  placeholder="/mnt/name"
-                />
-              </Field>
-            </>
-          )}
           {type === "logical" && (
             <Field label="Volume group" hint="An existing LVM volume group on the node.">
               <input value={f.sourceName} onChange={set("sourceName")} required placeholder="vg0" />

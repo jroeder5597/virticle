@@ -245,7 +245,7 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 		fail(w, badRequest("a VM named "+q.Name+" already exists on this node"))
 		return
 	}
-	pool, err := h.StoragePoolLookupByName(q.Pool)
+	pool, err := lookupPool(h, q.Pool)
 	if err != nil {
 		fail(w, err)
 		return
@@ -363,7 +363,7 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if q.Start {
-			return h.DomainCreate(dom)
+			return nfsStartHint(h, h.DomainCreate(dom))
 		}
 		return nil
 	})

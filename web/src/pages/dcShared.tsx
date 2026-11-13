@@ -58,6 +58,6 @@ const taskDone = (e: ServerEvent) => e.type === "task" && e.task?.status !== "ru
 /** Only a node connecting or going away changes the node list; domain events are about VMs. */
 export const nodeEvents = (e: ServerEvent) => e.type === "node";
 /** What changes a pool or the volumes in it: pool events, a finished task, a node (re)connecting. Not VM power events. */
-export const poolEvents = (e: ServerEvent) => e.type === "pool" || e.type === "node" || taskDone(e);
+export const poolEvents = (e: ServerEvent) => e.type === "pool" || e.type === "node" || e.type === "alert" || taskDone(e);
 /** Networks also show attached VM interfaces, so a VM being defined or removed counts, starting and stopping do not. */
 export const netEvents = (e: ServerEvent) => e.type === "network" || e.type === "node" || taskDone(e) || (e.type === "domain" && /defined|updated/.test(e.detail ?? ""));

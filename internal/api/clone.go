@@ -353,7 +353,7 @@ func (s *Server) vmClone(w http.ResponseWriter, r *http.Request) {
 		nvramNote = useQcow2Nvram(h, dom)
 		progress(0.98)
 		if q.Start {
-			if err := h.DomainCreate(dom); err != nil {
+			if err := nfsStartHint(h, h.DomainCreate(dom)); err != nil {
 				return fmt.Errorf("the clone was created but did not start: %w", err)
 			}
 		}

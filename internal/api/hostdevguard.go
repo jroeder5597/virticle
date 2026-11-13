@@ -62,6 +62,9 @@ func startGuard(h *hostconn.Host, dom libvirt.Domain) error {
 	if err != nil {
 		return nil // the start itself will report what is wrong
 	}
+	if err := nfsGuard(h, raw); err != nil {
+		return err
+	}
 	attached, err := parseVMHostdevs(raw)
 	if err != nil || len(attached) == 0 {
 		return nil

@@ -89,3 +89,17 @@ func TestWatchStopsWithoutLeakingGoroutines(t *testing.T) {
 		t.Fatalf("goroutines: %d before, %d after", before, after)
 	}
 }
+
+// A proxy daemon that lost its connection to one driver daemon answers every call to that driver with
+// "client socket is closed"; the connection must be replaced, an ordinary error must not.
+func TestWatchClosedDriverSocketIsWedged(t *testing.T) {
+	err := watch(context.Background(), func() error { return errors.New("internal error: client socket is closed") }, 5*time.Millisecond, time.Second)
+	if !errors.Is(err, errWedged) {
+		t.Fatalf("got %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer cancel()
+	if err := watch(ctx, func() error { return errors.New("some other error") }, 5*time.Millisecond, time.Second); err != nil {
+		t.Fatalf("an ordinary error is an answer: %v", err)
+	}
+}
