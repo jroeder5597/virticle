@@ -186,3 +186,10 @@ func useQcow2Nvram(h *hostconn.Host, dom libvirt.Domain) string {
 	}
 	return ""
 }
+
+var reNvramTemplateAttr = regexp.MustCompile(`(<nvram\b[^>]*?\btemplate=)(?:'[^']*'|"[^"]*")`)
+
+// withNvramTemplate sets the template attribute of the <nvram> element.
+func withNvramTemplate(domXML, tpl string) string {
+	return reNvramTemplateAttr.ReplaceAllString(domXML, "${1}'"+esc(tpl)+"'")
+}

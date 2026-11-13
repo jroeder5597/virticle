@@ -96,3 +96,12 @@ func TestRawNvramTemplate(t *testing.T) {
 		t.Errorf("clone: %s", back)
 	}
 }
+
+func TestWithNvramTemplate(t *testing.T) {
+	n, _ := parseNvramEl(nvramRawXML)
+	self := withQcow2Nvram(nvramRawXML, n, "/n/a_VARS.qcow2")
+	got := withNvramTemplate(self, "/n/b_VARS.qcow2")
+	if !strings.Contains(got, "template='/n/b_VARS.qcow2' templateFormat='qcow2'") || !strings.Contains(got, ">/n/a_VARS.qcow2</nvram>") {
+		t.Errorf("%s", got)
+	}
+}

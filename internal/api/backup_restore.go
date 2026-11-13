@@ -290,6 +290,10 @@ func (p *restorePlan) definition() (string, error) {
 			return "", err
 		}
 		if p.nvram != "" {
+			// A store that names itself as its template (see withQcow2Nvram) keeps doing so at its new path.
+			if n, ok := parseNvramEl(x); ok && n.Template != "" && n.Template == n.Path {
+				out = withNvramTemplate(out, p.nvram)
+			}
 			out = reNvramEl.ReplaceAllString(out, "${1}"+p.nvram+"${2}")
 		}
 		return out, nil
