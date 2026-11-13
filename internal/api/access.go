@@ -175,6 +175,7 @@ var routeLevels = map[string]string{
 	"POST /api/nodes/{node}/pools":                             operator,
 	"POST /api/nodes/{node}/pools/{pool}/action":               operator,
 	"GET /api/nodes/{node}/pools/{pool}/volumes":               viewer,
+	"GET /api/nodes/{node}/pools/{pool}/volumes/{vol}/firmware": viewer,
 	"POST /api/nodes/{node}/pools/{pool}/volumes":              operator,
 	"POST /api/nodes/{node}/pools/{pool}/volumes/download":     operator,
 	"PUT /api/nodes/{node}/pools/{pool}/volumes/{vol}":         operator,

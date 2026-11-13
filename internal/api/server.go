@@ -225,6 +225,7 @@ func (s *Server) Handler() http.Handler {
 	auth("PUT /api/nodes/{node}/pools/{pool}/volumes/{vol}", s.uploadVolume)
 	auth("POST /api/nodes/{node}/pools/{pool}/volumes/{vol}/action", s.volumeAction)
 	auth("DELETE /api/nodes/{node}/pools/{pool}/volumes/{vol}", s.deleteVolume)
+	auth("GET /api/nodes/{node}/pools/{pool}/volumes/{vol}/firmware", s.volumeFirmware)
 	auth("GET /api/images", s.listImages)
 	auth("GET /api/nodes/{node}/pools/{pool}/images", s.listPoolImages)
 	auth("POST /api/nodes/{node}/pools/{pool}/images", s.needs("writePools", s.downloadImage))

@@ -48,6 +48,29 @@ export function useFwCaps(node: number) {
   return { caps, error };
 }
 
+/** What an existing disk can start with, decided by the server (diskboot.go); empty means no restriction. */
+export interface DiskFw {
+  only?: "bios" | "uefi";
+  reason?: string;
+}
+
+/** Looks at the disk once it is chosen. Nothing is shown while it runs, and a failed look means no restriction. */
+export function useDiskFirmware(node: number, pool: string, volume: string): DiskFw {
+  const [r, setR] = useState<{ key: string; fw: DiskFw }>();
+  const key = `${node}/${pool}/${volume}`;
+  useEffect(() => {
+    if (!volume || !pool) return;
+    let live = true;
+    get<DiskFw>(`/nodes/${node}/pools/${encodeURIComponent(pool)}/volumes/${encodeURIComponent(volume)}/firmware`)
+      .then((fw) => live && setR({ key, fw }))
+      .catch(() => live && setR({ key, fw: {} }));
+    return () => {
+      live = false;
+    };
+  }, [key]);
+  return volume && pool && r?.key === key ? r.fw : {};
+}
+
 /** The defaults that follow the guest OS type, limited to what the node can do. */
 export function osDefaults(osType: FwValues["osType"], caps?: FwCaps): FwValues {
   if (osType === "windows") {
@@ -85,20 +108,20 @@ export function OsTypeField({ value, caps, onChange }: { value: FwValues; caps?:
 }
 
 /** Firmware, Secure Boot, TPM and (for Windows) disk bus and network card, for the dialog's Advanced section. */
-export function FirmwareFields({ value, caps, onChange }: { value: FwValues; caps?: FwCaps; onChange: (v: FwValues) => void }) {
+export function FirmwareFields({ value, caps, disk, onChange }: { value: FwValues; caps?: FwCaps; disk?: DiskFw; onChange: (v: FwValues) => void }) {
   const set = (p: Partial<FwValues>) => onChange({ ...value, ...p });
   const win = value.osType === "windows";
   return (
     <>
       <div className="grid2">
-        <Field label="Firmware">
+        <Field label="Firmware" hint={disk?.only ? disk.reason : undefined}>
           <Select
             label="Firmware"
             value={value.firmware}
             onChange={(v) => set({ firmware: v as FwValues["firmware"], secureBoot: v === "uefi" && value.secureBoot })}
             options={[
-              { value: "bios", label: "BIOS" },
-              { value: "uefi", label: "UEFI" + (caps && !caps.uefi ? " (not available on this node)" : ""), disabled: !!caps && !caps.uefi },
+              { value: "bios", label: "BIOS", disabled: disk?.only === "uefi" },
+              { value: "uefi", label: "UEFI" + (caps && !caps.uefi ? " (not available on this node)" : ""), disabled: (!!caps && !caps.uefi) || disk?.only === "bios" },
             ]}
           />
         </Field>

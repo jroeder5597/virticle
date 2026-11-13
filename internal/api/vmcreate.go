@@ -245,6 +245,25 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 		fail(w, badRequest("a VM named "+q.Name+" already exists on this node"))
 		return
 	}
+	pool, err := h.StoragePoolLookupByName(q.Pool)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	var existing libvirt.StorageVol
+	if q.ExistingVolume != "" {
+		if existing, err = existingDisk(h, pool, &q); err != nil {
+			fail(w, err)
+			return
+		}
+	}
+	// A disk that already has an operating system decides the firmware when it can start with only one.
+	if disk := q.ExistingVolume + q.BaseVolume; disk != "" {
+		if err := q.applyDiskFirmware(detectDiskFirmware(h, pool, disk)); err != nil {
+			fail(w, err)
+			return
+		}
+	}
 	var warnings []string
 	if q.Firmware == "uefi" || q.TPM || q.SecureBoot {
 		caps, err := nodeFwCaps(h)
@@ -260,19 +279,6 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 		}
 		q.tpmModel = caps.tpmModel()
 	}
-	pool, err := h.StoragePoolLookupByName(q.Pool)
-	if err != nil {
-		fail(w, err)
-		return
-	}
-	var existing libvirt.StorageVol
-	if q.ExistingVolume != "" {
-		if existing, err = existingDisk(h, pool, &q); err != nil {
-			fail(w, err)
-			return
-		}
-	}
-
 	cpuChoice, err := s.resolveNewVMCPU(nodeID(r), q.CPU)
 	if err != nil {
 		fail(w, err)

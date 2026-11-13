@@ -10,6 +10,7 @@ package hostconn
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -229,6 +230,28 @@ func (h *Host) NewNVRAM(template, dst string) error {
 		return nodeErr(out, err)
 	}
 	return nil
+}
+
+// DiskBoot says what the disk image at path contains at its start: the partition table kind and whether it has an
+// EFI System Partition, a BIOS boot partition and boot code. The node reads 64 KiB through qemu-img and never mounts
+// or runs the image. An older node command that lacks the verb answers with an error.
+type DiskBoot struct {
+	Table    string `json:"table"` // none, mbr, gpt or unknown
+	ESP      bool   `json:"esp"`
+	BiosBoot bool   `json:"biosBoot"`
+	BootCode bool   `json:"bootCode"`
+}
+
+func (h *Host) DiskBoot(path string) (DiskBoot, error) {
+	var d DiskBoot
+	out, err := h.run("disk-boot", path)
+	if err != nil {
+		return d, nodeErr(out, err)
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &d); err != nil {
+		return DiskBoot{}, fmt.Errorf("unreadable answer of the node: %q", strings.TrimSpace(out))
+	}
+	return d, nil
 }
 
 // QemuInfo runs qemu-img info as JSON (a shared lock is not taken). chain asks
