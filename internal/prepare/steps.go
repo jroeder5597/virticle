@@ -491,9 +491,17 @@ echo "libvirt starts its storage daemon before the VM daemon, so VMs on NFS stor
 const networkScript = `
 V="virsh -c qemu:///system"
 if $V net-info default >/dev/null 2>&1; then
-  if $V net-info default 2>/dev/null | grep -q '^Active:[[:space:]]*yes'; then echo "default network is active"; echo @@unchanged; exit 0; fi
+  # Debian defines the default network without autostart: after a reboot it is down, and a VM on it that is set
+  # to start with the node cannot start ("network 'default' is not active").
+  auto=""
+  if ! $V net-info default 2>/dev/null | grep -q '^Autostart:[[:space:]]*yes'; then
+    $V net-autostart default >/dev/null 2>&1 && auto="; turned on its autostart, so VMs on it start after a reboot of the node"
+  fi
+  if $V net-info default 2>/dev/null | grep -q '^Active:[[:space:]]*yes'; then
+    echo "default network is active$auto"; if [ -n "$auto" ]; then echo @@changed; else echo @@unchanged; fi; exit 0
+  fi
   $V net-start default >/dev/null 2>&1 || { echo "the existing default network does not start: $($V net-start default 2>&1 | head -n 2)"; exit 1; }
-  echo "started the existing default network (its autostart setting is unchanged)"; echo @@changed; exit 0
+  echo "started the existing default network$auto"; echo @@changed; exit 0
 fi
 $V net-define /dev/stdin >/dev/null <<'XML'
 <network>

@@ -80,7 +80,7 @@ Prepare runs these steps in order:
    - how many VMs exist (existing VMs are left alone)
 
    Prepare never reboots the host. If a reboot or kernel parameter is needed (for IOMMU), a row says so.
-2. **Installs packages** (see the lists below, including the guest disk tools) and enables libvirt. It starts the `default` network and defines the
+2. **Installs packages** (see the lists below, including the guest disk tools) and enables libvirt. It starts the `default` network (and turns on its autostart, which Debian leaves off, so VMs on it start after a reboot) and defines the
    `default` pool when they are missing. Existing networks and pools are not changed.
    **Opens the migration ports in the firewall.** When firewalld is active, it defines the service `virticle-node`
    (TCP `49152` to `49215`) and adds it to the default zone, permanent and running. When ufw is active, it adds
@@ -206,7 +206,7 @@ systemctl enable --now virtqemud.socket virtnetworkd.socket virtstoraged.socket 
 Then, on both:
 
 ```sh
-virsh -c qemu:///system net-start default || true         # define it first if the host has none
+virsh -c qemu:///system net-start default || true; virsh -c qemu:///system net-autostart default   # define it first if the host has none
 virsh -c qemu:///system pool-define-as default dir --target /var/lib/libvirt/images
 virsh -c qemu:///system pool-build default; virsh -c qemu:///system pool-autostart default; virsh -c qemu:///system pool-start default
 
