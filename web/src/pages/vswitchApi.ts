@@ -19,8 +19,19 @@ export interface HostNic {
   type: string;
   kind?: string;
   master?: string;
+  parent?: string;
+  vlanId?: number;
   speedMbps?: number;
   addresses: string[];
+}
+/** The node's own address on a VLAN of a managed switch. */
+export interface VlanAddress {
+  id: number;
+  interface: string;
+  method: "dhcp" | "static";
+  address?: string;
+  gateway?: string;
+  defaultRoute?: boolean;
 }
 export interface HostBridge {
   name: string;
@@ -28,6 +39,12 @@ export interface HostBridge {
   vlanFiltering: boolean;
   vlans?: string;
   uplink?: string;
+  /** All the physical cards; with two or more (or once there was a bond) they sit in the bond `bond`. */
+  uplinks?: string[];
+  bond?: string;
+  bondMode?: "failover" | "lacp";
+  mtu?: number;
+  vlanAddresses?: VlanAddress[];
   ports: string[];
   movedAddresses?: boolean;
   networks: string[];
@@ -57,9 +74,17 @@ export interface NetPlan {
 }
 /** What the API takes for plan and apply. */
 export interface NetBody {
-  action: "create" | "delete" | "set-vlans";
+  action: "create" | "delete" | "set-vlans" | "set-uplinks" | "set-mtu" | "add-vlan-address" | "remove-vlan-address";
   bridge: string;
   uplink?: string;
+  uplinks?: string[];
+  bondMode?: string;
+  mtu?: number;
+  vlanId?: number;
+  addressMethod?: "dhcp" | "static";
+  address?: string;
+  gateway?: string;
+  defaultRoute?: boolean;
   moveAddresses?: boolean;
   vlanAware?: boolean;
   vlans?: string;
@@ -109,7 +134,21 @@ export function rolledBackWords(c: NetChange): string {
 }
 
 function verb(c: NetChange): string {
-  return c.action === "create" ? `add virtual switch ${c.bridge}` : c.action === "delete" ? `remove virtual switch ${c.bridge}` : `edit VLANs of ${c.bridge}`;
+  switch (c.action) {
+    case "create":
+      return `add virtual switch ${c.bridge}`;
+    case "delete":
+      return `remove virtual switch ${c.bridge}`;
+    case "set-uplinks":
+      return `edit uplinks of ${c.bridge}`;
+    case "set-mtu":
+      return `edit MTU of ${c.bridge}`;
+    case "add-vlan-address":
+      return `add this node's address on a VLAN of ${c.bridge}`;
+    case "remove-vlan-address":
+      return `remove this node's address on a VLAN of ${c.bridge}`;
+  }
+  return `edit VLANs of ${c.bridge}`;
 }
 export const changeWords = verb;
 

@@ -72,6 +72,11 @@ func verbNetInfo(c *Ctx) error {
 		}
 		if sp := managed[l.Name]; sp != nil {
 			b.Managed, b.Uplink, b.MovedAddresses = true, sp.Uplink, sp.MoveAddresses
+			b.Uplinks, b.Bond, b.BondMode, b.MTU = sp.cardNames(), sp.Bond, sp.BondMode, sp.MTUSet
+			for _, v := range sp.VLANAddrs {
+				b.VLANAddresses = append(b.VLANAddresses, nodeproto.NetVLANAddr{ID: v.ID, Interface: v.iface(sp), Method: v.Method,
+					Address: v.Address, Gateway: v.Gateway, DefaultRoute: v.DefaultRoute})
+			}
 			if sp.VLANAware {
 				b.VLANs = sp.VLANs
 			}

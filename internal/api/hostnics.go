@@ -8,13 +8,14 @@ import (
 	"strings"
 
 	"virticle/internal/hostconn"
+	"virticle/internal/nodeproto"
 )
 
 // Network interfaces of a node, read-only. One fixed command prints `ip -j -d
 // addr show` and then the link speed of every interface from sysfs; nothing
 // from the request reaches the shell.
 
-const nicsCommand = `ip -j -d addr show; for i in $(ls /sys/class/net); do echo "SPEED $i $(cat /sys/class/net/$i/speed 2>/dev/null)"; done`
+const nicsCommand = `ip -j -d addr show; for i in $(ls /sys/class/net); do echo "SPEED $i $(cat /sys/class/net/$i/speed 2>/dev/null)"; done; for i in $(ls /sys/class/net); do if [ -r /proc/net/bonding/$i ]; then echo "BOND $i"; cat /proc/net/bonding/$i; echo "ENDBOND"; fi; done`
 
 type hostNIC struct {
 	Name  string `json:"name"`
@@ -23,11 +24,16 @@ type hostNIC struct {
 	Type  string `json:"type"`  // physical | bridge | bond | vlan | tap | other
 	// Kind is the kernel's link kind as ip reports it ("bridge", "openvswitch", "veth", ...); empty for physical
 	// devices. An Open vSwitch bridge has type "other" and kind "openvswitch".
-	Kind      string   `json:"kind,omitempty"`
-	Master    string   `json:"master,omitempty"`
-	MTU       int      `json:"mtu"`
-	SpeedMbps int      `json:"speedMbps,omitempty"`
-	Addresses []string `json:"addresses"`
+	Kind   string `json:"kind,omitempty"`
+	Master string `json:"master,omitempty"`
+	// Parent and VLANID describe a VLAN device: the device it sits on and its id.
+	Parent string `json:"parent,omitempty"`
+	VLANID int    `json:"vlanId,omitempty"`
+	// Bond is the state of a bond device, as the kernel reports it.
+	Bond      *nodeproto.BondStatus `json:"bond,omitempty"`
+	MTU       int                   `json:"mtu"`
+	SpeedMbps int                   `json:"speedMbps,omitempty"`
+	Addresses []string              `json:"addresses"`
 }
 
 type ipLink struct {
@@ -37,8 +43,12 @@ type ipLink struct {
 	MTU       int    `json:"mtu"`
 	OperState string `json:"operstate"`
 	LinkType  string `json:"link_type"`
+	Link      string `json:"link"`
 	LinkInfo  *struct {
 		Kind string `json:"info_kind"`
+		Data struct {
+			ID int `json:"id"`
+		} `json:"info_data"`
 	} `json:"linkinfo"`
 	AddrInfo []struct {
 		Local     string `json:"local"`
@@ -51,9 +61,22 @@ type ipLink struct {
 func parseHostNICs(out string) ([]hostNIC, error) {
 	var js string
 	speeds := map[string]int{}
+	bonds := map[string]nodeproto.BondStatus{}
+	bondName, bondText := "", []string{}
 	for _, line := range strings.Split(out, "\n") {
+		if bondName != "" {
+			if strings.TrimSpace(line) == "ENDBOND" {
+				bonds[bondName] = nodeproto.ParseBonding(bondName, strings.Join(bondText, "\n"))
+				bondName, bondText = "", nil
+			} else {
+				bondText = append(bondText, line)
+			}
+			continue
+		}
 		line = strings.TrimSpace(line)
 		switch {
+		case strings.HasPrefix(line, "BOND "):
+			bondName, bondText = strings.TrimSpace(strings.TrimPrefix(line, "BOND ")), nil
 		case strings.HasPrefix(line, "["):
 			js = line
 		case strings.HasPrefix(line, "SPEED "):
@@ -91,6 +114,13 @@ func parseHostNICs(out string) ([]hostNIC, error) {
 			kind = l.LinkInfo.Kind
 		}
 		n.Kind = kind
+		if kind == "vlan" {
+			n.Parent, n.VLANID = l.Link, l.LinkInfo.Data.ID
+		}
+		if b, ok := bonds[l.Name]; ok && kind == "bond" {
+			b := b
+			n.Bond = &b
+		}
 		switch kind {
 		case "":
 			n.Type = "physical"

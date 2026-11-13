@@ -176,7 +176,47 @@ which runs `virticle-node net-boot` at boot: the change gets its grace period ag
 number of seconds it had, 30 to 600), and is rolled back when nobody confirms it. A node therefore never stays on an
 unconfirmed configuration for good. `virticle node unprepare` removes the unit with the node command.
 
-**What it refuses.** Bonds and ports of a bond as uplinks; an uplink that is already a port; wireless, virtual and
+**Several uplinks (a bond).** A switch can have two or more physical cards. They become the members of a Linux bond
+(`vswbond0` for the switch `vsw0`, otherwise `b-` and the switch name, 15 characters at most) and the bond is the bridge's only
+port. Two modes are offered: `failover` is `active-backup` with `miimon 100`; `lacp` is `802.3ad` with `lacp_rate fast`,
+`xmit_hash_policy layer2+3` and `miimon 100`. `balance-alb` and `balance-tlb` are not offered: they rewrite MAC addresses of the
+frames and the cards' ARP replies, which breaks a bridge that carries MAC addresses of virtual machines. Changing the cards
+(`set-uplinks`): a card is added to the bond, a card is released (it gets its own configuration back), a one-card switch becomes
+a bond, the mode changes (the members are released and the bond is set again in place; the bond is down for a moment). A bond
+whose cards are removed down to one stays a bond with one member (no second change of the bridge port is needed); the switch
+is only collapsed by deleting it. The card whose addresses moved to the bridge cannot be removed. A card that joins with an address of its own
+loses it (the plan says so) and gets it back when it leaves. The bond and the bridge both get the MAC address of the card whose
+configuration moved, and all members take the bond's MAC address (active-backup), so a DHCP server sees one MAC address and keeps the lease;
+the VLAN ids go on the bond. Written: networkd, `05-virticle-BOND.netdev` (`Kind=bond`, `[Bond]` Mode, `MIIMonitorSec=100ms`,
+`LACPTransmitRate`, `TransmitHashPolicy`), `05-virticle-BOND.network` (`Bridge=` and the `[BridgeVLAN]` entries) and one
+`05-virticle-BRIDGE-CARD.network` per card (`Bond=`); NetworkManager, `virticle-bond-BOND` (`bond.options`, port of the bridge,
+`bridge-port.vlans`) and one `virticle-port-CARD` per card (`controller BOND`, `port-type bond`). Rollback and delete restore
+each member's own configuration. Status (shown in the topology): `/proc/net/bonding/BOND` gives each member's link, the active
+member (failover) and, for LACP, the partner MAC address: all zeros means the physical switch did not answer. LACP needs
+the cards to report their speed; the plan warns when they do not or when the speeds differ.
+
+**The node's address on a VLAN.** On a managed, VLAN-aware switch the node gets an interface `SWITCH.ID` (a VLAN device on the
+bridge, 15 characters at most) with DHCP or a static IPv4 address. The bridge becomes a member of the VLAN itself
+(`bridge vlan add dev BRIDGE vid ID self`) and the port carries the id tagged: the id is added to the switch's allowed list when needed
+(the plan says so). Without the default route option the address adds no default route (static: no gateway; DHCP: gateway,
+DNS, NTP and search domains of the lease are ignored). Written: networkd, `05-virticle-SWITCH.ID.netdev` (`Kind=vlan`) and `.network`,
+`VLAN=` and `[BridgeVLAN]` in the bridge's `.network`; NetworkManager, `virticle-vlan-SWITCH.ID` (`vlan.parent`, `vlan.id`) and `bridge.vlans` on
+the bridge. The address interface is created without touching the bridge's own configuration. Removing an address that the controller uses is
+refused, and so is changing the VLAN list or deleting the switch in a way that cuts such an address. Deleting the switch removes its
+VLAN addresses. Moving the node's main (management) address onto a VLAN is not supported: the controller would have to reach the
+node at a new address through a path that this change cannot check beforehand.
+
+**MTU.** `set-mtu` (and the MTU field when a switch is added) sets one value on every device of the switch: each card,
+the bond, the bridge and the VLAN interfaces (networkd `MTUBytes=` in the `.netdev` or `[Link]` of each file; NetworkManager `802-3-ethernet.mtu` of each profile), and
+applies it at once with `ip link set` (cards last when it goes down, first when it goes up). When a card leaves the switch, or the
+switch is deleted, the card gets its earlier MTU back. libvirt 11.3 and 11.10 refuse `<mtu>` in a network with `forward mode='bridge'`, so
+networks on a host bridge cannot carry it; a guest needs the MTU in its own settings (not tried in the lab).
+
+**Protocol 12.** The node command protocol is 12 (it was 11): the request and the saved state of a switch have new fields and the
+controller shows bond and VLAN device state. A node prepared with protocol 11 shows "prepare the node again". (The old node command would
+also refuse the new requests, because it rejects fields it does not know; the version check gives the clear message instead.)
+
+**What it refuses.** Ports of a bond (or of a bridge) as uplinks, and cards that are already in another bond; an uplink that is already a port; wireless, virtual and
 libvirt-managed (`virbr*`, `vnet*`) interfaces; changing an interface that carries the controller's connection without
 moving its addresses; a second change while one is pending; deleting a bridge that VMs or libvirt networks use; changing
 or deleting bridges that virticle did not create (they are only listed); VLANs when the node's libvirt is older than 11.0.
@@ -185,13 +225,13 @@ Only bridges this feature created are changed: it keeps a record of them (`/var/
 **VLANs.** A VLAN-aware bridge has VLAN filtering on; its uplink allows the chosen VLAN ids (2-4094 by default, tagged),
 and the bridge's own address stays untagged (VLAN 1). A libvirt network with `forward mode='bridge'` on such a bridge can
 carry a VLAN tag (`vlan` in the network request, libvirt 11.0 or newer): the tag must be one the uplink allows.
-Putting the host's own address on a VLAN is not supported.
+The node's own addresses on a VLAN are described below.
 
 **Configuration systems.** Detected at run time, never by distribution name:
 
 | System | Written | State |
 |---|---|---|
-| NetworkManager | two connections, `virticle-BRIDGE` (bridge) and `virticle-port-UPLINK`; the uplink's own connection is kept and only set not to start by itself | tried on a real node (Rocky Linux 10, NetworkManager 1.56): create, move the management address, VLANs, rollback by timer and by hand, delete, reboots |
+| NetworkManager | connections `virticle-BRIDGE` (bridge), `virticle-port-UPLINK` (and `virticle-bond-BOND`, `virticle-vlan-IF`); the uplink's own connection is kept and only set not to start by itself | tried on a real node (Rocky Linux 10, NetworkManager 1.56): create, move the management address, VLANs, rollback by timer and by hand, delete, reboots |
 | netplan with systemd-networkd, or plain systemd-networkd | `05-virticle-*.netdev` and `.network` files in `/etc/systemd/network`; the files of netplan and the administrator are not edited. They sort before netplan's `10-netplan-*.network`, survive a reboot, `netplan apply` and cloud-init | netplan with networkd tried on a real node (Debian 13): the same tests as above; plain networkd without netplan runs the same code but was not tried |
 | ifupdown (`/etc/network/interfaces`) | nothing: bridges are refused with a plain message | not supported |
 
