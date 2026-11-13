@@ -1,5 +1,5 @@
 // Network topology tab: read-only. Both tabs render, the default NAT network of node 1 shows as a switch with its
-// port group, nothing scrolls sideways at phone width, and a viewer can open it.
+// network, nothing scrolls sideways at phone width, and a viewer can open it.
 import { Browser, expect as pwExpect } from "@playwright/test";
 import { expect, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
@@ -22,12 +22,12 @@ test.describe.serial("network topology", () => {
     expect(groups.some((g: any) => g.network === "default")).toBe(true);
   });
 
-  test("the node page shows the default network as a switch with a port group", async ({ page, n1 }) => {
+  test("the node page shows the default network as a switch with its network", async ({ page, n1 }) => {
     await page.goto(`/node/${n1}/topology`);
     await expect(page.getByRole("tab", { name: "Topology", exact: true })).toHaveAttribute("aria-selected", "true");
     const sw = page.locator(".toposwitch").filter({ has: page.getByRole("link", { name: "default", exact: true }) });
     await expect(sw).toBeVisible();
-    await expect(sw).toContainText("Port groups");
+    await expect(sw).toContainText("Networks");
     await expect(sw).toContainText("Uplinks");
     await expect(sw).toContainText(/NAT to/);
     await expect(page.locator(".error")).toHaveCount(0);

@@ -1,0 +1,20 @@
+/* Virtual switch actions inside the topology and their dialogs. No animation. */
+.vsbar { display: grid; gap: 8px; margin: 0 0 10px; }
+.vsadd { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.vsblocked { flex: 1 1 18em; min-width: 0; overflow-wrap: anywhere; }
+.vsbanner { display: flex; align-items: flex-start; gap: 8px 12px; flex-wrap: wrap; border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 10px; background: var(--panel); }
+.vsbanner .statusline { flex: 1 1 20em; min-width: 0; margin: 6px 0; }
+.vsbanner .error { flex: 1 1 100%; margin: 0 0 6px; }
+.vsbanner button { margin: 4px 0; }
+.vsacts { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vsuse { margin-top: 8px; }
+.vssteps { list-style: none; margin: 4px 0 8px; padding: 0; display: grid; gap: 8px; }
+.vsstep { display: flex; align-items: flex-start; gap: 10px; }
+.vsstep .cdot { margin-top: 5px; }
+.vsstep.todo { color: var(--muted); }
+.vsstep.active { font-weight: 600; }
+.vsplan { margin: 0 0 8px; padding-left: 20px; }
+.vsplan li { margin: 3px 0; overflow-wrap: anywhere; }
+.vsfold { margin: 8px 0; }
+.vsfoldbody { padding: 4px 0 0 22px; display: grid; gap: 6px; min-width: 0; }
+.vspre { margin: 4px 0 0; padding: 8px; max-height: 220px; overflow: auto; background: var(--hover); border-radius: var(--radius); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }

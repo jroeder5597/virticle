@@ -231,8 +231,8 @@ others open on a click, and a network that has the same name on several nodes ge
 | --- | --- |
 | Switch | A bridge on the node: a Linux or Open vSwitch bridge, or the bridge libvirt made for one of its networks. |
 | Uplinks (right) | The network cards or bonds attached to the bridge, with link state, speed and addresses. A NAT, routed or isolated libvirt network has none and says so instead. |
-| Port groups (left) | The libvirt networks on the bridge (mode, VLAN, DHCP range) and **Direct to bridge** for VM interfaces that use the bridge itself. Each lists its virtual machines with MAC and IP address. |
-| Host | The node's own address on the switch. |
+| Networks (left) | The libvirt networks on the bridge (mode, VLAN, DHCP range) and **Direct to bridge** for VM interfaces that use the bridge itself. Each lists its virtual machines with MAC and IP address. |
+| This node's address | The node's own address on the switch. |
 
 **Unused network cards** lists cards that belong to no bridge. The card or bridge that holds the address the
 controller uses to reach the node is marked **Management**. Addresses of virtual machines come from DHCP leases,
