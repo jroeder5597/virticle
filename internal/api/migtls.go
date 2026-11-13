@@ -328,11 +328,19 @@ func (s *Server) installMigTLS(id int64, h *hostconn.Host, req migTLSReq, progre
 	if !ours && (st.snap.Marker != nil || st.snap.MarkerBad) {
 		foreign = append(foreign, st.markerFile)
 	}
-	for _, f := range foreign {
+	var other *migpki.Marker // another Virticle controller's marker: its files are not the administrator's own
+	if !ours {
+		other = st.snap.Marker
+	}
+	kept, inherited, err := planForeignBackups(foreign, st.listing, other)
+	if err != nil {
+		return info, badRequest(dir + "/" + err.Error() + " already exists on " + h.Name + "; refusing to overwrite a backup")
+	}
+	for f, b := range inherited {
+		marker.Backups[f] = b
+	}
+	for _, f := range kept {
 		b := f + migBackupSuffix
-		if st.listing[b] {
-			return info, badRequest(dir + "/" + b + " already exists on " + h.Name + "; refusing to overwrite a backup")
-		}
 		marker.Backups[f] = b
 		backups = append(backups, [2]string{f, b})
 	}
@@ -542,4 +550,28 @@ func (s *Server) migCertExpiry(h *hostconn.Host) (notAfter time.Time, ok bool) {
 		return time.Time{}, false
 	}
 	return info.Cert.NotAfter, true
+}
+
+// planForeignBackups decides which of the files on a node that this controller did not create are kept as
+// *.virticle-orig before they are replaced. Existing backups are never overwritten, with one exception: when the
+// files carry another Virticle controller's marker (a node taken over from it), they are that controller's own
+// files, not the administrator's, so they are replaced without a new backup. The backup that already exists stays,
+// and is inherited when the other controller's marker names it. A backup that is in the way of anything else is
+// returned as the error text (its name).
+func planForeignBackups(foreign []string, listing map[string]bool, other *migpki.Marker) (keep []string, inherited map[string]string, err error) {
+	inherited = map[string]string{}
+	for _, f := range foreign {
+		b := f + migBackupSuffix
+		if !listing[b] {
+			keep = append(keep, f)
+			continue
+		}
+		if other == nil {
+			return nil, nil, errors.New(b)
+		}
+		if v := other.Backups[f]; v != "" {
+			inherited[f] = v
+		}
+	}
+	return keep, inherited, nil
 }

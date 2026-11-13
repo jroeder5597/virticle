@@ -59,3 +59,31 @@ func TestAddNodeTakeOverFlag(t *testing.T) {
 		t.Errorf("a plain add is not a take-over: %d", w.Code)
 	}
 }
+
+// A node that was taken over before already holds *.virticle-orig files. Taking it over again must replace the other
+// controller's files without touching those backups (found on a Debian node taken over twice).
+func TestPlanForeignBackups(t *testing.T) {
+	files := []string{"ca-cert.pem", "server-key.pem", ".virticle-migration.json"}
+	listing := map[string]bool{"ca-cert.pem.virticle-orig": true, ".virticle-migration.json.virticle-orig": true}
+
+	keep, inh, err := planForeignBackups(files, map[string]bool{}, nil)
+	if err != nil || len(keep) != 3 || len(inh) != 0 {
+		t.Fatalf("clean: keep=%v inherited=%v err=%v", keep, inh, err)
+	}
+	// Someone else's backup in the way of the administrator's own files: refused, naming the backup.
+	if _, _, err := planForeignBackups(files, listing, nil); err == nil || err.Error() != "ca-cert.pem.virticle-orig" {
+		t.Fatalf("a backup in the way was not refused: %v", err)
+	}
+	// Taken over from another Virticle controller: its files are replaced, the older backups stay and are inherited.
+	other := &migpki.Marker{Backups: map[string]string{"ca-cert.pem": "ca-cert.pem.virticle-orig"}}
+	keep, inh, err = planForeignBackups(files, listing, other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(keep) != 1 || keep[0] != "server-key.pem" {
+		t.Errorf("keep = %v, want only server-key.pem", keep)
+	}
+	if len(inh) != 1 || inh["ca-cert.pem"] != "ca-cert.pem.virticle-orig" {
+		t.Errorf("inherited = %v", inh)
+	}
+}
