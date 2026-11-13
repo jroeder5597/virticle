@@ -194,10 +194,10 @@ test.describe.serial("users and roles", () => {
     await tok.dispose();
   });
 
-  test("Settings menu holds Users, Audit, Web access and Alerts", async ({ page }) => {
+  test("Settings menu holds Users, Audit, Web access, Alerts and Backup", async ({ page }) => {
     await page.goto("/");
     await page.locator(".topbar").getByRole("button", { name: "Settings" }).click();
-    for (const n of ["Users", "Audit", "Web access", "Alerts"]) await expect(page.getByRole("menuitem", { name: n, exact: true })).toBeVisible();
+    for (const n of ["Users", "Audit", "Web access", "Alerts", "Backup"]) await expect(page.getByRole("menuitem", { name: n, exact: true })).toBeVisible();
     await page.getByRole("menuitem", { name: "Web access", exact: true }).click();
     await expect(page).toHaveURL(/\/web-access$/);
   });

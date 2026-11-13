@@ -140,6 +140,7 @@ Nodes prepared with 0.1.0 must be prepared again. Steps are in
 | --- | --- |
 | Use the UI, with screenshots, and fix common problems | [docs/user-guide.md](docs/user-guide.md) |
 | Install, upgrade, roll back, uninstall | [docs/install.md](docs/install.md) |
+| Back up the controller, restore it, move it, recover without a backup | [docs/controller-backup.md](docs/controller-backup.md) |
 | Prepare a node, see what is installed on it, audit the node command | [docs/install-node.md](docs/install-node.md) |
 | Set up HTTPS, ACME or a reverse proxy | [docs/web-tls.md](docs/web-tls.md) |
 | Look up flags, roles, API tokens, data, schedules, limits | [docs/reference.md](docs/reference.md) |

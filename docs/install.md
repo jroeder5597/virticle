@@ -189,8 +189,10 @@ The directory holds:
 | `instance-id` | Identifier of this controller |
 | `tls-cert.pem`, `tls-key.pem` | The certificate, when the controller made one |
 
-Back this directory up. Stop the service first, or copy while it is idle. VMs,
-networks and storage live in libvirt on the nodes, not here.
+Back it up with `sudo virticle backup`, which works while the controller runs
+(not by copying files). VMs, networks and storage live in libvirt on the nodes,
+not here. See [controller-backup.md](controller-backup.md) for backup, restore,
+moving the controller and recovery without a backup.
 
 ## Upgrading from 0.1.0
 
@@ -261,6 +263,10 @@ Changes made after the upgrade (users, nodes, tokens) are lost by the
 restore. Do not start the old binary on the upgraded database without the
 restore: it logs a warning, but an older version may not understand it.
 
+A backup made before the upgrade does the same for the whole data directory:
+`sudo virticle restore FILE` with the service stopped
+([controller-backup.md](controller-backup.md#d-roll-back-an-upgrade)).
+
 Rolling back the controller does not bring back the shell script that
 0.1.0 used on the nodes. Preparing a node again with 0.2.0 removes that script.
 
@@ -273,7 +279,8 @@ Rolling back the controller does not bring back the shell script that
 Run `sudo virticle setup --undo` first to remove the firewall rule that
 `virticle setup` added.
 
-The data directory is never deleted by `remove`.
+The data directory is never deleted by `remove`. Make a backup first if you may
+want the controller again ([controller-backup.md](controller-backup.md)).
 
 Uninstalling the controller does not change the nodes. The controller's public
 key stays in their `authorized_keys`. To take the access away, run
