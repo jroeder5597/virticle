@@ -325,7 +325,51 @@ func (r *Runner) Prepare(o Options, report func([]Row), verify func() []Row) []R
 
 // --- steps ---
 
+// swtpmCAScript puts the swtpm local CA directory (/var/lib/swtpm-localca)
+// back in the state the swtpm-tools package intends: the directory and
+// everything in it owned by the tss user. libvirt starts swtpm_setup as tss,
+// which then needs write access to the lock file and the CA files. When
+// libvirtd was already running while the tss account was created (libvirt
+// installed first, swtpm-tools after), libvirtd runs swtpm_setup as root the
+// first time and leaves root-owned files behind; a TPM guest then cannot
+// start after the daemon restarts. Nothing is touched when there is no tss
+// account, no such directory or nothing wrong.
+const swtpmCAScript = `
+d=/var/lib/swtpm-localca
+id -u tss >/dev/null 2>&1 && [ -d "$d" ] || exit 0
+g=$(id -gn tss)
+bad=$(find "$d" ! -path "$d" \( -not -user tss -o -not -group "$g" \) 2>/dev/null | wc -l)
+if [ "$(stat -c %U "$d")" != tss ]; then bad=$((bad+1)); fi
+[ "$bad" = 0 ] && exit 0
+chown tss "$d" && find "$d" ! -path "$d" -exec chown tss:"$g" {} + || { echo "could not fix the owner of $d for swtpm"; exit 1; }
+echo "fixed the owner of the swtpm local CA files (TPM guests could not start)"; echo @@changed`
+
+// stepSwtpmCA runs the script above and returns its note ("" when untouched).
+func stepSwtpmCA(r *Runner) (string, bool, error) {
+	out, err := r.root(swtpmCAScript, "")
+	if err != nil {
+		return "", false, fmt.Errorf("%w: %s", err, firstLines(out, 6))
+	}
+	d, ch := parseStep(out)
+	return d, ch, nil
+}
+
 func stepPackages(r *Runner, p Plan, o Options) (string, bool, error) {
+	d, ch, err := stepPackageInstall(r, p, o)
+	if err != nil {
+		return d, ch, err
+	}
+	d2, ch2, err := stepSwtpmCA(r)
+	if err != nil {
+		return "", ch, err
+	}
+	if d2 != "" {
+		return d + "; " + strings.ToLower(d2[:1]) + d2[1:], ch || ch2, nil
+	}
+	return d, ch, nil
+}
+
+func stepPackageInstall(r *Runner, p Plan, o Options) (string, bool, error) {
 	if len(p.Missing) == 0 {
 		return "All " + fmt.Sprint(len(p.Want)) + " packages are installed", false, nil
 	}
