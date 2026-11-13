@@ -32,7 +32,7 @@ func TestNetworkBuild(t *testing.T) {
 		{"nat without address takes next free /24", networkRequest{Name: "n1", Mode: "nat", DHCP: true}, `address='10.77.1.1' netmask='255.255.255.0'`, false},
 		{"dup name", networkRequest{Name: "default", Mode: "isolated"}, "already exists", true},
 		{"bad name", networkRequest{Name: "a b", Mode: "isolated"}, "name must", true},
-		{"vlan on linux bridge", networkRequest{Name: "n1", Mode: "bridge", BridgeName: "hb", VLAN: 5}, "Open vSwitch", true},
+		{"vlan on linux bridge without node facts", networkRequest{Name: "n1", Mode: "bridge", BridgeName: "hb", VLAN: 5}, "cannot tell", true},
 		{"vlan range", networkRequest{Name: "n1", Mode: "bridge", BridgeName: "hb", OVS: true, VLAN: 5000}, "4094", true},
 		{"libvirt's own bridge", networkRequest{Name: "n1", Mode: "bridge", BridgeName: "virbr0"}, "created by libvirt network default", true},
 		{"unknown mode", networkRequest{Name: "n1", Mode: "weird"}, "mode must", true},

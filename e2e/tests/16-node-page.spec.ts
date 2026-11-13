@@ -7,6 +7,7 @@ const TABS: [string, string][] = [
   ["Virtual machines", "vms"],
   ["Storage", "storage"],
   ["Network", "network"],
+  ["Topology", "topology"],
   ["Updates", "updates"],
   ["Settings", "settings"],
 ];

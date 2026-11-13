@@ -29,7 +29,7 @@ test.describe.serial("datacenter", () => {
     await expect(page.getByRole("heading", { name: "Datacenter", level: 1 })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Summary", exact: true })).toHaveAttribute("aria-selected", "true");
     const tabs = await page.getByRole("tab").allTextContents();
-    expect(tabs).toEqual(["Summary", "Virtual machines", "Storage", "Network", "Backups", "Nodes", "Tasks"]);
+    expect(tabs).toEqual(["Summary", "Virtual machines", "Storage", "Network", "Topology", "Backups", "Nodes", "Tasks"]);
     await expect(page.locator(".dctile", { hasText: "Nodes online" })).toContainText(new RegExp(`${nodes.filter((n) => n.state === "online").length} of ${nodes.length}`));
     await expect(page.locator(".dctile", { hasText: "Virtual machines running" })).toContainText(/\d+ of \d+/);
     await expect(page.locator(".dctile", { hasText: "Storage in use" })).toHaveAttribute("title", /counted as one filesystem/);

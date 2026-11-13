@@ -132,6 +132,61 @@ A node is reached in one of two ways. Both run the same program as root: the nod
 A node that has neither is "Not prepared": the features that need root are off. A node whose account has general
 passwordless sudo but no node command is also not prepared.
 
+## Host bridges
+
+A node's Linux bridges can be created, changed and deleted from the controller (admin only, API
+`/api/nodes/{node}/hostnet`; `GET .../hostnet/peers?bridge=&network=&vlan=` lists the other nodes that have a managed bridge of that name and no network of that name, for the UI's "create the same network" box). Only Linux bridges are handled; Open vSwitch is not. The change touches the network the
+controller reaches the node over, so it is built to undo itself.
+
+**What a change does.** The node command first saves the current settings (the configuration files it will touch, the
+NetworkManager profile of the uplink, the running addresses and routes) in `/var/lib/virticle-node/net/`, readable by
+root only. Then it arms a rollback timer (a transient systemd timer, independent of the SSH session), and only then
+changes the network, in a transient systemd unit of its own, so it completes even when the SSH connection dies.
+"Create a bridge with an uplink and move the addresses" gives the bridge the uplink's addresses, gateway, DNS and MTU, and
+its MAC address (a DHCP lease follows the MAC address, so the node keeps its address; with systemd-networkd the bridge also takes over the card's DHCP client identifier, otherwise a server that keys its leases by client id hands out another address), and leaves the uplink as a plain
+port. The node keeps the address the controller has stored, so the controller reconnects by itself.
+
+**If the node becomes unreachable.** The controller waits for the node to come back, checks that libvirt answers, and
+confirms the change; the node then keeps it. If it does not confirm within **90 seconds** (adjustable from 30 to 600), the
+node restores its previous settings by itself and the task is recorded as failed ("The node did not come back in time. It
+restores its previous network settings by itself; check again in a minute."). When the node is reachable again, its status
+(`GET .../hostnet`, `recent`) says that the change was rolled back and why (`timer`, `apply failed`, `check failed`). A
+change that cannot even apply (a command fails, the bridge does not get its address in 40 seconds) is rolled back at once,
+without waiting for the timer. Only one change can be pending per node. Changes are logged to the journal with their id
+(`journalctl -t virticle-node`); the last five are kept under `/var/lib/virticle-node/net/changes/`.
+
+**From the node's console.** If neither the apply nor the timer got the node back, log in at the console as root and run
+
+    /usr/local/libexec/virticle-node net-rollback
+
+which restores the pending change (or give the id from `virticle-node net-status`). It is safe to run twice. A change that
+was already confirmed is permanent: undo it by deleting the bridge.
+
+**If the node restarts before the confirmation.** The rollback timer is a transient unit and is gone after a reboot. The
+first change installs a small persistent unit, `virticle-net-boot.service` (it does nothing unless a change is pending),
+which runs `virticle-node net-boot` at boot: the change gets its grace period again, counted from the boot (the same
+number of seconds it had, 30 to 600), and is rolled back when nobody confirms it. A node therefore never stays on an
+unconfirmed configuration for good. `virticle node unprepare` removes the unit with the node command.
+
+**What it refuses.** Bonds and ports of a bond as uplinks; an uplink that is already a port; wireless, virtual and
+libvirt-managed (`virbr*`, `vnet*`) interfaces; changing an interface that carries the controller's connection without
+moving its addresses; a second change while one is pending; deleting a bridge that VMs or libvirt networks use; changing
+or deleting bridges that virticle did not create (they are only listed); VLANs when the node's libvirt is older than 11.0.
+Only bridges this feature created are changed: it keeps a record of them (`/var/lib/virticle-node/net/managed/`).
+
+**VLANs.** A VLAN-aware bridge has VLAN filtering on; its uplink allows the chosen VLAN ids (2-4094 by default, tagged),
+and the bridge's own address stays untagged (VLAN 1). A libvirt network with `forward mode='bridge'` on such a bridge can
+carry a VLAN tag (`vlan` in the network request, libvirt 11.0 or newer): the tag must be one the uplink allows.
+Putting the host's own address on a VLAN is not supported.
+
+**Configuration systems.** Detected at run time, never by distribution name:
+
+| System | Written | State |
+|---|---|---|
+| NetworkManager | two connections, `virticle-BRIDGE` (bridge) and `virticle-port-UPLINK`; the uplink's own connection is kept and only set not to start by itself | tried on a real node (Rocky Linux 10, NetworkManager 1.56): create, move the management address, VLANs, rollback by timer and by hand, delete, reboots |
+| netplan with systemd-networkd, or plain systemd-networkd | `05-virticle-*.netdev` and `.network` files in `/etc/systemd/network`; the files of netplan and the administrator are not edited. They sort before netplan's `10-netplan-*.network`, survive a reboot, `netplan apply` and cloud-init | netplan with networkd tried on a real node (Debian 13): the same tests as above; plain networkd without netplan runs the same code but was not tried |
+| ifupdown (`/etc/network/interfaces`) | nothing: bridges are refused with a plain message | not supported |
+
 ## Known limits
 
 - A Debian node and a Rocky Linux node cannot migrate VMs to each other

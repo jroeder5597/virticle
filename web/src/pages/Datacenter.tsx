@@ -13,6 +13,7 @@ import Nodes from "./Nodes";
 import Storage from "./Storage";
 import StartPanel from "./StartPanel";
 import Tasks from "./Tasks";
+import Topology from "./Topology";
 import VMs from "./VMs";
 import "../datacenter.css";
 
@@ -21,6 +22,7 @@ const TABS = [
   ["vms", "Virtual machines"],
   ["storage", "Storage"],
   ["network", "Network"],
+  ["topology", "Topology"],
   ["backups", "Backups"],
   ["nodes", "Nodes"],
   ["tasks", "Tasks"],
@@ -48,6 +50,7 @@ export default function Datacenter() {
       {tab === "vms" && <VMs />}
       {tab === "storage" && <Storage allNodes />}
       {tab === "network" && <Networks allNodes after={(nodes) => nodes.length > 0 && <HostInterfaces nodes={nodes} />} />}
+      {tab === "topology" && <Topology />}
       {tab === "backups" && <BackupsSection />}
       {tab === "nodes" && <Nodes />}
       {tab === "tasks" && <Tasks />}

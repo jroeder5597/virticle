@@ -9,7 +9,7 @@
 // # Adding a verb
 //
 // A verb group lives in its own file (verbs_files.go, verbs_migtls.go,
-// verbs_peer.go, verbs_backup.go, verbs_pool.go) and registers in init:
+// verbs_peer.go, verbs_backup.go, verbs_pool.go, verbs_net.go) and registers in init:
 //
 //	func init() { Register("df", verbDF) }
 //
@@ -28,6 +28,12 @@
 // (exit 2), Fail(...) an operation that did not work (exit 1), ExitCode(n)
 // ends with status n and prints nothing. Main prints the message to stderr
 // with the prefix "virticle-node: ". Check all arguments before acting on any.
+//
+// # Tests of the host network verbs
+//
+// The net-* verbs read and change the system through Config.Net (NetHooks): a
+// Run function that replaces every tool call, a Timer and a clock. net_fake_test.go
+// has a fake node network; the files they write go below Config.Prefix.
 //
 // # Resolving a confined path
 //

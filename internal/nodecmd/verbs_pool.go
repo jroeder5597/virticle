@@ -63,7 +63,7 @@ func init() {
 
 // poolRunDir is where the state of running downloads is kept (root-owned
 // /run/virticle-node; below Config.Prefix in tests).
-func (c *Ctx) poolRunDir() string { return filepath.Join(c.Cfg.Prefix, "run/virticle-node") }
+func (c *Ctx) poolRunDir() string { return c.hostPath("run/virticle-node") }
 
 // procIsNamed reports whether the process pid exists and its name (comm) is name.
 func procIsNamed(pid int, name string) bool {

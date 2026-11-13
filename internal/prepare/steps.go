@@ -700,7 +700,7 @@ if [ -n "$home" ] && [ -d "$home/.ssh" ]; then
   done
 fi
 if [ -f ` + sudoersPath + ` ] && head -c 200 ` + sudoersPath + ` | grep -q 'Written by virticle node prepare' && grep -q "^$u ALL=" ` + sudoersPath + `; then rm -f ` + sudoersPath + `; echo "sudo rule removed"; changed=1; else echo "no sudo rule for $u"; fi
-if { [ -f ` + nodeCmdPath + ` ] || [ -f ` + oldHelperPath + ` ]; } && [ ! -f ` + sudoersPath + ` ]; then rm -f ` + nodeCmdPath + ` ` + oldHelperPath + `; rmdir /usr/local/libexec 2>/dev/null; echo "node command removed"; changed=1; elif [ -f ` + nodeCmdPath + ` ] || [ -f ` + oldHelperPath + ` ]; then echo "node command kept, another account's sudo rule uses it"; else echo "no node command"; fi
+if { [ -f ` + nodeCmdPath + ` ] || [ -f ` + oldHelperPath + ` ]; } && [ ! -f ` + sudoersPath + ` ]; then rm -f ` + nodeCmdPath + ` ` + oldHelperPath + `; systemctl disable virticle-net-boot.service >/dev/null 2>&1; rm -f /etc/systemd/system/virticle-net-boot.service; rmdir /usr/local/libexec 2>/dev/null; echo "node command removed"; changed=1; elif [ -f ` + nodeCmdPath + ` ] || [ -f ` + oldHelperPath + ` ]; then echo "node command kept, another account's sudo rule uses it"; else echo "no node command"; fi
 if [ "$u" != root ] && getent passwd "$u" | grep -q "` + AccountComment + `"; then
   pkill -KILL -u "$u" 2>/dev/null; sleep 1
   userdel -r "$u" >/dev/null 2>&1; if id "$u" >/dev/null 2>&1; then echo "the account could not be removed (is the controller still connected as $u? remove the node there first)"; exit 1; fi

@@ -327,9 +327,11 @@ type networkRequest struct {
 	DHCPEnd    string `json:"dhcpEnd"`
 	Domain     string `json:"domain"`
 	OVS        bool   `json:"ovs"`  // bridge mode: the host bridge is Open vSwitch
-	VLAN       int    `json:"vlan"` // bridge mode with OVS: access VLAN tag
+	VLAN       int    `json:"vlan"` // bridge mode: access VLAN tag (Open vSwitch, or a VLAN-aware Linux bridge)
 	// XML, when set, is used verbatim instead of the fields above.
 	XML string `json:"xml"`
+	// linuxVLAN is what the node says about the bridge, for a VLAN tag on a Linux bridge (set by createNetwork).
+	linuxVLAN *linuxVLAN
 }
 
 var (
@@ -440,7 +442,13 @@ func (q networkRequest) build(existing []existingNet) (string, error) {
 				fmt.Fprintf(&b, "  <vlan><tag id='%d'/></vlan>\n", q.VLAN)
 			}
 		case q.VLAN != 0:
-			return "", badRequest("libvirt applies VLAN tags only to Open vSwitch bridges; for a Linux bridge, create a VLAN sub-interface on the host and bridge that")
+			// libvirt 11.0 and newer tag the ports of a Linux bridge, but the bridge must filter VLANs and its
+			// uplink must allow the id: the host side is set up by host networking (hostnet.go).
+			tag, err := q.linuxVLAN.vlanXML(q.BridgeName, q.VLAN)
+			if err != nil {
+				return "", err
+			}
+			b.WriteString(tag)
 		}
 		b.WriteString("</network>\n")
 		return b.String(), nil
@@ -575,6 +583,10 @@ func (s *Server) createNetwork(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var doc string
+	if req.XML == "" && req.Mode == "bridge" && !req.OVS && req.VLAN != 0 {
+		// build checks the tag against what the node says about the bridge, so ask first.
+		req.linuxVLAN = linuxVLANFor(h, req.BridgeName)
+	}
 	if req.XML != "" {
 		var x netXML
 		if err := xml.Unmarshal([]byte(req.XML), &x); err != nil || x.Name == "" {

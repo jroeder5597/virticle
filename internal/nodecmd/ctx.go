@@ -82,6 +82,9 @@ type Config struct {
 	SysDir, ProcDir string
 	// Self is the path to run for the svc-* verbs (default: this executable).
 	Self string
+	// Net replaces the system side of the host network verbs (tool runs, the
+	// rollback timer, the clock). Nil in production. See net_engine.go.
+	Net *NetHooks
 }
 
 // DefaultConfig is the configuration of the installed binary.
