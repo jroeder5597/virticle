@@ -134,7 +134,7 @@ passwordless sudo but no node command is also not prepared.
 ## Host bridges
 
 A node's Linux bridges can be created, changed and deleted from the controller (admin only, API
-`/api/nodes/{node}/hostnet`). Only Linux bridges are handled; Open vSwitch is not. The change touches the network the
+`/api/nodes/{node}/hostnet`; `GET .../hostnet/peers?bridge=&network=&vlan=` lists the other nodes that have a managed bridge of that name and no network of that name, for the UI's "create the same network" box). Only Linux bridges are handled; Open vSwitch is not. The change touches the network the
 controller reaches the node over, so it is built to undo itself.
 
 **What a change does.** The node command first saves the current settings (the configuration files it will touch, the

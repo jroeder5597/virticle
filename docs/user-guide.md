@@ -223,7 +223,8 @@ Good to know:
 ### Network topology
 
 The **Topology** tab, on the Datacenter page (all nodes) and on each node page (that node), draws how virtual
-machines reach the network, like a VMware standard switch. It is read-only. **Refresh** reloads it; it also reloads
+machines reach the network, like a VMware standard switch. Viewers and operators see it read-only; administrators can
+change it (see [Virtual switches](#virtual-switches)). **Refresh** reloads it; it also reloads
 by itself when networks or virtual machines change. In the Datacenter view the first three nodes are open and the
 others open on a click, and a network that has the same name on several nodes gets the same coloured edge.
 
@@ -237,6 +238,49 @@ others open on a click, and a network that has the same name on several nodes ge
 **Unused network cards** lists cards that belong to no bridge. The card or bridge that holds the address the
 controller uses to reach the node is marked **Management**. Addresses of virtual machines come from DHCP leases,
 so a guest with a fixed address shows none. Uplinks of Open vSwitch bridges are not listed.
+
+### Virtual switches
+
+Administrators can create and change virtual switches on the Topology tab of a node (and of the Datacenter page, where
+each node has its own button). Nothing else is needed on the node: Virticle writes the node's own network settings.
+
+| Word in the app | What it is |
+| --- | --- |
+| Virtual switch | A Linux bridge on the node. |
+| Uplink | The network card the virtual switch uses to reach the outside network. A switch without one connects the virtual machines on this node only. |
+| Network | What a virtual machine attaches to. A network on a virtual switch is a libvirt network in bridge mode, so it appears in **New VM** and **Add network interface** like any other. |
+| VLAN | A tag on a network, so that several networks share one switch and one cable. |
+| This node's address | The node's own address. When the uplink had one, it moves to the virtual switch and stays the same. |
+
+**Add a virtual switch**
+
+1. Open the node's **Topology** tab and select **Add virtual switch**. On a card under **Unused network cards**, select
+   **Use for a new virtual switch** instead.
+2. Enter a name (the dialog offers `vsw0`, `vsw1` and so on) and choose the **Uplink**, or **None (internal only)**.
+   Keep **VLANs** selected if you want VLAN tags. **Advanced** has the allowed VLAN ids (empty allows all) and the time
+   the node waits for the controller to confirm (90 seconds).
+3. Select **Review**. The dialog lists in plain words what will happen on the node; **Details** has the files and
+   commands.
+4. Select **Apply**. The dialog shows three steps: applying on the node, waiting for the node, confirmed. You can close
+   it; the result is also in the task log.
+
+**Add a network with a VLAN.** Select **Add network** in the box of the virtual switch, enter a name and, if the
+switch has VLANs, a VLAN number (empty means no tag). The dialog shows the ids already in use on the switch. When other
+nodes have a virtual switch with the same name, **Create the same network on ...** is selected: a virtual machine can
+only migrate to a node that has a network of the same name. **Actions** on the switch has **Edit VLANs** (refused while a
+network uses an id you remove) and **Remove** (not possible while networks or virtual machines use the switch; the
+node's address returns to the card). A bridge that somebody made by hand shows **Not managed by Virticle** and cannot be
+changed here.
+
+**If the node becomes unreachable.** Moving the address of the card the controller uses is the risky case. The node
+saves its previous settings first and restores them by itself if the controller does not confirm within the confirm time.
+The dialog then says "The node did not come back in time and restored its previous settings." If you reload the page
+while a change is waiting, the node's section shows it with the seconds left and **Roll back now**; a change that was
+rolled back is shown as one line you can dismiss.
+
+**Which nodes.** Nodes that use NetworkManager, or netplan with systemd-networkd. A node that uses ifupdown is not
+supported yet (the button is disabled and says so). VLANs on a virtual switch need libvirt 11 or later on the node. A
+node prepared with an older version of Virticle must be prepared again.
 
 ## Users, tokens and the audit log
 
