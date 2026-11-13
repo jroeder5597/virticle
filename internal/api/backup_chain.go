@@ -70,7 +70,7 @@ const (
 // diskLayout is what must be unchanged for an incremental backup to make sense.
 type diskLayout struct {
 	Target string
-	Source string
+	Source string // the base image of the disk's backing chain (snapshot overlays on top do not count)
 	Virt   uint64
 }
 

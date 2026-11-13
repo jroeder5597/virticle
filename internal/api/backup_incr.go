@@ -22,7 +22,7 @@ const whyNoList = "libvirt could not tell what it has tracked of this VM so far,
 func (s *Server) planIncremental(m *bkRun, pd poolDir, allQcow2 bool) backupPlan {
 	in := incrInput{Live: m.live, AllQcow2: allQcow2, Target: m.target, Checkpoints: map[string]bool{}}
 	for _, d := range m.disks {
-		in.Layout = append(in.Layout, diskLayout{Target: d.Target, Source: d.Path, Virt: d.Virt})
+		in.Layout = append(in.Layout, diskLayout{Target: d.Target, Source: d.Base, Virt: d.Virt})
 	}
 	if !m.live || !allQcow2 {
 		return decideBackup(in)

@@ -58,6 +58,10 @@ type bkDisk struct {
 	Size   uint64 // bytes of the backup file, once written
 	Virt   uint64
 	SHA    string
+	// Base is the image at the bottom of the disk's backing chain: the file that stays
+	// when snapshots come and go. Whether a backup can build on an earlier one is judged
+	// by it, not by the top image (see diskLayout).
+	Base string
 }
 
 type bkRun struct {
@@ -116,6 +120,7 @@ func chainActual(out string) uint64 {
 // planBackup inspects the VM and the target and builds the run. Everything
 // that can be refused is refused here, before a task exists.
 func (s *Server) planBackup(srcID int64, src *hostconn.Host, dom libvirt.Domain, req backupReq) (*bkRun, error) {
+	sweepWork() // before the free space is checked
 	if pers, err := src.DomainIsPersistent(dom); err != nil || pers == 0 {
 		return nil, badRequest("this VM is transient (only running, not defined); define it first")
 	}
@@ -159,7 +164,7 @@ func (s *Server) planBackup(srcID int64, src *hostconn.Host, dom libvirt.Domain,
 		if err != nil {
 			return nil, err
 		}
-		bd := bkDisk{migDisk: d, File: d.Target + ".qcow2", Actual: chainActual(out), Virt: chain[0].VirtualSize}
+		bd := bkDisk{migDisk: d, File: d.Target + ".qcow2", Actual: chainActual(out), Virt: chain[0].VirtualSize, Base: chain[len(chain)-1].Path}
 		if chain[0].Format != "qcow2" {
 			allQcow2 = false
 		}
@@ -347,6 +352,33 @@ func (m *bkRun) spread(lo, hi, f float64) {
 	m.progress(lo + (hi-lo)*f)
 }
 
+// leftWork holds the work directories a failed backup could not remove. They are
+// removed by the next backup (in memory only: after a controller restart the
+// message of the failed backup, which names them, is all that is left).
+var leftWork = struct {
+	sync.Mutex
+	l []*bkWork
+}{}
+
+func keepWork(wd *bkWork) {
+	leftWork.Lock()
+	leftWork.l = append(leftWork.l, wd)
+	leftWork.Unlock()
+}
+
+// sweepWork retries the removal of work directories left by failed backups.
+func sweepWork() {
+	leftWork.Lock()
+	l := leftWork.l
+	leftWork.l = nil
+	leftWork.Unlock()
+	for _, wd := range l {
+		if err := wd.remove(); err != nil {
+			keepWork(wd)
+		}
+	}
+}
+
 func (m *bkRun) run() (err error) {
 	defer m.stopCtx()
 	m.progress(0.01)
@@ -373,7 +405,10 @@ func (m *bkRun) run() (err error) {
 			for _, wd := range []*bkWork{srcWork, dstWork} {
 				if wd != nil {
 					if rerr := wd.remove(); rerr != nil {
-						left = append(left, wd.path+" on "+wd.h.Name)
+						// A backup job that outlived the connection (libvirt was restarted) may
+						// still write there: the next backup removes it (sweepWork).
+						keepWork(wd)
+						left = append(left, wd.path+" on "+wd.h.Name+" ("+rerr.Error()+")")
 					}
 				}
 			}
@@ -448,7 +483,7 @@ func (m *bkRun) run() (err error) {
 		return err
 	}
 	for _, d := range m.disks {
-		man.Disks = append(man.Disks, backupDiskRec{Target: d.Target, File: d.File, Format: "qcow2", VirtualSize: d.Virt, Bytes: d.Size, SHA256: d.SHA, Source: d.Path})
+		man.Disks = append(man.Disks, backupDiskRec{Target: d.Target, File: d.File, Format: "qcow2", VirtualSize: d.Virt, Bytes: d.Size, SHA256: d.SHA, Source: d.Base})
 	}
 
 	dstWork = srcWork
@@ -539,6 +574,13 @@ func (m *bkRun) liveBackup(wd *bkWork, stamp time.Time, lo, hi float64) error {
 		return err
 	}
 	err := begin()
+	if err != nil && m.plan.Kind == kindIncremental && strings.Contains(err.Error(), "Bitmap already exists: backup-") {
+		// A backup job that was cut short by a libvirt restart left its temporary bitmap behind.
+		if n := removeStaleBackupBitmaps(m.src, m.dom); n > 0 {
+			log.Printf("backup %s: removed %d leftover temporary bitmap(s) of an interrupted backup; trying again", m.name, n)
+			err = begin()
+		}
+	}
 	if err != nil && m.plan.Kind == kindIncremental {
 		if cerr := m.checkCancel(); cerr != nil {
 			return cerr
@@ -674,7 +716,9 @@ func (m *bkRun) measure(wd *bkWork) error {
 			return fmt.Errorf("stat %s: %v", f, err)
 		}
 		d.Size = st[0].Size
-		if m.req.SHA256 == nil || *m.req.SHA256 {
+		// A backup that may become a link of a chain is always checksummed: a restore
+		// of an incremental backup checks every file it reads, not only the sizes.
+		if m.req.SHA256 == nil || *m.req.SHA256 || m.plan.Checkpoint {
 			if d.SHA, err = m.src.SHA256(f); err != nil {
 				return err
 			}
@@ -1059,6 +1103,13 @@ func (b *backupRef) loadChain(m *backupManifest) ([]chainLink, error) {
 	out := make([]chainLink, len(order))
 	for i, d := range order {
 		out[i] = chainLink{Dir: d, Man: by[d]}
+		if len(order) > 1 {
+			for _, dk := range by[d].Disks {
+				if dk.SHA256 == "" {
+					return nil, badRequest("this backup cannot be restored: " + d + " has no checksum, so the chain cannot be verified. Restore a backup that comes before it.")
+				}
+			}
+		}
 	}
 	return out, nil
 }
@@ -1083,6 +1134,15 @@ func (s *Server) deleteBackup(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fail(w, err)
 		return
+	}
+	if m, merr := b.load(); merr == nil {
+		bkRuns.Lock()
+		_, busy := bkRuns.m[m.UUID]
+		bkRuns.Unlock()
+		if busy {
+			fail(w, badRequest("a backup of this VM is running and may build on this one. Delete it when the backup has finished."))
+			return
+		}
 	}
 	// Backups that build on this one are useless without it. Deleting it
 	// takes them along, but only when the caller says so.

@@ -37,7 +37,7 @@ test.describe.serial("incremental backups", () => {
     // the list says which is which, each with its own size
     const rows = page.locator("tbody tr");
     await expect(rows.filter({ hasText: "Incremental" })).toHaveCount(1);
-    await expect(rows.filter({ hasText: /\bFull\b/ })).toHaveCount(1);
+    await expect(rows.filter({ has: page.locator("strong", { hasText: /^Full$/ }) })).toHaveCount(1);
   });
 
   test("restoring the incremental backup gives a VM", async ({ page, api }) => {
@@ -54,7 +54,7 @@ test.describe.serial("incremental backups", () => {
 
   test("deleting the full backup says it takes the later one along", async ({ page, api }) => {
     await openVM(page, vm, "backups");
-    await page.locator("tbody tr", { hasText: /\bFull\b/ }).getByRole("button", { name: "Delete" }).click();
+    await page.locator("tbody tr").filter({ has: page.locator("strong", { hasText: /^Full$/ }) }).getByRole("button", { name: "Delete" }).click();
     const dlg = dialog(page, "Delete backup");
     await expect(dlg).toContainText("1 later incremental backup builds on this one");
     await dlg.getByRole("button", { name: "Delete" }).click();

@@ -166,7 +166,7 @@ earlier versions no longer exist.
 
 A directory `<vm>-<UTC timestamp>.vmbackup` in a directory-backed pool:
 
-- `manifest.json`: VM name and UUID, time, source node, disks, SHA-256 checksums (not for scheduled backups).
+- `manifest.json`: VM name and UUID, time, source node, disks, SHA-256 checksums (always for a backup of a running VM with qcow2 disks, since it can become part of a chain; a restore checks every file it reads).
 - `domain.xml`: the VM definition.
 - `<target>.qcow2`: one flattened image per writable disk. In an incremental backup it holds only the blocks that changed
   since the parent, and has no backing file.
@@ -187,15 +187,21 @@ backup restores as a new VM or as the original, and exports to one
   `fullReason` and the disks' `source` added; backups from before have none of these and count as full.
 - A backup is full when: the VM is shut off (copied with qemu-img, no checkpoint); a disk is not qcow2; libvirt is older
   than 7.0; no earlier backup of the VM in the target has its checkpoint any more (restart after a killed QEMU, migration,
-  restore, snapshot revert, disk move); the disks (target, file, size) differ from the parent's; a backup in the chain is
+  restore, snapshot revert, disk move); the disks (target, size, and the base image at the bottom of the backing chain) differ from the parent's; a backup in the chain is
   missing or its files differ from the manifest; the chain already has 7 backups; or libvirt refuses the incremental
   backup (then the VM's checkpoints are dropped and a full backup is made).
 - The checkpoints of the same target older than the new one are deleted after a backup; a VM keeps at most 4. A failed or
   cancelled backup deletes the checkpoint it made.
 - Retention keeps the newest N and every backup they build on, and deletes newest first. A restore reads the chain with one
   `qemu-img convert` over a `json:` description of the images; nothing reads the VM's disks.
-- Snapshot revert, migration (live or offline) and disk move drop the VM's checkpoints first. Taking an internal snapshot or
-  a resize keeps them. An external snapshot moves the disk to a new file, so the next backup is full.
+- Snapshot revert, migration (live or offline) and disk move drop the VM's checkpoints first. Taking or deleting a snapshot (internal,
+  or external with its overlay merged back) and a resize keep them: libvirt carries the change tracking into an overlay and
+  merges it back (tried on the lab: create, two stacked overlays, middle and active merge, with writes during the merge;
+  every restore matched). Deleting a backup is refused while a backup of the same VM runs.
+- Two limits of libvirt 11.3, both harmless to the data. An external snapshot taken while a checkpoint exists leaves that
+  checkpoint's bitmap in the read-only base image, where libvirt cannot remove it; it stays there and QEMU keeps updating it.
+  A libvirt restart during a backup leaves a temporary bitmap in the VM; the next backup removes it through the QEMU
+  monitor (libvirt marks the VM as tainted in its log) and carries on.
 
 ## Node access
 

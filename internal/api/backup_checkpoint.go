@@ -15,12 +15,17 @@ package api
 //     on a shut-off VM leaves them alone; both keep incremental backups valid. A
 //     revert does not: bitmaps may then miss writes, so a revert drops them.
 //   - A migration or a disk move does not take bitmaps along, so they drop them (not tried what libvirt does when they are left).
-//   - An external snapshot moves the disk to a new overlay file; the disk layout then differs from the last backup and the next one is full.
+//   - An external snapshot moves the disk to a new overlay file, but the bitmaps move with it, and merging the overlay back
+//     (blockcommit, middle or active) merges them back. So the disk layout is judged by the base image at the bottom of the
+//     backing chain, not by the top file (tried: snapshot create, stacked overlays, both kinds of commit, writes during the
+//     commit; every restore matched the guest's files).
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"log"
 	"sort"
+	"strings"
 
 	"github.com/digitalocean/go-libvirt"
 
@@ -121,4 +126,43 @@ func dropBackupCheckpoints(h *hostconn.Host, dom libvirt.Domain) {
 			log.Printf("dropping checkpoint %s of %s: %v", c.Name, dom.Name, err)
 		}
 	}
+}
+
+// removeStaleBackupBitmaps removes the temporary "backup-<disk>" bitmaps that
+// libvirt leaves in QEMU when libvirtd was restarted while a backup job ran
+// (libvirt 11.3 does not clean them up; every later incremental backup then
+// fails with "Bitmap already exists: backup-vda" until the VM is restarted).
+// They exist only while a job runs, so one found when none runs is stale. It
+// returns how many it removed.
+func removeStaleBackupBitmaps(h *hostconn.Host, dom libvirt.Domain) int {
+	out, err := h.QEMUDomainMonitorCommand(dom, `{"execute":"query-named-block-nodes"}`, 0)
+	if err != nil {
+		return 0
+	}
+	var r struct {
+		Return []struct {
+			Node    string `json:"node-name"`
+			Bitmaps []struct {
+				Name string `json:"name"`
+			} `json:"dirty-bitmaps"`
+		} `json:"return"`
+	}
+	if json.Unmarshal([]byte(out), &r) != nil {
+		return 0
+	}
+	n := 0
+	for _, node := range r.Return {
+		for _, b := range node.Bitmaps {
+			if !strings.HasPrefix(b.Name, "backup-") {
+				continue
+			}
+			cmd, _ := json.Marshal(map[string]any{"execute": "block-dirty-bitmap-remove", "arguments": map[string]string{"node": node.Node, "name": b.Name}})
+			if _, err := h.QEMUDomainMonitorCommand(dom, string(cmd), 0); err != nil {
+				log.Printf("removing the leftover bitmap %s of %s: %v", b.Name, dom.Name, err)
+				continue
+			}
+			n++
+		}
+	}
+	return n
 }
