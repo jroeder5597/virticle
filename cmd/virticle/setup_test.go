@@ -190,3 +190,22 @@ func TestSetupWithoutDatabaseUsesTheFirstStartDefault(t *testing.T) {
 		t.Errorf("%+v %s %v %v", ws, source, users, err)
 	}
 }
+
+// The Web access page tells the administrator to run setup while a port change
+// still waits for confirmation. The new port must be opened, and the old one
+// stays open until the change is confirmed.
+func TestSetupWhileAPortChangeWaitsOpensBothPorts(t *testing.T) {
+	ws := webaccess.FirstRunDefaults()
+	ws.HTTPSListen = ":9443"
+	prev := webaccess.FirstRunDefaults()
+	h := &host{fwApply: "@@kind firewalld\n@@changed\n", unit: "unit=yes\nactive=active\nenabled=yes\n"}
+	e := envFor(h, ws, "stored", true)
+	e.pendingPrev = func() *webaccess.Settings { return &prev }
+	got := rowText(runSetup(e, false, false))
+	if !strings.Contains(got, "waiting for confirmation") {
+		t.Errorf("no row about the waiting change:\n%s", got)
+	}
+	if !h.applied("9443 8443") {
+		t.Errorf("both ports must go to the firewall script: %v", h.log)
+	}
+}

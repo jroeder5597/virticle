@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"flag"
 	"io"
@@ -715,6 +716,20 @@ func TestFirstRunDefaults(t *testing.T) {
 	}
 }
 
+// The first-run defaults have nil lists. The page calls join on them, so the
+// status must send [] and never null (a white page otherwise).
+func TestStatusListsAreNeverNull(t *testing.T) {
+	m, _ := newManager(t)
+	m.cur = FirstRunDefaults()
+	b, err := json.Marshal(m.Status("").Settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "null") {
+		t.Errorf("a list is null: %s", b)
+	}
+}
+
 func TestListenComposeAndSplit(t *testing.T) {
 	ifaces := []Iface{{Name: "eth0", Addrs: []string{"10.0.0.5", "fd00::5"}}}
 	cases := []struct {
@@ -777,5 +792,28 @@ func TestStartFallsBackWhenAddressIsGone(t *testing.T) {
 	busy := Settings{Mode: "off", Listen: m.Status("").Listeners[0].Addr}.Normalize()
 	if _, _, err := m2.StartOrFallBack(busy); err == nil {
 		t.Error("a busy port must still fail")
+	}
+}
+
+// Peek (used by virticle setup beside the running controller) must not undo a
+// change that waits for confirmation, which Load does.
+func TestPeekLeavesAPendingChangeAlone(t *testing.T) {
+	m, st := newManager(t)
+	prev := FirstRunDefaults()
+	next := FirstRunDefaults()
+	next.HTTPSListen = ":9443"
+	pb, _ := json.Marshal(pendingRecord{Prev: prev, Deadline: time.Now().Add(time.Minute)})
+	nb, _ := json.Marshal(next)
+	st.SetWebSetting(keyPending, string(pb))
+	st.SetWebSetting(keySettings, string(nb))
+	got, p, ok, err := m.Peek()
+	if err != nil || !ok || got.HTTPSListen != ":9443" || p == nil || p.HTTPSListen != ":8443" {
+		t.Fatalf("Peek = %+v %+v %v %v", got, p, ok, err)
+	}
+	if _, pending := st.m[keyPending]; !pending {
+		t.Error("Peek removed the pending record")
+	}
+	if raw := st.m[keySettings]; !strings.Contains(raw, "9443") {
+		t.Errorf("Peek changed the stored settings: %s", raw)
 	}
 }

@@ -41,8 +41,11 @@ type setupEnv struct {
 	euid     int
 	sh       prepare.RunFunc // runs a shell script as root on this machine
 	settings func() (ws webaccess.Settings, source string, hasUsers bool, err error)
-	addrs    []string
-	hasKVM   bool
+	// pendingPrev returns the settings a web access change that waits for
+	// confirmation would go back to; nil when no change waits (or in tests).
+	pendingPrev func() *webaccess.Settings
+	addrs       []string
+	hasKVM      bool
 }
 
 // webPorts are the TCP ports the controller listens on for other computers:
@@ -160,6 +163,20 @@ func runSetup(e setupEnv, check, undo bool) []prepare.Row {
 	}
 	var rows []prepare.Row
 	ports := webPorts(ws)
+	var waiting []string
+	if e.pendingPrev != nil {
+		if prev := e.pendingPrev(); prev != nil {
+			// The page asks for setup while the change is still unconfirmed:
+			// the new port must be reachable to confirm it, and the old port
+			// stays open in case the change is not confirmed.
+			for _, p := range webPorts(*prev) {
+				if !contains(ports, p) {
+					ports = append(ports, p)
+					waiting = append(waiting, p)
+				}
+			}
+		}
+	}
 	kind := map[bool]string{true: "stored settings", false: "the default for a first start"}[source == "stored"]
 	desc := "HTTP"
 	if ws.IsTLS() {
@@ -171,6 +188,12 @@ func runSetup(e setupEnv, check, undo bool) []prepare.Row {
 	} else {
 		rows = append(rows, prepare.Row{ID: "web", Title: "Web access", Status: prepare.Info,
 			Detail: fmt.Sprintf("%s on this computer only (%s), so no firewall port is needed (%s).", desc, listenOf(ws), kind)})
+	}
+
+	if len(waiting) > 0 {
+		rows = append(rows, prepare.Row{ID: "pending", Title: "Web access", Status: prepare.Info,
+			Detail: "A change is waiting for confirmation on the Web access page. Setup keeps " + prepare.PortsText(waiting) +
+				" open as well until you have confirmed it; run setup again after that to close it."})
 	}
 
 	// Firewall. With no port to open this still removes a rule that an
@@ -203,6 +226,15 @@ func runSetup(e setupEnv, check, undo bool) []prepare.Row {
 			Detail: "To run virtual machines on this machine too, choose 'Set up this machine as a node' on the start page."})
 	}
 	return rows
+}
+
+func contains(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
 
 func mustSh(e setupEnv, script string) string {
@@ -242,7 +274,9 @@ func storedWebSettings(data string) func() (webaccess.Settings, string, bool, er
 		}
 		defer st.Close()
 		m := &webaccess.Manager{Store: st, DataDir: data}
-		stored, ok, err := m.Load()
+		// Peek, not Load: setup runs beside the controller and must not undo a
+		// change that waits for confirmation.
+		stored, _, ok, err := m.Peek()
 		if err != nil {
 			return webaccess.Settings{}, "", false, err
 		}
@@ -252,6 +286,28 @@ func storedWebSettings(data string) func() (webaccess.Settings, string, bool, er
 		}
 		c := chooseSettings(stored, ok, users > 0)
 		return c.settings, c.source, users > 0, nil
+	}
+}
+
+// pendingWebSettings returns what an unconfirmed web access change would go
+// back to, read-only; nil when none waits or there is no database.
+func pendingWebSettings(data string) func() *webaccess.Settings {
+	return func() *webaccess.Settings {
+		if !store.HasDatabase(data) {
+			return nil
+		}
+		dbPath, err := store.DBPath(data, log.Printf)
+		if err != nil {
+			return nil
+		}
+		st, err := store.Open(dbPath)
+		if err != nil {
+			return nil
+		}
+		defer st.Close()
+		m := &webaccess.Manager{Store: st, DataDir: data}
+		_, prev, _, _ := m.Peek()
+		return prev
 	}
 }
 
@@ -272,7 +328,7 @@ func setupCommand(args []string) int {
 		return 2
 	}
 	_, kvmErr := os.Stat("/dev/kvm")
-	e := setupEnv{euid: os.Geteuid(), sh: localSh, settings: storedWebSettings(*data), addrs: suggestedAddresses(), hasKVM: kvmErr == nil}
+	e := setupEnv{euid: os.Geteuid(), sh: localSh, settings: storedWebSettings(*data), pendingPrev: pendingWebSettings(*data), addrs: suggestedAddresses(), hasKVM: kvmErr == nil}
 	rows := runSetup(e, *check, *undo)
 	for _, r := range rows {
 		printRow(r)
