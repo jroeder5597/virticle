@@ -18,7 +18,7 @@ import (
 
 type Alert struct {
 	ID       string `json:"id"`
-	Kind     string `json:"kind"`     // node-down | pool-usage | host-memory | failed-job | vm-state | tls-expiry | scheduler-conflict
+	Kind     string `json:"kind"`     // node-down | pool-usage | host-memory | failed-job | vm-state | tls-expiry | scheduler-conflict | net-link | net-bond | net-drift
 	Severity string `json:"severity"` // warning | critical
 	Title    string `json:"title"`
 	Message  string `json:"message"`
@@ -98,16 +98,28 @@ type alertInput struct {
 	Jobs       []store.Task    // tasks of the scheduler in the window
 	Conflicts  []schedConflict // nodes where another controller takes scheduled snapshots
 	CertExpiry time.Time       // zero when the UI does not use a certificate of its own
+	// Debounced are alerts about network state (card links, bonds, drift between nodes) that flap easily: one is
+	// raised only after it was seen on two consecutive passes, and cleared only after it was missing on two.
+	Debounced []Alert
+	// Unread says that an alert from an earlier pass cannot be judged now (its node could not be read); it is kept.
+	Unread func(Alert) bool
+}
+
+// debouncedKind is true for the alerts that go through Debounced.
+func debouncedKind(kind string) bool {
+	return kind == "net-link" || kind == "net-bond" || kind == "net-drift"
 }
 
 type alertTracker struct {
 	cfg          alertConfig
 	offlineSince map[int64]time.Time
 	active       map[string]Alert
+	// How many passes in a row a debounced alert was seen (before it is raised) or missing (before it is cleared).
+	seen, gone map[string]int
 }
 
 func newAlertTracker(cfg alertConfig) *alertTracker {
-	return &alertTracker{cfg: cfg.withDefaults(), offlineSince: map[int64]time.Time{}, active: map[string]Alert{}}
+	return &alertTracker{cfg: cfg.withDefaults(), offlineSince: map[int64]time.Time{}, active: map[string]Alert{}, seen: map[string]int{}, gone: map[string]int{}}
 }
 
 // step evaluates one pass. raised holds new alerts and alerts whose severity
@@ -213,6 +225,8 @@ func (t *alertTracker) step(in alertInput, now time.Time) (raised, cleared, all 
 		}
 	}
 
+	t.debounce(in, cur)
+
 	// Keep what cannot be re-evaluated: alerts about a node whose data was not read.
 	for id, a := range t.active {
 		if _, ok := cur[id]; ok || a.Node == 0 || a.Kind == "node-down" || in.Fresh[a.Node] {
@@ -248,6 +262,44 @@ func (t *alertTracker) step(in alertInput, now time.Time) (raised, cleared, all 
 	sortAlerts(raised)
 	sortAlerts(cleared)
 	return raised, cleared, all
+}
+
+// debounce adds the debounced alerts of this pass to cur: a new one only on its second pass in a row, an old one
+// until it has been missing for two passes.
+func (t *alertTracker) debounce(in alertInput, cur map[string]Alert) {
+	now := map[string]Alert{}
+	for _, a := range in.Debounced {
+		now[a.ID] = a
+	}
+	for id, a := range now {
+		t.gone[id] = 0
+		if _, raised := t.active[id]; raised {
+			cur[id] = a
+			continue
+		}
+		if t.seen[id]++; t.seen[id] >= 2 {
+			cur[id] = a
+		}
+	}
+	for id := range t.seen {
+		if _, ok := now[id]; !ok {
+			delete(t.seen, id)
+		}
+	}
+	for id, old := range t.active {
+		if _, ok := now[id]; ok || !debouncedKind(old.Kind) {
+			continue
+		}
+		if in.Unread != nil && in.Unread(old) {
+			cur[id] = old
+			continue
+		}
+		if t.gone[id]++; t.gone[id] < 2 {
+			cur[id] = old
+		} else {
+			delete(t.gone, id)
+		}
+	}
 }
 
 // jobVM is the VM a scheduler task is about. Snapshot tasks are named "vm"
