@@ -9,6 +9,7 @@ import { GuestCard, useAgentHelp, VirtioWin } from "./Guest";
 import "./status.css";
 import { StatusLine } from "../Checks";
 import { relationText } from "../cpu";
+import { ReplicationCard } from "./Replication";
 
 const last = <T,>(a: T[]): T | undefined => a[a.length - 1];
 const dash = "–";
@@ -228,7 +229,9 @@ export default function Overview({ d, base, onChanged }: { d: VMDetail; base: st
       onChanged();
     });
   };
-  const viewer = useRole() === "viewer";
+  // A replica or an old copy refuses every change.
+  const inert = d.state === "replica" || d.state === "stale";
+  const viewer = useRole() === "viewer" || inert;
   // One request each for the guest agent's report and the stats series, shared by the cards that show them.
   const g = usePoll<GuestInfo>(d.agent === "connected" && d.state === "running" ? `${base}/guest` : null, 20000);
   const s = usePoll<{ points: VMPoint[] }>(d.state === "running" ? `${base}/stats` : null);
@@ -240,6 +243,7 @@ export default function Overview({ d, base, onChanged }: { d: VMDetail; base: st
         <UtilCard d={d} s={s} g={g} />
       </div>
       <div className="ov-grid">
+        {!inert && !d.template && <ReplicationCard d={d} base={base} onChanged={onChanged} />}
         <section className="card">
           <h3>Hardware</h3>
           <dl>
@@ -324,7 +328,7 @@ export default function Overview({ d, base, onChanged }: { d: VMDetail; base: st
           </table>
         </section>
 
-        {d.agent === "connected" ? <GuestCard d={d} g={g} /> : <AgentCard d={d} base={base} onChanged={onChanged} />}
+        {d.agent === "connected" ? <GuestCard d={d} g={g} /> : inert ? null : <AgentCard d={d} base={base} onChanged={onChanged} />}
       </div>
     </div>
   );

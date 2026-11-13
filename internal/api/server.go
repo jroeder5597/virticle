@@ -261,6 +261,14 @@ func (s *Server) Handler() http.Handler {
 	auth("PUT /api/nodes/{node}/vms/{uuid}/backup-schedule", s.putBackupSchedule)
 	auth("DELETE /api/nodes/{node}/vms/{uuid}/backup-schedule", s.deleteBackupSchedule)
 	auth("POST /api/nodes/{node}/vms/{uuid}/backup", s.needs("backups", s.vmBackup))
+	auth("GET /api/nodes/{node}/vms/{uuid}/replication", s.getReplication)
+	auth("PUT /api/nodes/{node}/vms/{uuid}/replication", s.needs("backups", s.putReplication))
+	auth("DELETE /api/nodes/{node}/vms/{uuid}/replication", s.deleteReplication)
+	auth("POST /api/nodes/{node}/vms/{uuid}/replication/run", s.needs("backups", s.replicationRun))
+	auth("POST /api/nodes/{node}/vms/{uuid}/replication/cancel", s.replicationCancel)
+	auth("GET /api/nodes/{node}/vms/{uuid}/replica", s.getReplica)
+	auth("POST /api/nodes/{node}/vms/{uuid}/replica/failover", s.needs("backups", s.replicaFailover))
+	auth("DELETE /api/nodes/{node}/vms/{uuid}/replica", s.deleteReplicaHandler)
 	auth("POST /api/nodes/{node}/vms/{uuid}/backup/cancel", s.vmBackupCancel)
 	auth("GET /api/backups", s.listBackupsHandler)
 	auth("POST /api/nodes/{node}/backups/import", s.needs("backups", s.importBackup))
@@ -335,7 +343,10 @@ func fail(w http.ResponseWriter, err error) {
 	code := http.StatusInternalServerError
 	var lv libvirt.Error
 	var br badRequest
+	var ce conflictError
 	switch {
+	case errors.As(err, &ce):
+		code = http.StatusConflict
 	case errors.Is(err, store.ErrNotFound):
 		code = http.StatusNotFound
 	case errors.Is(err, cluster.ErrOffline):
@@ -380,7 +391,20 @@ func (s *Server) host(r *http.Request) (int64, *hostconn.Host, error) {
 	return id, h, err
 }
 
+// domain finds the VM of the request. A replica (the standby's inert copy of a VM on another node) cannot be
+// changed by any request but the replica's own (domainAny): the normal buttons are refused with the reason.
 func (s *Server) domain(r *http.Request) (*hostconn.Host, libvirt.Domain, error) {
+	h, dom, err := s.domainAny(r)
+	if err == nil && r.Method != http.MethodGet {
+		if gerr := replicaGuard(h, dom); gerr != nil {
+			return h, dom, gerr
+		}
+	}
+	return h, dom, err
+}
+
+// domainAny is domain without the replica guard, for the endpoints that act on replicas.
+func (s *Server) domainAny(r *http.Request) (*hostconn.Host, libvirt.Domain, error) {
 	_, h, err := s.host(r)
 	if err != nil {
 		return nil, libvirt.Domain{}, err

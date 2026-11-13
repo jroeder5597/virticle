@@ -86,7 +86,8 @@ func (s *Server) deleteNode(w http.ResponseWriter, r *http.Request) {
 		fail(w, store.ErrNotFound)
 		return
 	}
-	s.dropPeerTrust(id) // best effort: the node's key and host key on the other nodes
+	s.dropReplicationTo(id) // the VMs that were copied to this node stop being copied: the copy is out of reach
+	s.dropPeerTrust(id)     // best effort: the node's key and host key on the other nodes
 	if err := s.Store.DeleteNode(id); err != nil {
 		fail(w, err)
 		return

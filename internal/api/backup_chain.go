@@ -369,11 +369,13 @@ type ckInfo struct {
 // staleCheckpoints returns the checkpoints to delete after a successful backup
 // for target that created newName: older ones of the same target (their
 // backups can no longer be built on, the new one can) and, beyond
-// checkpointsKept, the oldest of all. Newest first.
+// checkpointsKept, the oldest of all. Newest first. The checkpoints of
+// replication (target replica:N) are not counted and never dropped here: they
+// belong to the replica of the VM, which keeps exactly one of its own.
 func staleCheckpoints(all []ckInfo, target, newName string) []string {
 	var mine []ckInfo
 	for _, c := range all {
-		if strings.HasPrefix(c.Name, checkpointPrefix) {
+		if strings.HasPrefix(c.Name, checkpointPrefix) && !isReplTarget(c.Target) {
 			mine = append(mine, c)
 		}
 	}

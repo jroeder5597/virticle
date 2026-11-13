@@ -57,7 +57,8 @@ export function ErrorBox({ error }: { error?: string }) {
 }
 
 export function StateBadge({ state }: { state: string }) {
-  return <span className={"badge s-" + state}>{state.charAt(0).toUpperCase() + state.slice(1)}</span>;
+  const word = state === "stale" ? "stale copy" : state;
+  return <span className={"badge s-" + state}>{word.charAt(0).toUpperCase() + word.slice(1)}</span>;
 }
 
 /** A labelled form row. `group` is for rows of buttons: a <label> around buttons would swallow the first one's name. */

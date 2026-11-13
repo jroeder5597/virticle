@@ -94,6 +94,9 @@ func (s *Server) buildEvacPlan(srcID int64, src *hostconn.Host, req evacReq) (ev
 	domByUUID := map[string]libvirt.Domain{}
 	var all []evacVM
 	for _, d := range doms {
+		if isReplicaOrStale(src, d) {
+			continue // inert copies are not moved: they only hold a place for a failover
+		}
 		uuid := cluster.FormatUUID(d.UUID)
 		state, maxMem, _, _, _, err := src.DomainGetInfo(d)
 		if err != nil {

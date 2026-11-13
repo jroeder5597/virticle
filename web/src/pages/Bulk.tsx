@@ -122,9 +122,13 @@ export function BulkBar({ selected, onClear }: { selected: VM[]; onClear: () => 
         <DeleteDialog
           vms={selected}
           onClose={() => setDeleting(false)}
-          onConfirm={(disks) => {
+          onConfirm={(disks, replicas) => {
             setDeleting(false);
-            execute("Delete", (vm) => (vm.state !== "shutoff" ? { skip: "running: shut it down first" } : { run: () => del(`${base(vm)}${disks ? "?disks=1" : ""}`) }));
+            execute("Delete", (vm) => {
+              if (vm.state !== "shutoff") return { skip: "running: shut it down first" };
+              const q = [...(disks ? ["disks=1"] : []), ...(replicas && vm.replication ? ["replica=1"] : [])].join("&");
+              return { run: () => del(`${base(vm)}${q ? "?" + q : ""}`) };
+            });
           }}
         />
       )}
@@ -200,9 +204,10 @@ function TagDialog({ onClose, onApply }: { onClose: () => void; onApply: (mode: 
   );
 }
 
-function DeleteDialog({ vms, onClose, onConfirm }: { vms: VM[]; onClose: () => void; onConfirm: (disks: boolean) => void }) {
+function DeleteDialog({ vms, onClose, onConfirm }: { vms: VM[]; onClose: () => void; onConfirm: (disks: boolean, replicas: boolean) => void }) {
   const [details, setDetails] = useState<Record<string, VMDetail>>({});
   const [disks, setDisks] = useState(false);
+  const [replicas, setReplicas] = useState(true);
   const [typed, setTyped] = useState("");
   const act = useAction();
   useEffect(() => {
@@ -212,6 +217,7 @@ function DeleteDialog({ vms, onClose, onConfirm }: { vms: VM[]; onClose: () => v
     });
   }, []);
   const deletable = vms.filter((v) => v.state === "shutoff");
+  const replicated = deletable.filter((v) => v.replication).length;
   const word = "delete";
   const owned = (v: VM) => (details[key(v)]?.disks ?? []).filter((k) => k.device === "disk" && !k.readOnly && k.source);
   return (
@@ -239,13 +245,18 @@ function DeleteDialog({ vms, onClose, onConfirm }: { vms: VM[]; onClose: () => v
       <label className="check">
         <input type="checkbox" checked={disks} onChange={(e) => setDisks(e.target.checked)} /> Also delete their disk volumes
       </label>
+      {replicated > 0 && (
+        <label className="check">
+          <input type="checkbox" checked={replicas} onChange={(e) => setReplicas(e.target.checked)} /> Also delete the replica of {replicated === 1 ? "the VM that has one" : `the ${replicated} VMs that have one`}
+        </label>
+      )}
       <Field label={`Type "${word}" to confirm`}>
         <input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />
       </Field>
       <ErrorBox error={act.error} />
       <footer>
         <button onClick={onClose}>Cancel</button>
-        <button className="danger" disabled={typed.trim() !== word || deletable.length === 0 || act.busy} onClick={() => onConfirm(disks)}>
+        <button className="danger" disabled={typed.trim() !== word || deletable.length === 0 || act.busy} onClick={() => onConfirm(disks, replicas)}>
           Delete {deletable.length} VM(s)
         </button>
       </footer>

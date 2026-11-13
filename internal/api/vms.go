@@ -40,6 +40,18 @@ type vmSummary struct {
 	Tags     []string `json:"tags"`
 	// CPU is set when the VM's CPU came from the cluster baseline.
 	CPU *vmCPU `json:"cpu,omitempty"`
+	// Replication is set on a VM that is copied to a standby node; Replica on the standby's inert copy (its
+	// State is then "replica"); Stale on the old VM after another node took over (State "stale").
+	Replication *replSummary    `json:"replication,omitempty"`
+	Replica     *replicaSummary `json:"replica,omitempty"`
+	Stale       *staleSummary   `json:"stale,omitempty"`
+}
+
+// staleSummary is the old VM after another node took over.
+type staleSummary struct {
+	ToNode int64  `json:"toNode"`
+	ToName string `json:"toName"`
+	At     int64  `json:"at"`
 }
 
 func summarize(node int64, h *hostconn.Host, d libvirt.Domain) (vmSummary, error) {
@@ -53,11 +65,13 @@ func summarize(node int64, h *hostconn.Host, d libvirt.Domain) (vmSummary, error
 		return vmSummary{}, err
 	}
 	mark, tags := parseAppMeta(rawMeta)
-	return vmSummary{
+	v := vmSummary{
 		Node: node, NodeName: h.Name, UUID: cluster.FormatUUID(d.UUID), Name: d.Name,
 		State: stateName(state), VCPUs: vcpus, MemoryKiB: maxMem, Autostart: auto != 0,
 		Template: mark.Template, Sealed: mark.Sealed, Tags: tags, CPU: parseCPUMeta(rawMeta),
-	}, nil
+	}
+	v.addReplication(rawMeta, time.Now())
+	return v, nil
 }
 
 // listVMs aggregates the domains of every online node, querying nodes in parallel.
@@ -452,9 +466,19 @@ func (s *Server) vmAction(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"ok": true, "method": res.Method, "forced": res.Forced})
 		return
 	}
+	if req.Action == "start" || req.Action == "resume" {
+		if err := pausedCopyGuard(dom); err != nil {
+			fail(w, err)
+			return
+		}
+	}
 	if req.Action == "start" {
 		if mark, err := getMark(h, dom); err == nil && mark.Template {
 			fail(w, badRequest(dom.Name+" is a template and is never started. Clone it, or convert it back to a VM first"))
+			return
+		}
+		if err := staleGuard(h, dom); err != nil {
+			fail(w, err)
 			return
 		}
 		if err := startGuard(h, dom); err != nil {
@@ -567,6 +591,10 @@ func (s *Server) vmDelete(w http.ResponseWriter, r *http.Request) {
 		fail(w, badRequest("power the VM off before deleting it"))
 		return
 	}
+	if replRunning(cluster.FormatUUID(dom.UUID)) {
+		fail(w, badRequest(dom.Name+" is being copied to its standby node right now; delete it when the copy is done, or cancel the copy first"))
+		return
+	}
 	var paths []string
 	if r.URL.Query().Get("disks") == "1" {
 		raw, err := h.DomainGetXMLDesc(dom, libvirt.DomainXMLInactive)
@@ -611,6 +639,10 @@ func (s *Server) vmDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	left := []string{}
+	var replMeta string
+	if r.URL.Query().Get("replica") == "1" {
+		replMeta, _ = domainMeta(h, dom)
+	}
 	err = s.task(r, "delete", dom.Name, h.Name, func(func(float64)) error {
 		flags := libvirt.DomainUndefineManagedSave | libvirt.DomainUndefineSnapshotsMetadata |
 			libvirt.DomainUndefineNvram | libvirt.DomainUndefineCheckpointsMetadata | libvirt.DomainUndefineTpm
@@ -645,9 +677,16 @@ func (s *Server) vmDelete(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	// The VM's replica goes with it when asked (the delete dialog does by default).
+	note := ""
+	if replMeta != "" {
+		if rerr := s.removeReplicaAfterDelete(replMeta, dom); rerr != nil {
+			note = rerr.Error()
+		}
+	}
 	// leftDisks lists disks that are outside every storage pool and were
 	// therefore left in place.
-	writeJSON(w, map[string]any{"ok": true, "leftDisks": left})
+	writeJSON(w, map[string]any{"ok": true, "leftDisks": left, "replicaNote": note})
 }
 
 const agentChannelXML = `<channel type='unix'><target type='virtio' name='org.qemu.guest_agent.0'/></channel>`
@@ -681,4 +720,28 @@ func (s *Server) vmAddAgentChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]bool{"ok": true, "needsRestart": stateName(state) != "shutoff" && !live})
+}
+
+// addReplication fills in what the metadata says about replication and sets the state words of the standby's
+// copy ("replica") and of the old VM after a failover ("stale").
+func (v *vmSummary) addReplication(rawMeta string, now time.Time) {
+	if rawMeta == "" {
+		return
+	}
+	if c := parseReplication(rawMeta); c != nil {
+		v.Replication = &replSummary{TargetNode: c.TargetNode, TargetName: c.TargetName, Pool: c.Pool, EveryMinutes: c.EveryMinutes, Enabled: c.Enabled,
+			LastOK: c.LastOK, LastBytes: c.LastBytes, LastKind: c.LastKind, LastSecs: c.LastSecs}
+	}
+	if rm := parseReplicaMeta(rawMeta); rm != nil {
+		v.Replica = &replicaSummary{SourceNode: rm.SourceNode, SourceName: rm.SourceName, Every: rm.Every, Last: rm.Last, Checked: rm.Checked, Points: rm.Points, Bytes: rm.Bytes,
+			Late: replicaLate(maxInt64(rm.Last, rm.Checked), rm.Every, now)}
+		v.State = "replica"
+		v.Autostart = false
+	}
+	if sm := parseStale(rawMeta); sm != nil {
+		v.Stale = &staleSummary{ToNode: sm.ToNode, ToName: sm.ToName, At: sm.At}
+		if v.State == "shutoff" {
+			v.State = "stale"
+		}
+	}
 }

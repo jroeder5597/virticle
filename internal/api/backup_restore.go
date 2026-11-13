@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
+	"log"
 	"net/http"
 	"path"
 	"regexp"
@@ -208,6 +209,16 @@ func (s *Server) planRestore(src *backupRef, req restoreReq) (*restorePlan, erro
 // VM on the target node when replace was asked for.
 func (p *restorePlan) checkOriginal() error {
 	u, _ := cluster.ParseUUID(p.man.UUID)
+	// The standby of the VM that is being replaced holds its replica: the same identity, but it is the VM's own copy,
+	// which the next replication run brings up to date, so it is no obstacle.
+	replTo := int64(0)
+	if hd, err := p.s.Nodes.Host(p.dstID); err == nil && p.req.Replace {
+		if d, err := hd.DomainLookupByUUID(u); err == nil {
+			if m, _ := domainMeta(hd, d); parseReplication(m) != nil {
+				replTo = parseReplication(m).TargetNode
+			}
+		}
+	}
 	for _, n := range p.s.Nodes.Status() {
 		h, err := p.s.Nodes.Host(n.ID)
 		if err != nil {
@@ -215,11 +226,19 @@ func (p *restorePlan) checkOriginal() error {
 		}
 		byName, errN := h.DomainLookupByName(p.man.VM)
 		byUUID, errU := h.DomainLookupByUUID(u)
+		if n.ID == replTo && n.ID != p.dstID && errU == nil && errN == nil && byName.UUID == byUUID.UUID && isReplicaDomain(h, byUUID) {
+			continue
+		}
 		if errN != nil && errU != nil {
 			continue
 		}
 		where := h.Name
-		if errN == nil && errU == nil && byName.UUID == byUUID.UUID && n.ID == p.dstID && p.req.Replace {
+		// A replica is never replaced by a restore (it would be removed and leave its files behind).
+		replaceable := errN == nil && errU == nil && byName.UUID == byUUID.UUID && n.ID == p.dstID && p.req.Replace
+		if replaceable && isReplicaDomain(h, byName) {
+			replaceable = false
+		}
+		if replaceable {
 			st, _, _, _, _, err := h.DomainGetInfo(byName)
 			if err != nil {
 				return err
@@ -227,11 +246,22 @@ func (p *restorePlan) checkOriginal() error {
 			if stateName(st) != "shutoff" {
 				return badRequest("the VM " + p.man.VM + " on " + where + " is not shut off; shut it down before replacing it")
 			}
+			if replRunning(cluster.FormatUUID(byName.UUID)) {
+				return badRequest("the VM " + p.man.VM + " is being copied to its standby node right now; replace it when the copy is done")
+			}
 			p.old = &byName
 			continue
 		}
 		hint := ""
+		var cm string
+		if errU == nil {
+			cm, _ = domainMeta(h, byUUID)
+		}
 		switch {
+		case parseReplicaMeta(cm) != nil:
+			hint = " It is the replica of this VM kept for a failover: open it and use \"Delete replica\" first, or restore as a new VM."
+		case parseStale(cm) != nil:
+			hint = " It is the old copy of this VM from before a failover: delete it first, or restore as a new VM."
 		case n.ID != p.dstID:
 			hint = " Delete or migrate it first (the original identity can exist only once), or restore as a new VM."
 		case !p.req.Replace:
@@ -504,7 +534,12 @@ func (p *restorePlan) run(progress func(float64)) (uuid string, err error) {
 		return "", err
 	}
 
-	// Replace: only now, with everything staged, remove the old VM.
+	// Replace: only now, with everything staged, remove the old VM. Its replication setting is carried over (the
+	// next run copies the restored disks whole), because the backup's own metadata is a picture of the past.
+	oldMeta := ""
+	if p.old != nil {
+		oldMeta, _ = domainMeta(dst, *p.old)
+	}
 	if p.old != nil {
 		oldGone = true
 		if err := p.removeOld(); err != nil {
@@ -533,6 +568,9 @@ func (p *restorePlan) run(progress func(float64)) (uuid string, err error) {
 	}
 	defined = &dom
 	uuid = cluster.FormatUUID(dom.UUID)
+	if perr := restorePlacement(dst, dom, oldMeta); perr != nil {
+		log.Printf("restore %s: replication settings: %v", p.name, perr)
+	}
 	progress(0.97)
 	if p.req.Start {
 		if serr := dst.DomainCreate(dom); serr != nil {
@@ -545,9 +583,12 @@ func (p *restorePlan) run(progress func(float64)) (uuid string, err error) {
 }
 
 // removeOld undefines the VM this restore replaces and deletes its disks.
-func (p *restorePlan) removeOld() error {
-	dst := p.dst
-	x, err := dst.DomainGetXMLDesc(*p.old, libvirt.DomainXMLInactive)
+func (p *restorePlan) removeOld() error { return removeVMAndDisks(p.dst, *p.old) }
+
+// removeVMAndDisks undefines a (shut-off) VM with its UEFI variables, snapshot and checkpoint
+// records and TPM state, then deletes its disks: pool volumes through libvirt, plain files directly.
+func removeVMAndDisks(dst *hostconn.Host, dom libvirt.Domain) error {
+	x, err := dst.DomainGetXMLDesc(dom, libvirt.DomainXMLInactive)
 	if err != nil {
 		return err
 	}
@@ -557,7 +598,7 @@ func (p *restorePlan) removeOld() error {
 	}
 	f := libvirt.DomainUndefineManagedSave | libvirt.DomainUndefineSnapshotsMetadata | libvirt.DomainUndefineNvram |
 		libvirt.DomainUndefineCheckpointsMetadata | libvirt.DomainUndefineTpm
-	if err := dst.DomainUndefineFlags(*p.old, f); err != nil {
+	if err := dst.DomainUndefineFlags(dom, f); err != nil {
 		return fmt.Errorf("removing the existing VM: %w", err)
 	}
 	var left []string
@@ -573,8 +614,42 @@ func (p *restorePlan) removeOld() error {
 			}
 		}
 	}
+	// The cloud-init seed of the VM goes with it, as in a normal delete (vmDelete): the CD-ROM named after the VM, when
+	// it is a volume of a storage pool. Other media are never touched.
+	for _, k := range dx.Devices.Disks {
+		if k.Device == "cdrom" && k.Source.File != "" && path.Base(k.Source.File) == seedVolumeName(dom.Name) {
+			if vol, err := lookupVolByPath(dst, k.Source.File); err == nil {
+				if err := dst.StorageVolDelete(vol, 0); err != nil {
+					left = append(left, k.Source.File+" ("+err.Error()+")")
+				}
+			}
+		}
+	}
 	if len(left) > 0 {
 		return fmt.Errorf("the existing VM was removed but its disks could not be deleted: %s", strings.Join(left, ", "))
 	}
 	return nil
+}
+
+// restorePlacement removes what a backup remembers of where the VM was placed (replication, replica, old-copy and
+// failed-over records are runtime state of the cluster, not part of the VM) and puts back the replication setting
+// of the VM that was replaced, if it had one.
+func restorePlacement(h *hostconn.Host, dom libvirt.Domain, replacedMeta string) error {
+	meta, err := domainMeta(h, dom)
+	if err != nil {
+		return err
+	}
+	changes := map[string]string{replChild: "", replicaChild: "", staleChild: "", failedOverChd: ""}
+	if cfg := parseReplication(replacedMeta); cfg != nil {
+		cfg.PausedCopy = false
+		changes[replChild] = cfg.element()
+	}
+	nm, err := setMetaChildren(meta, changes)
+	if err != nil {
+		return err
+	}
+	if nm == meta {
+		return nil
+	}
+	return setDomainMeta(h, dom, nm)
 }

@@ -67,6 +67,8 @@ body { overflow-x: hidden; }
 .dot.n-online, .dot.v-running { background: var(--ok); border-color: var(--ok); }
 .dot.n-offline, .dot.v-crashed { background: var(--danger); border-color: var(--danger); }
 .dot.n-connecting, .dot.v-paused, .dot.v-pmsuspended { background: var(--warn); border-color: var(--warn); }
+.dot.v-replica { background: var(--accent); border-color: var(--accent); }
+.dot.v-stale { background: var(--accent-2); border-color: var(--accent-2); }
 .dot.v-shutoff { background: transparent; border-color: var(--muted); }
 .trow:focus-visible .dot { box-shadow: 0 0 0 3px var(--glow, transparent); }
 

@@ -83,7 +83,7 @@ A destination of type **Webhook** receives a `POST` with `Content-Type: applicat
 
 - `event`: `raise`, `clear`, or `test` (the **Send test message** button; its alert has `"id":"test"`).
 - `alert.kind`: `node-down`, `pool-usage`, `host-memory`, `failed-job`, `vm-state`, `tls-expiry`,
-  `scheduler-conflict`, `net-link`, `net-bond`, `net-drift`, `storage-unavailable`. `severity` is `warning` or `critical`. `node` is
+  `scheduler-conflict`, `net-link`, `net-bond`, `net-drift`, `storage-unavailable`, `rolling-update`, `replica-age`, `stale-copy`. `severity` is `warning` or `critical`. `node` is
   the node id and `link` the page in the web UI (both may be missing); `since` and `time` are Unix seconds.
 - One alert per request, always; the webhook is never summarised. Any 2xx answer is success. Other answers are
   retried after 5 s, 30 s and 2 min, except 401, 403, 404, 410 and other 4xx (not 408, 429), which are not.
@@ -163,6 +163,55 @@ earlier versions no longer exist.
   `-no-scheduler`.
 - Two controllers of different versions must never manage the same nodes: an older controller's retention does not know
   the incremental chains and deletes backups that a newer chain needs.
+
+## Replication
+
+- Setting: the VM's metadata, child `replication` (standby node id and name, pool, `every-minutes`, replica directory, last result).
+  The standby's domain has the child `replica`; after a failover the old VM has `stale-copy` and the new one `failed-over`.
+  Older versions ignore these.
+- Replica directory: a hidden work directory `.virticle-rp.XXXXXX` in a pool directory of the standby. Per disk a base
+  `b<G>-<disk>.qcow2` (generation G, a full copy) and one overlay `p<S>-<disk>.qcow2` per point S, each holding only what changed since
+  the point before; `p<S>.json` (written last, never changed) makes point S exist. The newest 2 points are kept; older ones are
+  written into the base, oldest first. A full copy is a new generation; older generations go only after its first point is complete.
+  Cutting any step short leaves a usable replica (the next run or the failover finishes the tidying).
+- Checkpoints: target (description) `replica:<standby node id>`. Backups count and delete only their own (at most 4), replication
+  keeps exactly one; snapshot revert, migration and disk move drop both.
+- A run: backup job from the checkpoint (full when none), sent with the migration network peer transfer, checked by SHA-256, linked
+  with a header-only rebase, manifest written, old points merged, then the old checkpoint deleted. A shut-off VM is copied only
+  when its disk files changed since the last point (mtime and size). If the copy can be incremental it is started paused (the vCPUs
+  never run; passthrough devices are refused for replication anyway), the same job runs, and QEMU is ended with a graceful destroy so
+  it saves its bitmaps; the VM's `replication` child carries `paused-copy="yes"` meanwhile, Start and Resume are refused, and a controller
+  restarted in between ends the paused VM in its next scheduler round. Any other case converts the disks whole and starts nothing.
+- Failover order: a VM that takes over gets `failed-over gen="N+1"`, N being the generation of the source (the replica's `src-gen`,
+  copied at every run from the source's own `failed-over`). The old VM is marked and powered off only when its own generation is lower
+  (or it has none); equal generations do nothing. `at` (the controller's clock) is informational only. The decision is
+  `decideOldCopy` (replica_reconcile.go), a pure function with a table test.
+- Moving a replicated VM to its standby: the replica's domain is undefined (its directory stays), the source's `replication` child and
+  its checkpoints are removed, the migration runs, and then the old directory is deleted and replication to the old node is set up
+  (full copy); a failed migration puts the replica domain and the setting back. Deleting a node switches off replication to it on
+  the other nodes.
+- Damage: a `repl-commit` that was killed leaves refcounts behind the data; the verb repairs with `qemu-img check -r all`, commits again
+  (which rewrites every block of the overlay, so the base equals the overlay over the old base whatever the first run wrote) and requires a
+  clean `qemu-img check`; otherwise it fails with `replica-damaged`, the next run clears the replica directory and copies whole, and a
+  failover refuses with the advice to delete the replica. Lab: 40 rounds of kill -9 at random points, repair, commit, `qemu-img compare`
+  against the view taken before the commit: all identical.
+- Bitmaps: a persistent `virticle-` or `backup-` bitmap with the `in-use` flag in an image that no QEMU has open (a killed QEMU) is removed
+  with `qemu-img bitmap --remove` (node verb `qcow2-bitmap-rm`, which takes the image lock and so fails on a running VM), or with
+  `block-dirty-bitmap-remove` for a bitmap a running QEMU calls inconsistent, before a disk resize and when a checkpoint could only be
+  deleted metadata only. Their checkpoint records are deleted with them.
+- A run is full when: no point, the replica is damaged, the checkpoint is gone (killed QEMU, migration, revert, restore), or the
+  disk layout changed. One run per VM and per source node at a time; a backup and a run of one VM exclude each other.
+- Scheduler: every 20 s the loop starts runs that are due (`-no-scheduler` runs none; `POST .../replication/run` does one). A
+  failed run is retried after 5 minutes and recorded as a failed task, which raises the alert `failed-job` until a run succeeds.
+- Alerts: `replica-age` (copy older than twice its interval plus a minute; clears when a run succeeds), `stale-copy`.
+- API: `GET|PUT|DELETE .../vms/{uuid}/replication`, `POST .../replication/run`, `POST .../replication/cancel`, `GET|DELETE
+  .../replica`, `POST .../replica/failover` (`{"mode":"planned"|"unplanned"}`, refused with 409 when the situation changed).
+  `DELETE .../vms/{uuid}?replica=1` also removes the replica. Task kinds: `replicate`, `failover`, `replication stop`, `replica delete`.
+- Refused: raw disks, shareable or non-file disks, passthrough devices, a standby with another VM of that name or UUID, a missing
+  network or bridge on the standby, no pool with room.
+- Failover: the newest point whose chain reads; its overlays are written into the base, the base moved to the pool as `<vm>.qcow2`
+  (`<vm>-<disk>.qcow2` for more disks), UEFI variables placed, the definition of that point defined, the VM started. Can be repeated
+  after any failure. The old VM is stale-marked by the controller when its node is online again (alert loop, once a minute).
 
 ## Backup format
 
@@ -293,9 +342,9 @@ applies it at once with `ip link set` (cards last when it goes down, first when 
 switch is deleted, the card gets its earlier MTU back. libvirt 11.3 and 11.10 refuse `<mtu>` in a network with `forward mode='bridge'`, so
 networks on a host bridge cannot carry it; a guest needs the MTU in its own settings (not tried in the lab).
 
-**Protocol 16.** The node command protocol is 16 (0.2.0 had 10). A node prepared with an older version shows "prepared
+**Protocol 18.** The node command protocol is 18 (0.2.0 had 10). A node prepared with an older version shows "prepared
 by an older version" and must be prepared again ([install.md](install.md#upgrading)); the old node command would also
-refuse the new requests, because it rejects fields it does not know. Protocol 14 (incremental backups): `convert-start` takes the
+refuse the new requests, because it rejects fields it does not know. Protocol 17 adds `repl-overlay`, `repl-rebase`, `repl-commit`, `repl-ls`, `mtime` (replication) and `qcow2-bitmap-rm`. Protocol 14 (incremental backups): `convert-start` takes the
 incremental images after the format, and `backup-detach` is new.
 
 **What it refuses.** Ports of a bond (or of a bridge) as uplinks, and cards that are already in another bond; an uplink that is already a port; wireless, virtual and

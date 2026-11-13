@@ -100,6 +100,53 @@ export interface VM {
   tags: string[];
   /** Set when the VM's CPU came from the cluster baseline. */
   cpu?: { policy: "cluster-baseline"; model: string; relation?: "same" | "newer" | "older" | "differs" };
+  /** Set on a VM that is copied to a standby node. */
+  replication?: { targetNode: number; targetName: string; pool: string; everyMinutes: number; enabled: boolean; lastOk?: number; lastBytes?: number; lastKind?: string; lastSecs?: number; next?: number };
+  /** Set on the standby's copy (its state is "replica"). */
+  replica?: ReplicaSummary;
+  /** Set on the old VM after another node took over (its state is "stale"). */
+  stale?: { toNode: number; toName: string; at: number };
+}
+export interface ReplicaSummary {
+  sourceNode: number;
+  sourceName: string;
+  everyMinutes: number;
+  last?: number;
+  checked?: number;
+  points: number;
+  bytes: number;
+  late?: boolean;
+}
+/** GET .../replication on the source VM. */
+export interface ReplicationStatus {
+  configured: boolean;
+  config?: { targetNode: number; targetName: string; pool: string; everyMinutes: number; enabled: boolean; lastOk?: number; lastBytes?: number; lastKind?: "full" | "incremental"; lastSecs?: number; next?: number };
+  running: boolean;
+  runner: "this" | "disabled";
+  error?: string;
+  errorAt?: number;
+  replica?: ReplicaSummary;
+  standbyOffline?: boolean;
+  stale?: { toNode: number; toName: string; at: number };
+  now: number;
+}
+/** GET .../replica on the standby's copy. */
+export interface ReplicaInfo {
+  sourceNode: number;
+  sourceName: string;
+  every: number;
+  last?: number;
+  checked?: number;
+  bytes: number;
+  late?: boolean;
+  running?: boolean;
+  error?: string;
+  errorAt?: number;
+  points?: { seq: number; time: number; kind: string; bytes: number }[];
+  pointTime?: number;
+  tpm?: boolean;
+  failover: { kind: "planned" | "unplanned" | "gone" | "none"; sourceNode: string; nodeState?: string; vmState?: string; message?: string };
+  now: number;
 }
 export interface VMDetail extends VM {
   /** The storage under the VM's disks that does not answer, one sentence each. */
@@ -272,7 +319,7 @@ export interface AgentHelp {
 
 export interface Alert {
   id: string;
-  kind: "node-down" | "pool-usage" | "host-memory" | "failed-job" | "vm-state" | "tls-expiry" | "scheduler-conflict" | "net-link" | "net-bond" | "net-drift" | "storage-unavailable";
+  kind: "node-down" | "pool-usage" | "host-memory" | "failed-job" | "vm-state" | "tls-expiry" | "scheduler-conflict" | "net-link" | "net-bond" | "net-drift" | "storage-unavailable" | "rolling-update" | "replica-age" | "stale-copy";
   severity: "warning" | "critical";
   title: string;
   message: string;

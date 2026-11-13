@@ -143,37 +143,11 @@ func (s *Server) planBackup(srcID int64, src *hostconn.Host, dom libvirt.Domain,
 		return nil, err
 	}
 
-	var need uint64
-	allQcow2 := true
-	for _, d := range m.md.Disks {
-		if d.Device != "disk" || d.ReadOnly {
-			m.skip = append(m.skip, d.Target)
-			continue
-		}
-		switch {
-		case d.Type != "file" || d.Path == "":
-			return nil, badRequest("disk " + d.Target + " is a " + d.Type + " disk; only file-based disks can be backed up")
-		case d.Shareable:
-			return nil, badRequest("disk " + d.Target + " is shareable; a shared disk is not backed up with one VM")
-		}
-		out, err := src.QemuInfo(d.Path, true)
-		if err != nil {
-			return nil, badRequest("qemu-img could not inspect " + d.Path + ": " + impFirstLine(out))
-		}
-		chain, err := parseChain(out)
-		if err != nil {
-			return nil, err
-		}
-		bd := bkDisk{migDisk: d, File: d.Target + ".qcow2", Actual: chainActual(out), Virt: chain[0].VirtualSize, Base: chain[len(chain)-1].Path}
-		if chain[0].Format != "qcow2" {
-			allQcow2 = false
-		}
-		need += bd.Actual
-		m.disks = append(m.disks, bd)
+	disks, skip, allQcow2, need, err := inspectBackupDisks(src, m.md, "backed up")
+	if err != nil {
+		return nil, err
 	}
-	if len(m.disks) == 0 {
-		return nil, badRequest("the VM has no writable disk to back up")
-	}
+	m.disks, m.skip = disks, skip
 	need += importFreeMargin
 
 	dstID := req.TargetNode
@@ -274,6 +248,43 @@ func sweepStaleWork(h *hostconn.Host, dir string) {
 	}
 }
 
+// inspectBackupDisks looks at the disks of a definition that a backup or a replication copies: the writable
+// file-based ones. skip are the targets left out (read-only, CD-ROMs), allQcow2 says every copied disk has a
+// qcow2 image on top, need the bytes they occupy.
+func inspectBackupDisks(src *hostconn.Host, md migDomain, verb string) (disks []bkDisk, skip []string, allQcow2 bool, need uint64, err error) {
+	allQcow2 = true
+	for _, d := range md.Disks {
+		if d.Device != "disk" || d.ReadOnly {
+			skip = append(skip, d.Target)
+			continue
+		}
+		switch {
+		case d.Type != "file" || d.Path == "":
+			return nil, nil, false, 0, badRequest("disk " + d.Target + " is a " + d.Type + " disk; only file-based disks can be " + verb)
+		case d.Shareable:
+			return nil, nil, false, 0, badRequest("disk " + d.Target + " is shareable; a shared disk is not " + verb + " with one VM")
+		}
+		out, err := src.QemuInfo(d.Path, true)
+		if err != nil {
+			return nil, nil, false, 0, badRequest("qemu-img could not inspect " + d.Path + ": " + impFirstLine(out))
+		}
+		chain, err := parseChain(out)
+		if err != nil {
+			return nil, nil, false, 0, err
+		}
+		bd := bkDisk{migDisk: d, File: d.Target + ".qcow2", Actual: chainActual(out), Virt: chain[0].VirtualSize, Base: chain[len(chain)-1].Path}
+		if chain[0].Format != "qcow2" {
+			allQcow2 = false
+		}
+		need += bd.Actual
+		disks = append(disks, bd)
+	}
+	if len(disks) == 0 {
+		return nil, nil, false, 0, badRequest("the VM has no writable disk to copy")
+	}
+	return disks, skip, allQcow2, need, nil
+}
+
 // defaultBackupReq is what a request body that leaves fields out means:
 // checksums and an automatic freeze (nil), and keep the newest 7 (0 keeps everything).
 func defaultBackupReq() backupReq { return backupReq{KeepLast: 7} }
@@ -321,6 +332,10 @@ func (s *Server) launchBackup(r *http.Request, h *hostconn.Host, m *bkRun) (int6
 	if _, busy := bkRuns.m[m.uuid]; busy {
 		bkRuns.Unlock()
 		return 0, nil, badRequest("a backup of this VM is already in progress")
+	}
+	if _, busy := replRuns[m.uuid]; busy {
+		bkRuns.Unlock()
+		return 0, nil, badRequest("this VM is being copied to its standby node right now; try the backup again in a minute")
 	}
 	bkRuns.m[m.uuid] = m
 	bkRuns.Unlock()
@@ -935,6 +950,9 @@ func (s *Server) listBackups(uuidFilter string) []backupEntry {
 				}
 				mu.Lock()
 				for _, d := range doms {
+					if isReplicaOrStale(h, d) {
+						continue // the standby's inert copy and the old VM after a failover are not "the VM"
+					}
 					u := cluster.FormatUUID(d.UUID)
 					exists[u] = where{node: id, name: name, shutOff: !active[u]}
 				}
