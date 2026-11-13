@@ -106,3 +106,18 @@ func TestPlanInternalWithExternalBelow(t *testing.T) {
 		t.Errorf("%+v", p)
 	}
 }
+
+// Lab, libvirt 11.10: after a revert to the internal snapshot (so the VM no longer runs on the external one below
+// it) libvirt deletes the internal snapshot, and then the external one.
+func TestPlanMixedTreeAfterRevert(t *testing.T) {
+	l := []snapInfo{{Name: "i1", Kind: "internal"}, {Name: "i2", Kind: "internal", Parent: "i1", IsCurrent: true}, {Name: "e1", Kind: "external", Parent: "i2"}}
+	for _, sel := range [][]string{{"i2"}, {"e1"}, {"e1", "i2", "i1"}} {
+		if p := planSnapshotDelete(l, sel, false); len(p.Problems) != 0 {
+			t.Errorf("%v: %+v", sel, p)
+		}
+	}
+	l[1].IsCurrent, l[2].IsCurrent = false, true
+	if p := planSnapshotDelete(l, []string{"e1"}, false); len(p.Problems) != 1 || !strings.Contains(p.Problems[0].Reason, "Revert to the internal") {
+		t.Errorf("running on the external one: %+v", p)
+	}
+}

@@ -101,3 +101,22 @@ func TestDeletionStopped(t *testing.T) {
 		t.Error(got)
 	}
 }
+
+// After a revert to s2 the current snapshot s2 has the child s3 (lab, libvirt 11.10: "deletion of active external
+// snapshot that is not a leaf snapshot is not supported").
+func TestPlanSnapshotDeleteCurrentWithChild(t *testing.T) {
+	l := []snapInfo{
+		{Name: "s1", Kind: "external"},
+		{Name: "s2", Kind: "external", Parent: "s1", IsCurrent: true},
+		{Name: "s3", Kind: "external", Parent: "s2"},
+	}
+	if p := planSnapshotDelete(l, []string{"s2"}, false); !reflect.DeepEqual(problemNames(p), []string{"s2"}) || !strings.Contains(p.Problems[0].Reason, "current external snapshot") {
+		t.Errorf("current with a child: %+v", p)
+	}
+	if p := planSnapshotDelete(l, []string{"s2", "s3"}, false); len(p.Problems) != 0 || !reflect.DeepEqual(p.Order, []string{"s3", "s2"}) {
+		t.Errorf("child first: %+v", p)
+	}
+	if p := planSnapshotDelete(l, []string{"s1"}, false); len(p.Problems) != 0 {
+		t.Errorf("an ancestor of the current one can go: %+v", p)
+	}
+}

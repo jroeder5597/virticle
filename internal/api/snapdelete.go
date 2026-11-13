@@ -1,11 +1,16 @@
 package api
 
 import (
+	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"net/http"
 	"sort"
 	"strings"
 
+	"github.com/digitalocean/go-libvirt"
+
+	"virticle/internal/hostconn"
 	"virticle/internal/snapsched"
 )
 
@@ -19,7 +24,9 @@ import (
 //   - An external snapshot is merged into the disk chain (block commit). libvirt refuses it when the snapshot has
 //     several children ("deletion of external disk snapshot with multiple children snapshots not supported"), and
 //     when it has a child but is not on the chain leading to the current snapshot ("deletion of non-leaf external
-//     snapshot that is not in active chain is not supported"). A leaf can always go, so deleting a branch from its
+//     snapshot that is not in active chain is not supported"), or when it is the current snapshot and has a child
+//     ("deletion of active external snapshot that is not a leaf snapshot is not supported", seen after a revert to an
+//     older snapshot). A leaf can always go, so deleting a branch from its
 //     tip downwards works where deleting its root first does not.
 //   - On nodes that confine QEMU with AppArmor the merge itself is denied, so external snapshots cannot be deleted.
 
@@ -119,14 +126,16 @@ func planSnapshotDelete(list []snapInfo, names []string, apparmor bool) snapPlan
 			switch {
 			case len(kids) > 1:
 				reason = fmt.Sprintf("libvirt cannot delete an external snapshot that has several child snapshots (%d here). Delete those branches first, or select them as well.", len(kids))
+			case len(kids) >= 1 && current == n:
+				reason = "libvirt cannot delete the current external snapshot while a snapshot lies below it (this happens after a revert to an older snapshot). Select the snapshots below it as well, or revert to another snapshot first."
 			case len(kids) == 1 && !inActiveChain(n):
 				reason = "libvirt cannot delete an external snapshot that has a child snapshot unless it lies on the path to the current snapshot. Select the snapshots below it as well."
-			case parent[n] != "" && info[parent[n]].Kind == "internal":
-				reason = "libvirt cannot delete an external snapshot whose parent is an internal snapshot."
+			case parent[n] != "" && info[parent[n]].Kind == "internal" && inActiveChain(n):
+				reason = "libvirt cannot delete an external snapshot whose parent is an internal snapshot while the VM is running on it. Revert to the internal snapshot first (changes made since are lost)."
 			}
 		}
-		if reason == "" && si.Kind == "internal" && hasLiveExternalBelow(n, kids, children, removed, info) {
-			reason = "libvirt cannot delete an internal snapshot while an external snapshot lies below it."
+		if reason == "" && si.Kind == "internal" && info[current].Kind == "external" && hasLiveExternalBelow(n, kids, children, removed, info) {
+			reason = "libvirt cannot delete an internal snapshot while an external snapshot lies below it and the VM runs on that one. Revert to the internal snapshot first (changes made since are lost)."
 		}
 		if reason != "" {
 			plan.Problems = append(plan.Problems, snapProblem{Name: n, Reason: reason})
@@ -260,6 +269,12 @@ func (s *Server) deleteSnapshotsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	err = s.taskAsync(r, "snapshot delete", target, h.Name, func(progress func(float64)) error {
 		defer refreshPools(h)
+		files := map[string][]string{}
+		for _, si := range list {
+			if si.Kind == "external" {
+				files[si.Name] = si.Files
+			}
+		}
 		for i, name := range plan.Order {
 			v, err := h.DomainSnapshotLookupByName(dom, name, 0)
 			if err == nil {
@@ -268,6 +283,7 @@ func (s *Server) deleteSnapshotsHandler(w http.ResponseWriter, r *http.Request) 
 			if err != nil {
 				return deletionStopped(plan.Order, i, err)
 			}
+			removeLeftFiles(h, dom, files[name])
 			progress(float64(i+1) / float64(len(plan.Order)))
 		}
 		return nil
@@ -297,3 +313,73 @@ func deletionStopped(order []string, done int, cause error) error {
 }
 
 func nameList(ns []string) string { return strings.Join(ns, ", ") }
+
+// removeLeftFiles removes the files of a deleted external snapshot that libvirt left behind. Deleting an external
+// snapshot the VM no longer runs on (after a revert) drops only its record, so its overlay file stays in the pool
+// with nothing pointing at it. A file is kept when the VM's disks or a remaining snapshot use it, or have it in
+// their backing chain. Best effort: a failure leaves the file, which the Storage page still shows.
+func removeLeftFiles(h *hostconn.Host, dom libvirt.Domain, files []string) {
+	if len(files) == 0 {
+		return
+	}
+	ex, err := h.Exists(files...)
+	if err != nil {
+		return
+	}
+	var left []string
+	for _, f := range files {
+		if ex[f] && safePathRE.MatchString(f) {
+			left = append(left, f)
+		}
+	}
+	if len(left) == 0 {
+		return
+	}
+	var use []string
+	raw, err := h.DomainGetXMLDesc(dom, libvirt.DomainXMLSecure)
+	if err != nil {
+		return
+	}
+	var dx domainXML
+	if xml.Unmarshal([]byte(raw), &dx) != nil {
+		return
+	}
+	for _, d := range dx.Devices.Disks {
+		if d.Source.File != "" {
+			use = append(use, d.Source.File)
+		}
+	}
+	rest, err := snapshotList(h, dom)
+	if err != nil {
+		return
+	}
+	for _, si := range rest {
+		use = append(use, si.Files...)
+	}
+	keep := map[string]bool{}
+	for _, f := range use {
+		keep[f] = true
+		out, err := h.QemuInfo(f, true)
+		if err != nil {
+			if e, _ := h.Exists(f); e[f] {
+				return // cannot tell what depends on this file: remove nothing
+			}
+			continue
+		}
+		var chain []struct {
+			Filename string `json:"filename"`
+			Full     string `json:"full-backing-filename"`
+		}
+		if json.Unmarshal([]byte(out), &chain) != nil {
+			return
+		}
+		for _, c := range chain {
+			keep[c.Filename], keep[c.Full] = true, true
+		}
+	}
+	for _, f := range left {
+		if !keep[f] {
+			_ = h.Remove(f)
+		}
+	}
+}
