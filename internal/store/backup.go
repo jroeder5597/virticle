@@ -16,7 +16,15 @@ import (
 // migration is added: a database found at a lower version is copied first
 // (see backupBeforeMigration). Databases from before the version was recorded
 // read as 0.
-const SchemaVersion = 3
+//
+// History (one linear sequence; every migration is idempotent and runs on
+// every start, so the number only decides whether a copy is made first):
+//
+//	1  user roles and the auth tables
+//	2  node connection settings (privilege, migration address, host uuid)
+//	3  migration_limit column on nodes (migration network and automatic limit)
+//	4  notify_destinations table (alert notifications)
+const SchemaVersion = 4
 
 // keepBackups is how many pre-migration copies stay in the data directory.
 const keepBackups = 3
