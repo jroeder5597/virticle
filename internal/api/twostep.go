@@ -239,6 +239,7 @@ func (s *Server) getTwoStep(w http.ResponseWriter, r *http.Request) {
 		"required":     twoStepRequired(s.signIn().Require2FA, p.User),
 		"recoveryLeft": left,
 		"external":     p.User.Source == store.SourceOIDC,
+		"source":       p.User.Source,
 	})
 }
 

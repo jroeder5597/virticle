@@ -11,6 +11,7 @@ export default function Users() {
   const [loadError, setLoadError] = useState<string | undefined>();
   const [adding, setAdding] = useState(false);
   const [resetting, setResetting] = useState<User | undefined>();
+  const sources = { local: "Local", oidc: "Identity provider", ldap: "Directory" };
   const act = useAction();
   const confirm = useConfirm();
   const reload = useCallback(() => get<User[]>("/users").then(setUsers, (e) => setLoadError(String(e.message ?? e))), []);
@@ -35,7 +36,9 @@ export default function Users() {
         <thead>
           <tr>
             <th>User</th>
+            <th>Source</th>
             <th>Role</th>
+            <th>Two-step</th>
             <th>State</th>
             <th>Created</th>
             <th />
@@ -45,18 +48,31 @@ export default function Users() {
           {(users ?? []).map((u) => (
             <tr key={u.id}>
               <td>{u.username}</td>
+              <td>{sources[u.source] ?? u.source}</td>
               <td>
-                <Select auto label={`Role of ${u.username}`} value={u.role} disabled={act.busy} onChange={(r) => change(u, { role: r })} options={roles.map((r) => ({ value: r, label: r }))} />
+                {u.source === "local" ? (
+                  <Select auto label={`Role of ${u.username}`} value={u.role} disabled={act.busy} onChange={(r) => change(u, { role: r })} options={roles.map((r) => ({ value: r, label: r }))} />
+                ) : (
+                  <span title="Set by the user's groups at each sign-in">{u.role}</span>
+                )}
               </td>
+              <td>{u.source === "oidc" ? <span className="muted">Provider</span> : u.twoStep ? <span className="badge s-running">On</span> : <span className="badge s-shutoff">Off</span>}</td>
               <td>{u.disabled ? <span className="badge s-shutoff">Disabled</span> : <span className="badge s-running">Active</span>}</td>
               <td>{when(u.created)}</td>
               <td className="actions">
                 <button disabled={act.busy} onClick={() => change(u, { disabled: !u.disabled })}>
                   {u.disabled ? "Enable" : "Disable"}
                 </button>
-                <button disabled={act.busy} onClick={() => setResetting(u)}>
-                  Reset password
-                </button>
+                {u.source === "local" && (
+                  <button disabled={act.busy} onClick={() => setResetting(u)}>
+                    Reset password
+                  </button>
+                )}
+                {u.twoStep && (
+                  <button disabled={act.busy} onClick={async () => (await confirm.ask({ title: `Reset two-step sign-in of ${u.username}`, message: `Two-step sign-in is turned off for ${u.username}, who is signed out everywhere. Use this when the phone is lost. They can set it up again after signing in.`, confirm: "Reset two-step sign-in" })) && act.run(() => post(`/users/${u.id}/reset-2fa`)).then(reload)}>
+                    Reset two-step sign-in
+                  </button>
+                )}
                 <button className="danger" disabled={act.busy} onClick={async () => (await confirm.ask({ title: `Delete user ${u.username}`, message: `The user ${u.username} is deleted. Their API tokens stop working.`, confirm: "Delete user" })) && act.run(() => del(`/users/${u.id}`)).then(reload)}>
                   Delete
                 </button>

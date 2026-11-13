@@ -388,3 +388,6 @@ func (s *Server) auditLog(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, map[string]any{"entries": e, "next": next})
 }
+
+// ValidatePassword applies the password rules; the shell commands use it too.
+func ValidatePassword(p string) error { return checkPassword(p) }

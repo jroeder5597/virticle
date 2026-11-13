@@ -73,6 +73,7 @@ export default function Audit() {
               <td className="mono">{e.ip}</td>
               <td className="mono">
                 {e.method} {e.path}
+                {e.detail && <div className="muted">{e.detail}</div>}
               </td>
               <td>
                 <span className={"badge " + (e.status >= 400 ? "s-crashed" : "s-running")}>{e.status}</span>

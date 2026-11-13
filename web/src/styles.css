@@ -112,8 +112,8 @@ button, .button, select, input, textarea { font: inherit; color: inherit; }
 button, .button { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 12px; cursor: pointer; white-space: nowrap; display: inline-block; font-weight: 500; transition: background-color 0.12s, color 0.12s, border-color 0.12s; }
 button:hover:not(:disabled), .button:hover { background: var(--hover); text-decoration: none; }
 button:disabled { color: var(--muted); opacity: 0.55; cursor: default; }
-button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
-button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(0.92); }
+button.primary, .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+button.primary:hover:not(:disabled), .button.primary:hover { background: var(--accent); filter: brightness(0.92); }
 button.danger { color: var(--text); border-color: var(--danger); }
 button.ghost { border: none; background: none; padding: 4px 8px; }
 button.ghost:hover:not(:disabled) { background: var(--hover); }
@@ -222,7 +222,7 @@ footer { display: flex; justify-content: flex-end; align-items: center; gap: 8px
 /* migration pre-flight list */
 
 /* Roles: the server enforces them; this only hides controls a viewer cannot use. */
-main.viewer button:not(.link):not(.ghost):not(.tabs button):not([aria-haspopup="menu"]) { display: none; }
+main.viewer button:not(.link):not(.ghost):not(.tabs button):not(.keep button):not([aria-haspopup="menu"]) { display: none; }
 .secretbox { display: flex; gap: 10px; align-items: flex-start; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; margin: 10px 0; }
 .secretbox code { word-break: break-all; flex: 1; }
 .row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
