@@ -5,11 +5,12 @@ package stats
 
 import "time"
 
-// Interval is the sampling period; Keep is how many samples are retained
-// (10 minutes).
+// Interval is the sampling period (it is also the finest step of the stored
+// history, see internal/metrics); Keep is how many samples the live charts
+// retain (10 minutes).
 const (
-	Interval = 5 * time.Second
-	Keep     = 120
+	Interval = 15 * time.Second
+	Keep     = 40
 	// MaxGap is the longest time between two samples that still yields
 	// rates; after a longer pause (connection lost, node busy) the counters
 	// are treated as a fresh start.

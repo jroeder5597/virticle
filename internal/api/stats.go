@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,18 +14,18 @@ import (
 
 	"virticle/internal/cluster"
 	"virticle/internal/hostconn"
+	"virticle/internal/metrics"
 	"virticle/internal/stats"
 )
 
-// Live statistics. Each online node gets one sampler goroutine that wakes
-// every stats.Interval and costs three libvirt RPCs: ConnectGetAllDomainStats
-// (every domain in one call), NodeGetCPUStats and NodeGetMemoryStats. It runs
-// whether or not a browser is watching: three small RPCs per 5 s are cheaper
-// than the complexity of start/stop-on-demand, and the charts then have ten
-// minutes of history the moment a page opens. The history is a ring buffer in
-// memory; nothing is persisted, so a restart of this server starts empty.
-
-const rpcsPerTick = 3
+// Statistics collector. Each online node gets one sampler goroutine that
+// wakes every stats.Interval and costs one libvirt call (ConnectGetAllDomainStats,
+// every domain at once) and one small command on the node (NodeReadCmd: CPU,
+// load, memory, network cards, block devices, GPUs; storage pools every
+// fourth round). It runs whether or not a browser is watching. The samples
+// feed three consumers: a ring buffer in memory for the live charts, the
+// metrics file for the history (internal/metrics), and the latest raw counters
+// for the Prometheus endpoint, so one collector serves all of them.
 
 const domainStatMask = uint32(libvirt.DomainStatsState | libvirt.DomainStatsCPUTotal | libvirt.DomainStatsBalloon |
 	libvirt.DomainStatsVCPU | libvirt.DomainStatsInterface | libvirt.DomainStatsBlock)
@@ -40,20 +41,23 @@ type vmSeries struct {
 }
 
 type nodeSeries struct {
-	mu         sync.Mutex
-	hostPrev   *stats.HostRaw
-	host       stats.Ring[stats.HostPoint]
-	vms        map[string]*vmSeries // by uuid
-	total      int                  // domains on the node
-	running    int
-	lastTick   time.Time
-	lastErr    string
-	cpuN, memN int32 // parameter counts libvirt wants for the host calls
-	tookMS     int64
-	cpus       uint16
+	mu       sync.Mutex
+	hostPrev *stats.HostRaw
+	host     stats.Ring[stats.HostPoint]
+	vms      map[string]*vmSeries // by uuid
+	total    int                  // domains on the node
+	running  int
+	lastTick time.Time
+	lastErr  string
+	trk      *metrics.NodeTracker
+	tick     int
+	pools    []metrics.Pool
+	tookMS   int64
+	cpus     uint16
 }
 
 type statsHub struct {
+	db      *metrics.DB // the history file; nil in tests without a data directory
 	mu      sync.Mutex
 	nodes   map[int64]*nodeSeries
 	started map[int64]bool
@@ -65,7 +69,17 @@ var (
 )
 
 func (s *Server) startStatsSampler() {
-	hubOnce.Do(func() { go s.superviseSamplers() })
+	hubOnce.Do(func() {
+		if s.DataDir != "" {
+			if db, err := metrics.Open(filepath.Join(s.DataDir, "metrics.db")); err != nil {
+				log.Printf("metrics: history is off: %v", err)
+			} else {
+				hub.db = db
+				go db.Run(make(chan struct{}))
+			}
+		}
+		go s.superviseSamplers()
+	})
 }
 
 // superviseSamplers starts a sampler for every node that is online and has
@@ -78,7 +92,7 @@ func (s *Server) superviseSamplers() {
 			if !run && n.State == "online" {
 				hub.started[n.ID] = true
 				if hub.nodes[n.ID] == nil {
-					hub.nodes[n.ID] = &nodeSeries{vms: map[string]*vmSeries{}}
+					hub.nodes[n.ID] = &nodeSeries{vms: map[string]*vmSeries{}, trk: metrics.NewNodeTracker(n.ID, nodeLabel(n))}
 				}
 				go s.sampleNode(n.ID)
 			}
@@ -116,7 +130,12 @@ func (s *Server) sampleNode(id int64) {
 				ns.mu.Unlock()
 			}
 		}
-		ns.sample(h, start)
+		batch := ns.sample(h, start)
+		if hub.db != nil {
+			if err := hub.db.Insert(batch); err != nil {
+				log.Printf("metrics: writing: %v", err)
+			}
+		}
 		ns.mu.Lock()
 		ns.tookMS = time.Since(start).Milliseconds()
 		ns.mu.Unlock()
@@ -201,59 +220,80 @@ func vmRawFromParams(at time.Time, params []libvirt.TypedParam) (raw stats.VMRaw
 	return raw, state
 }
 
-func (ns *nodeSeries) sample(h *hostconn.Host, at time.Time) {
-	recs, err := h.ConnectGetAllDomainStats(nil, domainStatMask, 0)
-	// libvirt insists on the exact parameter count (4 each on Linux). Ask
-	// once with 0 to learn it, then reuse it so a tick stays at 3 RPCs.
-	cpu, cpuErr := ns.nodeCPU(h)
-	mem, memErr := ns.nodeMem(h)
+// readPools reads the size figures of the active storage pools.
+func readPools(h *hostconn.Host) []metrics.Pool {
+	pools, _, err := h.ConnectListAllStoragePools(1, 0)
+	if err != nil {
+		return nil
+	}
+	out := []metrics.Pool{}
+	for _, p := range pools {
+		if _, capacity, alloc, avail, err := h.StoragePoolGetInfo(p); err == nil {
+			out = append(out, metrics.Pool{Name: p.Name, Capacity: capacity, Allocation: alloc, Avail: avail})
+		}
+	}
+	return out
+}
 
+// sample takes one round of statistics and returns what the history should
+// store for it.
+func (ns *nodeSeries) sample(h *hostconn.Host, at time.Time) metrics.Batch {
+	recs, err := h.ConnectGetAllDomainStats(nil, domainStatMask, 0)
+	out, cmdErr := h.Run("sh -c " + hostconn.Quote(metrics.NodeReadCmd))
+	var nr *metrics.NodeRaw
+	if cmdErr == nil {
+		if r := metrics.ParseNodeRead(at, out); r.HasCPU || r.HasMem {
+			nr = &r
+		} else {
+			cmdErr = fmt.Errorf("the node gave no CPU or memory figures")
+		}
+	}
+	// Storage pools change slowly: ask once a minute and repeat the figure.
 	ns.mu.Lock()
+	if ns.tick%4 == 0 {
+		ns.mu.Unlock()
+		pools := readPools(h)
+		ns.mu.Lock()
+		ns.pools = pools
+	}
+	ns.tick++
+	if nr != nil {
+		nr.Pools = ns.pools
+	}
 	defer ns.mu.Unlock()
-	if msg := fmt.Sprint(cpuErr, memErr, err); msg != ns.lastErr {
+	if msg := fmt.Sprint(cmdErr, err); msg != ns.lastErr {
 		// Log a failure once, not every tick.
 		ns.lastErr = msg
-		if cpuErr != nil || memErr != nil || err != nil {
-			log.Printf("stats sampler: cpu: %v; memory: %v; domains: %v", cpuErr, memErr, err)
+		if cmdErr != nil || err != nil {
+			log.Printf("stats sampler: node read: %v; domains: %v", cmdErr, err)
 		}
 	}
 	ns.lastTick = at
 
 	hr := stats.HostRaw{At: at}
-	if cpuErr == nil {
-		var total, idle, iowait uint64
-		for _, f := range cpu {
-			switch f.Field {
-			case "idle":
-				idle = f.Value
-			case "iowait":
-				iowait = f.Value
+	if nr != nil {
+		if nr.HasCPU {
+			var total uint64
+			for _, j := range nr.CPU {
+				total += j
 			}
-			total += f.Value
+			// Jiffies of 10 ms, as nanoseconds; busy excludes idle and iowait.
+			hr.HasCPU, hr.Total, hr.Busy = total > 0, total*1e7, (total-nr.CPU[3]-nr.CPU[4])*1e7
 		}
-		hr.HasCPU, hr.Total, hr.Busy = total > 0, total, total-idle-iowait
-	}
-	if memErr == nil {
-		hr.HasMem = true
-		for _, f := range mem {
-			switch f.Field {
-			case "total":
-				hr.MemTotalKiB = f.Value
-			case "free":
-				hr.MemFreeKiB = f.Value
-			case "buffers":
-				hr.MemBuffersKiB = f.Value
-			case "cached":
-				hr.MemCachedKiB = f.Value
-			}
+		if nr.HasMem {
+			hr.HasMem = true
+			hr.MemTotalKiB, hr.MemFreeKiB, hr.MemBuffersKiB, hr.MemCachedKiB = nr.MemTotal, nr.MemFree, nr.MemBuffers, nr.MemCached
 		}
 	}
 	ns.host.Push(stats.NewHostPoint(ns.hostPrev, hr))
 	ns.hostPrev = &hr
 
 	if err != nil {
-		return // keep the old VM series; the next tick tries again
+		// Keep the old VM series; the next tick tries again. The history
+		// gets no VM rows for this round, which shows as a gap.
+		return ns.trk.Collect(at, nil, false, nr)
 	}
+	var doms []metrics.Dom
 	seen := map[string]bool{}
 	ns.total, ns.running = len(recs), 0
 	for _, rec := range recs {
@@ -265,6 +305,7 @@ func (ns *nodeSeries) sample(h *hostconn.Host, at time.Time) {
 			ns.vms[uuid] = v
 		}
 		v.name, v.state = rec.Dom.Name, stateName(uint8(state))
+		doms = append(doms, metrics.Dom{UUID: uuid, Name: v.name, State: v.state, Raw: metrics.ParseDomain(at, rec.Params)})
 		seen[uuid] = true
 		if v.state == "running" || v.state == "paused" {
 			ns.running++
@@ -292,6 +333,7 @@ func (ns *nodeSeries) sample(h *hostconn.Host, at time.Time) {
 			delete(ns.vms, uuid)
 		}
 	}
+	return ns.trk.Collect(at, doms, true, nr)
 }
 
 // --- API ---
@@ -329,7 +371,7 @@ func (s *Server) allStats(w http.ResponseWriter, r *http.Request) {
 			nl.Host = &p
 		}
 		out.Nodes[key] = nl
-		out.Sampler[key] = map[string]any{"rpcsPerTick": rpcsPerTick, "lastTickMs": ns.tookMS}
+		out.Sampler[key] = map[string]any{"lastTickMs": ns.tookMS}
 		for uuid, v := range ns.vms {
 			if v.state != "running" {
 				continue
@@ -389,37 +431,4 @@ func (s *Server) vmStats(w http.ResponseWriter, r *http.Request) {
 		ns.mu.Unlock()
 	}
 	writeJSON(w, map[string]any{"intervalSec": int(stats.Interval / time.Second), "points": pts})
-}
-
-// nodeCPU reads the host CPU counters (kernel, user, idle, iowait), all
-// cores together.
-func (ns *nodeSeries) nodeCPU(h *hostconn.Host) ([]libvirt.NodeGetCPUStats, error) {
-	if ns.cpuN == 0 {
-		_, n, err := h.NodeGetCPUStats(-1, 0, 0)
-		if err != nil {
-			return nil, err
-		}
-		ns.cpuN = n
-	}
-	out, _, err := h.NodeGetCPUStats(-1, ns.cpuN, 0)
-	if err != nil {
-		ns.cpuN = 0
-	}
-	return out, err
-}
-
-// nodeMem reads the host memory counters (total, free, buffers, cached).
-func (ns *nodeSeries) nodeMem(h *hostconn.Host) ([]libvirt.NodeGetMemoryStats, error) {
-	if ns.memN == 0 {
-		_, n, err := h.NodeGetMemoryStats(0, -1, 0)
-		if err != nil {
-			return nil, err
-		}
-		ns.memN = n
-	}
-	out, _, err := h.NodeGetMemoryStats(ns.memN, -1, 0)
-	if err != nil {
-		ns.memN = 0
-	}
-	return out, err
 }
