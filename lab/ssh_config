@@ -31,3 +31,43 @@ Host n4
   LogLevel ERROR
   SetEnv LC_ALL=C
   ProxyCommand sshpass -e ssh -W %h:%p ${VSPIKE_JUMP}
+Host n5
+  HostName 192.168.150.15
+  User root
+  IdentityFile lab/keys/controller
+  IdentitiesOnly yes
+  UserKnownHostsFile lab/keys/known_hosts
+  StrictHostKeyChecking accept-new
+  LogLevel ERROR
+  SetEnv LC_ALL=C
+  ProxyCommand sshpass -e ssh -W %h:%p ${VSPIKE_JUMP}
+Host n6
+  HostName 192.168.150.16
+  User root
+  IdentityFile lab/keys/controller
+  IdentitiesOnly yes
+  UserKnownHostsFile lab/keys/known_hosts
+  StrictHostKeyChecking accept-new
+  LogLevel ERROR
+  SetEnv LC_ALL=C
+  ProxyCommand sshpass -e ssh -W %h:%p ${VSPIKE_JUMP}
+Host n7
+  HostName 192.168.150.17
+  User root
+  IdentityFile lab/keys/controller
+  IdentitiesOnly yes
+  UserKnownHostsFile lab/keys/known_hosts
+  StrictHostKeyChecking accept-new
+  LogLevel ERROR
+  SetEnv LC_ALL=C
+  ProxyCommand sshpass -e ssh -W %h:%p ${VSPIKE_JUMP}
+Host n8
+  HostName 192.168.150.18
+  User root
+  IdentityFile lab/keys/controller
+  IdentitiesOnly yes
+  UserKnownHostsFile lab/keys/known_hosts
+  StrictHostKeyChecking accept-new
+  LogLevel ERROR
+  SetEnv LC_ALL=C
+  ProxyCommand sshpass -e ssh -W %h:%p ${VSPIKE_JUMP}
