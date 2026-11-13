@@ -52,6 +52,28 @@ test.describe.serial("snapshots", () => {
     expect(list.find((s) => s.name === "second").parent).toBe("first");
   });
 
+  test("the dialog offers only what the earlier snapshots allow, with the reason", async ({ page, api }) => {
+    // Both snapshots saved the running state. On a node that confines QEMU with AppArmor (or whose earlier
+    // snapshots are internal) a snapshot without the state is impossible: the checkbox stays checked and disabled,
+    // with the server's sentence under it. Elsewhere the choice is free.
+    const o = await api.get(`/nodes/${vm.node}/vms/${vm.uuid}/snapshot-options`);
+    expect(o.withState.allowed).toBe(true);
+    await openVM(page, vm, "snapshots");
+    await page.getByRole("button", { name: "Take snapshot" }).first().click();
+    const dlg = dialog(page, "Take snapshot");
+    const box = dlg.getByLabel(/Save the running state too/);
+    if (o.diskOnly.allowed) {
+      await expect(box).toBeEnabled();
+    } else {
+      await expect(box).toBeChecked();
+      await expect(box).toBeDisabled();
+      await expect(dlg.getByText(o.diskOnly.reason)).toBeVisible();
+      // the server refuses the same request with the same sentence
+      expect(await api.call("POST", `/nodes/${vm.node}/vms/${vm.uuid}/snapshots`, { name: "nostate", memory: false }, [400])).toMatchObject({ error: o.diskOnly.reason });
+    }
+    await page.keyboard.press("Escape");
+  });
+
   test("revert to the first snapshot", async ({ page, api }) => {
     await openVM(page, vm, "snapshots");
     await node(page, "first").getByRole("button", { name: "Revert to first" }).click();

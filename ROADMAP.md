@@ -93,14 +93,14 @@ Status: `[x]` done and verified against the lab, `[~]` in progress, `[ ]` open.
   clone gets an `unattend.xml` (account, password, hostname) on an attached
   ISO so first boot is unattended.
 
-**Snapshot type.** The web UI has no type choice; the API still accepts `mode`. For a live snapshot with memory, "automatic" picks
-external (guest keeps running, survives live migration), verified on Rocky 10
-with SELinux (libvirt 11.10): create, revert and delete of a chain all work.
-It falls back to internal (guest pauses, blocks live migration, offline
-migration carries it) on nodes whose QEMU is confined by AppArmor, where
-libvirt cannot delete external snapshots ("block-commit: Permission denied",
-Debian 13), and when the VM's current snapshot is already internal. Shut-off
-VMs get internal snapshots; live disk-only snapshots are always external.
+**Snapshot type.** The web UI has no type choice; the server decides in one place (`chooseSnapshotKind`, internal/api/snapkind.go) and the Take snapshot
+dialog only shows which state of "Save the running state too" is possible. A VM keeps one kind until all its snapshots are deleted. Without
+snapshots: a running VM gets external snapshots (guest keeps running, survives live migration; verified on Rocky 10 with SELinux, libvirt 11.10:
+create, revert and delete of a chain), a shut-off VM an internal one. Nodes whose QEMU is confined by AppArmor (Debian 13) only get internal
+snapshots: libvirt's per-VM profile denies writes to a backing file whenever it generates the profile from the domain definition (`deny "<file>" w`
+for read-only backing files), no include or local override can beat a deny rule, and so block-commit fails with "Permission denied" for a shut-off
+VM, after a revert or a restart. Internal snapshots of a running VM always save its state; with a raw UEFI variable store none can be taken
+while it runs.
 
 **App metadata.** One root element `<virticle:meta>` in namespace
 `https://virticle.invalid/ns/1` holds one child per feature

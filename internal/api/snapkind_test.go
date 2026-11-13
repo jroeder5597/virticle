@@ -28,7 +28,7 @@ func TestChooseSnapshotKind(t *testing.T) {
 		// The VM already has internal snapshots.
 		{"has internal, running, state saved: internal", snapInputs{Active: true, WithState: true, HasInt: true}, kindInternal, ""},
 		{"has internal, running, disk only: refused", snapInputs{Active: true, HasInt: true}, "", "running state saved"},
-		{"has internal, running, raw UEFI store, state saved: refused", snapInputs{Active: true, WithState: true, HasInt: true, RawNVRAM: true}, "", "Shut the VM down"},
+		{"has internal, running, raw UEFI store, state saved: refused", snapInputs{Active: true, WithState: true, HasInt: true, RawNVRAM: true}, "", "Delete the earlier"},
 		{"has internal, shut off: internal", snapInputs{HasInt: true}, kindInternal, ""},
 		// The VM already has external snapshots.
 		{"has external, running, state saved: external", snapInputs{Active: true, WithState: true, HasExt: true}, kindExternal, ""},
@@ -81,16 +81,20 @@ func TestSnapshotOptions(t *testing.T) {
 }
 
 func TestMixedTreeNote(t *testing.T) {
-	if n := mixedTreeNote([]snapInfo{{Name: "a", Kind: "internal"}, {Name: "b", Kind: "internal", Parent: "a"}}); n != "" {
+	if n := mixedTreeNote([]snapInfo{{Name: "a", Kind: "internal"}, {Name: "b", Kind: "internal", Parent: "a"}}, false); n != "" {
 		t.Error(n)
 	}
 	// External child of an internal parent: neither can be deleted.
-	n := mixedTreeNote([]snapInfo{{Name: "i1", Kind: "internal"}, {Name: "e1", Kind: "external", Parent: "i1"}})
+	n := mixedTreeNote([]snapInfo{{Name: "i1", Kind: "internal"}, {Name: "e1", Kind: "external", Parent: "i1"}}, false)
 	if !strings.Contains(n, "i1, e1") || !strings.Contains(n, "Reverting to i1") {
 		t.Error(n)
 	}
+	// On an AppArmor node only deleting the VM is offered.
+	if n := mixedTreeNote([]snapInfo{{Name: "i1", Kind: "internal"}, {Name: "e1", Kind: "external", Parent: "i1"}}, true); strings.Contains(n, "Reverting") || !strings.Contains(n, "Delete the VM") {
+		t.Error(n)
+	}
 	// Internal child of an external parent is fine when deleted from the tip down.
-	if n := mixedTreeNote([]snapInfo{{Name: "e1", Kind: "external"}, {Name: "i1", Kind: "internal", Parent: "e1"}}); n != "" {
+	if n := mixedTreeNote([]snapInfo{{Name: "e1", Kind: "external"}, {Name: "i1", Kind: "internal", Parent: "e1"}}, false); n != "" {
 		t.Error(n)
 	}
 }

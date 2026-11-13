@@ -48,7 +48,7 @@ const (
 	reasonKeepState      = "This VM's earlier snapshots only work with the running state saved. Delete them to choose again."
 	reasonAppArmorState  = "This node can only delete snapshots that save the running state."
 	reasonStuckExternal  = "This node cannot delete this VM's earlier snapshots, so it does not take new ones."
-	reasonRunningFirmw   = "A running snapshot of this VM cannot sit next to its earlier ones. Shut the VM down, or delete the earlier snapshots."
+	reasonRunningFirmw   = "A running snapshot of this VM cannot sit next to its earlier ones. Delete the earlier snapshots."
 	reasonFirmware       = "This VM's UEFI settings are stored in a form that does not allow a snapshot of the running VM."
 )
 
@@ -146,7 +146,7 @@ func treeKinds(list []snapInfo) (hasInt, hasExt bool) {
 // internal one cannot be deleted, an internal snapshot with an external one below it cannot be deleted, deleting
 // from the tips down works where nothing is stuck, and reverting to the internal snapshot first (which discards the
 // changes since) makes the rest deletable.
-func mixedTreeNote(list []snapInfo) string {
+func mixedTreeNote(list []snapInfo, apparmor bool) string {
 	if h, e := treeKinds(list); !h || !e {
 		return ""
 	}
@@ -174,7 +174,7 @@ func mixedTreeNote(list []snapInfo) string {
 		}
 	}
 	line := "libvirt cannot delete " + strings.Join(names, ", ") + " one by one because this VM's snapshots are of mixed kinds."
-	if revertTo != "" {
+	if revertTo != "" && !apparmor { // on an AppArmor node the external ones stay undeletable
 		line += " Reverting to " + revertTo + " first (changes made since are lost) lets you delete them, or delete the VM."
 	} else {
 		line += " Delete the VM to remove them."
@@ -199,6 +199,6 @@ func (s *Server) snapshotOptionsHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	o := snapshotOptions(in)
-	o.Mixed = mixedTreeNote(list)
+	o.Mixed = mixedTreeNote(list, in.AppArmor)
 	writeJSON(w, o)
 }
