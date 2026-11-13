@@ -158,3 +158,5 @@ is published.
 ## Licence
 
 [Apache License 2.0](LICENSE). Third-party notices are in [NOTICE](NOTICE).
+
+Created with the assistance of LLM coding tools.
