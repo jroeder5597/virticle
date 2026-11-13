@@ -1,0 +1,15 @@
+/* Rolling node updates */
+.rollplan td, .rollplan th { vertical-align: top; }
+.rollplan .checklist { margin: 2px 0; }
+.rollrefuse { margin: 10px 0; padding: 8px 12px; border: 1px solid var(--danger); border-radius: var(--radius); }
+.rollchoice { display: grid; gap: 6px; margin: 14px 0 4px; }
+.rollhead { margin: 0 0 8px; }
+.rollstop { margin: 10px 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); }
+.rollstop p { margin: 6px 0; }
+.rollnodes { display: grid; gap: 10px; margin-top: 12px; max-height: 46vh; overflow: auto; }
+.rollnode h3 { margin: 0 0 4px; font-size: 14px; }
+.rollnode p { margin: 2px 0; }
+.rollsteps { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.rollsteps li { display: flex; gap: 10px; align-items: flex-start; overflow-wrap: anywhere; }
+.rollbanner { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+.rollbanner .statusline { margin: 0; }

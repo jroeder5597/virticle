@@ -80,6 +80,7 @@ func (s *Server) Handler() http.Handler {
 	s.startSnapshotScheduler()
 	s.notifier() // moves the webhook of earlier versions before anything reads the destinations
 	s.startAlerts()
+	s.resumeRolling()
 	s.startMigAuto()
 	s.startCPUBaseline()
 	s.routes = nil
@@ -151,6 +152,13 @@ func (s *Server) Handler() http.Handler {
 	auth("POST /api/nodes/{node}/evacuate/cancel", s.evacuateCancel)
 	auth("PUT /api/nodes/{node}/maintenance", s.putMaintenance)
 	auth("GET /api/nodes/{node}/updates", s.nodeUpdates)
+	auth("POST /api/rolling-update/plan", s.rollingPlan)
+	auth("POST /api/rolling-update", s.rollingStart)
+	auth("GET /api/rolling-update", s.rollingStatus)
+	auth("POST /api/rolling-update/cancel", s.rollingCancel)
+	auth("POST /api/rolling-update/continue", s.rollingResume(false))
+	auth("POST /api/rolling-update/restore", s.rollingResume(true))
+	auth("POST /api/rolling-update/dismiss", s.rollingDismiss)
 	auth("GET /api/nodes/{node}/interfaces", s.nodeInterfaces)
 	auth("GET /api/nodes/{node}/hostnet", s.hostnetGet)
 	auth("POST /api/nodes/{node}/hostnet/plan", s.hostnetPlan)

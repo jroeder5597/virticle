@@ -84,6 +84,35 @@ What you can do with a node:
 | Find out why a node is Offline | **Settings > Test connection**. It runs each connection step and shows which one fails. **Settings** warns when the node is not prepared. |
 | Keep new migrations away from a node, or empty it | **Maintenance**. The node is never chosen as a migration target. When the node has VMs, tick **Move its virtual machines to other nodes** to live-migrate them away. **Evacuate** appears while a node is in maintenance. |
 
+### Update all nodes (rolling update)
+
+**Datacenter > Nodes > Update all nodes** updates every node, one at a time, and is safe to walk away from.
+**Update this node** on a node's **Updates** tab does the same for that node alone.
+
+1. Press the button. The plan is shown first and nothing has started: per node how many updates, whether it needs a
+   restart (a new kernel, glibc, systemd, firmware, libvirt or QEMU), which virtual machines move where, and which cannot
+   move and why (a disk on a path only that node has, a passed-through device, no target with the same networks, not
+   enough free memory on the others; every other node keeps 5 percent or at least 512 MiB free).
+2. If some virtual machines cannot move, choose once: **shut them down for the update and start them again afterwards**, or
+   **leave out the nodes they run on**. This is the only choice.
+3. **Start update.** For each node: maintenance on, running VMs live-migrated away, updates installed, restart if needed,
+   wait until libvirt, the node command, pools, networks and shared storage are healthy, maintenance off, VMs moved
+   back to where they were, then the next node. The node of the controller itself, if there is one, is last; while it restarts the
+   web interface is away for a few minutes and the update carries on by itself when it is back.
+4. The first failure stops the run. The page says in words what state things are in (which node is in maintenance, which VMs
+   run elsewhere, which are shut down) and offers **Continue** (run the failed step again and go on), **Put things back**
+   (end maintenance, start shut-down VMs, move VMs back, end the run) or **Dismiss**. **Stop after this step** does the same
+   without a failure. A failed or stopped run raises an alert; a finished run sends a notification.
+
+What it will not do: start while any node is offline, while a selected node is in maintenance or has no node command, while
+a migration or evacuation runs, or when a node's updates cannot be read (a broken repository stops it before anything changes).
+It installs every available update with the system's own tool (dnf, or apt without questions, keeping changed
+configuration files). Packages the tool holds back are reported, not forced. There are no scheduled updates.
+After the update the node is checked with the checks of prepare (libvirt services, start order of the storage daemon, the SELinux
+setting for NFS, swtpm file owner, the migration firewall service); what the update undid is put right, anything else stops the run.
+A restart that does not come back within 12 minutes stops the run; look at the machine, then press **Continue**.
+A VM that does not shut down by itself within 3 minutes also stops it (it is never powered off by force).
+
 ## Virtual machines
 
 ### Create

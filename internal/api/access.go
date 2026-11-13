@@ -79,6 +79,13 @@ var routeLevels = map[string]string{
 	"POST /api/nodes/{node}/evacuate/cancel": admin,
 	"PUT /api/nodes/{node}/maintenance":      admin,
 	"GET /api/nodes/{node}/updates":          viewer,
+	"POST /api/rolling-update/plan":          admin,
+	"POST /api/rolling-update":               admin,
+	"GET /api/rolling-update":                viewer,
+	"POST /api/rolling-update/cancel":        admin,
+	"POST /api/rolling-update/continue":      admin,
+	"POST /api/rolling-update/restore":       admin,
+	"POST /api/rolling-update/dismiss":       admin,
 	"GET /api/nodes/{node}/interfaces":       viewer,
 
 	// Host bridges change the network the controller reaches the node over: admin, even for reading the plan.

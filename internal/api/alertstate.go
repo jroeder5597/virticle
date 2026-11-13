@@ -18,7 +18,7 @@ import (
 
 type Alert struct {
 	ID       string `json:"id"`
-	Kind     string `json:"kind"`     // node-down | pool-usage | host-memory | failed-job | vm-state | tls-expiry | scheduler-conflict | net-link | net-bond | net-drift | storage-unavailable
+	Kind     string `json:"kind"`     // node-down | pool-usage | host-memory | failed-job | vm-state | tls-expiry | scheduler-conflict | net-link | net-bond | net-drift | storage-unavailable | rolling-update
 	Severity string `json:"severity"` // warning | critical
 	Title    string `json:"title"`
 	Message  string `json:"message"`
@@ -97,6 +97,7 @@ type alertInput struct {
 	VMs        []alertVM
 	Jobs       []store.Task    // tasks of the scheduler in the window
 	Conflicts  []schedConflict // nodes where another controller takes scheduled snapshots
+	Rolling    *Alert          // a rolling update that stopped and was neither continued, put back nor dismissed
 	CertExpiry time.Time       // zero when the UI does not use a certificate of its own
 	// Debounced are alerts about network state (card links, bonds, drift between nodes) that flap easily: one is
 	// raised only after it was seen on two consecutive passes, and cleared only after it was missing on two.
@@ -184,6 +185,9 @@ func (t *alertTracker) step(in alertInput, now time.Time) (raised, cleared, all 
 			Title: "Another controller is running schedules on node " + c.NodeName, Link: "/nodes",
 			Message: fmt.Sprintf("Scheduled snapshots of %s on %s were recently taken by controller %s, not by this one. Both controllers run every schedule on these nodes; start one of them with -no-scheduler.",
 				strings.Join(c.VMs, ", "), c.NodeName, c.Other)})
+	}
+	if in.Rolling != nil {
+		add(*in.Rolling)
 	}
 	// A job is in trouble when its newest run failed; a later success clears it.
 	latest := map[string]store.Task{}

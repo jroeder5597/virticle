@@ -124,6 +124,7 @@ func (s *Server) gatherAlertInput(now time.Time) alertInput {
 		return !linksRead[a.Node]
 	}
 	in.Conflicts = s.currentConflicts()
+	in.Rolling = s.rollingAlert()
 	if jobs, err := s.Store.TasksBy("scheduler", now.Add(-24*time.Hour).Unix()); err == nil {
 		in.Jobs = jobs
 	} else {

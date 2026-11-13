@@ -33,6 +33,8 @@ type evacTarget struct {
 	FreeKiB     uint64 `json:"freeKiB"`
 	Online      bool   `json:"online"`
 	Maintenance bool   `json:"maintenance"`
+	// Rank orders the targets before memory does: a higher rank is tried first. Zero for all in a plain evacuation.
+	Rank int `json:"-"`
 }
 
 func (t evacTarget) usable() bool { return t.Online && !t.Maintenance }
@@ -76,7 +78,12 @@ func planEvacuation(vms []evacVM, targets []evacTarget, check evacCheck) ([]evac
 			blocked = append(blocked, evacBlocked{vm, []string{"no target node is available (every other node is offline, in maintenance or not selected)"}})
 			continue
 		}
-		sort.SliceStable(cands, func(i, j int) bool { return left[cands[i].ID] > left[cands[j].ID] })
+		sort.SliceStable(cands, func(i, j int) bool {
+			if cands[i].Rank != cands[j].Rank {
+				return cands[i].Rank > cands[j].Rank
+			}
+			return left[cands[i].ID] > left[cands[j].ID]
+		})
 		var reasons []string
 		placed := false
 		for _, t := range cands {
