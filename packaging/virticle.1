@@ -7,32 +7,121 @@ virticle \- web controller for KVM/libvirt hosts
 .br
 .B virticle version
 .br
+.B virticle setup
+[\fB\-\-check\fR] [\fB\-\-undo\fR] [\fB\-data\fR \fIdir\fR]
+.br
+.B virticle node prepare
+[\fIoptions\fR] [\fIuser\fR@]\fIhost\fR[:\fIport\fR]
+.br
+.B virticle node unprepare
+[\fIoptions\fR] [\fIuser\fR@]\fIhost\fR[:\fIport\fR]
+.br
 .B virticle backup
-[\fB\-o\fR \fIfile|dir\fR] [\fB\-\-encrypt\fR]
+[\fB\-o\fR \fIfile|dir\fR] [\fB\-\-encrypt\fR] [\fB\-\-passphrase\-file\fR \fIfile\fR]
 .br
 .B virticle restore
-\fIfile\fR
+[\fB\-\-passphrase\-file\fR \fIfile\fR] \fIfile\fR
+.br
+.B virticle web
+.BR show | set | reset
+[\fB\-data\fR \fIdir\fR] [\fIoptions\fR]
+.br
+.B virticle user
+.BR reset\-2fa | reset\-password
+\fIuser\fR [\fB\-data\fR \fIdir\fR]
 .SH DESCRIPTION
 Virticle is one program that serves a web UI and API and manages libvirt
-nodes over SSH. Nothing is installed on the managed nodes. The controller
-keeps its users, node list, task log and audit log in a SQLite database in
-the data directory.
+nodes over SSH. Nothing but a small node command is installed on the managed
+nodes. The controller keeps its users, node list, task log and audit log in a
+SQLite database in the data directory.
 .PP
 The package runs it as the systemd service
 .B virticle.service
 as user
 .BR virticle ,
-serving HTTPS with a self-signed certificate on port 8443. The journal says
-which address to open to create the administrator account.
+serving HTTPS with a self-signed certificate on port 8443. The package does
+not change the firewall: run
+.B sudo virticle setup
+once. It opens the web port and prints the address to open to create the
+administrator account.
+.SH COMMANDS
+.TP
+.B virticle
+Run the controller.
+.TP
+.B virticle version
+Print the version, commit and build date.
+.TP
+.B virticle setup
+Run once as root after installing. Opens the web port in firewalld or ufw,
+makes sure the service runs and prints the address to open. Running it again
+changes nothing; after a change of the web port it moves the rule.
+.B \-\-check
+changes nothing.
+.B \-\-undo
+removes the firewall rule that setup added (do this before uninstalling).
+.TP
+.B virticle node prepare
+Prepare a host as a node: installs libvirt, QEMU, the guest disk tools and the
+node command, sets up the access the controller needs and opens the migration
+ports (TCP 49152 to 49215) in firewalld or ufw. The controller signs in as the
+account virticle\-node, which may run the node command as root and nothing
+else.
+.B \-\-root
+gives it root instead.
+.B \-\-check
+changes nothing.
+.B \-\-take\-over
+answers yes when the node is managed by another Virticle controller (that
+controller's key is removed).
+.B \-\-jump
+.I user@host
+reaches the node through a jump host.
+.B \-\-identity
+.IR file ,
+.B \-\-password\-stdin
+choose how to sign in as administrator (default: the SSH agent). See
+.B virticle node \-h
+for all options.
+.TP
+.B virticle node unprepare
+Undo prepare: removes the account, key, node command, sudo rule and firewall
+rule. Packages, VMs, pools and networks stay.
+.TP
+.B virticle backup
+Write the controller's own data (database, SSH key, certificates) to one file,
+while the controller runs.
+.B \-o
+takes a file or a directory.
+.B \-\-encrypt
+asks for a passphrase (or reads it with
+.BR \-\-passphrase\-file ).
+.TP
+.B virticle restore
+Put such a file back. The controller must be stopped. An existing data
+directory is moved aside, never overwritten.
+.TP
+.B virticle web
+Read (\fBshow\fR), change (\fBset\fR) or reset to plain HTTP on
+127.0.0.1:8080 (\fBreset\fR) the stored web access settings, for a headless
+install or a locked\-out administrator. Restart the controller afterwards.
+.TP
+.B virticle user
+Recover a sign\-in from the controller's machine:
+.B reset\-2fa
+turns two\-step sign\-in off for a user,
+.B reset\-password
+sets a new password for a local account. No restart is needed.
 .SH OPTIONS
 Run
 .B virticle \-help
-for the full list. The main flags are:
+for the full list. The main flags of the controller are:
 .TP
 .BI \-listen " address"
 Address to serve the web UI and API on. Given, it overrides the settings of
-the Web access page. A non-loopback address serves HTTPS with a generated
-self-signed certificate.
+the Web access page. Without it, the stored settings decide; a new install
+serves HTTPS with a self-signed certificate on port 8443, an installation
+with users and no stored settings keeps 127.0.0.1:8080.
 .TP
 .BI \-data " dir"
 Directory for the database and the controller's SSH key (default
@@ -47,6 +136,9 @@ Print the version, commit and build date and exit.
 .TP
 .B VIRTICLE_JUMP_PASSWORD
 Password for node jump hosts.
+.TP
+.B VIRTICLE_LISTEN
+Default for \-listen.
 .SH FILES
 .TP
 .I /etc/virticle/virticle.env
@@ -54,8 +146,10 @@ Service environment: VIRTICLE_ARGS (extra flags) and VIRTICLE_JUMP_PASSWORD.
 Kept across upgrades.
 .TP
 .I /var/lib/virticle
-Data directory: virticle.db, id_ed25519, known_hosts, instance\-id. Copies of
-the database made before a schema upgrade are named
+Data directory: virticle.db, id_ed25519, known_hosts, instance\-id, secret.key,
+metrics.db, and certificates. Copies of the database made before a schema
+upgrade are named
 .IR virticle.db.bak\-<version>\-<time> .
 .SH SEE ALSO
-.IR /usr/share/doc/virticle/install.md
+.IR /usr/share/doc/virticle/install.md ,
+.I /usr/share/doc/virticle/README.md

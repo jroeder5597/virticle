@@ -45,8 +45,8 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "web" {
 		os.Exit(webCommand(os.Args[2:]))
 	}
-	listen := flag.String("listen", envDefault("VIRTICLE_LISTEN", "127.0.0.1:8080"), "address to serve the web UI and API on")
-	data := flag.String("data", defaultDataDir(), "directory for the database and the controller's SSH key")
+	listen := flag.String("listen", envDefault("VIRTICLE_LISTEN", "127.0.0.1:8080"), "address to serve the web UI and API on. Given, it overrides the Web access settings. Without it they decide; a new install serves HTTPS on port 8443")
+	data := flag.String("data", defaultDataDir(), "directory for the database and the controller's SSH key (/var/lib/virticle on an installed machine, else ./data)")
 	tlsCert := flag.String("tls-cert", envDefault("VIRTICLE_TLS_CERT", ""), "PEM certificate to serve HTTPS with (needs -tls-key)")
 	tlsKey := flag.String("tls-key", envDefault("VIRTICLE_TLS_KEY", ""), "PEM private key for -tls-cert")
 	insecure := flag.Bool("insecure-http", os.Getenv("VIRTICLE_INSECURE_HTTP") != "", "serve plain HTTP on a non-loopback address (passwords and sessions travel unencrypted)")

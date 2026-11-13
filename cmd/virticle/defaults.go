@@ -152,7 +152,24 @@ func warnDeprecated(logf func(string, ...any)) {
 // usage prints the help without the deprecated flags.
 func usage() {
 	out := flag.CommandLine.Output()
-	fmt.Fprint(out, "usage: virticle [flags]\n       virticle web show|set|reset [-data DIR] ...\n       virticle user reset-2fa|reset-password USER [-data DIR]\n       virticle setup [--check] [--undo] [-data DIR]\n       virticle node prepare|unprepare ...\n       virticle backup [-o FILE|DIR] [--encrypt]    virticle restore FILE\n\nflags:\n")
+	fmt.Fprint(out, `usage: virticle [flags]                  run the controller
+       virticle version
+       virticle setup [--check] [--undo] [-data DIR]
+                                         after installing: open the web port in the firewall (as root)
+       virticle node prepare|unprepare [options] [user@]host
+                                         prepare a host as a node, or undo it (virticle node -h)
+       virticle backup [-o FILE|DIR] [--encrypt] [--passphrase-file FILE]
+       virticle restore [--passphrase-file FILE] FILE
+                                         back up or restore the controller's own data
+       virticle web show|set|reset [-data DIR] ...
+                                         read or change the stored web access settings
+       virticle user reset-2fa|reset-password USER [-data DIR]
+                                         recover a sign-in from the controller's machine
+
+Run a command with -h for its options.
+
+flags:
+`)
 	flag.VisitAll(func(f *flag.Flag) {
 		if _, hidden := deprecatedFlags[f.Name]; hidden {
 			return
@@ -163,7 +180,7 @@ func usage() {
 			line += " " + name
 		}
 		fmt.Fprintf(out, "%s\n    \t%s", line, strings.ReplaceAll(use, "\n", "\n    \t"))
-		if f.DefValue != "" && f.DefValue != "false" {
+		if f.DefValue != "" && f.DefValue != "false" && f.Name != "listen" && f.Name != "data" {
 			fmt.Fprintf(out, " (default %q)", f.DefValue)
 		}
 		fmt.Fprintln(out)
