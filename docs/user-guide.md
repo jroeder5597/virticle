@@ -408,6 +408,10 @@ the definition. Snapshots stay valid: their data is in the shared files.
   (volume lists, snapshot and clone pages of a VM on it, disk moves, starting or
   changing such a VM) is refused with a message that says the storage is away.
   Other storage and other VMs on the node are not affected.
+  On Debian and Ubuntu nodes (one libvirt daemon for everything) the pages that
+  list that node's storage or read a VM's definition answer within a few
+  seconds that the node's storage is not answering, instead of showing the
+  share as Unavailable. The alert is raised all the same.
 - A VM with a disk on it keeps running, its network and its memory-only work go
   on, and anything that needs its disk waits, then continues, without errors
   and without losing data, when the server is back. The VM page shows a note.
