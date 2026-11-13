@@ -71,3 +71,13 @@ Host n8
   LogLevel ERROR
   SetEnv LC_ALL=C
   ProxyCommand sshpass -e ssh -W %h:%p ${VSPIKE_JUMP}
+Host n9
+  HostName 192.168.150.19
+  User root
+  IdentityFile lab/keys/controller
+  IdentitiesOnly yes
+  UserKnownHostsFile lab/keys/known_hosts
+  StrictHostKeyChecking accept-new
+  LogLevel ERROR
+  SetEnv LC_ALL=C
+  ProxyCommand sshpass -e ssh -W %h:%p ${VSPIKE_JUMP}
