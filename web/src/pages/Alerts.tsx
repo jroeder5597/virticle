@@ -1,9 +1,8 @@
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Bell, X } from "lucide-react";
 import { NavLink } from "react-router-dom";
-import { Alert, get, put } from "../api";
+import { Alert, get } from "../api";
 import { useRole } from "../auth";
-import { ErrorBox, Field, useAction } from "../ui";
 import { useLive } from "../live";
 import { StatusDot } from "../Checks";
 
@@ -90,43 +89,5 @@ export function AlertMarks({ alerts, match }: { alerts: Alert[]; match: (a: Aler
         </span>
       ))}
     </span>
-  );
-}
-
-/** Where alerts are sent besides the bell: one webhook, applied at once. */
-export function AlertSettings() {
-  const [url, setUrl] = useState("");
-  const [fromFlag, setFromFlag] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const act = useAction();
-  useEffect(() => {
-    get<{ webhook: string; fromFlag: boolean }>("/alerts/settings").then((r) => {
-      setUrl(r.webhook);
-      setFromFlag(r.fromFlag);
-    }, () => {});
-  }, []);
-  const save = async (e: FormEvent) => {
-    e.preventDefault();
-    setSaved(false);
-    if (await act.run(() => put("/alerts/settings", { webhook: url }))) setSaved(true);
-  };
-  return (
-    <>
-      <div className="head">
-        <h1>Alerts</h1>
-      </div>
-      <form className="card" onSubmit={save} aria-label="Notifications">
-        <h2>Notifications</h2>
-        <Field label="Webhook URL" hint="Receives a JSON POST when an alert is raised or cleared.">
-          <input value={url} disabled={fromFlag} onChange={(e) => { setUrl(e.target.value); setSaved(false); }} placeholder="https://" />
-        </Field>
-        {fromFlag && <p className="muted">Set by the -alert-webhook flag. Remove the flag to change it here.</p>}
-        <ErrorBox error={act.error} />
-        {saved && <p role="status">Saved.</p>}
-        <button className="primary" disabled={act.busy || fromFlag}>
-          Save
-        </button>
-      </form>
-    </>
   );
 }
