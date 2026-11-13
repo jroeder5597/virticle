@@ -28,11 +28,17 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) addNode(w http.ResponseWriter, r *http.Request) {
-	var n store.Node
-	if err := readJSON(r, &n); err != nil {
+	var body struct {
+		store.Node
+		// TakeOver is set when the node was just taken over from another controller (see prepare.Options.TakeOver):
+		// the other controller's migration certificates are then replaced without asking again.
+		TakeOver bool `json:"takeOver"`
+	}
+	if err := readJSON(r, &body); err != nil {
 		fail(w, err)
 		return
 	}
+	n := body.Node
 	n.Addr, n.User, n.Jump = strings.TrimSpace(n.Addr), strings.TrimSpace(n.User), strings.TrimSpace(n.Jump)
 	n.MigrationAddr = strings.TrimSpace(n.MigrationAddr)
 	if n.MigrationAddr != "" {
@@ -66,6 +72,9 @@ func (s *Server) addNode(w http.ResponseWriter, r *http.Request) {
 		}
 		fail(w, err)
 		return
+	}
+	if body.TakeOver {
+		s.markTakeOver(n.ID)
 	}
 	s.Nodes.Add(n)
 	writeJSON(w, n)

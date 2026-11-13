@@ -723,3 +723,102 @@ func TestUnprepareScriptRemovesBothNames(t *testing.T) {
 		}
 	}
 }
+
+// --- taking a node over from another controller ---
+
+const otherKeyLine = "restrict,pty,port-forwarding ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOtherControllerOtherControllerOther0000 virticle-controller"
+
+// otherControllerHost is a Debian host whose service account already trusts another controller's key.
+func otherControllerHost(account string) *fakeNode {
+	return hostOnDebian(true, func(cmd, stdin string) (string, bool, error) {
+		if strings.Contains(cmd, "getent passwd \"$u\"") {
+			return "acct=" + account + ":x:998:998:" + AccountComment + ":/home/x:/bin/sh\nauthkey=" + otherKeyLine + "\nauthkey=ssh-rsa AAAAadminsownkey admin@laptop\n", true, nil
+		}
+		return "", false, nil
+	})
+}
+
+func TestOtherControllerKeys(t *testing.T) {
+	lines := []string{
+		otherKeyLine,
+		"restrict " + strings.TrimSuffix(testKey, " virticle-controller") + " virticle-controller", // ours, other options
+		"ssh-rsa AAAAadminsownkey admin@laptop",
+		"ssh-ed25519 AAAAsomethingelse not-a-controller",
+		"",
+	}
+	got := OtherControllerKeys(lines, testKey)
+	if len(got) != 1 || got[0] != otherKeyLine {
+		t.Errorf("%v", got)
+	}
+	if len(OtherControllerKeys(lines[1:], testKey)) != 0 {
+		t.Error("our own key and other people's keys are not another controller")
+	}
+}
+
+func TestOtherControllerBlocksUntilTakenOver(t *testing.T) {
+	n := otherControllerHost("virticle-node")
+	rows := (&Runner{N: n}).Prepare(Options{ControllerKey: testKey}, nil, nil)
+	r := find(rows, "controller")
+	if r.Status != Error || !strings.Contains(r.Detail, "This node was managed by another Virticle controller. Take it over?") {
+		t.Fatalf("controller row: %+v", r)
+	}
+	for _, id := range []string{"do-packages", "do-key", "do-nodecmd"} {
+		if x := find(rows, id); x.Status != Skipped {
+			t.Errorf("%s ran without the take-over: %+v", id, x)
+		}
+	}
+	for _, c := range n.log {
+		if strings.Contains(c, "apt-get") || strings.Contains(c, "authorized_keys") && strings.Contains(c, "restrict,pty") {
+			t.Fatal("something changed on the node although the take-over was not confirmed")
+		}
+	}
+	// a check says the same and changes nothing
+	crow, _, _ := (&Runner{N: otherControllerHost("virticle-node")}).Check(Options{ControllerKey: testKey})
+	if r := find(crow, "controller"); r.Status != Error {
+		t.Errorf("check: %+v", r)
+	}
+}
+
+func TestTakeOverRemovesTheOtherKey(t *testing.T) {
+	n := otherControllerHost("virticle-node")
+	rows := (&Runner{N: n}).Prepare(Options{ControllerKey: testKey, TakeOver: true}, nil, nil)
+	if HasError(rows) {
+		t.Fatalf("errors: %+v", rows)
+	}
+	if r := find(rows, "controller"); r.Status != Warning || !strings.Contains(r.Detail, "removed from the node") {
+		t.Errorf("controller row: %+v", r)
+	}
+	if r := find(rows, "do-key"); r.Status != OK {
+		t.Errorf("key: %+v", r)
+	}
+	var keyCmd string
+	for _, c := range n.log {
+		if strings.Contains(c, "authorized_keys") && strings.Contains(c, "\ntakeover=") || strings.Contains(c, "takeover=1") {
+			keyCmd = c
+		}
+	}
+	if !strings.Contains(keyCmd, "takeover=1") || !strings.Contains(keyCmd, "virticle-controller[[:space:]]*$") {
+		t.Errorf("the key step did not ask to remove other controllers' keys:\n%s", keyCmd)
+	}
+	// without the answer the script keeps other lines
+	n2 := hostOnDebian(true, nil)
+	(&Runner{N: n2}).Prepare(Options{ControllerKey: testKey}, nil, nil)
+	for _, c := range n2.log {
+		if strings.Contains(c, "authorized_keys") && strings.Contains(c, "takeover=1") {
+			t.Error("take-over asked for without the administrator's answer")
+		}
+	}
+}
+
+func TestTakeOverAlsoFoundForRootAccess(t *testing.T) {
+	n := hostOnDebian(true, func(cmd, stdin string) (string, bool, error) {
+		if strings.Contains(cmd, "getent passwd \"$u\"") && strings.Contains(cmd, "set -- '\\''root'\\''") {
+			return "acct=root:x:0:0:root:/root:/bin/bash\nauthkey=" + otherKeyLine + "\n", true, nil
+		}
+		return "", false, nil
+	})
+	rows := (&Runner{N: n}).Prepare(Options{ControllerKey: testKey, AllowRoot: true}, nil, nil)
+	if r := find(rows, "controller"); r.Status != Error {
+		t.Errorf("root: %+v", r)
+	}
+}

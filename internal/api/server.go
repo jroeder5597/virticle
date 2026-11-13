@@ -54,11 +54,12 @@ type Server struct {
 	condMu    sync.Mutex
 	conflicts map[int64]schedConflict // nodes where another controller schedules snapshots
 
-	routes  []route // every pattern registered by Handler, for the access-level test
-	limiter *limiter
-	shots   shotCache
-	cpuBase baselineState
-	migAuto *migTLSAuto // automatic encrypted-migration setup (migtlsauto.go)
+	routes    []route // every pattern registered by Handler, for the access-level test
+	limiter   *limiter
+	shots     shotCache
+	cpuBase   baselineState
+	migAuto   *migTLSAuto // automatic encrypted-migration setup (migtlsauto.go)
+	takeOvers sync.Map    // node id -> true: taken over from another controller, see markTakeOver
 }
 
 type ctxKey struct{}

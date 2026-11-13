@@ -180,6 +180,11 @@ func (r *Runner) check(o Options) ([]Row, Plan, Options, error) {
 	if err != nil {
 		return []Row{access}, p, o, err
 	}
+	acct := p.Account
+	if o.AllowRoot {
+		acct, _ = r.probeAccount("root") // the account the key goes to; nothing found is no other key
+	}
+	p.OtherKeys = OtherControllerKeys(acct.AuthKeys, o.ControllerKey)
 	if p.Distro.Family != FamilyOther {
 		p.Want = PackageList(p.Distro.Family, o.Minimal)
 		mout, err := r.root(MissingScript(p.Distro.Family, p.Want), "")
@@ -554,9 +559,12 @@ umask 077
 new=$(cat)
 d="$home/.ssh"; f="$d/authorized_keys"
 [ -d "$d" ] || install -d -m 700 -o "$u" -g "$grp" "$d"
-# every line except the ones that carry the controller's key
+# every line except the ones that carry the controller's key (and, when the node is taken over, the other controller's)
 t=$(mktemp "$d/.authorized_keys.XXXXXX")
-if [ -f "$f" ]; then grep -vF -- "$blob" "$f" > "$t"; fi
+if [ -f "$f" ]; then
+  grep -vF -- "$blob" "$f" > "$t"
+  if [ "$takeover" = 1 ]; then grep -v ' virticle-controller[[:space:]]*$' "$t" > "$t.2"; mv -f "$t.2" "$t"; fi
+fi
 echo "$new" >> "$t"
 if [ -f "$f" ] && cmp -s "$t" "$f"; then rm -f "$t"; echo "the key is installed with its restrictions"; echo @@unchanged; exit 0; fi
 chown "$u:$grp" "$t"; chmod 600 "$t"; mv -f "$t" "$f"
@@ -565,7 +573,7 @@ echo "installed the controller key in $f"; echo @@changed`
 
 func stepKey(r *Runner, p Plan, o Options) (string, bool, error) {
 	blob, _ := KeyBlob(o.ControllerKey)
-	vars := "u=" + shq(o.ServiceUser()) + "\nblob=" + shq(blob) + "\n"
+	vars := "u=" + shq(o.ServiceUser()) + "\nblob=" + shq(blob) + "\ntakeover=" + b2s(o.TakeOver) + "\n"
 	line := AuthorizedKeyLine(o)
 	out, err := r.root(vars+keyScript, line+"\n")
 	if err != nil {

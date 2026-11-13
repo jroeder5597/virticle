@@ -32,8 +32,12 @@ export function rowItems(rows: Row[]): CheckItem[] {
  * The Add node dialog. It makes a host ready to be a node (libvirt, the node command, and unless Root access is chosen a service
  * account with a restricted key and a sudo rule for the node command only) and then registers it with the account that the
  * preparation settled on. Preparing a host that is already prepared changes nothing. The administrator's password or key is sent with
- * each run and kept in memory only; it is never shown again and never stored, and it is emptied when a real run starts and when the
- * dialog closes. A Check keeps it in memory so that the Add node button on its result needs no retyping.
+ * each run and kept in memory only; it is never shown again and never stored, and it is emptied when a real run has prepared the node and
+ * when the dialog closes. A Check, or a run that stopped, keeps it in memory so that the next button on the result needs no retyping.
+ *
+ * A node that trusts another Virticle controller's key stops the run at the "Other controller" row with a question. "Take over node"
+ * answers yes: the run starts again with takeOver set, and the node is registered with takeOver too (its old migration certificates
+ * are then replaced).
  *
  * mode "add" registers the node afterwards. mode "prepare" is for a node that is already registered: it prepares it again and does
  * not register it a second time (the login user of the node is updated if the preparation settled on another account).
@@ -53,6 +57,7 @@ export default function PrepareNode({ addr: addr0, jump: jump0, mode = "add", no
   const [task, setTask] = useState<number | undefined>();
   const [job, setJob] = useState<Job | undefined>();
   const [lastCheck, setLastCheck] = useState(true);
+  const [takeOver, setTakeOver] = useState(false);
   const act = useAction();
   const reg = useAction();
 
@@ -65,7 +70,8 @@ export default function PrepareNode({ addr: addr0, jump: jump0, mode = "add", no
     if (e.type === "task" && e.task?.id === task) load();
   });
 
-  const start = async (checkOnly: boolean) => {
+  const start = async (checkOnly: boolean, takeOverNow = takeOver) => {
+    setTakeOver(takeOverNow);
     const body = {
       addr,
       jump,
@@ -74,6 +80,7 @@ export default function PrepareNode({ addr: addr0, jump: jump0, mode = "add", no
       privateKey: cred === "key" ? secret : "",
       checkOnly,
       allowRoot,
+      takeOver: takeOverNow,
     };
     const ok = await act.run(async () => {
       const r = await post<{ task: number }>("/prepare?async=1", body);
@@ -81,7 +88,6 @@ export default function PrepareNode({ addr: addr0, jump: jump0, mode = "add", no
       setLastCheck(checkOnly);
       setTask(r.task);
     });
-    if (!checkOnly) setSecret(""); // a real run: gone from the page whatever the answer
     return ok;
   };
 
@@ -101,7 +107,7 @@ export default function PrepareNode({ addr: addr0, jump: jump0, mode = "add", no
   const register = async () => {
     if (!job) return;
     const ok = await reg.run(async () => {
-      if (adding) await post("/nodes", { addr: job.addr, user: job.user, jump: job.jump ?? "" });
+      if (adding) await post("/nodes", { addr: job.addr, user: job.user, jump: job.jump ?? "", takeOver });
       else if (nodeId !== undefined && job.user && job.user !== nodeUser) await put(`/nodes/${nodeId}`, { user: job.user });
     });
     if (ok && adding) onRegistered(); // a node that was prepared again stays on its page with the result shown
@@ -110,6 +116,7 @@ export default function PrepareNode({ addr: addr0, jump: jump0, mode = "add", no
   useEffect(() => {
     if (job?.done && job.ok && !job.checkOnly && !autoDone.current) {
       autoDone.current = true;
+      setSecret(""); // prepared: the credential is gone from the page
       register();
     }
   });
@@ -119,6 +126,7 @@ export default function PrepareNode({ addr: addr0, jump: jump0, mode = "add", no
     const running = !job || !job.done;
     const checked = !running && !!job?.checkOnly && !!job?.ok;
     const prepared = !running && !!job?.ok && !job.checkOnly;
+    const asksTakeOver = !running && !job?.ok && !!job?.rows.some((r) => r.id === "controller" && r.status === "error");
     return (
       <Modal title={job?.checkOnly ?? lastCheck ? "Check node" : label} onClose={onClose} wide>
         {job && job.rows.length > 0 ? <CheckList sort={false} label="Preparation" items={rowItems(job.rows)} /> : <p className="muted">Starting. Progress is also in the Tasks panel.</p>}
@@ -127,13 +135,18 @@ export default function PrepareNode({ addr: addr0, jump: jump0, mode = "add", no
         <ErrorBox error={act.error || reg.error} />
         <footer>
           {!running && (
-            <button type="button" onClick={() => { setTask(undefined); setJob(undefined); autoDone.current = false; }}>
+            <button type="button" onClick={() => { setTask(undefined); setJob(undefined); setTakeOver(false); autoDone.current = false; }}>
               Back
             </button>
           )}
           <button type="button" onClick={onClose}>
             Close
           </button>
+          {asksTakeOver && (
+            <button type="button" className="primary" disabled={act.busy} onClick={() => start(job?.checkOnly ?? false, true)}>
+              Take over node
+            </button>
+          )}
           {checked && (
             <button type="button" className="primary" disabled={act.busy} onClick={() => start(false)}>
               {label}
