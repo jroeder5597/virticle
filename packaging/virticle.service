@@ -21,7 +21,7 @@ StateDirectoryMode=0700
 UMask=0077
 
 # Hardening. The controller needs outbound TCP (SSH to nodes, webhooks) and
-# its state directory, nothing else.
+# its state directory and the read-only list of network interfaces, nothing else.
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
@@ -39,7 +39,9 @@ RestrictRealtime=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# AF_NETLINK: Go reads the interface list (the Interface choice on the Web
+# access page, the machine's addresses) over netlink; without it the list is empty.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources

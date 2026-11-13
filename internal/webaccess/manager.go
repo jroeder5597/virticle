@@ -195,6 +195,31 @@ func (m *Manager) Load() (Settings, bool, error) {
 	return s.Normalize(), true, nil
 }
 
+// Peek is Load for a program other than the running controller (virticle
+// setup): it only reads. A change that waits for confirmation is reported, not
+// undone: the controller runs that change now and Load would reset the stored
+// settings under it, so that confirming it later would keep the old ones.
+// settings are the stored (new) settings, prev the settings the change would
+// go back to, nil when no change is waiting.
+func (m *Manager) Peek() (settings Settings, prev *Settings, ok bool, err error) {
+	raw, ok, err := m.Store.WebSetting(keySettings)
+	if err != nil || !ok {
+		return Settings{}, nil, false, err
+	}
+	var s Settings
+	if err := json.Unmarshal([]byte(raw), &s); err != nil {
+		return Settings{}, nil, false, fmt.Errorf("stored web settings: %v (run: virticle web reset)", err)
+	}
+	if praw, pok, perr := m.Store.WebSetting(keyPending); perr == nil && pok {
+		var pr pendingRecord
+		if json.Unmarshal([]byte(praw), &pr) == nil {
+			p := pr.Prev.Normalize()
+			prev = &p
+		}
+	}
+	return s.Normalize(), prev, true, nil
+}
+
 // Start opens the listeners for s. It fails if one cannot be opened.
 func (m *Manager) Start(s Settings) error {
 	m.mu.Lock()
@@ -731,7 +756,9 @@ func (m *Manager) CertFile() string {
 func (m *Manager) Status(host string) Status {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	st := Status{Settings: m.cur, Source: m.Source, Locked: m.Locked, Notice: m.Notice, Pending: m.pendingInfo(host), Window: int(m.window() / time.Second)}
+	// Normalized so that the lists are [] and never null in the JSON: the first-run
+	// defaults have nil lists and the page calls join on them.
+	st := Status{Settings: m.cur.Normalize(), Source: m.Source, Locked: m.Locked, Notice: m.Notice, Pending: m.pendingInfo(host), Window: int(m.window() / time.Second)}
 	for _, set := range []*listenerSet{m.set, m.prevSet()} {
 		if set == nil {
 			continue

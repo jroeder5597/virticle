@@ -156,7 +156,7 @@ Nodes prepared with 0.1.0 must be prepared again. Steps are in
 Early release. Tested: a controller on Linux amd64, and nodes on Debian 13
 and Rocky Linux 10, each in both access modes.
 
-Not tested: arm64, the packages on a clean machine, ACME certificate
+Not tested: arm64, ACME certificate
 issuance. A Debian node and a RHEL-family node cannot exchange VMs. Packages
 are not signed. No container image is published.
 

@@ -210,6 +210,7 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
   const baseline = useCpuBaseline();
   const [source, setSource] = useState<"iso" | "image" | "empty" | "existing">(preset ? "image" : "iso");
   const [pool, setPool] = useState(preset?.pool ?? "");
+  const sourceTouched = useRef(!!preset); // true once the user picked where to install from
   const presetImage = useRef(preset?.image); // used once, for the first load of the node's volumes
   const [diskGiB, setDisk] = useState(DEFAULT_DISK_GIB);
   const diskEdited = useRef(false); // once the user types a size, it is left alone
@@ -265,6 +266,18 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
 
   const isos = volumes.filter((v) => v.format === "iso" || v.name.toLowerCase().endsWith(".iso"));
   const images = volumes.filter((v) => v.pool === pool && (v.format === "qcow2" || v.format === "raw") && !v.name.toLowerCase().endsWith(".iso"));
+
+  // Nothing to install from but a downloaded image (the first run after the
+  // image catalogue): start on "Disk image" with that image chosen, so that
+  // the dialog needs only a name. Once, and never after the user chose.
+  useEffect(() => {
+    if (sourceTouched.current || volumes.length === 0) return;
+    if (isos.length === 0 && images.length > 0) {
+      sourceTouched.current = true;
+      setSource("image");
+      if (images.length === 1) setMedia(images[0].name);
+    }
+  }, [volumes, pool]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -331,6 +344,7 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
                 key={v}
                 className={source === v ? "on" : ""}
                 onClick={() => {
+                  sourceTouched.current = true;
                   setSource(v);
                   setMedia("");
                 }}
