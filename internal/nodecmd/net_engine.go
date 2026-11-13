@@ -106,6 +106,15 @@ type bridgeSpec struct {
 	Moved         string            `json:"moved,omitempty"`        // the configuration that moved, in the stack's own format
 	UplinkExpect  []string          `json:"uplinkExpect,omitempty"` // what the uplink must have again after a delete
 	Data          map[string]string `json:"data,omitempty"`         // stack private
+	// More than one card: Uplink is the first card, Members the others. Bond is the device that holds them
+	// (set from two cards on, and kept when cards are removed again); BondMode is failover or lacp.
+	Members  []cardSpec `json:"members,omitempty"`
+	Bond     string     `json:"bond,omitempty"`
+	BondMode string     `json:"bondMode,omitempty"`
+	// MTUSet is the MTU the user asked for, applied on every layer (0: the cards keep what they had).
+	MTUSet int `json:"mtuSet,omitempty"`
+	// VLANAddrs are the node's own addresses on VLANs of the bridge.
+	VLANAddrs []vlanAddrSpec `json:"vlanAddrs,omitempty"`
 }
 
 func (s bridgeSpec) clone() *bridgeSpec {
@@ -115,6 +124,8 @@ func (s bridgeSpec) clone() *bridgeSpec {
 		d.Data[k] = v
 	}
 	d.UplinkExpect = append([]string(nil), s.UplinkExpect...)
+	d.Members = append([]cardSpec(nil), s.Members...)
+	d.VLANAddrs = append([]vlanAddrSpec(nil), s.VLANAddrs...)
 	return &d
 }
 

@@ -30,9 +30,21 @@ type planInput struct {
 	Snap   *netSnap
 	Old    *bridgeSpec // delete, set-vlans: the managed bridge as it is
 	New    *bridgeSpec // create, set-vlans: the bridge as it is to be
-	Uplink *netLink    // create: the uplink as it is now
+	Uplink *netLink    // create: the first uplink as it is now
 	Expect []string    // create: what the uplink has now: static addresses, "dhcp4", or "any"
 	Name   string      // the stack's public name
+	// Extra: create, the cards after the first. Added: set-uplinks, the cards that join the switch.
+	Extra, Added []planCard
+	// VLANAddr: add-vlan-address and remove-vlan-address, the address concerned.
+	VLANAddr *vlanAddrSpec
+	// Mgmt is the interface that holds the address the controller uses ("" when unknown).
+	Mgmt string
+}
+
+// planCard is a card as it is now.
+type planCard struct {
+	Link   *netLink
+	Expect []string
 }
 
 type stackInfo struct {
@@ -135,127 +147,6 @@ func defaultGateway(snap *netSnap, dev string) string {
 	return ""
 }
 
-// buildPlan validates req and computes the plan. Nothing on the system changes.
-func (c *Ctx) buildPlan(req *nodeproto.NetRequest) (*planInput, *netPlanned, stackInfo, error) {
-	st := c.detectStack()
-	if req.TimeoutSeconds == 0 {
-		req.TimeoutSeconds = nodeproto.NetDefaultTimeout
-	}
-	if req.TimeoutSeconds < nodeproto.NetMinTimeout || req.TimeoutSeconds > nodeproto.NetMaxTimeout {
-		return nil, nil, st, Die("the time to confirm must be between %d and %d seconds", nodeproto.NetMinTimeout, nodeproto.NetMaxTimeout)
-	}
-	if !bridgeNameRE.MatchString(req.Bridge) || libvirtOwned(req.Bridge) {
-		return nil, nil, st, Die("the bridge name must be 1 to 15 characters: lower-case letters, digits, dash and underscore, starting with a letter, and not one libvirt uses (virbr, vnet)")
-	}
-	if !st.Supported {
-		return nil, nil, st, Fail("%s", st.Note)
-	}
-	if p := c.pendingMeta(); p != nil {
-		return nil, nil, st, Fail("the network change %s is still pending (%s); confirm it or roll it back first", p.ID, p.State)
-	}
-	snap, err := c.readSnap()
-	if err != nil {
-		return nil, nil, st, err
-	}
-	managed := c.loadManaged()
-	in := &planInput{Req: req, Snap: snap, Name: st.Name}
-	mgmt := c.mgmtLink(snap, req)
-	existing := snap.link(req.Bridge)
-
-	// VLAN options
-	vlans := ""
-	if req.VLANAware {
-		if req.Action != nodeproto.NetDelete && req.LibvirtVersion < nodeproto.LibvirtVLANMin {
-			return nil, nil, st, Fail("VLANs on a Linux bridge need libvirt 11.0.0 or newer (this node has %s)", libvirtVersionString(req.LibvirtVersion))
-		}
-		if vlans, err = nodeproto.ParseVLANs(req.VLANs); err != nil {
-			return nil, nil, st, Die("%v", err)
-		}
-	} else if req.VLANs != "" {
-		return nil, nil, st, Die("VLAN ids need a VLAN-aware bridge")
-	}
-
-	switch req.Action {
-	case nodeproto.NetCreate:
-		if existing != nil {
-			return nil, nil, st, Fail("the node already has an interface named %s", req.Bridge)
-		}
-		spec := &bridgeSpec{Bridge: req.Bridge, Uplink: req.Uplink, MoveAddresses: req.MoveAddresses, VLANAware: req.VLANAware, VLANs: vlans,
-			Stack: st.Name, Created: c.netNow().UTC().Format("2006-01-02T15:04:05Z"), Data: map[string]string{}}
-		in.New = spec
-		if req.Uplink == "" {
-			if req.MoveAddresses {
-				return nil, nil, st, Die("addresses can only move from an uplink: choose one")
-			}
-			break
-		}
-		up := snap.link(req.Uplink)
-		switch {
-		case libvirtOwned(req.Uplink):
-			return nil, nil, st, Fail("%s is managed by libvirt and is not touched", req.Uplink)
-		case up == nil:
-			return nil, nil, st, Fail("the node has no interface named %s", req.Uplink)
-		case up.SlaveKind == "bond":
-			return nil, nil, st, Fail("%s is a member of the bond %s; bonds are not supported as uplinks", up.Name, up.Master)
-		case up.Master != "":
-			return nil, nil, st, Fail("%s is already a port of %s", up.Name, up.Master)
-		}
-		if ok, why := c.isPhysical(*up); !ok {
-			return nil, nil, st, Fail("%s cannot be an uplink: %s", up.Name, why)
-		}
-		in.Uplink, in.Expect = up, uplinkExpect(*up)
-		spec.MAC, spec.MTU, spec.UplinkExpect = up.MAC, up.MTU, in.Expect
-		has := len(up.globalAddrs()) > 0
-		switch {
-		case mgmt == up.Name && !req.MoveAddresses:
-			return nil, nil, st, Fail("%s carries the controller's connection to this node; turn on moving its addresses to the bridge, or choose another uplink", up.Name)
-		case has && !req.MoveAddresses && mgmt == "":
-			return nil, nil, st, Fail("%s has addresses and it is not known which interface the controller uses to reach this node; turn on moving its addresses to the bridge", up.Name)
-		case req.MoveAddresses && !has:
-			// nothing to move: not an error, the plan says so
-		}
-	case nodeproto.NetDelete, nodeproto.NetSetVLAN:
-		old := managed[req.Bridge]
-		if old == nil {
-			if existing != nil {
-				return nil, nil, st, Fail("%s was not created by this feature and is only shown, not changed", req.Bridge)
-			}
-			return nil, nil, st, Fail("the node has no bridge named %s", req.Bridge)
-		}
-		in.Old = old
-		if req.Action == nodeproto.NetDelete {
-			if existing != nil {
-				for _, p := range c.bridgePorts(req.Bridge) {
-					switch {
-					case p == old.Uplink:
-					case libvirtOwned(p) || strings.HasPrefix(p, "tap"):
-						return nil, nil, st, Fail("virtual machines are attached to %s (port %s); detach them first", req.Bridge, p)
-					default:
-						return nil, nil, st, Fail("%s has another port, %s, which this feature did not add; remove it first", req.Bridge, p)
-					}
-				}
-			}
-			break
-		}
-		if existing == nil {
-			return nil, nil, st, Fail("the bridge %s does not exist right now", req.Bridge)
-		}
-		n := old.clone()
-		n.VLANAware, n.VLANs = req.VLANAware, vlans
-		if n.VLANAware == old.VLANAware && n.VLANs == old.VLANs {
-			return nil, nil, st, Fail("the VLAN settings of %s are already like this", req.Bridge)
-		}
-		in.New = n
-	default:
-		return nil, nil, st, Die("unknown action %q", req.Action)
-	}
-	pl, err := st.impl.plan(c, in)
-	if err != nil {
-		return nil, nil, st, err
-	}
-	return in, pl, st, nil
-}
-
 func libvirtVersionString(v uint64) string {
 	if v == 0 {
 		return "an unknown version"
@@ -282,6 +173,9 @@ func (c *Ctx) publicPlan(in *planInput, pl *netPlanned, st stackInfo) nodeproto.
 		case in.Uplink != nil && in.Uplink.Name == p.ManagementInterface:
 			p.ManagementAffected = true
 		case in.Req.Action == nodeproto.NetDelete && in.Req.Bridge == p.ManagementInterface:
+			p.ManagementAffected = true
+		case in.Old != nil && (in.Req.Action == nodeproto.NetSetUplinks || in.Req.Action == nodeproto.NetSetMTU) &&
+			(in.Old.Bridge == p.ManagementInterface || in.Old.card(p.ManagementInterface) != nil):
 			p.ManagementAffected = true
 		}
 	}

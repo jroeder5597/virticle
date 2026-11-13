@@ -16,6 +16,23 @@ const (
 	NetCreate  = "create"    // create a Linux bridge
 	NetDelete  = "delete"    // delete a bridge this feature created
 	NetSetVLAN = "set-vlans" // change the VLAN settings of a bridge this feature created
+
+	NetSetUplinks  = "set-uplinks"         // change the physical cards of a bridge this feature created (a bond when there are two or more)
+	NetAddVLANAddr = "add-vlan-address"    // give the node an address on a VLAN of a VLAN-aware bridge
+	NetDelVLANAddr = "remove-vlan-address" // remove such an address
+	NetSetMTU      = "set-mtu"             // change the MTU of a bridge this feature created, on every layer
+)
+
+// Bond modes of a virtual switch with two or more uplinks.
+const (
+	BondFailover = "failover" // active-backup: one card carries the traffic, another takes over; works with any switch
+	BondLACP     = "lacp"     // 802.3ad: needs LACP on the switch the cards are plugged into
+)
+
+// Ways to get the node's address on a VLAN.
+const (
+	AddrDHCP   = "dhcp"
+	AddrStatic = "static"
 )
 
 // States of a NetChange.
@@ -44,7 +61,22 @@ type NetRequest struct {
 	Action string `json:"action"`
 	Bridge string `json:"bridge"`
 	// Uplink is the one physical interface that becomes a port of a new bridge (optional).
-	Uplink string `json:"uplink,omitempty"`
+	// Uplinks lists every physical card of the switch (create, set-uplinks): two or more make a bond that
+	// is the bridge's single port. Uplink and Uplinks together are an error.
+	Uplink  string   `json:"uplink,omitempty"`
+	Uplinks []string `json:"uplinks,omitempty"`
+	// BondMode is failover (default) or lacp; only with two or more uplinks, or on a switch that has a bond.
+	BondMode string `json:"bondMode,omitempty"`
+	// The node's own address on a VLAN (add-vlan-address, remove-vlan-address): VLANID, then
+	// AddressMethod dhcp or static; Address is a CIDR for static. Gateway (static) and DefaultRoute make
+	// the VLAN carry the node's default route; without them the VLAN adds no default route.
+	VLANID        int    `json:"vlanId,omitempty"`
+	AddressMethod string `json:"addressMethod,omitempty"`
+	Address       string `json:"address,omitempty"`
+	Gateway       string `json:"gateway,omitempty"`
+	DefaultRoute  bool   `json:"defaultRoute,omitempty"`
+	// MTU of the switch on every layer (create, set-mtu); 0 leaves the cards as they are. 1280..9000.
+	MTU int `json:"mtu,omitempty"`
 	// MoveAddresses: the bridge takes over the addresses, routes and DNS of the uplink.
 	MoveAddresses bool `json:"moveAddresses,omitempty"`
 	// VLANAware turns on VLAN filtering on the bridge. VLANs are the ids the uplink allows
@@ -122,11 +154,33 @@ type NetBridge struct {
 	Name           string   `json:"name"`
 	Managed        bool     `json:"managed"` // created by this feature: may be changed and deleted
 	VLANFiltering  bool     `json:"vlanFiltering"`
-	VLANs          string   `json:"vlans,omitempty"` // the ids the uplink allows (managed bridges)
-	Uplink         string   `json:"uplink,omitempty"`
+	VLANs          string   `json:"vlans,omitempty"`  // the ids the uplink allows (managed bridges)
+	Uplink         string   `json:"uplink,omitempty"` // the first card
 	Ports          []string `json:"ports"`
 	MovedAddresses bool     `json:"movedAddresses,omitempty"`
+	// Uplinks are all the physical cards; Bond is the bond device that holds them when there are
+	// two or more (it stays, with one member, when cards are removed again); BondMode is failover or lacp.
+	Uplinks  []string `json:"uplinks,omitempty"`
+	Bond     string   `json:"bond,omitempty"`
+	BondMode string   `json:"bondMode,omitempty"`
+	// MTU is the MTU set for the switch (0: not set, the cards keep what they had).
+	MTU int `json:"mtu,omitempty"`
+	// VLANAddresses are the node's own addresses on VLANs of this switch.
+	VLANAddresses []NetVLANAddr `json:"vlanAddresses,omitempty"`
 }
+
+// NetVLANAddr is one address of the node on a VLAN of a managed switch.
+type NetVLANAddr struct {
+	ID           int    `json:"id"`
+	Interface    string `json:"interface"` // SWITCH.ID
+	Method       string `json:"method"`    // dhcp | static
+	Address      string `json:"address,omitempty"`
+	Gateway      string `json:"gateway,omitempty"`
+	DefaultRoute bool   `json:"defaultRoute,omitempty"`
+}
+
+// VLANInterface is the name of the VLAN device of a switch.
+func VLANInterface(bridge string, id int) string { return fmt.Sprintf("%s.%d", bridge, id) }
 
 // NetInfo is what net-info prints.
 type NetInfo struct {
