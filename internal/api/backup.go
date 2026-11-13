@@ -298,6 +298,10 @@ func (s *Server) launchBackup(r *http.Request, h *hostconn.Host, m *bkRun) (int6
 		bkRuns.Unlock()
 		return 0, nil, badRequest("a backup of this VM is already in progress")
 	}
+	if _, busy := replRuns[m.uuid]; busy {
+		bkRuns.Unlock()
+		return 0, nil, badRequest("this VM is being copied to its standby node right now; try the backup again in a minute")
+	}
 	bkRuns.m[m.uuid] = m
 	bkRuns.Unlock()
 	id, done, err := s.startBackgroundWait(r, "backup", backupTarget(m.name, m.dst.Name, m.dstPool), h.Name, func(progress func(float64)) error {
