@@ -188,7 +188,7 @@ export interface Task {
   finished?: number;
 }
 export interface ServerEvent {
-  type: "node" | "domain" | "network" | "pool" | "task" | "alert" | "tags" | "cpubaseline";
+  type: "node" | "domain" | "network" | "pool" | "task" | "alert" | "tags" | "cpubaseline" | "rolling";
   node?: number;
   name?: string;
   uuid?: string;
@@ -322,4 +322,67 @@ export interface HostUpdates {
   checkedAt: number;
   note?: string;
   error?: string;
+}
+
+/** Rolling node updates (internal/api/rolling.go). */
+export interface RollVM {
+  uuid: string;
+  name: string;
+  state: string;
+  memoryKiB: number;
+}
+export interface RollNodePlan {
+  node: number;
+  name: string;
+  local?: boolean;
+  updates: number;
+  updateNames?: string[];
+  reboot: boolean;
+  rebootWhy?: string;
+  action: "update" | "skip" | "current";
+  skipWhy?: string;
+  moves: { vm: RollVM; to: number; toName: string }[];
+  stuck: { vm: RollVM; reasons: string[] }[];
+  note?: string;
+}
+export interface RollPlan {
+  nodes: RollNodePlan[];
+  refusals: string[];
+  needsChoice: boolean;
+  choice?: string;
+}
+export interface RollStep {
+  id: string;
+  title: string;
+  status: "pending" | "running" | "ok" | "skipped" | "failed";
+  detail?: string;
+}
+export interface RollNode {
+  node: number;
+  name: string;
+  local?: boolean;
+  action: "update" | "skip" | "current";
+  status: "pending" | "running" | "done" | "skipped" | "current" | "failed";
+  skipWhy?: string;
+  steps: RollStep[];
+  reboot: boolean;
+  installed?: number;
+  heldBack?: string[];
+  checks?: { status: "ok" | "fixed" | "problem"; id: string; detail: string }[];
+}
+export interface RollRun {
+  id: number;
+  started: number;
+  finished?: number;
+  status: "running" | "ok" | "failed" | "cancelled";
+  choice?: string;
+  nodes: RollNode[];
+  cur: number;
+  cancel?: boolean;
+  restoring?: boolean;
+  ack?: boolean;
+  resumed?: number;
+  error?: string;
+  condition?: string;
+  summary?: string;
 }

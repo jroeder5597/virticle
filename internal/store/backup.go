@@ -25,7 +25,8 @@ import (
 //	3  migration_limit column on nodes (migration network and automatic limit)
 //	4  notify_destinations table (alert notifications)
 //	5  two-step sign-in and external sign-in: user columns and recovery_codes
-const SchemaVersion = 5
+//	6  rolling_runs table (rolling node updates)
+const SchemaVersion = 6
 
 // keepBackups is how many pre-migration copies stay in the data directory.
 const keepBackups = 3

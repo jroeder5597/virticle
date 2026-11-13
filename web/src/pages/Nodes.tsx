@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Alert, bytes, get, NodeInfo, NodeStatus } from "../api";
-import { useLive } from "../live";
+import { Alert, bytes, get, NodeInfo, NodeStatus, RollRun } from "../api";
+import { orEvents, useLive } from "../live";
 import { useRole } from "../auth";
 import { ErrorBox, PageTitle, StateBadge } from "../ui";
 import { HostLoad, useHostSeries } from "../charts";
@@ -9,22 +9,39 @@ import { AlertMarks, useAlerts } from "./Alerts";
 import MaintenanceActions from "./Maintenance";
 import { StatusLine } from "../Checks";
 import PrepareNode from "./PrepareNode";
+import RollingUpdate, { needsAttention } from "./RollingUpdate";
 
 export default function Nodes() {
   const nodes = useLive(() => get<{ nodes: NodeStatus[]; publicKey: string }>("/nodes"), "nodes");
   const [adding, setAdding] = useState(false);
+  const [updating, setUpdating] = useState(false);
   const admin = useRole() === "admin";
   const alerts = useAlerts();
+  const roll = useLive(() => get<{ run: RollRun | null }>("/rolling-update"), "rolling", orEvents("rolling"));
+  const attention = needsAttention(roll.data?.run);
   return (
     <>
       <div className="head">
         <PageTitle>Nodes</PageTitle>
         {admin && (
-          <button className="primary" onClick={() => setAdding(true)}>
-            Add node
-          </button>
+          <div className="actions">
+            <button onClick={() => setUpdating(true)} disabled={(nodes.data?.nodes.length ?? 0) === 0} title="Update every node, one at a time, without stopping the virtual machines">
+              Update all nodes
+            </button>
+            <button className="primary" onClick={() => setAdding(true)}>
+              Add node
+            </button>
+          </div>
         )}
       </div>
+      {attention && roll.data?.run && (
+        <div className="rollbanner">
+          <StatusLine status={roll.data.run.status === "running" ? "warning" : "error"}>
+            {roll.data.run.status === "running" ? "A rolling update is running." : "The rolling update stopped. " + (roll.data.run.condition ?? "")}
+          </StatusLine>
+          {admin && <button onClick={() => setUpdating(true)}>Show</button>}
+        </div>
+      )}
       <ErrorBox error={nodes.error} />
       {nodes.data && nodes.data.nodes.length === 0 ? (
         <div className="empty">A node is a machine that runs your virtual machines. Add one to get started.</div>
@@ -52,6 +69,7 @@ export default function Nodes() {
           </tbody>
         </table></div>
       )}
+      {updating && <RollingUpdate title="Update all nodes" onClose={() => setUpdating(false)} />}
       {adding && <PrepareNode addr="" jump="" onClose={() => setAdding(false)} onRegistered={() => setAdding(false)} />}
     </>
   );

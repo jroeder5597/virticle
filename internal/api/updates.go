@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"virticle/internal/hostconn"
+	"virticle/internal/nodeproto"
 )
 
 // Pending host updates. Strictly read-only: the commands below only list what
@@ -17,12 +18,7 @@ import (
 
 const updatesTTL = time.Hour
 
-type pendingUpdate struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-	From    string `json:"from,omitempty"`
-	Source  string `json:"source,omitempty"`
-}
+type pendingUpdate = nodeproto.Pending
 
 type hostUpdates struct {
 	Family         string          `json:"family"` // apt | dnf | unsupported
@@ -69,7 +65,7 @@ const (
 	cmdOSRelease = `cat /etc/os-release 2>/dev/null; true`
 	cmdAptList   = `apt list --upgradable 2>/dev/null; true`
 	cmdAptStamp  = `stat -c %Y /var/lib/apt/periodic/update-success-stamp 2>/dev/null || stat -c %Y /var/lib/apt/lists 2>/dev/null; true`
-	cmdDnfCheck  = `dnf -q check-update 2>/dev/null; echo "__rc=$?"`
+	cmdDnfCheck  = `e=$(mktemp); dnf -q check-update 2>"$e"; rc=$?; if [ $rc -ne 0 ] && [ $rc -ne 100 ]; then grep . "$e" | tail -n 2 | sed 's/^/__err=/'; fi; rm -f "$e"; echo "__rc=$rc"`
 	cmdKernelDeb = `echo "running=$(uname -r)"; echo "newest=$(ls /boot/vmlinuz-* 2>/dev/null | sed 's#.*/vmlinuz-##' | sort -V | tail -1)"; ` +
 		`if [ -e /var/run/reboot-required ]; then echo "flag=1"; cat /var/run/reboot-required.pkgs 2>/dev/null | sed 's/^/pkg=/'; fi; true`
 	cmdKernelRPM = `echo "running=$(uname -r)"; echo "newest=$(rpm -q kernel-core kernel --qf '%{VERSION}-%{RELEASE}.%{ARCH}\n' 2>/dev/null | grep -v 'not installed' | sort -V | tail -1)"; ` +
@@ -148,63 +144,16 @@ func osFamily(osr string) (family, pretty string) {
 	return "unsupported", pretty
 }
 
-// parseAptUpgradable reads `apt list --upgradable`:
-//
-//	Listing...
-//	libssl3/stable-security 3.5.1-1 amd64 [upgradable from: 3.5.0-1]
-func parseAptUpgradable(out string) []pendingUpdate {
-	res := []pendingUpdate{}
-	for _, l := range strings.Split(out, "\n") {
-		l = strings.TrimSpace(l)
-		if l == "" || strings.HasPrefix(l, "Listing") || strings.HasPrefix(l, "WARNING") || strings.HasPrefix(l, "N:") {
-			continue
-		}
-		name, rest, ok := strings.Cut(l, "/")
-		if !ok {
-			continue
-		}
-		f := strings.Fields(rest)
-		if len(f) < 2 {
-			continue
-		}
-		u := pendingUpdate{Name: name, Source: f[0], Version: f[1]}
-		if i := strings.Index(l, "[upgradable from: "); i >= 0 {
-			u.From = strings.TrimSuffix(l[i+len("[upgradable from: "):], "]")
-		}
-		res = append(res, u)
-	}
-	return res
-}
+func parseAptUpgradable(out string) []pendingUpdate { return nodeproto.ParseApt(out) }
 
 // parseDnfCheck reads `dnf -q check-update` followed by "__rc=N". Exit code
 // 100 means updates are available, 0 none; anything else is an error.
 func parseDnfCheck(out string) ([]pendingUpdate, error) {
-	i := strings.LastIndex(out, "__rc=")
-	if i < 0 {
-		return nil, badRequest("unexpected dnf output")
+	u, err := nodeproto.ParseDnf(out)
+	if err != nil {
+		return nil, badRequest(err.Error())
 	}
-	rc := strings.TrimSpace(out[i+len("__rc="):])
-	body := out[:i]
-	res := []pendingUpdate{}
-	switch rc {
-	case "0":
-		return res, nil
-	case "100":
-	default:
-		return nil, badRequest("dnf check-update exited with status " + rc)
-	}
-	for _, l := range strings.Split(body, "\n") {
-		l = strings.TrimSpace(l)
-		if strings.HasPrefix(l, "Obsoleting Packages") {
-			break
-		}
-		f := strings.Fields(l)
-		if len(f) != 3 || !strings.Contains(f[0], ".") {
-			continue
-		}
-		res = append(res, pendingUpdate{Name: f[0], Version: f[1], Source: f[2]})
-	}
-	return res, nil
+	return u, nil
 }
 
 func applyKernelInfo(res *hostUpdates, out string) {

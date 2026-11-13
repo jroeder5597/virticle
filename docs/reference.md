@@ -322,6 +322,33 @@ Facts
 - Deleting a volume libvirt cannot remove (it removes files on NFS as the file's owner) falls back to the node
   command, as root.
 
+## Rolling updates
+
+Planning is `internal/api/rollplan.go`, the run `internal/api/rolling.go`. The state of a run is stored in the table
+`rolling_runs` (schema 6) after every step; a controller that starts and finds a run in state `running` carries on with it
+(also after its own machine restarted). A step in progress when the controller stopped runs again: every step looks at what is
+true first (where the VM is, whether the update ran, whether the boot id changed).
+
+| Request | Role | What it does |
+| --- | --- | --- |
+| `POST /api/rolling-update/plan` `{"nodes":[ids]}` | admin | The plan: per node `updates`, `reboot`, `moves`, `stuck` (VMs that cannot move, with reasons), `action` (`update`, `skip`, `current`); `refusals`; `needsChoice` |
+| `POST /api/rolling-update` `{"nodes":[ids],"unmovable":"shutdown"\|"skip"}` | admin | Plans again, refuses with 409 and the first refusal, else starts one task `rolling-update` |
+| `GET /api/rolling-update` | viewer | `{run, active}`: the newest run with its nodes, steps (`pending running ok skipped failed`) and, when stopped, `condition` |
+| `POST /api/rolling-update/cancel` | admin | Stop after the current step |
+| `POST /api/rolling-update/continue`, `/restore`, `/dismiss` | admin | Run the failed step again and go on; put things back; hide the alert |
+
+Order: ids ascending, the controller's machine (an address that is this machine) last. Steps per node: maintenance, evacuate,
+stop-vms, update, reboot, wait, verify, maintenance-off, start-vms, return. The restart is needed when the system says so
+(`needs-restarting -r`, `/var/run/reboot-required`), a newer kernel is installed, or the update contained a kernel, firmware,
+glibc, systemd, dbus, libvirt or QEMU package. Waits: restart 12 minutes, package tool 100 minutes, VM shutdown 3 minutes.
+Alert kind `rolling-update`: critical after a failure, warning after a stop, until continued, put back or dismissed.
+
+Node command, protocol **15**: `update-start`, `update-status` (JSON), `update-run` (internal, runs in the unit
+`virticle-update`), `node-reboot` (restart in 5 seconds, unit `virticle-reboot`), `selfcheck [repair]` (lines `ok|fixed|problem`, tab, id, tab, text).
+The update log is `/var/lib/virticle-update/update.log` on the node. dnf: `check-update --refresh`, then `upgrade -y`. apt:
+`update`, then `apt-get -y --with-new-pkgs -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold upgrade` with
+`DEBIAN_FRONTEND=noninteractive`; a source that fails to refresh fails the run.
+
 ## Known limits
 
 - A Debian node and a Rocky Linux node cannot migrate VMs to each other

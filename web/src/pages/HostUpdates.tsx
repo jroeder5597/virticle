@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { get, HostUpdates as Updates } from "../api";
 import { StatusLine } from "../Checks";
+import { useRole } from "../auth";
+import RollingUpdate from "./RollingUpdate";
 
 /** Pending package updates of a node (read-only; nothing is installed from here). */
 export default function HostUpdates({ node, online }: { node: number; online: boolean }) {
@@ -8,6 +10,8 @@ export default function HostUpdates({ node, online }: { node: number; online: bo
   const [err, setErr] = useState<string | undefined>();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const admin = useRole() === "admin";
   const load = (refresh: boolean) => {
     setBusy(true);
     get<Updates>(`/nodes/${node}/updates${refresh ? "?refresh=1" : ""}`)
@@ -31,6 +35,12 @@ export default function HostUpdates({ node, online }: { node: number; online: bo
       <button className="link" onClick={() => setOpen(!open)} aria-expanded={open}>
         {u.updates.length === 0 ? "Up to date" : `${u.updates.length} update${u.updates.length === 1 ? "" : "s"} pending`}
       </button>
+      {admin && (
+        <button onClick={() => setUpdating(true)} title="Put this node in maintenance, move its virtual machines away, install the updates, restart if needed, then move them back">
+          Update this node
+        </button>
+      )}
+      {updating && <RollingUpdate nodes={[node]} title="Update this node" onClose={() => { setUpdating(false); load(true); }} />}
       {u.rebootRequired && (
         <span className="badge s-paused" title={u.rebootReason}>
           reboot required
