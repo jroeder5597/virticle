@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/digitalocean/go-libvirt"
+
 	"virticle/internal/store"
 )
 
@@ -512,10 +514,33 @@ func TestRollingAlertFollowsTheNewestRun(t *testing.T) {
 }
 
 func TestInterruptedMoveNamesFileAndNode(t *testing.T) {
-	err := interruptedMoveError("web1", "node-b", []string{"Volume web1.qcow2: already exists on node-b at /var/lib/libvirt/images/web1.qcow2; remove or rename it first"})
+	err := interruptedMoveError("web1", "node-b", []string{"Volume web1.qcow2: already exists on node-b at /var/lib/libvirt/images/web1.qcow2; remove or rename it first"}, false)
 	for _, want := range []string{"web1", "/var/lib/libvirt/images/web1.qcow2", "node-b", "still runs here", "Continue"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("%q is missing from %q", want, err)
 		}
+	}
+}
+
+func TestResumeAfterInterruptedMove(t *testing.T) {
+	cases := []struct {
+		name   string
+		state  libvirt.DomainState
+		reason libvirt.DomainPausedReason
+		target bool
+		want   bool
+	}{
+		{"paused for the move, target not running", libvirt.DomainPaused, libvirt.DomainPausedMigration, false, true},
+		{"target runs: never resume the source", libvirt.DomainPaused, libvirt.DomainPausedMigration, true, false},
+		{"paused by the user", libvirt.DomainPaused, libvirt.DomainPausedUser, false, false},
+		{"running", libvirt.DomainRunning, 0, false, false},
+	}
+	for _, c := range cases {
+		if got := resumeAfterInterruptedMove(c.state, int32(c.reason), c.target); got != c.want {
+			t.Errorf("%s: %v", c.name, got)
+		}
+	}
+	if err := interruptedMoveError("web1", "node-b", nil, true); !strings.Contains(err.Error(), "runs here again") {
+		t.Errorf("%v", err)
 	}
 }

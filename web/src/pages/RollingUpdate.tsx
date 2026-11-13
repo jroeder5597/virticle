@@ -209,7 +209,7 @@ function RunView({ run, lost, onChange, onClose }: { run: RollRun; lost: boolean
       )}
       <div className="rollnodes">
         {run.nodes.map((n, i) => (
-          <NodeBlock key={n.node} n={n} current={i === run.cur && running} />
+          <NodeBlock key={n.node} n={n} current={i === run.cur && running} stopped={!running} />
         ))}
       </div>
       {confirm.dialog}
@@ -244,12 +244,12 @@ function RunView({ run, lost, onChange, onClose }: { run: RollRun; lost: boolean
   );
 }
 
-function NodeBlock({ n, current }: { n: RollNode; current: boolean }) {
+function NodeBlock({ n, current, stopped }: { n: RollNode; current: boolean; stopped: boolean }) {
   const open = current || n.status === "failed";
   return (
     <section className="rollnode">
       <h3>
-        <span className={"badge es-" + (n.status === "done" || n.status === "current" ? "ok" : n.status === "failed" ? "failed" : "pending")}>{nodeWord[n.status]}</span> {n.name}
+        <span className={"badge es-" + (n.status === "done" || n.status === "current" ? "ok" : n.status === "failed" ? "failed" : "pending")}>{n.status === "running" && stopped ? "Stopped" : nodeWord[n.status]}</span> {n.name}
       </h3>
       {n.action === "skip" && <p className="muted">{n.skipWhy}</p>}
       {n.action === "current" && <p className="muted">There was nothing to update.</p>}

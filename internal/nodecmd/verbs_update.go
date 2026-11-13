@@ -310,7 +310,7 @@ func toolFailure(out string) string {
 		if t == "" || strings.HasPrefix(low, "failed:") {
 			continue
 		}
-		if strings.HasPrefix(low, "error") || strings.HasPrefix(low, "e:") || strings.Contains(low, "scriptlet") || strings.Contains(low, "problem") || strings.Contains(low, "failed") {
+		if strings.HasPrefix(low, "error") || strings.HasPrefix(low, "e:") || strings.HasPrefix(low, "dpkg: error") || strings.Contains(low, "scriptlet") || strings.Contains(low, "problem") || strings.Contains(low, "failed") {
 			hit = append(hit, t)
 		}
 	}
