@@ -135,6 +135,11 @@ export interface Pool {
   capacity: number;
   allocation: number;
   available: number;
+  /** NFS pools: the server and the export. */
+  server?: string;
+  export?: string;
+  /** Why a pool is unavailable. */
+  detail?: string;
 }
 export interface Volume {
   name: string;

@@ -254,9 +254,37 @@ dedicated migration network.
 - **Image catalogue** downloads common cloud images. **Download from URL** and
   **Upload image or ISO** bring your own.
 - **Import disk or OVA** converts foreign disk formats.
-- **New pool** adds a directory, NFS, LVM or iSCSI pool. Only directory pools
-  are tested.
+- **New pool** adds a directory, LVM or iSCSI pool. Only directory pools
+  are tested. For NFS use **Add shared storage** (below).
 - Per volume: clone, resize, delete.
+
+### Shared storage (NFS)
+
+Under Datacenter, Storage, **Add shared storage** takes a name, the NFS server
+and the export path, and mounts the share on every online node at
+`/mnt/NAME` (same pool name and path everywhere). Under **Advanced** you can
+leave nodes out.
+
+- VMs with all disks on shared storage migrate without copying disks, live or
+  offline. With one shared and one local disk only the local one is copied.
+  The migration check says which disks are copied.
+- The NFS version and options are not settings: the mount is `hard` and uses
+  the highest NFS version both sides offer (4.2 normally). Hard means a VM
+  waits for a server that went away instead of getting disk errors.
+- `node prepare` installs the NFS client and, with SELinux, turns on
+  `virt_use_nfs`. Run it again on nodes prepared before.
+- The export must let the nodes write. With `root_squash` set on the server,
+  either use `no_root_squash` for the nodes or `all_squash,anonuid=107,anongid=107`
+  (the VM user's id, shown in the error) and give that user the directory.
+  Adding the storage checks this and says what to change.
+- If the server does not answer, the pool shows **Unavailable**, an alert is
+  raised after about two minutes and clears when it answers. VMs on it pause
+  or wait; nothing is lost. Starting such a VM, or changing it, is refused
+  with a message while the storage is away.
+- A node added later shows "Not on NODE" with an **Add to NODE** button.
+- **Remove** unmounts it on every node. It is refused while a VM has a file on it.
+- There is no automatic failover. A VM of a dead node cannot be started on
+  another node from Virticle yet: the VM definition lives only on the dead node.
 
 ## Networks
 

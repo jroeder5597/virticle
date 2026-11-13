@@ -284,6 +284,20 @@ The node's own addresses on a VLAN are described below.
 | netplan with systemd-networkd, or plain systemd-networkd | `05-virticle-*.netdev` and `.network` files in `/etc/systemd/network`; the files of netplan and the administrator are not edited. They sort before netplan's `10-netplan-*.network`, survive a reboot, `netplan apply` and cloud-init | netplan with networkd tried on a real node (Debian 13): the same tests as above; plain networkd without netplan runs the same code but was not tried |
 | ifupdown (`/etc/network/interfaces`) | nothing: bridges are refused with a plain message | not supported |
 
+## Shared storage (NFS)
+
+| Call | Meaning |
+|---|---|
+| `GET /api/storage/shared` | NFS pools grouped by name: nodes that have it, nodes missing it, state. |
+| `POST /api/storage/shared` | `{name, server, path, nodes?}` adds a netfs pool on every online node (or the listed ones). Answers `complete`, `message`, per-node results; repeatable. |
+| `DELETE /api/storage/shared/{name}` | Unmounts and forgets it on all nodes; refused while a defined VM has a file below the mount, or a node is unreachable. |
+
+Pool state `unavailable` means the mount did not answer a `stat` within 4 s
+(probe cached 6 s). Alert kind `storage-unavailable`. Libvirt is not asked
+about an unavailable NFS pool. Migration: a file is shared when source and
+target have netfs pools with the same server, export and mount path; it is
+not copied, mirrored or deleted from the source.
+
 ## Known limits
 
 - A Debian node and a Rocky Linux node cannot migrate VMs to each other

@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -95,11 +96,8 @@ func (c *Ctx) Roots() []string {
 		if !PlainPath(d) {
 			return
 		}
-		canon, err := filepath.EvalSymlinks(d)
-		if err != nil {
-			return
-		}
-		if fi, err := os.Stat(canon); err != nil || !fi.IsDir() {
+		canon, ok := resolveDirBounded(d, rootProbeLimit)
+		if !ok {
 			return
 		}
 		if checkDenied && DeniedRoot(canon) {
@@ -124,6 +122,37 @@ func (c *Ctx) Roots() []string {
 	c.sh.roots, c.sh.rootsDone = roots, true
 	c.sh.mu.Unlock()
 	return roots
+}
+
+// rootProbeLimit bounds how long finding out about one pool directory may take. A pool on an NFS share whose
+// server is gone is mounted "hard": looking at the directory waits for the server, and without a bound every
+// verb of the node command, including those that never touch that pool, would wait with it. A directory that
+// does not answer in time is not a root for this run, so files in it are refused until the share is back.
+const rootProbeLimit = 3 * time.Second
+
+// resolveDirBounded resolves symbolic links in d and checks that the result is a directory, giving up after
+// limit. The goroutine that is stuck in the kernel is abandoned; the node command is a short-lived process.
+func resolveDirBounded(d string, limit time.Duration) (string, bool) {
+	type res struct {
+		canon string
+		ok    bool
+	}
+	ch := make(chan res, 1)
+	go func() {
+		canon, err := filepath.EvalSymlinks(d)
+		if err != nil {
+			ch <- res{}
+			return
+		}
+		fi, err := os.Stat(canon)
+		ch <- res{canon, err == nil && fi.IsDir()}
+	}()
+	select {
+	case r := <-ch:
+		return r.canon, r.ok
+	case <-time.After(limit):
+		return "", false
+	}
 }
 
 // InRoots reports whether the canonical path p is a root or lies below one.

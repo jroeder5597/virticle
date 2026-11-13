@@ -173,6 +173,9 @@ func (s *Server) Handler() http.Handler {
 
 	auth("GET /api/vms", s.listVMs)
 	auth("GET /api/pools", s.listAllPools)
+	auth("GET /api/storage/shared", s.listShared)
+	auth("POST /api/storage/shared", s.addShared)
+	auth("DELETE /api/storage/shared/{name}", s.removeShared)
 	auth("GET /api/networks", s.listAllNetworks)
 	auth("GET /api/topology", s.topology)
 	auth("GET /api/cluster/network-drift", s.networkDrift)
@@ -379,6 +382,15 @@ func (s *Server) domain(r *http.Request) (*hostconn.Host, libvirt.Domain, error)
 		return nil, libvirt.Domain{}, store.ErrNotFound
 	}
 	dom, err := h.DomainLookupByUUID(u)
+	if err == nil && r.Method != http.MethodGet && !strings.HasSuffix(r.URL.Path, "/action") {
+		// Changing a VM (snapshot, clone, disks, migration, delete) whose disk is on an NFS share that does not
+		// answer would wait for the server and could stall the node's libvirt. Power actions are not held back.
+		if x, xerr := h.DomainGetXMLDesc(dom, libvirt.DomainXMLInactive); xerr == nil {
+			if gerr := nfsGuard(h, x); gerr != nil {
+				return h, dom, gerr
+			}
+		}
+	}
 	return h, dom, err
 }
 

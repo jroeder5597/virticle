@@ -123,16 +123,39 @@ type migPlan struct {
 
 func (p *migPlan) active() bool { return p.Mode != "offline" }
 
+// sharedFile reports whether the file lives on shared storage that both nodes mount.
+func (p *migPlan) sharedFile(path string) bool {
+	f := p.Files.get(path)
+	return f != nil && f.Shared
+}
+
+// sharedDisk reports whether the disk's active image lives on shared storage.
+func (p *migPlan) sharedDisk(d planDisk) bool {
+	return len(d.Chain) > 0 && p.sharedFile(d.Chain[0].Path)
+}
+
 // mirrored reports whether libvirt mirrors this disk's active image while the
-// VM runs, as opposed to the disk being copied by us.
-func (p *migPlan) mirrored(d planDisk) bool { return p.active() && !d.ReadOnly }
+// VM runs, as opposed to the disk being copied by us or being on shared
+// storage (where both nodes see the same file and nothing moves).
+func (p *migPlan) mirrored(d planDisk) bool {
+	return p.active() && !d.ReadOnly && !p.sharedDisk(d)
+}
+
+// mirroredTargets are the device names libvirt is told to copy. With mixed
+// disks (one on shared storage, one local) that list is what keeps libvirt
+// from copying the shared one over itself.
+func (p *migPlan) mirroredTargets() []string {
+	var out []string
+	for _, d := range p.Disks {
+		if p.mirrored(d) {
+			out = append(out, d.Target)
+		}
+	}
+	return out
+}
 
 func (p *migPlan) mirrorFlag() libvirt.DomainMigrateFlags {
-	mirrors := false
-	for _, d := range p.Disks {
-		mirrors = mirrors || p.mirrored(d)
-	}
-	if !mirrors {
+	if len(p.mirroredTargets()) == 0 {
 		return 0
 	}
 	// With a backing chain (snapshots, or an overlay on a base image) the
@@ -145,12 +168,14 @@ func (p *migPlan) mirrorFlag() libvirt.DomainMigrateFlags {
 	return libvirt.MigrateNonSharedDisk
 }
 
+// hasChain reports a backing chain on a disk that is copied. Disks on shared
+// storage keep their chain where it is.
 func (p *migPlan) hasChain() bool {
 	if len(p.Snaps) > 0 {
 		return true
 	}
 	for _, d := range p.Disks {
-		if !d.ReadOnly && len(d.Chain) > 1 {
+		if !d.ReadOnly && !p.sharedDisk(d) && len(d.Chain) > 1 {
 			return true
 		}
 	}
@@ -371,36 +396,69 @@ type dstPool struct {
 	pool   libvirt.StoragePool
 	active bool
 	avail  uint64
+	desc   poolDesc
+	// down: an NFS pool whose mount does not answer (poolhealth.go); it counts as not active.
+	down bool
 }
 
-func poolsByPath(h *hostconn.Host) (map[string]dstPool, error) {
+// poolsByPath lists the pools of a node by directory. Active pools are refreshed so the free space is
+// current; an NFS pool is refreshed only after a probe showed its mount answers.
+func poolsByPath(h *hostconn.Host) (map[string]dstPool, error) { return poolsByPathOpt(h, true) }
+
+func poolsByPathOpt(h *hostconn.Host, refresh bool) (map[string]dstPool, error) {
 	pools, _, err := h.ConnectListAllStoragePools(1, 0)
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]dstPool{}
+	type item struct {
+		pl  libvirt.StoragePool
+		x   poolXML
+		act bool
+	}
+	var items []item
+	var mounts []string
 	for _, pl := range pools {
 		raw, err := h.StoragePoolGetXMLDesc(pl, 0)
 		if err != nil {
 			continue
 		}
-		var x struct {
-			Target struct {
-				Path string `xml:"path"`
-			} `xml:"target"`
-		}
+		var x poolXML
 		if xml.Unmarshal([]byte(raw), &x) != nil || x.Target.Path == "" {
 			continue
 		}
 		act, _ := h.StoragePoolIsActive(pl)
-		dp := dstPool{pool: pl, active: act != 0}
-		if dp.active {
-			h.StoragePoolRefresh(pl, 0)
-			if _, _, _, avail, err := h.StoragePoolGetInfo(pl); err == nil {
+		items = append(items, item{pl, x, act != 0})
+		if x.Type == "netfs" && act != 0 {
+			mounts = append(mounts, x.Target.Path)
+		}
+	}
+	health := nfsProber.probe(h, mounts)
+	out := map[string]dstPool{}
+	for _, it := range items {
+		dp := dstPool{pool: it.pl, active: it.act, desc: it.x.desc(it.pl.Name, it.act)}
+		if st, probed := health[it.x.Target.Path]; probed && st != mountUp {
+			dp.active, dp.down, dp.desc.Active = false, true, false
+		}
+		if dp.active && refresh {
+			h.StoragePoolRefresh(it.pl, 0)
+			if _, _, _, avail, err := h.StoragePoolGetInfo(it.pl); err == nil {
 				dp.avail = avail
 			}
 		}
-		out[path.Clean(x.Target.Path)] = dp
+		out[path.Clean(it.x.Target.Path)] = dp
+	}
+	return out, nil
+}
+
+// poolDescs maps each pool directory of a node to the pool, without refreshing anything.
+func poolDescs(h *hostconn.Host) (map[string]poolDesc, error) {
+	m, err := poolsByPathOpt(h, false)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]poolDesc, len(m))
+	for d, p := range m {
+		out[d] = p.desc
 	}
 	return out, nil
 }
@@ -576,6 +634,7 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 		}
 	}
 
+	s.markShared(src, dst, plan, &c)
 	s.checkTargetFiles(dst, plan, &c)
 
 	// Which network the data uses, and the limit on it.
@@ -614,7 +673,7 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 				internal = append(internal, sn.Name)
 			}
 		}
-		if len(internal) > 0 && plan.active() {
+		if len(internal) > 0 && plan.active() && len(plan.mirroredTargets()) > 0 {
 			c.bad("Internal snapshots", fmt.Sprintf("snapshot(s) %s are stored inside the disk image, which a migration of a running VM does not copy. Shut the VM down and migrate it offline (the whole image is copied), or delete these snapshots first", strings.Join(internal, ", ")))
 		}
 		c.pass("Snapshots", fmt.Sprintf("%d snapshot(s) (%s): the snapshot-preserving path is used; snapshot files are copied and the snapshots recreated on the target", len(names), strings.Join(names, ", ")))
@@ -651,8 +710,8 @@ func (s *Server) checkTargetFiles(dst *hostconn.Host, plan *migPlan, c *checkLis
 	}
 	clash := false
 	for _, f := range files {
-		if !exists[f.Path] {
-			continue
+		if !exists[f.Path] || f.Shared {
+			continue // a shared file is meant to be there: both nodes mount the same share
 		}
 		if f.Owned || f.Active || f == plan.NVRAM {
 			c.bad("Volume "+path.Base(f.Path), "already exists on "+dst.Name+" at "+f.Path+"; remove or rename it first")
@@ -723,7 +782,7 @@ type migPreview struct {
 type fileInfo struct {
 	Path   string `json:"path"`
 	Size   uint64 `json:"size"`
-	Action string `json:"action"` // copy | mirror | skip
+	Action string `json:"action"` // copy | mirror | skip | shared
 }
 
 func (s *Server) preview(srcID int64, src *hostconn.Host, dom libvirt.Domain, req migReq) (*migPlan, migPreview) {
@@ -739,6 +798,8 @@ func (s *Server) preview(srcID int64, src *hostconn.Host, dom libvirt.Domain, re
 		for _, f := range files {
 			a := "copy"
 			switch {
+			case f.Shared:
+				a = "shared"
 			case f.Skip:
 				a = "skip"
 			case f.Active:
@@ -1256,6 +1317,16 @@ func (m *migRun) perform(flags libvirt.DomainMigrateFlags, lo, hi float64) error
 	if m.plan.TLS {
 		params = append(params, libvirt.TypedParam{Field: libvirt.MigrateParamTLSDestination, Value: *libvirt.NewTypedParamValueString(m.plan.TLSName)})
 	}
+	// With disks on shared storage next to local ones, name the local disks: without the list libvirt would
+	// copy every disk that is not marked shareable, including the one both nodes already see.
+	if flags&(libvirt.MigrateNonSharedDisk|libvirt.MigrateNonSharedInc) != 0 {
+		local := m.plan.mirroredTargets()
+		if len(local) < len(m.plan.Disks) {
+			for _, t := range local {
+				params = append(params, libvirt.TypedParam{Field: libvirt.MigrateParamMigrateDisks, Value: *libvirt.NewTypedParamValueString(t)})
+			}
+		}
+	}
 	m.inJob.Store(true)
 	defer m.inJob.Store(false)
 	done := make(chan error, 1)
@@ -1387,8 +1458,8 @@ func (m *migRun) cleanSource() error {
 	var left []string
 	refreshed := false
 	for _, f := range m.plan.Files.list {
-		if !f.Owned {
-			continue
+		if !f.Owned || f.Shared {
+			continue // a shared file is the one the VM now uses on the target: never delete it
 		}
 		used := false
 		for _, x := range others {

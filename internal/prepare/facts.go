@@ -326,11 +326,12 @@ func Classify(id, version, like, name string) Distro {
 }
 
 // Package names per family. The lists were checked on Debian 13 and Rocky 10.
+// nfs-common / nfs-utils is the NFS client (mount.nfs) that shared storage needs.
 // The guest disk tools provide virt-sysprep, which "sysprep on clone" uses;
 // "prepare --minimal" leaves them out.
 var (
-	debianBase  = []string{"qemu-system-x86", "qemu-utils", "libvirt-daemon-system", "libvirt-clients", "dnsmasq-base", "ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "ca-certificates", "openssh-client", "iproute2"}
-	rhelBase    = []string{"qemu-kvm", "libvirt", "virt-install", "edk2-ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "openssh-clients", "iproute-tc"}
+	debianBase  = []string{"qemu-system-x86", "qemu-utils", "libvirt-daemon-system", "libvirt-clients", "dnsmasq-base", "ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "ca-certificates", "openssh-client", "iproute2", "nfs-common"}
+	rhelBase    = []string{"qemu-kvm", "libvirt", "virt-install", "edk2-ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "openssh-clients", "iproute-tc", "nfs-utils"}
 	debianGuest = []string{"libguestfs-tools"}
 	rhelGuest   = []string{"guestfs-tools"}
 )
