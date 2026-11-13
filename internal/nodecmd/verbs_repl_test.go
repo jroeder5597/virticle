@@ -95,3 +95,26 @@ func TestReplLs(t *testing.T) {
 	}
 	n.denied("not a work directory", "", "repl-ls", n.workDir("plain"))
 }
+
+// A commit that was killed half way leaves a base whose refcounts lag: the next commit fails, the verb repairs
+// the base with qemu-img check and runs the commit again.
+func TestReplCommitRepairsBase(t *testing.T) {
+	n := newNode(t)
+	log := n.abs("qemu.log")
+	flag := n.abs("failed-once")
+	script := "#!/bin/sh\necho \"$*\" >> " + log + "\ncase $1 in\ncommit) if [ ! -f " + flag + " ]; then touch " + flag + "; echo 'ERROR cluster 0 refcount=0 reference=1'; exit 1; fi;;\ncheck) exit 3;;\nesac\nexit 0\n"
+	p := n.abs("fake-qemu-img")
+	if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	n.cfg.Tools["qemu-img"] = p
+	work := n.workDir(".virticle-rp.AAAAAA")
+	n.put("pools/default/.virticle-rp.AAAAAA/b1-vda.qcow2", string(qcowHeader("")))
+	n.put("pools/default/.virticle-rp.AAAAAA/p1-vda.qcow2", string(qcowHeader("b1-vda.qcow2")))
+	n.ok("", "repl-commit", work, "p1-vda.qcow2")
+	got, _ := os.ReadFile(log)
+	lines := strings.Split(strings.TrimSpace(string(got)), "\n")
+	if len(lines) != 3 || !strings.HasPrefix(lines[0], "commit") || !strings.HasPrefix(lines[1], "check -r all -f qcow2 -- "+work+"/b1-vda.qcow2") || !strings.HasPrefix(lines[2], "commit") {
+		t.Errorf("calls: %q", lines)
+	}
+}

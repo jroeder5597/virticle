@@ -136,7 +136,30 @@ func verbReplCommit(c *Ctx) error {
 	}
 	out, err := c.CombinedOutput("qemu-img", append(args, "--", top)...)
 	if err != nil {
-		return qemuFail("commit "+c.Args[1], out, err)
+		if _, ok := err.(*Error); ok {
+			return err
+		}
+		// A commit that was killed half way can leave the base with refcounts that lag behind its tables
+		// (found in the lab: "refcount=0 reference=1"). Its data is whole; qemu-img check repairs the
+		// bookkeeping, then the commit is run again.
+		base := ""
+		if count == 2 {
+			base = w.Path + "/" + c.Args[2]
+		} else if bn, herr := HeaderBacking(top); herr == nil && bn != "" && !strings.Contains(bn, "/") {
+			base = w.Path + "/" + bn
+		}
+		if base == "" {
+			return qemuFail("commit "+c.Args[1], out, err)
+		}
+		// The exit status of check says what it found (2 corrupt, 3 leaks); what matters is that the commit works now.
+		if _, cerr := c.CombinedOutput("qemu-img", "check", "-r", "all", "-f", "qcow2", "--", base); cerr != nil {
+			if _, ok := cerr.(*Error); ok {
+				return cerr
+			}
+		}
+		if out2, err2 := c.CombinedOutput("qemu-img", append(args, "--", top)...); err2 != nil {
+			return qemuFail("commit "+c.Args[1]+" after repairing the base", out2, err2)
+		}
 	}
 	return nil
 }

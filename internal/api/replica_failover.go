@@ -283,8 +283,9 @@ func (s *Server) markOldVM(sh *hostconn.Host, sd libvirt.Domain, toName string, 
 		return
 	}
 	meta, err := setMetaChildren(old, map[string]string{
-		replChild:  "",
-		staleChild: staleMeta{ToNode: toNode, ToName: toName, At: time.Now().Unix()}.element(),
+		replChild:     "",
+		failedOverChd: "",
+		staleChild:    staleMeta{ToNode: toNode, ToName: toName, At: time.Now().Unix()}.element(),
 	})
 	if err == nil {
 		err = setDomainMeta(sh, sd, meta)
@@ -575,6 +576,9 @@ func (s *Server) reconcileOne(h *hostconn.Host, nodeID int64, d libvirt.Domain, 
 	}
 	if parseStale(ometa) != nil || parseReplicaMeta(ometa) != nil {
 		return // already handled, or it is the replica of the running VM now
+	}
+	if ofo := parseFailedOver(ometa); ofo != nil && ofo.At >= fo.At {
+		return // the VM over there took over later than this one: this one is the old copy, handled from its own record
 	}
 	state, _, err := oh.DomainGetState(od, 0)
 	if err != nil {

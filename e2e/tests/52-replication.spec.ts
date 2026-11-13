@@ -105,6 +105,9 @@ test.describe.serial("replication", () => {
     test.slow();
     test.setTimeout(420_000);
     const copy = (await api.vms()).find((v) => v.name === NAME && v.node === n2id)!;
+    // cirros ignores the power button, which would make Virticle wait three minutes and refuse (it does, safely:
+    // the VM keeps running); so the source VM is powered off first and the planned failover takes the shut-off path
+    await api.call("POST", `/nodes/${n1}/vms/${copy.uuid}/action`, { action: "poweroff" });
     await openVM(page, { node: n2id, uuid: copy.uuid, name: NAME });
     await page.locator("section#replica").getByRole("button", { name: "Planned failover" }).click();
     const dlg = dialog(page, "Planned failover");

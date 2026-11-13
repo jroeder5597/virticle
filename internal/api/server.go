@@ -335,7 +335,10 @@ func fail(w http.ResponseWriter, err error) {
 	code := http.StatusInternalServerError
 	var lv libvirt.Error
 	var br badRequest
+	var ce conflictError
 	switch {
+	case errors.As(err, &ce):
+		code = http.StatusConflict
 	case errors.Is(err, store.ErrNotFound):
 		code = http.StatusNotFound
 	case errors.Is(err, cluster.ErrOffline):
