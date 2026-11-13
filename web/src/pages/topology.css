@@ -1,0 +1,37 @@
+/* Network topology: boxes and lines, no animation. Colours come from the theme variables. */
+.topo .s-up { --st: var(--ok); }
+.topo .s-down { --st: var(--danger); }
+.topobar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.topobar .filters { margin: 10px 0; }
+.toponode { margin: 14px 0; min-width: 0; }
+.toponode h3 { display: flex; align-items: center; gap: 12px; margin: 0 0 8px; font-size: 15px; }
+.topolink { font-size: 13px; font-weight: 400; }
+.toposwitch { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); margin: 0 0 12px; min-width: 0; }
+.toposwitch > header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel-2, var(--hover)); }
+.toposwitch h4 { margin: 0; font-size: 14px; }
+.topobody { display: grid; grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr); padding: 12px; }
+.topocol { display: grid; gap: 8px; align-content: start; min-width: 0; }
+.topocolhead { font-size: 12px; font-weight: 600; color: var(--muted); }
+.topotrunk { position: relative; }
+.topotrunk::before { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; border-left: 2px solid var(--line); }
+.topopg, .topouplink, .topohost { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; min-width: 0; overflow-wrap: anywhere; position: relative; }
+.topopg { border-left: 4px solid var(--line); }
+.topopg::after, .topouplink::before { content: ""; position: absolute; top: 50%; width: 14px; border-top: 2px solid var(--line); }
+.topopg::after { left: 100%; }
+.topouplink::before { right: 100%; }
+.topoplain { color: var(--muted); }
+.topotitle { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-weight: 600; }
+.topotitle .muted { font-weight: 400; }
+.topoifs { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.topoif { display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; }
+.topoaddr { display: inline-block; margin-right: 8px; }
+.topomgmt { font-size: 12px; font-weight: 600; color: var(--text); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; }
+.topodown { font-size: 12px; font-weight: 600; color: var(--text); border: 1px solid var(--danger); border-radius: 999px; padding: 0 6px; }
+.topounusedlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; padding: 12px; }
+.topounusedlist .topouplink::before { display: none; }
+
+@media (max-width: 760px) {
+  .topobody { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .topotrunk { display: none; }
+  .topopg::after, .topouplink::before { display: none; }
+}

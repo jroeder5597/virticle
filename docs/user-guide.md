@@ -220,6 +220,24 @@ Good to know:
 - Select a network to see its DHCP leases and add address reservations.
 - **Host interfaces** lists each node's bridges and NICs.
 
+### Network topology
+
+The **Topology** tab, on the Datacenter page (all nodes) and on each node page (that node), draws how virtual
+machines reach the network, like a VMware standard switch. It is read-only. **Refresh** reloads it; it also reloads
+by itself when networks or virtual machines change. In the Datacenter view the first three nodes are open and the
+others open on a click, and a network that has the same name on several nodes gets the same coloured edge.
+
+| Part | What it is |
+| --- | --- |
+| Switch | A bridge on the node: a Linux or Open vSwitch bridge, or the bridge libvirt made for one of its networks. |
+| Uplinks (right) | The network cards or bonds attached to the bridge, with link state, speed and addresses. A NAT, routed or isolated libvirt network has none and says so instead. |
+| Port groups (left) | The libvirt networks on the bridge (mode, VLAN, DHCP range) and **Direct to bridge** for VM interfaces that use the bridge itself. Each lists its virtual machines with MAC and IP address. |
+| Host | The node's own address on the switch. |
+
+**Unused network cards** lists cards that belong to no bridge. The card or bridge that holds the address the
+controller uses to reach the node is marked **Management**. Addresses of virtual machines come from DHCP leases,
+so a guest with a fixed address shows none. Uplinks of Open vSwitch bridges are not listed.
+
 ## Users, tokens and the audit log
 
 | Page | Who | What it does |

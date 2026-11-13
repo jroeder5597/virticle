@@ -13,6 +13,7 @@ import ConnectionCard from "./NodeConnection";
 import MigrationTLS from "./MigrationTLS";
 import Networks from "./Networks";
 import Storage from "./Storage";
+import Topology from "./Topology";
 import VMs from "./VMs";
 import "../node.css";
 import { StatusLine } from "../Checks";
@@ -22,6 +23,7 @@ const TABS = [
   ["vms", "Virtual machines"],
   ["storage", "Storage"],
   ["network", "Network"],
+  ["topology", "Topology"],
   ["updates", "Updates"],
   ["settings", "Settings"],
 ] as const;
@@ -95,6 +97,7 @@ export default function NodeDetail() {
           {tab === "vms" && <VMs fixedNode={id} />}
           {tab === "storage" && <Storage fixedNode={id} />}
           {tab === "network" && <NetworkTab id={id} />}
+          {tab === "topology" && <Topology node={id} />}
           {tab === "updates" && <HostUpdates node={id} online={online} />}
           {tab === "settings" && <Settings n={n} admin={admin} />}
         </>
