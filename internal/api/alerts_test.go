@@ -1,12 +1,6 @@
 package api
 
 import (
-	"encoding/json"
-	"io"
-	"net/http"
-	"net/http/httptest"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -149,64 +143,6 @@ func TestBadVMState(t *testing.T) {
 	}
 }
 
-func TestWebhookRaiseClearAndRetry(t *testing.T) {
-	var mu sync.Mutex
-	var got []webhookMsg
-	var calls atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b, _ := io.ReadAll(r.Body)
-		if calls.Add(1) == 1 {
-			http.Error(w, "try later", http.StatusServiceUnavailable) // first attempt fails
-			return
-		}
-		var m webhookMsg
-		if err := json.Unmarshal(b, &m); err != nil {
-			t.Error(err)
-		}
-		mu.Lock()
-		got = append(got, m)
-		mu.Unlock()
-	}))
-	defer srv.Close()
-
-	wh := newWebhook(srv.URL)
-	wh.delays = []time.Duration{10 * time.Millisecond, 10 * time.Millisecond}
-	start := time.Now()
-	wh.send("raise", Alert{ID: "pool:1:p", Kind: "pool-usage", Severity: "critical"})
-	wh.send("clear", Alert{ID: "pool:1:p", Kind: "pool-usage"})
-	if time.Since(start) > 100*time.Millisecond {
-		t.Error("send blocked")
-	}
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		mu.Lock()
-		n := len(got)
-		mu.Unlock()
-		if n == 2 {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if len(got) != 2 || got[0].Event != "raise" || got[1].Event != "clear" || got[0].Alert.ID != "pool:1:p" {
-		t.Fatalf("delivered %+v after %d calls", got, calls.Load())
-	}
-}
-
-func TestWebhookDoesNotBlockWhenReceiverIsDown(t *testing.T) {
-	wh := &webhook{url: "http://127.0.0.1:1", client: &http.Client{Timeout: time.Second}, queue: make(chan webhookMsg, 2)}
-	var dropped atomic.Int32
-	wh.dropped = func(webhookMsg) { dropped.Add(1) }
-	// No worker is running: the queue fills and further messages are dropped.
-	for i := 0; i < 5; i++ {
-		wh.send("raise", Alert{ID: "x"})
-	}
-	if dropped.Load() != 3 {
-		t.Errorf("dropped %d, want 3", dropped.Load())
-	}
-}
-
 func TestValidateWebhookURL(t *testing.T) {
 	for _, ok := range []string{"http://127.0.0.1:9000/hook", "https://example.org/x"} {
 		if err := ValidateWebhookURL(ok); err != nil {
@@ -217,44 +153,5 @@ func TestValidateWebhookURL(t *testing.T) {
 		if ValidateWebhookURL(bad) == nil {
 			t.Errorf("%q accepted", bad)
 		}
-	}
-}
-
-// The webhook set in the UI is stored and read back; the -alert-webhook flag
-// wins and makes it read-only. Only admins may change it.
-func TestAlertWebhookSetting(t *testing.T) {
-	e := newEnv(t)
-	e.user("root", "admin")
-	e.user("eve", "operator")
-
-	if w := e.do("PUT", "/api/alerts/settings", map[string]string{"webhook": "http://hook.example/x"}, cookieOf(e, "eve")); w.Code != 403 {
-		t.Errorf("operator changed the webhook: %d", w.Code)
-	}
-	if w := e.do("PUT", "/api/alerts/settings", map[string]string{"webhook": "ftp://hook.example"}, cookieOf(e, "root")); w.Code != 400 {
-		t.Errorf("bad scheme accepted: %d", w.Code)
-	}
-	if w := e.do("PUT", "/api/alerts/settings", map[string]string{"webhook": " https://hook.example/x "}, cookieOf(e, "root")); w.Code != 200 {
-		t.Fatalf("put: %d %s", w.Code, w.Body)
-	}
-	if u, flag := e.srv.webhookURL(); u != "https://hook.example/x" || flag {
-		t.Errorf("stored webhook = %q, flag %v", u, flag)
-	}
-
-	// The flag wins and the field is read-only.
-	e.srv.Alerts.Webhook = "http://flag.example/y"
-	if u, flag := e.srv.webhookURL(); u != "http://flag.example/y" || !flag {
-		t.Errorf("flag webhook = %q, flag %v", u, flag)
-	}
-	if w := e.do("PUT", "/api/alerts/settings", map[string]string{"webhook": ""}, cookieOf(e, "root")); w.Code != 400 {
-		t.Errorf("flag-set webhook changed: %d", w.Code)
-	}
-	e.srv.Alerts.Webhook = ""
-
-	// Cleared again.
-	if w := e.do("PUT", "/api/alerts/settings", map[string]string{"webhook": ""}, cookieOf(e, "root")); w.Code != 200 {
-		t.Fatalf("clear: %d", w.Code)
-	}
-	if u, _ := e.srv.webhookURL(); u != "" {
-		t.Errorf("webhook after clearing = %q", u)
 	}
 }
