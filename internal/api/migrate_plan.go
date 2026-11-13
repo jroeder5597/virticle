@@ -244,6 +244,12 @@ type migFile struct {
 	// Skip marks a file that is not ours and already exists on the target
 	// (a shared base image); it is assumed identical and not copied.
 	Skip bool
+	// Shared marks a file that lives on shared storage (an NFS pool both nodes mount from the same server and
+	// export, at the same path). Both nodes see this one file, so it is never copied, never mirrored and never
+	// deleted from the source. Skip is set as well.
+	Shared bool
+	// SharedPool is the name of that pool, for messages.
+	SharedPool string
 }
 
 // fileSet collects files in insertion order without duplicates; a file seen

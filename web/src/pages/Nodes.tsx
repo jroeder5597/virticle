@@ -73,7 +73,7 @@ function NodeRow({ n, canRemove, alerts, nodes }: { n: NodeStatus; canRemove: bo
             Maintenance
           </span>
         )}
-        <AlertMarks alerts={alerts} match={(a) => a.node === n.id && a.kind !== "pool-usage" && a.kind !== "vm-state"} />
+        <AlertMarks alerts={alerts} match={(a) => a.node === n.id && a.kind !== "pool-usage" && a.kind !== "vm-state" && a.kind !== "storage-unavailable"} />
         <div className="mono muted nodeaddr">
           {n.user}@{n.addr}
           {n.jump && <div>via {n.jump}</div>}

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/xml"
 	"fmt"
 	"log"
 	"net/http"
@@ -97,7 +98,10 @@ func (s *Server) gatherAlertInput(now time.Time) alertInput {
 			linksRead[n.ID] = true
 			in.Debounced = append(in.Debounced, links...)
 		}
-		in.Pools = append(in.Pools, gatherPools(h, n.ID, name)...)
+		pools, storage := gatherPools(h, n.ID, name)
+		healSharedPools(h)
+		in.Pools = append(in.Pools, pools...)
+		in.Debounced = append(in.Debounced, storage...)
 		in.VMs = append(in.VMs, gatherBadVMs(h, n.ID, name)...)
 		if t, ok := s.migCertExpiry(h); ok {
 			in.MigCerts = append(in.MigCerts, alertMigCert{Node: n.ID, NodeName: name, NotAfter: t})
@@ -138,18 +142,48 @@ func (s *Server) gatherAlertInput(now time.Time) alertInput {
 }
 
 // gatherPools reads the usage of the active pools. A directory pool's numbers
-// are only as fresh as its last refresh, so each pool is refreshed first.
-func gatherPools(h *hostconn.Host, node int64, nodeName string) []alertPool {
+// are only as fresh as its last refresh, so each pool is refreshed first. An NFS
+// pool is probed before anything else (poolhealth.go): one whose mount does not
+// answer is not refreshed, because that would wait for the server as long as it is
+// away, and becomes a storage alert instead.
+func gatherPools(h *hostconn.Host, node int64, nodeName string) ([]alertPool, []Alert) {
 	pools, _, err := h.ConnectListAllStoragePools(1, 0)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
-	var out []alertPool
+	type active struct {
+		pl libvirt.StoragePool
+		x  poolXML
+	}
+	var act []active
+	var mounts []string
 	for _, pl := range pools {
-		if act, err := h.StoragePoolIsActive(pl); err != nil || act == 0 {
+		if a, err := h.StoragePoolIsActive(pl); err != nil || a == 0 {
 			continue
 		}
-		h.StoragePoolRefresh(pl, 0)
+		var x poolXML
+		if raw, err := h.StoragePoolGetXMLDesc(pl, 0); err == nil {
+			xml.Unmarshal([]byte(raw), &x)
+		}
+		act = append(act, active{pl, x})
+		if x.Type == "netfs" && x.Target.Path != "" {
+			mounts = append(mounts, x.Target.Path)
+		}
+	}
+	health := nfsProber.peek(h, mounts)
+	var out []alertPool
+	var alerts []Alert
+	for _, a := range act {
+		if st, probed := health[a.x.Target.Path]; probed && st != mountUp {
+			alerts = append(alerts, storageAlert(node, nodeName, a.pl.Name, a.x.Source.Host.Name, st))
+			continue
+		}
+		pl := a.pl
+		// An NFS pool is never refreshed from here: a refresh that meets a server going away waits for it
+		// while holding the node's storage daemon, and every storage call of that node queues behind it.
+		if a.x.Type != "netfs" {
+			h.StoragePoolRefresh(pl, 0)
+		}
 		_, capacity, alloc, avail, err := h.StoragePoolGetInfo(pl)
 		if err != nil || capacity == 0 {
 			continue
@@ -160,7 +194,7 @@ func gatherPools(h *hostconn.Host, node int64, nodeName string) []alertPool {
 		}
 		out = append(out, alertPool{Node: node, NodeName: nodeName, Name: pl.Name, Capacity: capacity, Used: used})
 	}
-	return out
+	return out, alerts
 }
 
 func gatherBadVMs(h *hostconn.Host, node int64, nodeName string) []alertVM {

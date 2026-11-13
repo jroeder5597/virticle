@@ -26,6 +26,11 @@ type poolInfo struct {
 	Capacity   uint64 `json:"capacity"`
 	Allocation uint64 `json:"allocation"`
 	Available  uint64 `json:"available"`
+	// Server and Export are set for an NFS pool.
+	Server string `json:"server,omitempty"`
+	Export string `json:"export,omitempty"`
+	// Detail says why a pool is unavailable.
+	Detail string `json:"detail,omitempty"`
 }
 
 func esc(s string) string {
@@ -48,35 +53,84 @@ func (s *Server) listPools(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
-// collectPools lists the storage pools of one node, sorted by name.
+// poolXML is the part of a pool definition the app reads.
+type poolXML struct {
+	Type   string `xml:"type,attr"`
+	Source struct {
+		Host struct {
+			Name string `xml:"name,attr"`
+		} `xml:"host"`
+		Dir struct {
+			Path string `xml:"path,attr"`
+		} `xml:"dir"`
+	} `xml:"source"`
+	Target struct {
+		Path string `xml:"path"`
+	} `xml:"target"`
+}
+
+func (x poolXML) desc(name string, active bool) poolDesc {
+	d := poolDesc{Name: name, Type: x.Type, Target: x.Target.Path, Active: active}
+	if x.Type == "netfs" {
+		d.Server, d.Export = x.Source.Host.Name, x.Source.Dir.Path
+	}
+	return d
+}
+
+// collectPools lists the storage pools of one node, sorted by name. A running NFS pool is first probed
+// (poolhealth.go); one that does not answer is reported as "unavailable" and libvirt is not asked about it,
+// because its answer would wait for the dead server.
 func collectPools(h *hostconn.Host) ([]poolInfo, error) {
 	pools, _, err := h.ConnectListAllStoragePools(1, 0)
 	if err != nil {
 		return nil, err
 	}
-	out := []poolInfo{}
+	type entry struct {
+		p   libvirt.StoragePool
+		x   poolXML
+		act bool
+	}
+	var entries []entry
+	var mounts []string
 	for _, p := range pools {
+		e := entry{p: p}
+		if raw, err := h.StoragePoolGetXMLDesc(p, 0); err == nil {
+			xml.Unmarshal([]byte(raw), &e.x)
+		}
+		if a, err := h.StoragePoolIsActive(p); err == nil {
+			e.act = a != 0
+		}
+		if e.x.Type == "netfs" && e.act && e.x.Target.Path != "" {
+			mounts = append(mounts, e.x.Target.Path)
+		}
+		entries = append(entries, e)
+	}
+	health := nfsProber.peek(h, mounts)
+	out := []poolInfo{}
+	for _, e := range entries {
+		p := e.p
+		info := poolInfo{Name: p.Name, UUID: cluster.FormatUUID(p.UUID), State: "unknown", Type: e.x.Type, Target: e.x.Target.Path}
+		if e.x.Type == "netfs" {
+			info.Server, info.Export = e.x.Source.Host.Name, e.x.Source.Dir.Path
+		}
+		if st, probed := health[e.x.Target.Path]; probed && e.act && st != mountUp {
+			info.State, info.Detail = "unavailable", unavailableText(info.Server, st)
+			if a, err := h.StoragePoolGetAutostart(p); err == nil {
+				info.Autostart = a != 0
+			}
+			out = append(out, info)
+			continue
+		}
 		state, capacity, alloc, avail, err := h.StoragePoolGetInfo(p)
 		if err != nil {
 			continue
 		}
-		info := poolInfo{Name: p.Name, UUID: cluster.FormatUUID(p.UUID), State: "unknown", Capacity: capacity, Allocation: alloc, Available: avail}
+		info.Capacity, info.Allocation, info.Available = capacity, alloc, avail
 		if int(state) < len(poolStates) {
 			info.State = poolStates[state]
 		}
 		if a, err := h.StoragePoolGetAutostart(p); err == nil {
 			info.Autostart = a != 0
-		}
-		if raw, err := h.StoragePoolGetXMLDesc(p, 0); err == nil {
-			var x struct {
-				Type   string `xml:"type,attr"`
-				Target struct {
-					Path string `xml:"path"`
-				} `xml:"target"`
-			}
-			if xml.Unmarshal([]byte(raw), &x) == nil {
-				info.Type, info.Target = x.Type, x.Target.Path
-			}
 		}
 		out = append(out, info)
 	}
@@ -198,7 +252,19 @@ func (s *Server) createPool(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"name": name})
 }
 
+// pool finds the pool named in the request. An NFS pool that does not answer is refused: any libvirt call that
+// reads or writes it would wait for the server, and a call stuck in the node's storage daemon can take its
+// connection down with it.
 func (s *Server) pool(r *http.Request) (*hostconn.Host, libvirt.StoragePool, error) {
+	h, p, err := s.poolAny(r)
+	if err != nil {
+		return h, p, err
+	}
+	return h, p, nfsPoolGuard(h, p)
+}
+
+// poolAny is pool without the check for an unavailable NFS share: for stopping or removing it.
+func (s *Server) poolAny(r *http.Request) (*hostconn.Host, libvirt.StoragePool, error) {
 	_, h, err := s.host(r)
 	if err != nil {
 		return nil, libvirt.StoragePool{}, err
@@ -208,7 +274,7 @@ func (s *Server) pool(r *http.Request) (*hostconn.Host, libvirt.StoragePool, err
 }
 
 func (s *Server) poolAction(w http.ResponseWriter, r *http.Request) {
-	h, pool, err := s.pool(r)
+	h, pool, err := s.poolAny(r)
 	if err != nil {
 		fail(w, err)
 		return
@@ -220,6 +286,7 @@ func (s *Server) poolAction(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	defer nfsProber.forget(h) // start, stop and remove change what is mounted
 	actions := map[string]func() error{
 		"start":     func() error { return h.StoragePoolCreate(pool, 0) },
 		"stop":      func() error { return h.StoragePoolDestroy(pool) },
@@ -240,6 +307,22 @@ func (s *Server) poolAction(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		fail(w, badRequest("unknown action "+req.Action))
 		return
+	}
+	if req.Action == "remove" {
+		// Shared storage is removed for the whole datacenter (Storage, Remove), which checks every node. On one
+		// node alone it is refused while a VM of this node has a file on it.
+		var x poolXML
+		if raw, err := h.StoragePoolGetXMLDesc(pool, 0); err == nil && xml.Unmarshal([]byte(raw), &x) == nil && x.Type == "netfs" {
+			users, err := poolUsers(h, x.Target.Path)
+			if err != nil {
+				fail(w, err)
+				return
+			}
+			if len(users) > 0 {
+				fail(w, badRequest(removeRefusal(pool.Name, map[string][]string{h.Name: users})))
+				return
+			}
+		}
 	}
 	if err := s.task(r, req.Action+" pool", pool.Name, h.Name, func(func(float64)) error { return fn() }); err != nil {
 		fail(w, err)

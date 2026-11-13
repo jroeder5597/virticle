@@ -713,6 +713,9 @@ type backupEntry struct {
 	VMNodeName string `json:"vmNodeName,omitempty"`
 	VMShutOff  bool   `json:"vmShutOff,omitempty"`
 	ExportName string `json:"exportName,omitempty"`
+	// share identifies the NFS share the backup is on (empty for local storage); every node that mounts the
+	// share lists the same backup, which is shown once.
+	share string
 }
 
 // scanPool lists the backups in one pool directory (one find on the node).
@@ -780,20 +783,23 @@ func (s *Server) listBackups(uuidFilter string) []backupEntry {
 			if err != nil {
 				return
 			}
+			descs, _ := poolDescs(h)
 			for _, pd := range dirs {
 				items, _ := scanPool(h, pd)
+				share := shareID(h, descs[pd.Dir])
 				mu.Lock()
 				for _, it := range items {
 					if uuidFilter != "" && (it.Manifest == nil || it.Manifest.UUID != uuidFilter) {
 						continue
 					}
-					out = append(out, backupEntry{Node: id, NodeName: name, Pool: pd.Name, Dir: it.Dir, Path: pd.Dir + "/" + it.Dir, Size: it.Size, Manifest: it.Manifest, Err: it.Err})
+					out = append(out, backupEntry{Node: id, NodeName: name, Pool: pd.Name, Dir: it.Dir, Path: pd.Dir + "/" + it.Dir, Size: it.Size, Manifest: it.Manifest, Err: it.Err, share: share})
 				}
 				mu.Unlock()
 			}
 		}(n.ID, h, name)
 	}
 	wg.Wait()
+	out = dedupShared(out)
 	for i := range out {
 		if out[i].Manifest != nil {
 			if w, ok := exists[out[i].Manifest.UUID]; ok {

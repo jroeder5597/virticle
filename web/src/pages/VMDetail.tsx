@@ -87,6 +87,11 @@ export default function VMDetailPage() {
         </div>
       </div>
       <ErrorBox error={act.error ?? vm.error} />
+      {(d.storageDown ?? []).map((t) => (
+        <p key={t} className="note" role="status">
+          <strong>Storage not answering.</strong> {t}
+        </p>
+      ))}
       <div className="tabs">
         {tabs.map(([id, label]) => (
           <button key={id} className={tab === id ? "on" : ""} onClick={() => setParams(id === "overview" ? {} : { tab: id })}>

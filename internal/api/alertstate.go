@@ -18,7 +18,7 @@ import (
 
 type Alert struct {
 	ID       string `json:"id"`
-	Kind     string `json:"kind"`     // node-down | pool-usage | host-memory | failed-job | vm-state | tls-expiry | scheduler-conflict | net-link | net-bond | net-drift
+	Kind     string `json:"kind"`     // node-down | pool-usage | host-memory | failed-job | vm-state | tls-expiry | scheduler-conflict | net-link | net-bond | net-drift | storage-unavailable
 	Severity string `json:"severity"` // warning | critical
 	Title    string `json:"title"`
 	Message  string `json:"message"`
@@ -107,7 +107,7 @@ type alertInput struct {
 
 // debouncedKind is true for the alerts that go through Debounced.
 func debouncedKind(kind string) bool {
-	return kind == "net-link" || kind == "net-bond" || kind == "net-drift"
+	return kind == "net-link" || kind == "net-bond" || kind == "net-drift" || kind == "storage-unavailable"
 }
 
 type alertTracker struct {
@@ -331,4 +331,12 @@ func sortAlerts(a []Alert) {
 		}
 		return strings.Compare(a[i].ID, a[j].ID) < 0
 	})
+}
+
+// storageAlert is the alert for an NFS pool that does not answer on a node. It goes through the debounced path:
+// raised on the second check in a row, cleared on the second check that finds the share answering again.
+func storageAlert(node int64, nodeName, pool, server string, st mountState) Alert {
+	title := fmt.Sprintf("Storage %s is unavailable on %s", pool, nodeName)
+	msg := fmt.Sprintf("The NFS storage %s is unavailable on %s: %s. Check the NFS server and the network between it and the node. This alert clears by itself when the storage answers.", pool, nodeName, unavailableText(server, st))
+	return Alert{ID: fmt.Sprintf("nfs:%d:%s", node, pool), Kind: "storage-unavailable", Severity: "critical", Title: title, Message: msg, Node: node, Link: "/storage"}
 }

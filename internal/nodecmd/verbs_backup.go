@@ -700,6 +700,23 @@ func verbConvertFinish(c *Ctx) error {
 		if err := finishAcross(c, wfd, dst); err != nil {
 			return err
 		}
+	case errors.Is(err, unix.EINVAL) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOTSUP):
+		// The file system has no RENAME_NOREPLACE (NFS): a hard link is exclusive too, so link, then remove the
+		// work file (the same as the move verb does).
+		if lerr := unix.Linkat(wfd, "out.part", dst.DirFD(), dst.Name, 0); lerr != nil {
+			switch {
+			case errors.Is(lerr, unix.EEXIST):
+				return Fail("a file with this name appeared in the pool directory")
+			case errors.Is(lerr, unix.EXDEV):
+				if err := finishAcross(c, wfd, dst); err != nil {
+					return err
+				}
+			default:
+				return Fail("cannot move the result into place: %v", lerr)
+			}
+		} else {
+			_ = unix.Unlinkat(wfd, "out.part", 0)
+		}
 	default:
 		return Fail("cannot move the result into place: %v", err)
 	}

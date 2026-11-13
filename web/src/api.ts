@@ -102,6 +102,8 @@ export interface VM {
   cpu?: { policy: "cluster-baseline"; model: string; relation?: "same" | "newer" | "older" | "differs" };
 }
 export interface VMDetail extends VM {
+  /** The storage under the VM's disks that does not answer, one sentence each. */
+  storageDown?: string[];
   title?: string;
   description?: string;
   arch: string;
@@ -135,6 +137,11 @@ export interface Pool {
   capacity: number;
   allocation: number;
   available: number;
+  /** NFS pools: the server and the export. */
+  server?: string;
+  export?: string;
+  /** Why a pool is unavailable. */
+  detail?: string;
 }
 export interface Volume {
   name: string;
@@ -265,7 +272,7 @@ export interface AgentHelp {
 
 export interface Alert {
   id: string;
-  kind: "node-down" | "pool-usage" | "host-memory" | "failed-job" | "vm-state" | "tls-expiry" | "scheduler-conflict" | "net-link" | "net-bond" | "net-drift";
+  kind: "node-down" | "pool-usage" | "host-memory" | "failed-job" | "vm-state" | "tls-expiry" | "scheduler-conflict" | "net-link" | "net-bond" | "net-drift" | "storage-unavailable";
   severity: "warning" | "critical";
   title: string;
   message: string;

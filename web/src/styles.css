@@ -147,7 +147,7 @@ table.compact tr:hover { background: none; }
 .s-running, .s-online, .s-ok, .s-active, .s-agent-connected, .es-ok, .catok { --st: var(--ok); }
 .s-template { color: var(--text); margin-left: 8px; }
 .s-paused, .s-connecting, .s-suspended, .s-building, .s-agent-disconnected, .sev, .mark, .badge.maint { --st: var(--warn); }
-.s-crashed, .s-offline, .s-failed, .s-inaccessible, .s-degraded, .es-failed, .es-blocked, .sev.critical, .mark.critical { --st: var(--danger); }
+.s-crashed, .s-offline, .s-failed, .s-inaccessible, .s-unavailable, .s-degraded, .es-failed, .es-blocked, .sev.critical, .mark.critical { --st: var(--danger); }
 
 .error { background: color-mix(in srgb, var(--danger) 12%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent); color: var(--text); border-radius: var(--radius); padding: 8px 12px; margin: 10px 0; white-space: pre-wrap; word-break: break-word; }
 .note { background: var(--hover); border-radius: var(--radius); padding: 8px 12px; }
@@ -303,3 +303,5 @@ textarea[readonly] { opacity: 0.8; }
 td.num, th.num { white-space: nowrap; }
 table.vmlist td.vmname { max-width: 240px; overflow-wrap: anywhere; }
 table.vmlist td.vmnode { max-width: 150px; overflow-wrap: anywhere; }
+
+.warnline { color: var(--warn); font-size: 12px; margin-top: 2px; }

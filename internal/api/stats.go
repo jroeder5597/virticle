@@ -239,10 +239,52 @@ func readPools(h *hostconn.Host) []metrics.Pool {
 	return out
 }
 
+// domainStats reads the statistics of all VMs of the node. VMs whose disk is on an NFS share that does not
+// answer are left out (see poolguard.go): QEMU no longer answers its monitor for them, and asking would hold a
+// call of the node's libvirt for 30 seconds every round. They are reported as running, with no figures.
+func domainStats(h *hostconn.Host) ([]libvirt.DomainStatsRecord, error) {
+	warmDomainXML(h)
+	others, stalled := stalledOn(h)
+	if n := len(stalled); n != lastStalled.swap(h, n) && n > 0 {
+		log.Printf("node %s: %d VM(s) have a disk on an NFS share that does not answer; their statistics are not asked for until it does", h.Name, n)
+	}
+	if len(stalled) == 0 {
+		return h.ConnectGetAllDomainStats(nil, domainStatMask, 0)
+	}
+	if off, _, err := h.ConnectListAllDomains(1, libvirt.ConnectListDomainsInactive); err == nil {
+		others = append(others, off...)
+	}
+	var recs []libvirt.DomainStatsRecord
+	if len(others) > 0 {
+		var err error
+		if recs, err = h.ConnectGetAllDomainStats(others, domainStatMask, 0); err != nil {
+			return nil, err
+		}
+	}
+	return append(recs, stalledRecords(stalled)...), nil
+}
+
+// lastStalled remembers how many VMs were left out per node, so that the log says it once, not every round.
+var lastStalled = stalledCount{m: map[*hostconn.Host]int{}}
+
+type stalledCount struct {
+	mu sync.Mutex
+	m  map[*hostconn.Host]int
+}
+
+// swap stores n for the node and returns the number stored before.
+func (c *stalledCount) swap(h *hostconn.Host, n int) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	old := c.m[h]
+	c.m[h] = n
+	return old
+}
+
 // sample takes one round of statistics and returns what the history should
 // store for it.
 func (ns *nodeSeries) sample(h *hostconn.Host, at time.Time) metrics.Batch {
-	recs, err := h.ConnectGetAllDomainStats(nil, domainStatMask, 0)
+	recs, err := domainStats(h)
 	out, cmdErr := h.Run("sh -c " + hostconn.Quote(metrics.NodeReadCmd))
 	var nr *metrics.NodeRaw
 	if cmdErr == nil {

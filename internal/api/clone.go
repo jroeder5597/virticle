@@ -353,7 +353,7 @@ func (s *Server) vmClone(w http.ResponseWriter, r *http.Request) {
 		nvramNote = useQcow2Nvram(h, dom)
 		progress(0.98)
 		if q.Start {
-			if err := h.DomainCreate(dom); err != nil {
+			if err := nfsStartHint(h, h.DomainCreate(dom)); err != nil {
 				return fmt.Errorf("the clone was created but did not start: %w", err)
 			}
 		}
@@ -380,11 +380,7 @@ func lookupVolByPath(h *hostconn.Host, p string) (libvirt.StorageVol, error) {
 	if err == nil {
 		return vol, nil
 	}
-	if pools, _, perr := h.ConnectListAllStoragePools(1, libvirt.ConnectListStoragePoolsActive); perr == nil {
-		for _, pool := range pools {
-			h.StoragePoolRefresh(pool, 0)
-		}
-	}
+	refreshLive(h)
 	return h.StorageVolLookupByPath(p)
 }
 

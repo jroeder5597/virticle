@@ -47,6 +47,7 @@ type Host struct {
 	ssh  *ssh.Client
 	jump *ssh.Client
 	priv Privilege // see privilege.go
+	gate storGate  // see storgate.go
 }
 
 // Dial opens the SSH connection and the libvirt session on top of it.

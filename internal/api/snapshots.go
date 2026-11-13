@@ -459,15 +459,7 @@ func descendants(list []snapInfo, root string) []string {
 
 // refreshPools lets storage pools rescan their directories so overlay and
 // memory files created or removed by libvirt show up in volume listings.
-func refreshPools(h *hostconn.Host) {
-	pools, _, err := h.ConnectListAllStoragePools(1, libvirt.ConnectListStoragePoolsActive)
-	if err != nil {
-		return
-	}
-	for _, p := range pools {
-		h.StoragePoolRefresh(p, 0)
-	}
-}
+func refreshPools(h *hostconn.Host) { refreshLive(h) }
 
 // apparmorNodes caches, per node name, whether QEMU is confined by AppArmor.
 var apparmorNodes sync.Map
