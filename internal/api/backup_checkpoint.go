@@ -113,6 +113,10 @@ func deleteCheckpoint(h *hostconn.Host, dom libvirt.Domain, name string) error {
 		if _, herr := healBitmaps(h, dom); herr != nil {
 			log.Printf("bitmaps of %s: %v", dom.Name, herr)
 		}
+		// A shut-off VM: libvirt only dropped the record; the bitmap itself is removed here.
+		if st, _, serr := h.DomainGetState(dom, 0); serr == nil && stateName(uint8(st)) == "shutoff" {
+			removeOfflineBitmap(h, dom, name)
+		}
 	}
 	return err
 }

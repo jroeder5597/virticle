@@ -198,7 +198,8 @@ earlier versions no longer exist.
 - Bitmaps: a persistent `virticle-` or `backup-` bitmap with the `in-use` flag in an image that no QEMU has open (a killed QEMU) is removed
   with `qemu-img bitmap --remove` (node verb `qcow2-bitmap-rm`, which takes the image lock and so fails on a running VM), or with
   `block-dirty-bitmap-remove` for a bitmap a running QEMU calls inconsistent, before a disk resize and when a checkpoint could only be
-  deleted metadata only. Their checkpoint records are deleted with them.
+  deleted metadata only. Their checkpoint records are deleted with them. libvirt cannot delete a checkpoint of a shut-off VM; the
+  record is then dropped metadata only and the bitmap of that checkpoint is removed from the disks with the same verb.
 - A run is full when: no point, the replica is damaged, the checkpoint is gone (killed QEMU, migration, revert, restore), or the
   disk layout changed. One run per VM and per source node at a time; a backup and a run of one VM exclude each other.
 - Scheduler: every 20 s the loop starts runs that are due (`-no-scheduler` runs none; `POST .../replication/run` does one). A
@@ -208,7 +209,10 @@ earlier versions no longer exist.
   .../replica`, `POST .../replica/failover` (`{"mode":"planned"|"unplanned"}`, refused with 409 when the situation changed).
   `DELETE .../vms/{uuid}?replica=1` also removes the replica. Task kinds: `replicate`, `failover`, `replication stop`, `replica delete`.
 - Refused: raw disks, shareable or non-file disks, passthrough devices, a standby with another VM of that name or UUID, a missing
-  network or bridge on the standby, no pool with room.
+  network or bridge on the standby, no pool with room, a VM with any writable disk in a directory that the standby mounts as the
+  same NFS share (`sharedDisksOf`, replica_shared.go; migration's rule for "shared"). The replica is never put in an NFS pool.
+- TPM: not copied (`swtpm` state, one 6 KB file `/var/lib/libvirt/swtpm/<uuid>/tpm2/tpm2-00.permall`); the replica's definition keeps
+  the `<tpm>` device and libvirt makes a new, empty state at the first start.
 - Failover: the newest point whose chain reads; its overlays are written into the base, the base moved to the pool as `<vm>.qcow2`
   (`<vm>-<disk>.qcow2` for more disks), UEFI variables placed, the definition of that point defined, the VM started. Can be repeated
   after any failure. The old VM is stale-marked by the controller when its node is online again (alert loop, once a minute).

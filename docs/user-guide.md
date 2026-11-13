@@ -269,6 +269,11 @@ The card shows the last copy (time and age), how much was sent, when the next co
 the copy is older than twice its interval. **Replicate now** copies at once. Disks must be qcow2 and the VM must have no
 passthrough devices; the dialog says what to change. The standby needs the VM's networks and bridges.
 
+A VM with a disk on shared storage (an NFS share that both nodes mount) cannot be replicated: that disk is already on both
+nodes, and a copy of only the other disks would be from another moment. Move the disk to local storage, or leave the VM
+alone: **Migrate** moves it between the nodes without copying the shared disk. The copy itself always goes to a local pool of the
+standby, never to a share.
+
 On the standby the VM appears with the state **Replica**. It is inert: it cannot be started, edited, backed up, moved or
 deleted with the normal buttons, and backups, schedules, evacuation, network checks and bulk actions skip it. Its definition
 (CPU, memory, networks, firmware, UEFI variables) follows the source after every copy.
@@ -284,6 +289,10 @@ deleted with the normal buttons, and backups, schedules, evacuation, network che
 1. Open the replica on the standby node.
 2. Click the button. Read the confirmation: it states what is lost and, for an offline node, the risk below.
 3. Confirm. The VM runs on the standby; the replica page becomes a normal VM page.
+
+A planned failover asks the guest to shut down and waits up to 3 minutes for it. A guest that does not react (no ACPI, a
+hung guest, a VM stuck in the firmware menu) changes nothing: the VM keeps running and the task fails with the advice to shut
+the guest down from inside, or power it off with **Actions**, and to try again.
 
 **The risk of an unplanned failover.** Virticle cannot stop a node it cannot reach. If the VM is in fact still running on
 the old node (for instance only the network to it is down), two copies of the VM run at once with the same MAC and IP
@@ -325,7 +334,10 @@ the clocks of the nodes.
   held are out of reach. Replicas of VMs on a removed node show the alert "replica-age"; start one from its page or delete it.
 - A disk that a killed QEMU left with unusable change tracking is cleaned up when it would get in the way (a disk resize,
   removing the tracking when replication or a backup stops); the next copy or backup is then a full one.
-- The virtual TPM is not copied; the VM starts with an empty TPM on the standby (BitLocker asks for its recovery key).
+- The virtual TPM is not copied (setting up replication warns, and so does the failover confirmation). The VM starts on the
+  standby with a new, empty TPM: anything sealed to the old TPM no longer opens (tested with a key sealed by tpm2-tools: the
+  load fails with an integrity error), and a disk locked to it with BitLocker asks for its recovery key. Have the keys at hand
+  before a VM with a TPM is failed over.
 - Copies use the migration network and its limit. A copy needs free space on the standby for the changes (or the whole VM for a
   full copy); when there is not enough, the run fails and the earlier copy is kept.
 - A cloned VM is not replicated.

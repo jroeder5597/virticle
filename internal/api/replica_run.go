@@ -249,6 +249,9 @@ func (s *Server) planReplica(srcID int64, src *hostconn.Host, dom libvirt.Domain
 	if m.md.Hostdevs > 0 {
 		return nil, badRequest("this VM has passthrough devices (PCI, USB or mediated); they belong to this node, so the VM cannot be replicated. Remove them first")
 	}
+	if err := refuseSharedDisks(src, dst, m.md); err != nil {
+		return nil, err
+	}
 	if err := missingTools(src, "qemu-img"); err != nil {
 		return nil, err
 	}

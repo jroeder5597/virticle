@@ -45,6 +45,16 @@ func (s *Server) replicaPoolFor(src *hostconn.Host, dst *hostconn.Host, md migDo
 	if err != nil {
 		return "", err
 	}
+	// Never a share: the replica must not be on storage the source node sees as well.
+	if descs, derr := poolDescs(dst); derr == nil {
+		local := dirs[:0:0]
+		for _, d := range dirs {
+			if !descs[d.Dir].isNFS() {
+				local = append(local, d)
+			}
+		}
+		dirs = local
+	}
 	type cand struct {
 		name string
 		free int64
@@ -208,6 +218,10 @@ func (s *Server) putReplication(w http.ResponseWriter, r *http.Request) {
 	md, err := parseMigDomain(raw)
 	if err != nil {
 		fail(w, badRequest("cannot read the domain definition: "+err.Error()))
+		return
+	}
+	if err := refuseSharedDisks(h, dst, md); err != nil {
+		fail(w, err)
 		return
 	}
 	disks, _, allQcow2, need, err := inspectBackupDisks(h, md, "replicated")

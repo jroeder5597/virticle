@@ -65,6 +65,63 @@ func staleBitmapsOf(info string) []string {
 	return out
 }
 
+// removeOfflineBitmap removes the bitmap that belonged to a checkpoint from the disks of a shut-off VM. libvirt
+// cannot delete a checkpoint of an inactive domain ("cannot delete checkpoint for inactive domain"), so after the
+// record is dropped the bitmap would stay in the image for good, tracking every write of later runs for nothing,
+// one more with every replication or backup that is stopped while the VM is shut off. Only names this program
+// made are removed, and only from an image no QEMU has open (the verb fails on a locked one).
+func removeOfflineBitmap(h *hostconn.Host, dom libvirt.Domain, name string) {
+	if !strings.HasPrefix(name, checkpointPrefix) {
+		return
+	}
+	raw, err := h.DomainGetXMLDesc(dom, libvirt.DomainXMLInactive)
+	if err != nil {
+		return
+	}
+	md, err := parseMigDomain(raw)
+	if err != nil {
+		return
+	}
+	for _, d := range md.Disks {
+		if d.Device != "disk" || d.Type != "file" || d.Path == "" {
+			continue
+		}
+		info, err := h.QemuInfo(d.Path, false)
+		if err != nil || !hasBitmap(info, name) {
+			continue
+		}
+		if err := h.QcowBitmapRemove(d.Path, name); err != nil {
+			log.Printf("removing the bitmap %s from %s: %v", name, d.Path, err)
+		}
+	}
+}
+
+// hasBitmap says whether the first image of a `qemu-img info --output=json` result has a bitmap of that name.
+func hasBitmap(info, name string) bool {
+	type img struct {
+		Spec struct {
+			Data struct {
+				Bitmaps []struct {
+					Name string `json:"name"`
+				} `json:"bitmaps"`
+			} `json:"data"`
+		} `json:"format-specific"`
+	}
+	var one img
+	var many []img
+	if json.Unmarshal([]byte(info), &many) == nil && len(many) > 0 {
+		one = many[0]
+	} else if json.Unmarshal([]byte(info), &one) != nil {
+		return false
+	}
+	for _, b := range one.Spec.Data.Bitmaps {
+		if b.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // healBitmaps removes the inconsistent bitmaps of the VM's disks and the checkpoint records of them. It returns
 // the names removed. A failure is returned too, but what could be done was done.
 func healBitmaps(h *hostconn.Host, dom libvirt.Domain) ([]string, error) {
