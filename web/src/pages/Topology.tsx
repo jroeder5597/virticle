@@ -96,7 +96,7 @@ function Addrs({ list, use }: { list: Addr[]; use?: UseMigration }) {
           {a.management && <span className="topomgmt"> Management</span>}
           {a.migration && <span className="topomgmt"> Migration</span>}
           {use?.can(a) && (
-            <button className="link topouse" onClick={() => use.run(a)} disabled={use.busy} data-topo-use={a.address}>
+            <button className="link topouse" onClick={() => use.run(a)} disabled={use.busy} data-topo-use={a.address.split("/")[0]}>
               Use for migration
             </button>
           )}
