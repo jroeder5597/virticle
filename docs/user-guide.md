@@ -141,6 +141,11 @@ Sync guest clock is under **Power**.
   group with others; the dialog shows what moves together. The host needs
   IOMMU enabled in firmware and on the kernel command line. A graphics card
   that the host itself is using cannot be attached.
+- **Speed limit**: in the network interfaces list, **Edit** a card and enter a
+  **Speed limit (Mbit/s)**; empty means no limit. It limits both directions and
+  applies at once to a running VM. **Advanced** sets download and upload
+  separately. The list shows "limited to ..." only for cards that have a limit.
+  The node needs `tc` (package `iproute2`, or `iproute-tc` on Rocky and Alma).
 - **Actions > More > Edit XML** edits the full libvirt definition.
 
 ## Snapshots
@@ -278,6 +283,23 @@ others open on a click, and a network that has the same name on several nodes ge
 **Unused network cards** lists cards that belong to no bridge. The card or bridge that holds the address the
 controller uses to reach the node is marked **Management**. Addresses of virtual machines come from DHCP leases,
 so a guest with a fixed address shows none. Uplinks of Open vSwitch bridges are not listed.
+
+### Network alerts
+
+The alerts (bell in the top bar, and the webhook) include two about network links, checked every minute and raised
+only when seen twice in a row: **Network card X on Y has no link** (a warning; critical when it is the only uplink of
+a bridge that carries the node's address or has running virtual machines) and **bond runs on 1 of 2 cards** or
+**LACP is not answered by the switch**. Cards that belong to no bridge or bond and carry no address never alert.
+
+### Networks that differ between nodes
+
+A virtual machine can only move to a node that has a network of the same name. When nodes of the same distribution
+family and architecture do not all have the same networks, or have them with another kind, VLAN or bridge, the
+Datacenter **Network** and **Topology** tabs show a line "N networks differ between nodes." Open it for a table of
+what differs where. A bridge network that is missing on a node, and whose bridge exists there, has **Create on
+node**. NAT and isolated networks are not copied, since a copy would be a different network. Only when a running
+virtual machine uses a network that no other node has, an alert "Networks differ between nodes; some virtual
+machines cannot migrate." is raised.
 
 ### Virtual switches
 
