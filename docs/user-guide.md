@@ -241,6 +241,10 @@ You do not choose. The list shows each backup as **Full** or **Incremental**, wi
 - A backup is also full, with the reason shown under it, when the VM was shut off, a disk is not qcow2, a disk was added,
   removed, resized or moved, a snapshot was reverted, the VM was moved or restored or stopped unexpectedly, or an
   earlier backup is missing or damaged.
+- The backup dialog says "Planned as an incremental backup" while it runs, because libvirt can still refuse it; when the
+  run is over it shows what was made, and the reason if it is full.
+- If the controller stops in the middle of a backup, that backup is lost, and the next backup (an hour later or more) removes
+  the half-written files it left in the pool directory.
 - **Restore** works from any entry; Virticle puts the earlier backups it needs together. A backup whose earlier backups are
   missing cannot be restored, and says so.
 - **Keep the newest** counts backups. An incremental backup is never kept without the backups it needs, so a few more than

@@ -840,6 +840,10 @@ func removeBackupDir(h *hostconn.Host, poolDir, name string) error {
 	}
 	dir := poolDir + "/" + name
 	if err := h.RemoveTree(dir); err != nil {
+		// Already gone (another request, or the later backups of a chain deleted with their parent): done.
+		if ex, xerr := h.Exists(dir); xerr == nil && !ex[dir] {
+			return nil
+		}
 		return fmt.Errorf("cannot delete %s on %s: %w", dir, h.Name, err)
 	}
 	return nil
