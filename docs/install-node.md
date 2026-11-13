@@ -276,6 +276,7 @@ for:
 - **downloading** images and the image catalogue into a pool,
 - **importing** disks and OVAs,
 - **moving a disk** to another pool,
+- **host bridges**: Linux bridges with VLAN filtering, with a rollback on the node,
 - **cloning with guest preparation** (`virt-sysprep`, from the guest disk tools; not there after `prepare --minimal`).
 
 Backup export and import stream through the controller to and from the browser.
@@ -356,6 +357,9 @@ virticle-node ALL=(root) NOPASSWD: /usr/local/libexec/virticle-node
 | `tar-list FILE`, `tar-extract FILE WORKDIR NAME...` | list an OVA; extract plain-named members of an archive that holds regular files only into a work directory |
 | `import-convert-start WORKDIR SRC`, `import-convert-status WORKDIR`, `import-convert-kill WORKDIR` | run `qemu-img convert` to qcow2 in the background from a work directory, read its progress, stop it |
 | `sysprep DISK...` | `virt-sysprep` with a fixed option set on qcow2 or raw images |
+| `net-info`, `net-plan`, `net-status` | read only, JSON: the node's network configuration system and its bridges; what a bridge change would do (request on stdin); the pending and recent changes |
+| `net-apply`, `net-confirm ID`, `net-rollback [ID]` | create, change or delete a Linux bridge (request on stdin) with a rollback the node owns; keep the change; restore the saved network settings (see "Host bridges" in the reference) |
+| `net-run ID` | internal: the part of `net-apply` that runs in a transient systemd unit, so the SSH session may die while the network changes |
 | `peer-key`, `peer-allow`, `peer-disallow` | the account's own node key; install or remove a peer's key (restricted to `peer-recv`) |
 | `peer-hostkey-set HOST PORT`, `peer-hostkey-unset HOST PORT`, `peer-list` | host keys the node accepts for its peers; what is on record |
 | `peer-send HOST PORT USER SRC DST MODE`, `peer-ping HOST PORT USER`, `peer-recv` | send a file to a peer node; test a peer; receive (the forced command of a peer's key) |
