@@ -23,13 +23,13 @@ test.describe.serial("simplified dialogs", () => {
     await field(dlg, "Name").fill(`${P}never`);
     const adv = dlg.getByRole("button", { name: "Advanced", exact: true });
     await adv.click();
-    await pick(dlg, "Other storage types", /^NFS share/);
+    await pick(dlg, "Other storage types", /^iSCSI target/);
     await adv.click(); // fold it away again
     await expect(adv).toHaveAttribute("aria-expanded", "false");
     await dlg.getByRole("button", { name: "Create" }).click();
-    // the browser stops the submit at the empty NFS server field: Advanced is open and the field has focus
+    // the browser stops the submit at the empty iSCSI server field: Advanced is open and the field has focus
     await expect(adv).toHaveAttribute("aria-expanded", "true");
-    await expect(field(dlg, "NFS server")).toBeFocused();
+    await expect(field(dlg, "iSCSI server")).toBeFocused();
     await page.keyboard.press("Escape");
     expect((await api(page)).some((p: any) => p.name === `${P}never`)).toBe(false);
   });
