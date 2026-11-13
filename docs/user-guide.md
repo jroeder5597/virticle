@@ -246,7 +246,7 @@ so a guest with a fixed address shows none. Uplinks of Open vSwitch bridges are 
 
 ### Network alerts
 
-The alerts (bell in the top bar, and the webhook) include two about network links, checked every minute and raised
+The alerts (bell in the top bar, and [Notifications](#notifications)) include two about network links, checked every minute and raised
 only when seen twice in a row: **Network card X on Y has no link** (a warning; critical when it is the only uplink of
 a bridge that carries the node's address or has running virtual machines) and **bond runs on 1 of 2 cards** or
 **LACP is not answered by the switch**. Cards that belong to no bridge or bond and carry no address never alert.
@@ -303,6 +303,38 @@ rolled back is shown as one line you can dismiss.
 **Which nodes.** Nodes that use NetworkManager, or netplan with systemd-networkd. A node that uses ifupdown is not
 supported yet (the button is disabled and says so). VLANs on a virtual switch need libvirt 11 or later on the node. A
 node prepared with an older version of Virticle must be prepared again.
+
+## Notifications
+
+Alerts show in the bell in the top bar. **Alerts** (admin) lists where else they are sent: Slack, Mattermost,
+Discord, or any web address (a webhook). Nothing is sent until you add a destination.
+
+**Add destination** asks for a type, a name and the URL. Messages are sent when an alert is raised and when it
+clears, for warnings and critical alerts. **Send test message** checks a destination at once and tells you in plain
+words what the service answered. A destination that cannot be reached shows a red dot and **Failing:** with the
+reason; Virticle tries a message again after 5 seconds, 30 seconds and 2 minutes, then gives up on that message.
+More than 5 alerts raised in one minute arrive as one summary message.
+
+| Service | Where to get the URL |
+| --- | --- |
+| Slack | 1. Open api.slack.com/apps and choose **Create New App**, **From scratch**.<br>2. Choose **Incoming Webhooks** and turn them on.<br>3. Choose **Add New Webhook to Workspace** and pick the channel.<br>4. Copy the **Webhook URL**. |
+| Mattermost | 1. Open the main menu, **Integrations**, **Incoming Webhooks** (an administrator may have to allow integrations first).<br>2. Choose **Add Incoming Webhook**, give it a title and a channel.<br>3. Save, then copy the URL. |
+| Discord | 1. Open **Server Settings**, **Integrations**, **Webhooks**.<br>2. Choose **New Webhook**, give it a name and a channel.<br>3. Choose **Copy Webhook URL**. |
+| Webhook | Any address that accepts a POST with a JSON body, for example your own script. The body is described in the [reference](reference.md#alert-webhook-body). |
+
+The URL is a secret: anyone who has it can post to your channel. Virticle keeps it encrypted, and after saving shows
+only the host and the last four characters. To change it, edit the destination and enter a new one.
+
+Under **Advanced** in the dialog: send **Critical only** instead of warnings and critical, switch off the message
+when an alert clears, and, for a webhook, a secret that signs every body.
+
+- Slack, Mattermost and Discord need an `https://` address that is not this machine or a link-local address.
+  Private (LAN) addresses are fine, for a Mattermost in your own network.
+- A webhook may use `http://` (the page warns that it is not encrypted) and may point at this machine or the LAN.
+  Link-local addresses such as 169.254.169.254 (cloud metadata) are refused.
+- Messages link to the right page in Virticle only when a public URL is set under **Web access**.
+- The old `-alert-webhook` flag still works; it appears as one more destination that cannot be edited. A webhook
+  address saved by an earlier version became the destination **Webhook** when you upgraded.
 
 ## Users, tokens and the audit log
 

@@ -17,7 +17,7 @@
 | `-data` | `/var/lib/virticle` if it exists and holds a database, else `data` | Directory for the database and the controller's SSH key. Also for `virticle web` and `virticle node`. |
 | `-listen` | none | Address of the web UI and API. Given, it overrides what the **Web access** page stores and makes that page read-only. Leave it out to manage web access from the UI. |
 | `-no-scheduler` | off | Do not run scheduled snapshots and backups from this controller. |
-| `-alert-webhook` | empty | URL that receives a JSON POST when an alert is raised or cleared. Given, it wins over the **Alerts** page and makes its field read-only. |
+| `-alert-webhook` | empty | Deprecated. URL that receives a JSON POST when an alert is raised or cleared. Given, it is listed on the **Alerts** page as one more destination that cannot be edited. |
 
 Without `-listen` and without stored web settings, a data directory with no
 users serves HTTPS with a self-signed certificate on port 8443 of all
@@ -25,7 +25,7 @@ interfaces; one that already has users keeps plain HTTP on `127.0.0.1:8080`.
 
 Deprecated, hidden from `-help`, and still working with a notice in the log:
 `-tls-cert`, `-tls-key`, `-insecure-http`, `-trusted-proxy` (use the **Web
-access** page or `virticle web set`), and `-alert-pool-warn` (85),
+access** page or `virticle web set`), `-alert-webhook` (use **Alerts**), and `-alert-pool-warn` (85),
 `-alert-pool-critical` (95), `-alert-memory` (90), `-alert-cert-days` (30),
 whose defaults stay.
 
@@ -66,6 +66,39 @@ pattern that counts as the virtio-win ISO).
 Token requests are written to the audit log. Account settings need a web
 session, not a token.
 
+## Alert webhook body
+
+A destination of type **Webhook** receives a `POST` with `Content-Type: application/json` and
+`User-Agent: virticle-alerts` for every alert that is raised (or changes severity) and every alert that clears:
+
+```json
+{"event":"raise","alert":{"id":"pool:1:data","kind":"pool-usage","severity":"critical","title":"Pool data is 97% full","message":"Storage pool data on kvm1 uses 970 GiB of 1000 GiB.","node":1,"link":"/storage","since":1700000000},"time":1700000100}
+```
+
+- `event`: `raise`, `clear`, or `test` (the **Send test message** button; its alert has `"id":"test"`).
+- `alert.kind`: `node-down`, `pool-usage`, `host-memory`, `failed-job`, `vm-state`, `tls-expiry`,
+  `scheduler-conflict`, `net-link`, `net-bond`, `net-drift`. `severity` is `warning` or `critical`. `node` is
+  the node id and `link` the page in the web UI (both may be missing); `since` and `time` are Unix seconds.
+- One alert per request, always; the webhook is never summarised. Any 2xx answer is success. Other answers are
+  retried after 5 s, 30 s and 2 min, except 401, 403, 404, 410 and other 4xx (not 408, 429), which are not.
+  On 429 the `Retry-After` header is honoured.
+
+With a **Secret** set, the request has the header `X-Virticle-Signature: sha256=<hex>`, where `<hex>` is the
+lowercase hex of HMAC-SHA256 over the exact request body with the secret as key. To verify, compute the same over
+the raw bytes you received (before parsing) and compare in constant time:
+
+```python
+import hmac, hashlib
+def valid(secret: bytes, body: bytes, header: str) -> bool:
+    want = "sha256=" + hmac.new(secret, body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(want, header)
+```
+
+The API for the Alerts page: `GET/POST /api/notify/destinations`, `PUT/DELETE /api/notify/destinations/{id}` and
+`POST /api/notify/destinations/{id}/test` (admin). The address is accepted on create and update and never
+returned: the list carries `host` and `tail` (the last four characters). `GET`/`PUT /api/alerts/settings` of
+earlier versions no longer exist.
+
 ## Where state lives
 
 - **libvirt on the nodes**: VMs, networks, pools, volumes, snapshots. Per-VM
@@ -74,13 +107,15 @@ session, not a token.
   `https://virticle.invalid/ns/1`.
 - **The data directory** (`-data`):
   - `virticle.db`: users, password hashes, sessions, token hashes, node list,
-    web access settings, task log, audit log.
+    web access settings, alert destinations (addresses and secrets encrypted), task log, audit log.
   - `virticle.db.bak-<version>-<time>`: copy made before a schema upgrade
     (newest 3 kept).
   - `id_ed25519`, `id_ed25519.pub`: the controller's SSH key.
   - `known_hosts`: node host keys, trusted on first use.
   - `tls-cert.pem`, `tls-key.pem`, `web-own/`, `acme/`: certificates.
   - `instance-id`: stamped into scheduled snapshots.
+  - `settings.key`: the key that encrypts stored secrets (alert webhook addresses and signing secrets), created on
+    first use, mode 0600. Keep it with the database; without it those secrets must be entered again.
 - **Memory only**: live stats (about 10 minutes), alert state, rate-limit
   counters.
 
