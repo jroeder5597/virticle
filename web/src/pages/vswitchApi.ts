@@ -74,6 +74,8 @@ export const WAITING_PROGRESS = 0.2;
 export const freeCards = (st: HostnetState) => st.interfaces.filter((n) => n.type === "physical" && !n.master);
 
 export const addrIP = (cidr: string) => cidr.split("/")[0];
+/** The addresses worth showing: without IPv6 link-local ones (fe80::). */
+export const shownAddrs = (list: string[]) => list.filter((a) => !/^fe80:/i.test(a));
 
 /** The one sentence that says why Add is not possible on this node, or "" when it is. */
 export function addBlocked(st: HostnetState | undefined, error: string | undefined): string {

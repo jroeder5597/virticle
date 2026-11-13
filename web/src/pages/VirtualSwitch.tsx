@@ -22,6 +22,7 @@ import {
   NetBody,
   NetPlan,
   rolledBackWords,
+  shownAddrs,
   WAITING_PROGRESS,
 } from "./vswitchApi";
 import "./vswitch.css";
@@ -216,7 +217,7 @@ function Run({ task, timeout, started }: { task: Task | undefined; timeout: numb
 type Mode = "add" | "vlans" | "remove";
 const isDone = (t?: Task) => !!t && t.status !== "running";
 const cardLine = (n: { name: string; state: string; addresses: string[]; speedMbps?: number }) =>
-  `${n.name}  ${n.state === "up" ? "link up" : n.state === "down" ? "no link" : "link unknown"}${n.addresses.length ? ", " + n.addresses.join(", ") : ", no address"}`;
+  `${n.name} (${n.state === "up" ? "link up" : n.state === "down" ? "no link" : "link unknown"}${shownAddrs(n.addresses).length ? ", " + shownAddrs(n.addresses).join(", ") : ", no address"})`;
 
 export function SwitchDialog(props: { node: number; st: HostnetState; mode: Mode; bridge?: HostBridge; uplink?: string; onClose: () => void; onChanged: () => void }) {
   const { node, st, mode, bridge } = props;
@@ -239,7 +240,7 @@ export function SwitchDialog(props: { node: number; st: HostnetState; mode: Mode
 
   const timeout = Math.min(600, Math.max(30, Number(secs) || DEFAULT_CONFIRM_SECONDS));
   const card = st.interfaces.find((n) => n.name === uplink);
-  const moving = mode === "add" && !!card && card.addresses.length > 0;
+  const moving = mode === "add" && !!card && shownAddrs(card.addresses).length > 0;
   const mgmt = mode === "add" ? !!uplink && st.managementInterface === uplink : bridge?.name === st.managementInterface;
   const body: NetBody =
     mode === "add"
@@ -321,7 +322,7 @@ export function SwitchDialog(props: { node: number; st: HostnetState; mode: Mode
               )}
               {moving && (
                 <StatusLine status="info">
-                  This node's address {card!.addresses.map(addrIP).join(", ")} moves to the virtual switch. The node stays reachable at the same address.
+                  This node's address {shownAddrs(card!.addresses).map(addrIP).join(", ")} moves to the virtual switch. The node stays reachable at the same address.
                 </StatusLine>
               )}
               {mgmt && (

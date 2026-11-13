@@ -209,3 +209,24 @@ func TestTopologyBridgeWithNothingOnIt(t *testing.T) {
 		t.Fatalf("br9 = %+v", s)
 	}
 }
+
+// A running VM on a bridge-mode libvirt network is "bridge" in the live XML, with the network name in source.
+func TestTopologyRunningVMOnBridgeNetworkBelongsToTheNetwork(t *testing.T) {
+	in := testInput()
+	in.VMs = append(in.VMs, topoVM{Name: "live", UUID: "u4", State: "running", NICs: []topoVMNIC{{MAC: "52:54:00:00:00:05", Type: "bridge", Network: "tagged", Bridge: "br0"}}})
+	sw, _ := composeTopology(in)
+	br := findSwitch(t, sw, "br0")
+	g := findGroup(t, br, "net:tagged")
+	found := false
+	for _, i := range g.Interfaces {
+		found = found || i.VM == "live"
+	}
+	if !found {
+		t.Fatalf("live VM not under network tagged: %+v", g)
+	}
+	for _, i := range findGroup(t, br, "direct").Interfaces {
+		if i.VM == "live" {
+			t.Fatalf("live VM must not be listed as direct")
+		}
+	}
+}

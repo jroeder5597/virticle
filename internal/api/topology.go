@@ -239,7 +239,9 @@ func composeTopology(in topoInput) (switches []topoSwitch, unused []topoUplink) 
 		for _, c := range vm.NICs {
 			ifc := topoIface{VM: vm.Name, UUID: vm.UUID, State: vm.State, MAC: c.MAC, IPs: []string{}, LinkDown: c.LinkDown}
 			switch {
-			case c.Type == "network" && netSwitch[c.Network] != nil:
+			// A running VM on a bridge-mode libvirt network is type "bridge" in the live XML, with the network's
+			// name still in source: it belongs to that network, not to "Direct to bridge".
+			case (c.Type == "network" || c.Type == "bridge") && c.Network != "" && netSwitch[c.Network] != nil:
 				if ip := leases[c.Network][strings.ToLower(c.MAC)]; ip != "" {
 					ifc.IPs = append(ifc.IPs, ip)
 				}

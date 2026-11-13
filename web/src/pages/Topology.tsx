@@ -79,7 +79,7 @@ const speed = (m?: number) => (m ? (m >= 1000 ? `${m / 1000} Gbit/s` : `${m} Mbi
 function Addrs({ list }: { list: Addr[] }) {
   return (
     <>
-      {list.map((a) => (
+      {list.filter((a) => !/^fe80:/i.test(a.address)).map((a) => (
         <span key={a.address} className="mono topoaddr">
           {a.address}
           {a.management && <span className="topomgmt"> Management</span>}
