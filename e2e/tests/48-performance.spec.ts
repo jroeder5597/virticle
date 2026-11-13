@@ -34,7 +34,13 @@ test.describe.serial("performance history", () => {
     await expect(page.getByRole("heading", { name: "Busiest virtual machines in this range" })).toBeVisible();
   });
 
-  test("the VM page has a Performance tab; range select and chips work", async ({ page }) => {
+  test("the VM page has a Performance tab; range select and chips work", async ({ page, api }) => {
+    // The first points of a new VM arrive with the controller's next two 15-second readings.
+    await api.waitFor("the first CPU points of the VM", async () => {
+      const now = Math.floor(Date.now() / 1000);
+      const r = await api.get(`/metrics/query?kind=vm&id=${vm.uuid}&from=${now - 600}&to=${now}&metrics=cpu`);
+      return (r.series?.cpu ?? []).some((v: number | null) => v != null) ? true : undefined;
+    }, 120_000, 5000);
     await openVM(page, vm, "performance");
     await expect(page.locator(".tabs").getByRole("button", { name: "Performance", exact: true })).toHaveClass(/on/);
     await expect(page.locator(".pchips")).toBeVisible();
@@ -47,10 +53,10 @@ test.describe.serial("performance history", () => {
     await expect(page.getByText(/the band shows the peak/)).toBeVisible();
 
     await pick(page, "Time range", "Custom");
-    await expect(page.getByLabel("From")).toBeVisible();
-    await expect(page.getByLabel("To")).toBeVisible();
+    await expect(page.getByLabel("From", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("To", { exact: true })).toBeVisible();
     await pick(page, "Time range", "Last hour");
-    await expect(page.getByLabel("From")).toHaveCount(0);
+    await expect(page.getByLabel("From", { exact: true })).toHaveCount(0);
 
     // Chips hide and show their charts.
     const cpu = page.locator(".pchips").getByRole("button", { name: "CPU", exact: true });
@@ -97,7 +103,7 @@ test.describe.serial("performance history", () => {
   });
 
   test("/metrics refuses without a token and answers with one", async ({ playwright }) => {
-    const anon = await playwright.request.newContext({ baseURL: env.base });
+    const anon = await playwright.request.newContext({ baseURL: env.base, storageState: { cookies: [], origins: [] } });
     try {
       expect((await anon.get("/metrics")).status()).toBe(401);
       expect((await anon.get("/metrics", { headers: { Authorization: "Bearer virticle_wrong" } })).status()).toBe(401);

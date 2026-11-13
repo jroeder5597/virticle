@@ -11,7 +11,7 @@ const differs = /networks? differs? between nodes\.$/;
 
 test.describe.serial("network drift", () => {
   test.afterAll(async ({ api, n1 }) => {
-    await api.post(`/nodes/${n1}/networks/${NET}/action`, { action: "delete" }).catch(() => {});
+    await api.post(`/nodes/${n1}/networks/${NET}/action`, { action: "delete", force: true }).catch(() => {});
   });
 
   test("the API answers with its documented shape", async ({ api }) => {
@@ -68,7 +68,7 @@ test.describe.serial("network drift", () => {
   });
 
   test("it is gone from the list once deleted", async ({ api, n1 }) => {
-    await api.post(`/nodes/${n1}/networks/${NET}/action`, { action: "delete" });
+    await api.post(`/nodes/${n1}/networks/${NET}/action`, { action: "delete", force: true });
     await api.waitFor("the drift to clear", async () => !(await api.get("/cluster/network-drift")).rows.some((row: any) => row.network === NET), 30_000, 2000);
   });
 });

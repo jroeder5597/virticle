@@ -158,16 +158,21 @@ test.describe.serial("debian cloud image, guest agent, template and linked clone
     const dlg = dialog(page, "Take snapshot");
     await expect(dlg.getByLabel(/freeze|quiesce/i)).toHaveCount(0);
     await field(dlg, "Name").fill("frozen");
-    await dlg.getByLabel(/Save the running state too/).uncheck();
+    // A node that confines QEMU with AppArmor only takes snapshots that save the running state: the box is then
+    // checked and disabled (see internal/api/snapkind.go), and the disk-only parts of this test cannot run there.
+    const box = dlg.getByLabel(/Save the running state too/);
+    const stateForced = await box.isDisabled();
+    test.info().annotations.push({ type: "note", description: stateForced ? "AppArmor node: the snapshot saves the running state; the disk-only API snapshot is not tried" : "disk-only snapshot" });
+    if (!stateForced) await box.uncheck();
     await dlg.getByRole("button", { name: "Take snapshot" }).click();
     await expect(dlg).toBeHidden({ timeout: 120_000 });
     await expect(page.getByRole("treeitem", { name: /^frozen(,|$)/ })).toBeVisible({ timeout: 60_000 });
     // asking for the freeze by name through the API is accepted by the guest as well
-    await api.post(`${base}/snapshots`, { name: "frozen2", memory: false, quiesce: true });
+    if (!stateForced) await api.post(`${base}/snapshots`, { name: "frozen2", memory: false, quiesce: true });
     const t = await api.post(`${base}/backup`, { pool: "default" });
     await api.waitFor("backup task", async () => (await api.get("/tasks")).find((x: any) => x.id === t.task && x.status !== "running" && x.status !== "queued")?.status === "ok", 240_000, 3000);
     for (const b of (await api.get(`/backups?uuid=${clone.uuid}`)) as any[]) await api.del(`/nodes/${b.node}/backups/${encodeURIComponent(b.pool)}/${encodeURIComponent(b.dir)}`);
-    for (const n of ["frozen2", "frozen"]) await api.del(`${base}/snapshots/${n}`);
+    for (const n of stateForced ? ["frozen"] : ["frozen2", "frozen"]) await api.del(`${base}/snapshots/${n}`);
   });
 
   test("delete the clone and its disks, then the template", async ({ page, api }) => {

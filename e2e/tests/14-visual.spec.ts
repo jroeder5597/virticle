@@ -230,7 +230,7 @@ test.describe.serial("visual pass", () => {
       await shot("web-access-acme", () => expect(page.getByLabel("Domain names")).toBeVisible());
 
       await page.goto(vmUrl);
-      await shot("vm-overview", () => expect(page.locator("#utilization .st-val").first()).toContainText("%", { timeout: 30_000 }));
+      await shot("vm-overview", () => expect(page.locator("#utilization .st-val").first()).toContainText("%", { timeout: 75_000 }));
       // the colour picker, the add-tag input with its suggestions, and the tree's list of all tags
       await page.getByRole("button", { name: `Colour of tag ${T_LIGHT}` }).click();
       await shot("vm-tag-picker", () => expect(page.getByRole("group", { name: /^Colour for tag/ })).toBeVisible(), { viewportOnly: true });

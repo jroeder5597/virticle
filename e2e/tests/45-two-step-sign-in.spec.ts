@@ -45,9 +45,10 @@ test.describe.serial("two-step sign-in", () => {
   };
 
   test("turn it on with the secret shown, and get recovery codes", async ({ browser }) => {
-    const ctx = await browser.newContext({ baseURL: env.base });
+    const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] }, baseURL: env.base });
     const page = await ctx.newPage();
     await signIn(page);
+    await expect(page.getByRole("link", { name: USER })).toBeVisible(); // signed in before the next page is asked for
     await page.goto("/account");
     await page.getByRole("button", { name: "Turn on two-step sign-in" }).click();
     await expect(page.getByText("Works with Google Authenticator, Microsoft Authenticator, Duo Mobile").first()).toBeVisible();
@@ -67,7 +68,7 @@ test.describe.serial("two-step sign-in", () => {
   });
 
   test("sign in needs the second step; a wrong code fails; the right one works", async ({ browser }) => {
-    const ctx = await browser.newContext({ baseURL: env.base });
+    const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] }, baseURL: env.base });
     const page = await ctx.newPage();
     await signIn(page);
     await expect(page.getByText("Two-step sign-in. Enter the 6-digit code")).toBeVisible();
@@ -83,7 +84,7 @@ test.describe.serial("two-step sign-in", () => {
 
   test("a recovery code signs in once", async ({ browser }) => {
     for (const expectOk of [true, false]) {
-      const ctx = await browser.newContext({ baseURL: env.base });
+      const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] }, baseURL: env.base });
       const page = await ctx.newPage();
       await signIn(page);
       await page.getByLabel("Code").fill(recovery[0]);
@@ -101,7 +102,7 @@ test.describe.serial("two-step sign-in", () => {
     await row.getByRole("button", { name: "Reset two-step sign-in" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Reset two-step sign-in" }).click();
     await expect(row.getByText("Off", { exact: true })).toBeVisible();
-    const ctx = await browser.newContext({ baseURL: env.base });
+    const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] }, baseURL: env.base });
     const p = await ctx.newPage();
     await signIn(p);
     await expect(p.getByRole("link", { name: USER })).toBeVisible();

@@ -70,12 +70,16 @@ test.describe.serial("network card speed limit", () => {
     expect(JSON.stringify(r)).toContain("speed limit");
   });
 
-  test("an empty field removes the limit and the element", async ({ page, api }) => {
+  test("empty fields remove the limit and the element", async ({ page, api }) => {
     await openVM(page, vm, "hardware");
     const c = card(page);
     await c.locator("tbody tr").first().getByRole("button", { name: "Edit" }).click();
     const dlg = dialog(page);
-    await field(dlg, "Speed limit (Mbit/s)").fill("");
+    // The card has different download and upload limits now: the one field is empty and says "Set in Advanced".
+    await expect(field(dlg, "Speed limit (Mbit/s)")).toHaveAttribute("placeholder", "Set in Advanced");
+    await dlg.getByRole("button", { name: "Advanced" }).click();
+    await field(dlg, "Download limit (Mbit/s)").fill("");
+    await field(dlg, "Upload limit (Mbit/s)").fill("");
     await dlg.getByRole("button", { name: "Apply" }).click();
     await expect(dlg).toBeHidden();
     await expect(c).not.toContainText("limited to");
