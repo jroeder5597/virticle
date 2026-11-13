@@ -208,6 +208,9 @@ export interface User {
   role: Role;
   disabled: boolean;
   created: number;
+  /** Where the account lives: local, oidc (identity provider) or ldap (directory). */
+  source: "local" | "oidc" | "ldap";
+  twoStep: boolean;
 }
 export interface ApiToken {
   id: number;
@@ -226,6 +229,7 @@ export interface AuditEntry {
   method: string;
   path: string;
   status: number;
+  detail?: string;
 }
 export interface GuestInfo {
   available: boolean;

@@ -5,19 +5,26 @@ import { ApiToken, del, get, post, Role } from "../api";
 import { atLeast, useRole } from "../auth";
 import Select from "../Select";
 import { ErrorBox, Field, useAction, useConfirm } from "../ui";
+import { TwoStepCard, TwoStepState } from "./TwoStep";
 
 const when = (unix?: number) => (unix ? new Date(unix * 1000).toLocaleString() : "");
 
 export default function Account() {
   const role = useRole();
+  const [st, setSt] = useState<TwoStepState | undefined>();
+  const reload = useCallback(() => get<TwoStepState>("/account/2fa").then(setSt, () => {}), []);
+  useEffect(() => {
+    reload();
+  }, [reload]);
   return (
-    <>
+    <div className="keep">
       <div className="head">
         <h1>My account</h1>
         <span className="badge">{role}</span>
       </div>
       <div className="cards">
-        <Password />
+        {(!st || st.source === "local") && <Password />}
+        {st && <TwoStepCard st={st} reload={reload} />}
         <Tokens role={role} />
         {atLeast(role, "operator") && (
           <div className="card">
@@ -28,7 +35,7 @@ export default function Account() {
         )}
       </div>
       <VersionLine />
-    </>
+    </div>
   );
 }
 

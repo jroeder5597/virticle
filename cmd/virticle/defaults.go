@@ -152,7 +152,7 @@ func warnDeprecated(logf func(string, ...any)) {
 // usage prints the help without the deprecated flags.
 func usage() {
 	out := flag.CommandLine.Output()
-	fmt.Fprint(out, "usage: virticle [flags]\n       virticle web show|set|reset [-data DIR] ...\n       virticle setup [--check] [--undo] [-data DIR]\n       virticle node prepare|unprepare ...\n\nflags:\n")
+	fmt.Fprint(out, "usage: virticle [flags]\n       virticle web show|set|reset [-data DIR] ...\n       virticle user reset-2fa|reset-password USER [-data DIR]\n       virticle setup [--check] [--undo] [-data DIR]\n       virticle node prepare|unprepare ...\n\nflags:\n")
 	flag.VisitAll(func(f *flag.Flag) {
 		if _, hidden := deprecatedFlags[f.Name]; hidden {
 			return

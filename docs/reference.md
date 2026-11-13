@@ -43,6 +43,8 @@ pattern that counts as the virtio-win ISO).
 
 ## Roles
 
+People can also sign in through an identity provider or a directory, and local accounts can use two-step sign-in; see [sign-in.md](sign-in.md). `virticle user reset-2fa USER` and `virticle user reset-password USER` are the shell recovery commands.
+
 | Role | Can |
 | --- | --- |
 | `viewer` | Read everything except the audit log. Cannot open a console. |
@@ -114,8 +116,9 @@ earlier versions no longer exist.
   - `known_hosts`: node host keys, trusted on first use.
   - `tls-cert.pem`, `tls-key.pem`, `web-own/`, `acme/`: certificates.
   - `instance-id`: stamped into scheduled snapshots.
-  - `settings.key`: the key that encrypts stored secrets (alert webhook addresses and signing secrets), created on
-    first use, mode 0600. Keep it with the database; without it those secrets must be entered again.
+  - `secret.key`: the one key that encrypts every stored secret (two-step sign-in seeds, identity provider and
+    directory passwords, alert webhook addresses and signing secrets), created on first use, mode 0600. Keep it with
+    the database; without it those secrets must be entered again. An older `settings.key` is renamed to it.
 - **Memory only**: live stats (about 10 minutes), alert state, rate-limit
   counters.
 

@@ -25,7 +25,9 @@ func fakeLocal(root string) localProbe {
 		Hostname:  func() (string, error) { return "vmhost", nil },
 		SSHOpen:   func() bool { return true },
 		RouteAddr: func() string { return "10.1.2.3" },
-		IfAddrs:   func() []net.IP { return []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("10.1.2.3"), net.ParseIP("fe80::1")} },
+		IfAddrs: func() []net.IP {
+			return []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("10.1.2.3"), net.ParseIP("fe80::1")}
+		},
 	}
 }
 
@@ -73,7 +75,9 @@ func TestLocalNodeSSHClosed(t *testing.T) {
 func TestLocalNodeAddress(t *testing.T) {
 	p := fakeLocal(fakeLocalRoot(t, "vmx"))
 	p.RouteAddr = func() string { return "" }
-	p.IfAddrs = func() []net.IP { return []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("169.254.1.1"), net.ParseIP("192.168.5.6")} }
+	p.IfAddrs = func() []net.IP {
+		return []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("169.254.1.1"), net.ParseIP("192.168.5.6")}
+	}
 	if a := p.address(); a != "192.168.5.6" {
 		t.Fatal(a)
 	}

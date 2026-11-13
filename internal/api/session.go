@@ -101,20 +101,6 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 	s.startSession(w, r, c)
 }
 
-func (s *Server) login(w http.ResponseWriter, r *http.Request) {
-	infoOf(r).login = true
-	var c credentials
-	if err := readJSON(r, &c); err != nil {
-		fail(w, err)
-		return
-	}
-	if len(c.Username) > 256 {
-		c.Username = c.Username[:256]
-	}
-	infoOf(r).user = c.Username
-	s.startSession(w, r, c)
-}
-
 // Failure thresholds before a lock starts: a user from one address, an
 // address on its own, and a user from anywhere.
 const (
@@ -149,14 +135,19 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, c credenti
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	infoOf(r).login = true
+	out := map[string]any{"ok": true}
 	if c, err := r.Cookie(cookieName); err == nil {
 		if p, err := s.Store.SessionUser(c.Value); err == nil {
 			infoOf(r).user = p.User.Username
+			if u := s.endSessionURL(r, p.User); u != "" {
+				out["endSession"] = u
+				out["provider"] = s.signIn().OIDC.Name
+			}
 		}
 		s.Store.Logout(c.Value)
 	}
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: viewOf(r).HTTPS})
-	writeJSON(w, map[string]bool{"ok": true})
+	writeJSON(w, out)
 }
 
 // --- users (admin) ---
@@ -221,6 +212,10 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Role != nil && !validRole(*req.Role) {
 		fail(w, badRequest("the role must be admin, operator or viewer"))
+		return
+	}
+	if target, err := s.Store.User(id); err == nil && target.Source != store.SourceLocal && (req.Role != nil || req.Password != nil) {
+		fail(w, badRequest("this account comes from your identity provider or directory: its role is set by its groups and it has no password here"))
 		return
 	}
 	if req.Password != nil {
@@ -393,3 +388,6 @@ func (s *Server) auditLog(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, map[string]any{"entries": e, "next": next})
 }
+
+// ValidatePassword applies the password rules; the shell commands use it too.
+func ValidatePassword(p string) error { return checkPassword(p) }

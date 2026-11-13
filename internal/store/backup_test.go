@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -101,6 +102,67 @@ func TestOnlyNewestThreeCopiesKept(t *testing.T) {
 	for _, old := range []int64{0, 1} {
 		if _, err := os.Stat(path + ".bak-0-" + time.Unix(old, 0).UTC().Format("20060102T150405Z")); err == nil {
 			t.Fatalf("oldest copy %d still there", old)
+		}
+	}
+}
+
+// A feature build that ran its own "version 3" left databases that say 3 but
+// lack the tables and columns of the other migrations. Every migration runs on
+// every start, so opening such a database fills the gaps; a database at
+// version 2 goes through the whole sequence in one open.
+func TestLinearSchemaSequenceFillsGaps(t *testing.T) {
+	for _, from := range []int{2, 3, 4} {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "t.db")
+		st, err := Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		st.Close()
+		raw, err := sql.Open("sqlite", "file:"+path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Take away what versions above `from` added, as a database from another build would lack it.
+		stmts := []string{`DROP TABLE notify_destinations`, `DROP TABLE recovery_codes`,
+			`ALTER TABLE users DROP COLUMN totp_enabled`, `ALTER TABLE nodes DROP COLUMN migration_limit`}
+		if from >= 3 {
+			stmts = stmts[:3]
+		}
+		if from >= 4 {
+			stmts = stmts[1:3]
+		}
+		for _, q := range stmts {
+			if _, err := raw.Exec(q); err != nil {
+				t.Fatalf("%s: %v", q, err)
+			}
+		}
+		if _, err := raw.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, from)); err != nil {
+			t.Fatal(err)
+		}
+		raw.Close()
+		st, err = Open(path)
+		if err != nil {
+			t.Fatalf("from %d: %v", from, err)
+		}
+		for _, q := range []string{
+			`SELECT count(*) FROM notify_destinations`, `SELECT count(*) FROM recovery_codes`,
+			`SELECT totp_enabled FROM users LIMIT 1`, `SELECT migration_limit FROM nodes LIMIT 1`} {
+			rows, err := st.db.Query(q)
+			if err != nil {
+				t.Errorf("from %d: %s: %v", from, q, err)
+				continue
+			}
+			rows.Close()
+		}
+		var v int
+		st.db.QueryRow(`PRAGMA user_version`).Scan(&v)
+		if v != SchemaVersion {
+			t.Errorf("from %d: version %d, want %d", from, v, SchemaVersion)
+		}
+		st.Close()
+		if len(baks(t, dir)) != 1 {
+			t.Errorf("from %d: want one pre-upgrade copy, got %v", from, baks(t, dir))
 		}
 	}
 }

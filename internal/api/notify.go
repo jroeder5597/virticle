@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -505,15 +504,18 @@ func (n *notifier) client(kind string) *http.Client {
 
 // --- the controller's destinations ---
 
+// secrets returns the box that seals every stored secret, opening the key file
+// in the data directory on first use.
 func (s *Server) secrets() (*secretbox.Box, error) {
 	s.boxOnce.Do(func() {
-		path := ""
-		if s.DataDir != "" {
-			path = filepath.Join(s.DataDir, "settings.key")
+		if s.Secrets == nil {
+			s.Secrets, s.boxErr = secretbox.OpenDir(s.DataDir)
 		}
-		s.box, s.boxErr = secretbox.OpenFile(path)
 	})
-	return s.box, s.boxErr
+	if s.boxErr != nil {
+		return nil, s.boxErr
+	}
+	return s.Secrets, nil
 }
 
 // sealURL is the form in which the store keeps an address.

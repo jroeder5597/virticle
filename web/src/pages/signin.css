@@ -1,0 +1,27 @@
+.ts-setup { display: grid; gap: 4px; min-width: 0; }
+.ts-qr { width: 220px; max-width: 100%; height: auto; display: block; margin: 4px 0; border: 1px solid var(--line); border-radius: var(--radius); }
+.ts-secret { font-size: 15px; letter-spacing: 0.04em; overflow-wrap: anywhere; }
+.ts-codes { list-style: none; margin: 10px 0; padding: 10px 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); }
+.ts-codes code { font-size: 15px; }
+
+.si { display: grid; gap: 14px; min-width: 0; max-width: 960px; }
+.si > * { min-width: 0; }
+.si .card h2 { margin-top: 0; }
+.si-form { display: grid; gap: 12px; min-width: 0; max-width: 640px; }
+.si-form .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.si-redirect { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.si-redirect code { overflow-wrap: anywhere; flex: 1; min-width: 0; }
+.si-check { display: block; }
+.si-check small { display: block; margin-top: 2px; }
+.si-report { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 4px; }
+.si-report li { display: flex; gap: 8px; align-items: baseline; overflow-wrap: anywhere; }
+.si-warn { border: 1px solid var(--danger); border-radius: var(--radius); padding: 8px 10px; }
+@media (max-width: 640px) { .si-form .grid2 { grid-template-columns: 1fr; } .ts-codes { grid-template-columns: 1fr; } }
+
+.signin .or { text-align: center; margin: 6px 0; }
+.signin .provider-btn { width: 100%; }
+.signin .notice { margin: 6px 0; }
+
+/* Users: five or six buttons per row must wrap rather than push Delete out of the window. */
+table.users td.actions { white-space: normal; min-width: 220px; }
+table.users td.actions > * { margin: 3px 0 3px 6px; }

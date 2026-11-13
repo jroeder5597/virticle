@@ -57,15 +57,19 @@ type Server struct {
 
 	routes  []route // every pattern registered by Handler, for the access-level test
 	limiter *limiter
-	shots   shotCache
-	cpuBase baselineState
-	migAuto *migTLSAuto // automatic encrypted-migration setup (migtlsauto.go)
+	// Secrets seals every stored secret (sign-in, notifications); nil opens the key file in DataDir on first use.
+	Secrets *secretbox.Box
+	// TOTPClock replaces the wall clock for authenticator codes in tests.
+	TOTPClock func() time.Time
+	boxOnce   sync.Once
+	boxErr    error
+	si        signInState // sign-in settings and sign-ins in progress (signin.go)
+	shots     shotCache
+	cpuBase   baselineState
+	migAuto   *migTLSAuto // automatic encrypted-migration setup (migtlsauto.go)
 
 	notifyOnce sync.Once // notify.go
 	notify     *notifier
-	boxOnce    sync.Once
-	box        *secretbox.Box
-	boxErr     error
 }
 
 type ctxKey struct{}
@@ -91,6 +95,9 @@ func (s *Server) Handler() http.Handler {
 	pub("GET /api/status", s.status)
 	pub("POST /api/setup", s.setup)
 	pub("POST /api/login", s.login)
+	pub("POST /api/login/second", s.loginSecond)
+	pub("GET /api/oidc/start", s.oidcStart)
+	pub("GET /api/oidc/callback", s.oidcCallback)
 	pub("POST /api/logout", s.logout)
 
 	auth("GET /api/version", s.version)
@@ -103,6 +110,16 @@ func (s *Server) Handler() http.Handler {
 	auth("POST /api/users", s.createUser)
 	auth("PUT /api/users/{id}", s.updateUser)
 	auth("DELETE /api/users/{id}", s.deleteUser)
+	auth("POST /api/users/{id}/reset-2fa", s.resetTwoStepUser)
+	auth("GET /api/signin", s.getSignIn)
+	auth("PUT /api/signin", s.putSignIn)
+	auth("POST /api/signin/oidc/test", s.testOIDC)
+	auth("POST /api/signin/ldap/test", s.testLDAP)
+	auth("GET /api/account/2fa", s.getTwoStep)
+	auth("POST /api/account/2fa/begin", s.beginTwoStep)
+	auth("POST /api/account/2fa/confirm", s.confirmTwoStep)
+	auth("POST /api/account/2fa/disable", s.disableTwoStep)
+	auth("POST /api/account/2fa/recovery-codes", s.newRecoveryCodes)
 	auth("POST /api/account/password", s.changePassword)
 	auth("GET /api/account/tokens", s.listTokens)
 	auth("POST /api/account/tokens", s.createToken)
@@ -438,13 +455,19 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	user, role := "", ""
+	user, role, source := "", "", ""
+	setup := false
 	if c, err := r.Cookie(cookieName); err == nil {
 		if p, err := s.Store.SessionUser(c.Value); err == nil {
-			user, role = p.User.Username, p.Role
+			user, role, source = p.User.Username, p.Role, p.User.Source
+			setup = s.mustSetUpTwoStep(p.User)
 		}
 	}
-	writeJSON(w, map[string]any{"needsSetup": n == 0, "user": user, "role": role})
+	out := map[string]any{"needsSetup": n == 0, "user": user, "role": role, "source": source, "twoStepSetup": setup}
+	for k, v := range s.publicSignIn() {
+		out[k] = v
+	}
+	writeJSON(w, out)
 }
 
 func (s *Server) version(w http.ResponseWriter, r *http.Request) {

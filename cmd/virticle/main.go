@@ -28,6 +28,9 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "setup" {
 		os.Exit(setupCommand(os.Args[2:]))
 	}
+	if len(os.Args) > 1 && os.Args[1] == "user" {
+		os.Exit(userCommand(os.Args[2:]))
+	}
 	if len(os.Args) > 1 && os.Args[1] == "web" {
 		os.Exit(webCommand(os.Args[2:]))
 	}

@@ -142,6 +142,7 @@ Nodes prepared with 0.1.0 must be prepared again. Steps are in
 | Install, upgrade, roll back, uninstall | [docs/install.md](docs/install.md) |
 | Prepare a node, see what is installed on it, audit the node command | [docs/install-node.md](docs/install-node.md) |
 | Set up HTTPS, ACME or a reverse proxy | [docs/web-tls.md](docs/web-tls.md) |
+| Two-step sign-in, sign-in with an identity provider (OIDC) or a directory (LDAP, Active Directory) | [docs/sign-in.md](docs/sign-in.md) |
 | Look up flags, roles, API tokens, data, schedules, limits | [docs/reference.md](docs/reference.md) |
 | Build, test, release | [docs/development.md](docs/development.md) |
 | See what is done, untested and open | [ROADMAP.md](ROADMAP.md) |

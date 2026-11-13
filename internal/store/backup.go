@@ -24,7 +24,8 @@ import (
 //	2  node connection settings (privilege, migration address, host uuid)
 //	3  migration_limit column on nodes (migration network and automatic limit)
 //	4  notify_destinations table (alert notifications)
-const SchemaVersion = 4
+//	5  two-step sign-in and external sign-in: user columns and recovery_codes
+const SchemaVersion = 5
 
 // keepBackups is how many pre-migration copies stay in the data directory.
 const keepBackups = 3

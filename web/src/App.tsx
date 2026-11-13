@@ -13,6 +13,8 @@ import Users from "./pages/Users";
 import Audit from "./pages/Audit";
 import WebAccess from "./pages/WebAccess";
 import Account from "./pages/Account";
+import SignInSettings from "./pages/SignInSettings";
+import { TwoStepSetup } from "./pages/TwoStep";
 import CloudProfiles from "./pages/CloudProfiles";
 import ConsolePage from "./pages/ConsolePage";
 import { AlertBell } from "./pages/Alerts";
@@ -35,14 +37,16 @@ const SETTINGS = [
   { label: "Users", to: "/users" },
   { label: "Audit", to: "/audit" },
   { label: "Web access", to: "/web-access" },
+  { label: "Sign-in", to: "/sign-in" },
   { label: "Alerts", to: "/alerts-settings" },
 ];
 
-type Session = { needsSetup: boolean; user: string; role: Role };
+type Session = { needsSetup: boolean; user: string; role: Role; source?: string; twoStepSetup?: boolean; oidc?: string };
 
 export default function App() {
   const [session, setSession] = useState<Session | undefined>();
   const [drawer, setDrawer] = useState(false);
+  const [signedOut, setSignedOut] = useState<{ url: string; provider: string } | undefined>();
   bindPrefs(session?.user ?? ""); // before anything reads a preference, so the first paint uses the local copy
   const dockOpen = useDockOpen();
   const sideW = px(usePref("sidebarW"));
@@ -80,7 +84,8 @@ export default function App() {
     if (session?.user) void loadPrefs();
   }, [session?.user]);
   if (!session) return null;
-  if (!session.user) return <SignIn setup={session.needsSetup} onDone={refresh} />;
+  if (!session.user) return <SignIn setup={session.needsSetup} oidc={session.oidc} signedOut={signedOut} onDone={() => { setSignedOut(undefined); refresh(); }} />;
+  if (session.twoStepSetup) return <TwoStepRequired user={session.user} onDone={refresh} onSignOut={() => post("/logout").then(refresh)} />;
   if (loc.pathname.startsWith("/console/"))
     return (
       <RoleContext.Provider value={session.role}>
@@ -119,7 +124,7 @@ export default function App() {
           <User size={16} aria-hidden />
           <span className="name">{session.user}</span>
         </NavLink>
-        <button className="link signout" aria-label="Sign out" onClick={() => post("/logout").then(refresh)}>
+        <button className="link signout" aria-label="Sign out" onClick={() => post<{ endSession?: string; provider?: string }>("/logout").then((r) => { setSignedOut(r.endSession ? { url: r.endSession, provider: r.provider || "your identity provider" } : undefined); refresh(); })}>
           <LogOut size={16} aria-hidden />
           <span className="name">Sign out</span>
         </button>
@@ -135,6 +140,7 @@ export default function App() {
         {session.role === "admin" && <NavLink to="/users">Users</NavLink>}
         {session.role === "admin" && <NavLink to="/audit">Audit</NavLink>}
         {session.role === "admin" && <NavLink to="/web-access">Web access</NavLink>}
+        {session.role === "admin" && <NavLink to="/sign-in">Sign-in</NavLink>}
         {session.role === "admin" && <NavLink to="/alerts-settings">Alerts</NavLink>}
         </div>
         <Tree />
@@ -160,6 +166,7 @@ export default function App() {
           {session.role === "admin" && <Route path="/users" element={<Users />} />}
           {session.role === "admin" && <Route path="/audit" element={<Audit />} />}
           {session.role === "admin" && <Route path="/web-access" element={<WebAccess />} />}
+          {session.role === "admin" && <Route path="/sign-in" element={<SignInSettings />} />}
           {session.role === "admin" && <Route path="/alerts-settings" element={<AlertSettings />} />}
           <Route path="*" element={<div className="empty">There is nothing at this address, or your role does not allow it.</div>} />
         </Routes>
@@ -181,21 +188,70 @@ function Legacy({ to, whenQuery, otherwise }: { to: string; whenQuery?: string; 
   return <Navigate to={{ pathname: dest, search }} replace />;
 }
 
-function SignIn({ setup, onDone }: { setup: boolean; onDone: () => void }) {
+function SignIn({ setup, oidc, signedOut, onDone }: { setup: boolean; oidc?: string; signedOut?: { url: string; provider: string }; onDone: () => void }) {
   const [username, setUsername] = useState(setup ? "admin" : "");
   const [password, setPassword] = useState("");
+  const [challenge, setChallenge] = useState<string | undefined>();
+  const [code, setCode] = useState("");
+  const [providerError] = useState(() => new URLSearchParams(location.search).get("signin_error") ?? undefined);
+  useEffect(() => {
+    if (providerError) history.replaceState(null, "", location.pathname);
+  }, [providerError]);
   const act = useAction();
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (await act.run(() => post(setup ? "/setup" : "/login", { username, password }))) onDone();
+    let second = "";
+    if (!(await act.run(async () => (second = (await post<{ second?: boolean; challenge?: string }>(setup ? "/setup" : "/login", { username, password })).challenge ?? "")))) return;
+    if (second) {
+      setChallenge(second);
+      setPassword("");
+    } else onDone();
   };
+  const submitCode = async (e: FormEvent) => {
+    e.preventDefault();
+    if (await act.run(() => post("/login/second", { challenge, code }))) onDone();
+    else if (act.error === undefined) setCode("");
+  };
+  if (challenge)
+    return (
+      <div className="signin">
+        <form onSubmit={submitCode} className="card">
+          <h1>Virticle</h1>
+          <p className="muted">Two-step sign-in. Enter the 6-digit code from your authenticator app, or a recovery code.</p>
+          <Field label="Code">
+            <input value={code} onChange={(e) => setCode(e.target.value)} autoFocus autoComplete="one-time-code" required />
+          </Field>
+          <ErrorBox error={act.error} />
+          <button className="primary" disabled={act.busy}>
+            Sign in
+          </button>
+          <button type="button" className="link" onClick={() => { setChallenge(undefined); setCode(""); act.clear(); }}>
+            Back
+          </button>
+        </form>
+      </div>
+    );
   return (
     <div className="signin">
       <form onSubmit={submit} className="card">
         <h1>Virticle</h1>
         <p className="muted">{setup ? "Create the administrator account to get started." : "Sign in to manage your virtual machines."}</p>
+        {signedOut && (
+          <p className="notice muted">
+            You are signed out of Virticle. <a href={signedOut.url}>{`Also sign out of ${signedOut.provider}`}</a>
+          </p>
+        )}
+        {providerError && <ErrorBox error={providerError} />}
+        {oidc && !setup && (
+          <>
+            <a className="primary provider-btn button" href="/api/oidc/start">
+              {`Sign in with ${oidc}`}
+            </a>
+            <p className="or muted">or with a local or directory account</p>
+          </>
+        )}
         <Field label="Username">
-          <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus autoComplete="username" />
+          <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus={!oidc} autoComplete="username" />
         </Field>
         <Field label="Password" hint={setup ? "At least 10 characters." : undefined}>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={setup ? "new-password" : "current-password"} />
@@ -205,6 +261,24 @@ function SignIn({ setup, onDone }: { setup: boolean; onDone: () => void }) {
           {setup ? "Create account" : "Sign in"}
         </button>
       </form>
+    </div>
+  );
+}
+
+/** A user who must have two-step sign-in and has not set it up sees only this until it is done. */
+function TwoStepRequired({ user, onDone, onSignOut }: { user: string; onDone: () => void; onSignOut: () => void }) {
+  return (
+    <div className="signin keep">
+      <div className="card">
+        <h1>Virticle</h1>
+        <p>
+          <strong>{user}</strong>, an administrator requires two-step sign-in for your account. Set it up now to continue.
+        </p>
+        <TwoStepSetup onDone={onDone} />
+        <button className="link" onClick={onSignOut}>
+          Sign out
+        </button>
+      </div>
     </div>
   );
 }
