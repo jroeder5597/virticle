@@ -44,7 +44,7 @@ func main() {
 	flag.Float64Var(&alerts.PoolCrit, "alert-pool-critical", 95, "storage pool usage in percent that raises a critical alert")
 	flag.Float64Var(&alerts.Mem, "alert-memory", 90, "host memory use in percent that raises an alert")
 	flag.IntVar(&alerts.CertDays, "alert-cert-days", 30, "alert when the web UI certificate expires within this many days")
-	flag.StringVar(&alerts.Webhook, "alert-webhook", "", "http(s) URL that receives a JSON POST whenever an alert is raised or cleared (empty: no notifications)")
+	flag.StringVar(&alerts.Webhook, "alert-webhook", "", "http(s) URL that receives a JSON POST whenever an alert is raised or cleared (empty: none)")
 	flag.Usage = usage
 	flag.Parse()
 	if versionRequested() {

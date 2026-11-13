@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"net/netip"
+	"net/url"
 	"time"
 
 	"virticle/internal/webaccess"
@@ -11,15 +12,19 @@ import (
 // webView is what the request path needs from the web access settings; it is
 // swapped atomically whenever the settings change.
 type webView struct {
-	proxies   []netip.Prefix
-	proxySet  bool // mode proxy: these replace the -trusted-proxy flag
-	hsts      bool
-	publicURL string
+	proxies    []netip.Prefix
+	proxySet   bool // mode proxy: these replace the -trusted-proxy flag
+	hsts       bool
+	publicURL  string
+	publicBase string // scheme and host of the public URL, for links in notifications
 }
 
 // UseWebSettings tells the server which web access settings are in force.
 func (s *Server) UseWebSettings(ws webaccess.Settings) {
 	v := &webView{hsts: ws.HSTS, publicURL: ws.PublicHost()}
+	if u, err := url.Parse(ws.PublicURL); err == nil && u.Host != "" && (u.Scheme == "https" || u.Scheme == "http") {
+		v.publicBase = u.Scheme + "://" + u.Host
+	}
 	if ws.Mode == webaccess.ModeProxy {
 		v.proxies, v.proxySet = ws.Trusted(), true
 	}
@@ -194,4 +199,13 @@ func (s *Server) webACMERequest(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusAccepted)
 	writeJSON(w, map[string]any{"ok": true})
+}
+
+// publicBase is the address the controller is reached at, or "" when no public
+// URL is set under Web access.
+func (s *Server) publicBase() string {
+	if v := s.webv.Load(); v != nil {
+		return v.publicBase
+	}
+	return ""
 }

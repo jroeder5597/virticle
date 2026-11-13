@@ -21,6 +21,7 @@ import (
 	"virticle/internal/catalog"
 	"virticle/internal/cluster"
 	"virticle/internal/hostconn"
+	"virticle/internal/secretbox"
 	"virticle/internal/store"
 	"virticle/internal/webaccess"
 )
@@ -59,6 +60,12 @@ type Server struct {
 	shots   shotCache
 	cpuBase baselineState
 	migAuto *migTLSAuto // automatic encrypted-migration setup (migtlsauto.go)
+
+	notifyOnce sync.Once // notify.go
+	notify     *notifier
+	boxOnce    sync.Once
+	box        *secretbox.Box
+	boxErr     error
 }
 
 type ctxKey struct{}
@@ -66,6 +73,7 @@ type ctxKey struct{}
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.startSnapshotScheduler()
+	s.notifier() // moves the webhook of earlier versions before anything reads the destinations
 	s.startAlerts()
 	s.startMigAuto()
 	s.startCPUBaseline()
@@ -88,8 +96,7 @@ func (s *Server) Handler() http.Handler {
 	auth("GET /api/version", s.version)
 	auth("GET /api/events", s.events)
 	auth("GET /api/alerts", s.listAlerts)
-	auth("GET /api/alerts/settings", s.getAlertSettings)
-	auth("PUT /api/alerts/settings", s.putAlertSettings)
+	s.notifyRoutes(auth)
 	auth("GET /api/tasks", s.tasks)
 
 	auth("GET /api/users", s.listUsers)

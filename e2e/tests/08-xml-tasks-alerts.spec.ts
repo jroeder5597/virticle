@@ -1,7 +1,7 @@
 // XML editor (valid and invalid), the Tasks page with failures, the Alerts panel.
 import { cleanVMs, createCirros, expect, openVM, tab, test } from "../lib/fixtures";
 import { P } from "../lib/env";
-import { field, row } from "../lib/ui";
+import { row } from "../lib/ui";
 
 const NAME = `${P}xml1`;
 
@@ -72,24 +72,9 @@ test.describe.serial("XML editor, tasks, alerts", () => {
     await expect(panel).toBeHidden();
   });
 
-  test("Notifications: the webhook URL is saved and read back", async ({ page, api }) => {
+  test("Notifications page opens (destinations are covered by 43-notifications)", async ({ page }) => {
     await page.goto("/alerts-settings");
     await expect(page.getByRole("heading", { name: "Notifications" })).toBeVisible();
-    const input = field(page, "Webhook URL");
-    test.skip(await input.isDisabled(), "the controller was started with -alert-webhook; the field is read-only");
-    const before = (await api.get("/alerts/settings")).webhook as string;
-    try {
-      await input.fill("http://127.0.0.1:9/e2e-hook");
-      await page.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(page.getByText("Saved.")).toBeVisible();
-      expect((await api.get("/alerts/settings")).webhook).toBe("http://127.0.0.1:9/e2e-hook");
-      await page.reload();
-      await expect(field(page, "Webhook URL")).toHaveValue("http://127.0.0.1:9/e2e-hook");
-      await field(page, "Webhook URL").fill("ftp://nope");
-      await page.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(page.locator(".error")).toBeVisible();
-    } finally {
-      await api.put("/alerts/settings", { webhook: before });
-    }
+    await expect(page.getByRole("button", { name: "Add destination" })).toBeVisible();
   });
 });

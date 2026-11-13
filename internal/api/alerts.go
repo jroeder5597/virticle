@@ -1,15 +1,11 @@
 package api
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 
@@ -26,8 +22,8 @@ type AlertSettings struct {
 	PoolWarn, PoolCrit float64 // percent
 	Mem                float64 // percent
 	CertDays           int
-	// Webhook is a URL chosen by the operator. When set, every alert raise and
-	// clear is POSTed there as JSON. Nothing is sent anywhere otherwise.
+	// Webhook is the deprecated -alert-webhook flag: one more destination of the
+	// Notifications page, which cannot be changed there.
 	Webhook string
 	// CertFile is the TLS certificate the UI is served with, if the server
 	// generated or was given one; its expiry is watched.
@@ -41,60 +37,6 @@ func ValidateWebhookURL(raw string) error {
 		return fmt.Errorf("the alert webhook must be an http:// or https:// URL")
 	}
 	return nil
-}
-
-// webhookKey is where the webhook URL set in the UI is kept.
-const webhookKey = "alert.webhook"
-
-// webhookURL is the address alerts are POSTed to: the -alert-webhook flag when
-// given (then the UI cannot change it), else the one stored in the database.
-func (s *Server) webhookURL() (url string, fromFlag bool) {
-	if s.Alerts.Webhook != "" {
-		return s.Alerts.Webhook, true
-	}
-	if s.Store != nil {
-		if v, ok, err := s.Store.WebSetting(webhookKey); err == nil && ok {
-			return v, false
-		}
-	}
-	return "", false
-}
-
-func (s *Server) getAlertSettings(w http.ResponseWriter, r *http.Request) {
-	u, flag := s.webhookURL()
-	writeJSON(w, map[string]any{"webhook": u, "fromFlag": flag})
-}
-
-func (s *Server) putAlertSettings(w http.ResponseWriter, r *http.Request) {
-	var q struct {
-		Webhook string `json:"webhook"`
-	}
-	if err := readJSON(r, &q); err != nil {
-		fail(w, err)
-		return
-	}
-	if _, flag := s.webhookURL(); flag {
-		fail(w, badRequest("the webhook is set by the -alert-webhook flag; remove the flag to change it here"))
-		return
-	}
-	q.Webhook = strings.TrimSpace(q.Webhook)
-	if q.Webhook != "" {
-		if err := ValidateWebhookURL(q.Webhook); err != nil {
-			fail(w, badRequest(err.Error()))
-			return
-		}
-	}
-	var err error
-	if q.Webhook == "" {
-		err = s.Store.DeleteWebSetting(webhookKey)
-	} else {
-		err = s.Store.SetWebSetting(webhookKey, q.Webhook)
-	}
-	if err != nil {
-		fail(w, err)
-		return
-	}
-	writeJSON(w, map[string]any{"webhook": q.Webhook, "fromFlag": false})
 }
 
 const alertEvery = 60 * time.Second
@@ -113,13 +55,6 @@ func (s *Server) startAlerts() {
 
 func (s *Server) runAlerts(ctx context.Context, every, first time.Duration) {
 	tr := newAlertTracker(alertConfig{PoolWarn: s.Alerts.PoolWarn, PoolCrit: s.Alerts.PoolCrit, Mem: s.Alerts.Mem, CertDays: s.Alerts.CertDays})
-	var wh *webhook
-	whURL := ""
-	defer func() {
-		if wh != nil {
-			wh.stop()
-		}
-	}()
 	wait := first
 	for {
 		select {
@@ -128,16 +63,6 @@ func (s *Server) runAlerts(ctx context.Context, every, first time.Duration) {
 		case <-time.After(wait):
 		}
 		wait = every
-		// The webhook can be changed on the Alerts page at any time.
-		if u, _ := s.webhookURL(); u != whURL {
-			if wh != nil {
-				wh.stop()
-				wh = nil
-			}
-			if whURL = u; u != "" {
-				wh = newWebhook(u)
-			}
-		}
 		raised, cleared, all := tr.step(s.gatherAlertInput(time.Now()), time.Now())
 		alertHub.Lock()
 		alertHub.list = all
@@ -145,14 +70,7 @@ func (s *Server) runAlerts(ctx context.Context, every, first time.Duration) {
 		if len(raised)+len(cleared) > 0 {
 			s.Nodes.Publish(cluster.Event{Type: "alert"})
 		}
-		if wh != nil {
-			for _, a := range raised {
-				wh.send("raise", a)
-			}
-			for _, a := range cleared {
-				wh.send("clear", a)
-			}
-		}
+		s.dispatchAlerts(raised, cleared)
 	}
 }
 
@@ -300,84 +218,4 @@ func (s *Server) listAlerts(w http.ResponseWriter, r *http.Request) {
 	// The pool-usage thresholds travel along so pickers can colour pools by the same limits.
 	c := alertConfig{PoolWarn: s.Alerts.PoolWarn, PoolCrit: s.Alerts.PoolCrit}.withDefaults()
 	writeJSON(w, map[string]any{"alerts": out, "poolWarn": c.PoolWarn, "poolCritical": c.PoolCrit})
-}
-
-// --- webhook ---
-
-type webhook struct {
-	url     string
-	client  *http.Client
-	delays  []time.Duration // waits before the 2nd, 3rd ... attempt
-	queue   chan webhookMsg
-	dropped func(webhookMsg)
-}
-
-type webhookMsg struct {
-	Event string `json:"event"` // raise | clear
-	Alert Alert  `json:"alert"`
-	Time  int64  `json:"time"`
-}
-
-func newWebhook(u string) *webhook {
-	w := &webhook{url: u, client: &http.Client{Timeout: 10 * time.Second}, delays: []time.Duration{2 * time.Second, 10 * time.Second},
-		queue: make(chan webhookMsg, 64)}
-	go w.run()
-	return w
-}
-
-// send queues a message and returns at once; a full queue (the receiver has
-// been down for a long time) drops the message and logs it.
-func (w *webhook) send(event string, a Alert) {
-	m := webhookMsg{Event: event, Alert: a, Time: time.Now().Unix()}
-	select {
-	case w.queue <- m:
-	default:
-		log.Printf("alert webhook: queue full, dropping %s of %s", event, a.ID)
-		if w.dropped != nil {
-			w.dropped(m)
-		}
-	}
-}
-
-// stop ends the delivery goroutine after the queued messages. Only the
-// goroutine that calls send may call it.
-func (w *webhook) stop() { close(w.queue) }
-
-func (w *webhook) run() {
-	for m := range w.queue {
-		w.deliver(m)
-	}
-}
-
-func (w *webhook) deliver(m webhookMsg) {
-	body, _ := json.Marshal(m)
-	var err error
-	for attempt := 0; attempt <= len(w.delays); attempt++ {
-		if attempt > 0 {
-			time.Sleep(w.delays[attempt-1])
-		}
-		if err = w.post(body); err == nil {
-			return
-		}
-	}
-	log.Printf("alert webhook: giving up on %s of %s: %v", m.Event, m.Alert.ID, err)
-}
-
-func (w *webhook) post(body []byte) error {
-	req, err := http.NewRequest(http.MethodPost, w.url, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "virticle-alerts")
-	resp, err := w.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return fmt.Errorf("receiver answered %s", resp.Status)
-	}
-	return nil
 }
