@@ -942,10 +942,15 @@ func (s *Server) hwNICAdd(w http.ResponseWriter, r *http.Request) {
 		Bridge  string `json:"bridge"`
 		Model   string `json:"model"`
 		MAC     string `json:"mac"`
+		// Limit is the speed limit of the new card; absent or zeros for none.
+		Limit *nicLimit `json:"limit"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		fail(w, err)
 		return
+	}
+	if req.Limit == nil {
+		req.Limit = &nicLimit{}
 	}
 	if req.Model == "" {
 		req.Model = "virtio"
@@ -955,6 +960,8 @@ func (s *Server) hwNICAdd(w http.ResponseWriter, r *http.Request) {
 		err = badRequest("model must be virtio, e1000, e1000e or rtl8139")
 	case req.MAC != "" && !macRE.MatchString(req.MAC):
 		err = badRequest("invalid MAC address")
+	case req.Limit.check() != nil:
+		err = req.Limit.check()
 	default:
 		err = c.checkAttachment(req.Network, req.Bridge)
 	}
@@ -986,7 +993,7 @@ func (s *Server) hwNICAdd(w http.ResponseWriter, r *http.Request) {
 		} else {
 			fmt.Fprintf(&b, "<source bridge='%s'/>", domxml.Esc(req.Bridge))
 		}
-		fmt.Fprintf(&b, "<model type='%s'/></interface>", req.Model)
+		fmt.Fprintf(&b, "<model type='%s'/>%s</interface>", req.Model, req.Limit.xml())
 		applied, err := c.attach(b.String())
 		if err != nil {
 			return err
@@ -1050,6 +1057,8 @@ func (s *Server) hwNICUpdate(w http.ResponseWriter, r *http.Request) {
 		Network   string `json:"network"`
 		Bridge    string `json:"bridge"`
 		LinkState string `json:"linkState"`
+		// Limit sets the speed limit; absent leaves it as it is, zeros remove it.
+		Limit *nicLimit `json:"limit"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		fail(w, err)
@@ -1060,7 +1069,9 @@ func (s *Server) hwNICUpdate(w http.ResponseWriter, r *http.Request) {
 		err = badRequest("invalid MAC address")
 	case req.LinkState != "" && req.LinkState != "up" && req.LinkState != "down":
 		err = badRequest("linkState must be up or down")
-	case req.Network == "" && req.Bridge == "" && req.LinkState == "":
+	case req.Limit != nil && req.Limit.check() != nil:
+		err = req.Limit.check()
+	case req.Network == "" && req.Bridge == "" && req.LinkState == "" && req.Limit == nil:
 		err = badRequest("nothing to change")
 	case req.Network != "" || req.Bridge != "":
 		err = c.checkAttachment(req.Network, req.Bridge)
@@ -1071,11 +1082,26 @@ func (s *Server) hwNICUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	var res hwResult
 	err = s.task(r, "change network interface", c.dom.Name+"/"+mac, c.h.Name, func(func(float64)) error {
-		applied, err := c.update("interface", nicMatch(mac), func(d *domxml.Doc, n *domxml.Node) (string, error) {
-			return d.SetNICSource(n, req.Network, req.Bridge, req.LinkState)
-		})
-		if err != nil {
-			return err
+		applied := ""
+		if req.Network != "" || req.Bridge != "" || req.LinkState != "" {
+			var err error
+			if applied, err = c.update("interface", nicMatch(mac), func(d *domxml.Doc, n *domxml.Node) (string, error) {
+				return d.SetNICSource(n, req.Network, req.Bridge, req.LinkState)
+			}); err != nil {
+				return err
+			}
+		}
+		if req.Limit != nil {
+			// A second call: each one is applied to the running VM and the saved definition by update.
+			a, err := c.update("interface", nicMatch(mac), func(d *domxml.Doc, n *domxml.Node) (string, error) {
+				return d.SetNICBandwidth(n, rateOf(req.Limit.Down), rateOf(req.Limit.Up))
+			})
+			if err != nil {
+				return err
+			}
+			if applied == "" || a == "config" {
+				applied = a
+			}
 		}
 		res = c.result(applied)
 		res.MAC = strings.ToLower(mac)

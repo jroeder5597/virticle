@@ -2,7 +2,7 @@
 // Every change is sent to the server, which applies it to the running VM and
 // the saved definition where libvirt allows and says which one happened.
 import { useEffect, useState } from "react";
-import { type LucideIcon, ArrowLeftRight, ArrowUpFromLine, Disc3, Link2, Link2Off, Maximize2, Network as NetIcon, Trash2 } from "lucide-react";
+import { type LucideIcon, ArrowLeftRight, ArrowUpFromLine, Disc3, Link2, Link2Off, Maximize2, Pencil, Trash2 } from "lucide-react";
 import { api, bytes, get, Network, Pool, Volume, VMDetail } from "../api";
 import { useRole } from "../auth";
 import Select from "../Select";
@@ -529,6 +529,24 @@ function PickISO({ d, drive, send, onClose }: { d: VMDetail; drive: DiskT; send:
 
 // --- network interfaces ---
 
+const mbit = (v: number) => String(Number(v.toFixed(1)));
+
+/** "limited to 100 Mbit/s", or per direction when they differ; empty when the card is not limited. */
+function limitText(n: NicT): string {
+  const down = n.limitDown ?? 0;
+  const up = n.limitUp ?? 0;
+  if (!down && !up) return "";
+  if (down === up) return `limited to ${mbit(down)} Mbit/s`;
+  return "limited to " + [down && `${mbit(down)} Mbit/s down`, up && `${mbit(up)} Mbit/s up`].filter(Boolean).join(", ");
+}
+
+/** A speed limit typed by the user: empty is no limit (0), otherwise a whole number of Mbit/s from 1 to 100000. */
+function parseLimit(s: string): number | undefined {
+  if (s.trim() === "") return 0;
+  const v = Number(s);
+  return Number.isInteger(v) && v >= 1 && v <= 100000 ? v : undefined;
+}
+
 function NICs({ d, send, run, busy, bare }: CardProps) {
   const [form, setForm] = useState<{ nic?: NicT } | null>(null);
   const [removing, setRemoving] = useState<NicT>();
@@ -551,11 +569,12 @@ function NICs({ d, send, run, busy, bare }: CardProps) {
               <td className="mono fit">{n.mac}</td>
               <td className="wrap">
                 {n.source} <span className="muted">({n.type})</span>
+                {limitText(n) && <div className="muted">{limitText(n)}</div>}
               </td>
               <td className="fit">{n.model}</td>
               <td className="fit">{n.linkState}</td>
               <td className="actions fit">
-                <RowBtn label="Change network" icon={NetIcon} disabled={busy} onClick={() => setForm({ nic: n })} />
+                <RowBtn label="Edit" icon={Pencil} disabled={busy} onClick={() => setForm({ nic: n })} />
                 <RowBtn
                   label={`Link ${n.linkState === "down" ? "up" : "down"}`}
                   icon={n.linkState === "down" ? Link2 : Link2Off}
@@ -615,6 +634,13 @@ function NICForm({ d, nic, send, onClose }: { d: VMDetail; nic?: NicT; send: Sen
   const first = d.nics[0]?.model;
   const [model, setModel] = useState(first && NIC_MODELS.includes(first) ? first : "virtio");
   const [mac, setMac] = useState("");
+  // The limit is kept per direction; the first field sets both, Advanced sets them apart (when editing).
+  const [down, setDown] = useState(nic?.limitDown ? mbit(nic.limitDown) : "");
+  const [up, setUp] = useState(nic?.limitUp ? mbit(nic.limitUp) : "");
+  const limitDown = parseLimit(down);
+  const limitUp = parseLimit(up);
+  const limitOk = limitDown !== undefined && limitUp !== undefined;
+  const limitChanged = !!nic && (limitDown !== (nic.limitDown ?? 0) || limitUp !== (nic.limitUp ?? 0));
   const act = useAction();
   useEffect(() => {
     get<Network[]>(`/nodes/${d.node}/networks`).then(
@@ -642,31 +668,65 @@ function NICForm({ d, nic, send, onClose }: { d: VMDetail; nic?: NicT; send: Sen
   ];
   const picked = target.slice(target.indexOf(":") + 1);
   const body = target.startsWith("br:") ? { bridge: picked } : { network: picked };
+  const origTarget = nic ? (nic.type === "bridge" ? "br:" : "net:") + nic.source : "";
+  const targetChanged = !!nic && target !== origTarget;
+  const limitField = (
+    <Field label="Speed limit (Mbit/s)" hint="Empty for no limit.">
+      <input
+        inputMode="numeric"
+        placeholder={down !== up ? "Set in Advanced" : "No limit"}
+        value={down === up ? down : ""}
+        onChange={(e) => {
+          setDown(e.target.value);
+          setUp(e.target.value);
+        }}
+      />
+    </Field>
+  );
   return (
-    <Modal title={nic ? `Change network of ${nic.mac}` : "Add network interface"} onClose={onClose}>
+    <Modal title={nic ? `Edit ${nic.mac}` : "Add network interface"} onClose={onClose}>
       <Field label="Network">
         <Select label="Network" value={target} onChange={setTarget} options={options} />
       </Field>
-      {!nic && (
-        <DialogAdvanced>
+      {nic && limitField}
+      <DialogAdvanced>
+        {nic ? (
           <div className="grid2">
-            <Field label="Network card">
-              <Select label="Network card" value={model} onChange={setModel} options={NIC_MODELS.map((m) => ({ value: m, label: m }))} />
+            <Field label="Download limit (Mbit/s)" hint="Traffic to the VM.">
+              <input inputMode="numeric" placeholder="No limit" value={down} onChange={(e) => setDown(e.target.value)} />
             </Field>
-            <Field label="MAC address" hint="Leave empty to generate one.">
-              <input className="mono" placeholder="52:54:00:12:34:56" value={mac} onChange={(e) => setMac(e.target.value)} />
+            <Field label="Upload limit (Mbit/s)" hint="Traffic from the VM.">
+              <input inputMode="numeric" placeholder="No limit" value={up} onChange={(e) => setUp(e.target.value)} />
             </Field>
           </div>
-        </DialogAdvanced>
-      )}
-      <ErrorBox error={act.error} />
+        ) : (
+          <>
+            <div className="grid2">
+              <Field label="Network card">
+                <Select label="Network card" value={model} onChange={setModel} options={NIC_MODELS.map((m) => ({ value: m, label: m }))} />
+              </Field>
+              <Field label="MAC address" hint="Leave empty to generate one.">
+                <input className="mono" placeholder="52:54:00:12:34:56" value={mac} onChange={(e) => setMac(e.target.value)} />
+              </Field>
+            </div>
+            {limitField}
+          </>
+        )}
+      </DialogAdvanced>
+      <ErrorBox error={act.error || (limitOk ? undefined : "A speed limit is a whole number of Mbit/s, 1 to 100000.")} />
       <footer>
         <button onClick={onClose}>Cancel</button>
         <button
           className="primary"
-          disabled={act.busy || !picked}
+          disabled={act.busy || !picked || !limitOk}
           onClick={async () => {
-            const ok = await act.run(() => (nic ? send("PUT", `/nics/${nic.mac}`, body) : send("POST", "/nics", { ...body, model, mac: mac || undefined })));
+            const limit = { down: limitDown ?? 0, up: limitUp ?? 0 };
+            if (nic && !targetChanged && !limitChanged) return onClose();
+            const ok = await act.run(() =>
+              nic
+                ? send("PUT", `/nics/${nic.mac}`, { ...(targetChanged ? body : {}), ...(limitChanged ? { limit } : {}) })
+                : send("POST", "/nics", { ...body, model, mac: mac || undefined, ...(limit.down || limit.up ? { limit } : {}) }),
+            );
             if (ok) onClose();
           }}
         >
