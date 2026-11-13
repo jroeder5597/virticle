@@ -10,7 +10,7 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
 
   test.afterAll(async ({ api }) => cleanVMs(api, NAME));
 
-  test("New VM form: disk image, BIOS, start", async ({ page, api, n1 }) => {
+  test("New VM form: disk image, UEFI default with a memory hint, BIOS, start", async ({ page, api, n1 }) => {
     await page.goto("/datacenter/vms");
     await page.getByRole("button", { name: "New VM" }).click();
     const dlg = dialog(page, "New virtual machine");
@@ -25,7 +25,11 @@ test.describe.serial("create from a disk image and drive the lifecycle", () => {
     await pick(dlg, "Base image", new RegExp("^" + env.cirros.replace(/\./g, "\\.")));
     await field(dlg, "Disk size (GiB)").fill("1");
     await dlg.getByRole("button", { name: "Advanced" }).click();
-    await expect(field(dlg, "Firmware")).toContainText("BIOS");
+    // UEFI is the default for Linux guests; at 128 MiB the dialog says that is too little for it. The cirros image needs BIOS here.
+    await expect(field(dlg, "Firmware")).toContainText("UEFI");
+    await expect(dlg).toContainText("UEFI guests usually need at least 512 MiB to boot.");
+    await pick(dlg, field(dlg, "Firmware"), "BIOS");
+    await expect(dlg).not.toContainText("UEFI guests usually need at least 512 MiB to boot.");
     await dlg.getByRole("button", { name: "Create" }).click();
     await expect(dlg).toBeHidden();
     await expect(page).toHaveURL(/\/vm\/\d+\/[0-9a-f-]+\?tab=console/);

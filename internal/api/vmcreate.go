@@ -16,7 +16,7 @@ import (
 // defaultLinuxFirmware is the firmware a Linux guest gets when the request
 // names none. The web UI has the same constant (defaultLinuxFirmware in
 // web/src/pages/Firmware.tsx); change both to switch the default to "uefi".
-const defaultLinuxFirmware = "bios"
+const defaultLinuxFirmware = "uefi"
 
 type createVMRequest struct {
 	Name      string `json:"name"`

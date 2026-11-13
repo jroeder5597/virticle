@@ -15,7 +15,7 @@ export interface FwCaps {
  * The firmware a Linux guest gets in the New VM dialog. The server has the same constant for requests that name
  * none (defaultLinuxFirmware in internal/api/vmcreate.go); to make UEFI the default, change both.
  */
-export const defaultLinuxFirmware: "bios" | "uefi" = "bios";
+export const defaultLinuxFirmware: "bios" | "uefi" = "uefi";
 
 export interface FwValues {
   osType: "linux" | "windows";

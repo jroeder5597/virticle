@@ -60,6 +60,7 @@ test.describe.serial("cluster CPU baseline", () => {
     await pick(dlg, "Base image", new RegExp("^" + env.cirros.replace(/\./g, "\\.")));
     await field(dlg, "Disk size (GiB)").fill("1");
     await dlg.getByRole("button", { name: "Advanced" }).click();
+    await pick(dlg, field(dlg, "Firmware"), "BIOS"); // UEFI is the default; cirros at 128 MiB needs BIOS
     await expect(field(dlg, "CPU type")).toContainText(`Cluster baseline (${base.model})`);
     await dlg.getByRole("button", { name: "Create" }).click();
     await expect(dlg).toBeHidden();

@@ -93,6 +93,7 @@ session, not a token.
   The guest clock is synced after resume, snapshot revert and live migration
   when the guest agent runs.
 - **Serial console**: added to every new VM; the Console tab adds one to a VM that has none.
+- **Firmware** (Linux): UEFI, with the UEFI variables in a qcow2 file so the VM can take internal snapshots. A node without UEFI firmware gets BIOS. Windows always gets UEFI.
 
 ## Schedules
 
@@ -111,7 +112,7 @@ A directory `<vm>-<UTC timestamp>.vmbackup` in a directory-backed pool:
 - `manifest.json`: VM name and UUID, time, source node, disks, SHA-256 checksums (not for scheduled backups).
 - `domain.xml`: the VM definition.
 - `<target>.qcow2`: one flattened image per writable disk.
-- `nvram.fd`: for UEFI guests.
+- `nvram.fd`: for UEFI guests; the manifest records its format (`nvramFormat`: `qcow2`, or `raw` for VMs made before qcow2 stores).
 
 A running VM is backed up with libvirt's backup API and keeps running. The
 directory is renamed into place last, so a backup is complete or absent. A
@@ -139,7 +140,8 @@ passwordless sudo but no node command is also not prepared.
 - Only file-based, non-shareable disks can be backed up.
 - Internal snapshots pause the guest while memory is saved and block live
   migration.
-- External snapshots could not be deleted on Debian nodes (AppArmor).
+- External snapshots could not be deleted on Debian nodes (AppArmor). A live disk-only snapshot is always external.
+- A UEFI VM made before qcow2 variable stores keeps a raw one: its snapshots are external, and reverting a snapshot does not bring back the UEFI variables of that moment (internal snapshots of a qcow2 store do).
 - No high availability, no shared-storage features, no replication.
 - Not verified end to end: ACME issuance, the packages and the systemd service
   on a clean machine, arm64. See [ROADMAP.md](../ROADMAP.md).

@@ -308,6 +308,7 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
             <input type="number" min={64} step={64} value={memoryMiB} onChange={(e) => setMemory(Number(e.target.value))} />
           </Field>
         </div>
+        {fw.firmware === "uefi" && memoryMiB < 512 && <p className="note">UEFI guests usually need at least 512 MiB to boot.</p>}
         <ErrorBox error={capsError} />
         <OsTypeField value={fw} caps={caps} onChange={setFw} />
         <Field label="Install from" group>
