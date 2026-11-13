@@ -151,14 +151,26 @@ func verbReplCommit(c *Ctx) error {
 		if base == "" {
 			return qemuFail("commit "+c.Args[1], out, err)
 		}
-		// The exit status of check says what it found (2 corrupt, 3 leaks); what matters is that the commit works now.
+		// Why this is safe: commit only ever writes blocks that are allocated in the overlay, and the overlay is
+		// emptied last, after those writes are flushed. A commit that was killed leaves bookkeeping (reference
+		// counts) behind the data; the repair fixes only that, and the commit run again writes every block of the
+		// overlay a second time, so the base ends up equal to the overlay over the old base whatever the first run
+		// had written (tried in the lab: kill -9 at random points, repair, commit again, qemu-img compare with the
+		// view before the commit, every time identical). The base must then read as clean; if it does not, or the
+		// second commit fails, the verb says the replica is damaged and the controller starts the copy over.
 		if _, cerr := c.CombinedOutput("qemu-img", "check", "-r", "all", "-f", "qcow2", "--", base); cerr != nil {
 			if _, ok := cerr.(*Error); ok {
 				return cerr
 			}
 		}
 		if out2, err2 := c.CombinedOutput("qemu-img", append(args, "--", top)...); err2 != nil {
-			return qemuFail("commit "+c.Args[1]+" after repairing the base", out2, err2)
+			return Fail("replica-damaged: qemu-img could not commit %s after repairing the base: %s", c.Args[1], strings.TrimSpace(string(out2)))
+		}
+		if out3, err3 := c.CombinedOutput("qemu-img", "check", "-f", "qcow2", "--", base); err3 != nil {
+			if _, ok := err3.(*Error); ok {
+				return err3
+			}
+			return Fail("replica-damaged: the base %s is not clean after the repair: %s", base, strings.TrimSpace(string(out3)))
 		}
 	}
 	return nil

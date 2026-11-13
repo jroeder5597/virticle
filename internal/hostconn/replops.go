@@ -39,6 +39,15 @@ func (h *Host) ReplCommit(work, name, base string) error {
 	return nil
 }
 
+// QcowBitmapRemove removes the named persistent bitmaps from a qcow2 image that no QEMU has open.
+func (h *Host) QcowBitmapRemove(path string, names ...string) error {
+	args := append([]string{path}, names...)
+	if out, err := h.RunNode("qcow2-bitmap-rm", args...); err != nil {
+		return fmt.Errorf("cannot remove the bitmaps of %s: %s", path, firstLineOf(out, err))
+	}
+	return nil
+}
+
 // FileStamp is the modification time (ns) and size of a file.
 type FileStamp struct {
 	Exists bool

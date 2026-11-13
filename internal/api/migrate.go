@@ -500,9 +500,12 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 	c.pass("Target node", dst.Name+" is connected")
 	if meta, merr := domainMeta(src, dom); merr == nil {
 		if rc := parseReplication(meta); rc != nil {
-			if rc.TargetNode == req.Target {
-				c.bad("Replica", "this VM is replicated to "+dst.Name+": its copy there is what a move to that node would collide with. Use \"Planned failover\" on the replica to move the VM there without losing anything, or stop replication first")
-			} else {
+			switch {
+			case replRunning(cluster.FormatUUID(dom.UUID)):
+				c.bad("Replica", "a copy of this VM to its standby node is in progress; move it when the copy is done")
+			case rc.TargetNode == req.Target:
+				c.warn("Replica", "this VM is replicated to "+dst.Name+". The replica there steps aside for the move (nothing is lost, the VM keeps running), and afterwards the VM is replicated back to "+src.Name+" with a full copy")
+			default:
 				c.warn("Replica", "this VM is replicated to "+rc.TargetName+"; after the move the replication continues from the new node, and its next run copies all disks again")
 			}
 		}
@@ -525,8 +528,15 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 	}
 
 	// Name and UUID.
-	if _, err := dst.DomainLookupByName(plan.Name); err == nil {
-		c.bad("Name on target", "a VM named "+plan.Name+" already exists on "+dst.Name)
+	_, steps := migrationReplica(src, dom, req.Target)
+	if d, err := dst.DomainLookupByName(plan.Name); err == nil && steps && d.UUID == dom.UUID && isReplicaDomain(dst, d) {
+		c.pass("Name and UUID", "only the replica of this VM is on "+dst.Name+", and it steps aside")
+	} else if err == nil {
+		what := "a VM"
+		if isReplicaDomain(dst, d) {
+			what = "the replica of another VM"
+		}
+		c.bad("Name on target", what+" named "+plan.Name+" already exists on "+dst.Name)
 	} else if d, err := dst.DomainLookupByUUID(dom.UUID); err == nil {
 		c.bad("UUID on target", "a VM with the same UUID ("+plan.UUID+") exists on "+dst.Name+" as "+d.Name)
 	} else {
@@ -927,11 +937,36 @@ func (s *Server) launchMigration(r *http.Request, srcID int64, h *hostconn.Host,
 	id, done, err := s.startBackgroundWait(r, "migrate", plan.Name+" → "+dst.Name, h.Name, func(progress func(float64)) error {
 		defer func() {
 			migRuns.Lock()
-			delete(migRuns.m, plan.UUID)
+			if migRuns.m[plan.UUID] == m {
+				delete(migRuns.m, plan.UUID)
+			}
 			migRuns.Unlock()
 		}()
 		m.progress = progress
-		return m.run()
+		// A replica of this VM on the target steps aside, and replication turns around afterwards.
+		var aside *replicaAside
+		if cfg, ok := migrationReplica(h, dom, req.Target); ok {
+			var aerr error
+			if aside, aerr = s.stepAsideReplica(srcID, h, dom, req.Target, dst, *cfg); aerr != nil {
+				return aerr
+			}
+		}
+		err := m.run()
+		// The VM is no longer "being migrated" from here: the first copy back is a replication run, which refuses a VM
+		// that is. (The deferred delete above stays, it does nothing twice.)
+		migRuns.Lock()
+		if migRuns.m[plan.UUID] == m {
+			delete(migRuns.m, plan.UUID)
+		}
+		migRuns.Unlock()
+		if aside != nil {
+			if err != nil {
+				err = withNote(err, aside.failed())
+			} else if note := aside.moved(r); note != "" {
+				err = withNote(nil2("the VM moved to "+dst.Name), note)
+			}
+		}
+		return err
 	})
 	if err != nil {
 		migRuns.Lock()

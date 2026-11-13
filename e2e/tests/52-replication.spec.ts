@@ -67,6 +67,15 @@ test.describe.serial("replication", () => {
     await card.screenshot({ path: `${SHOTS}/source-card.png` });
   });
 
+  test("a move to the standby is not refused: the replica steps aside", async ({ api, n1 }) => {
+    const c = await api.call("POST", `/nodes/${n1}/vms/${vm.uuid}/migrate/check`, { target: n2id });
+    const items: { check: string; ok: boolean; severity: string; message: string }[] = c.checks;
+    expect(items.filter((x) => !x.ok && x.severity === "error").map((x) => x.check + ": " + x.message)).toEqual([]);
+    const rep = items.find((x) => x.check === "Replica");
+    expect(rep?.message).toContain("steps aside");
+    expect(rep?.message).toContain("full copy");
+  });
+
   test("on node 2 the VM is a replica: no actions, Planned failover offered", async ({ page, api }) => {
     const copy = await api.waitFor("the replica on node 2", async () => (await api.vms()).find((v) => v.name === NAME && v.node === n2id && v.state === "replica"), 60_000);
     // the VM list: state word, no selection, no power button
@@ -99,6 +108,20 @@ test.describe.serial("replication", () => {
     // the backend refuses a normal change
     const r = await api.ctx.fetch(`/api/nodes/${n2id}/vms/${copy.uuid}/action`, { method: "POST", data: { action: "start" } });
     expect(r.status()).toBe(400);
+    for (const [method, path, data] of [
+      ["PUT", "autostart", { autostart: true }],
+      ["PUT", "tags", { tags: ["x"] }],
+      ["POST", "snapshots", { name: "s" }],
+      ["POST", "disks/vda/resize", { sizeGiB: 99 }],
+      ["POST", "clone", { name: `${NAME}-c` }],
+      ["POST", "backup", {}],
+      ["PUT", "backup-schedule", { enabled: true }],
+      ["POST", "migrate", { target: 1 }],
+      ["DELETE", "", undefined],
+    ] as [string, string, unknown][]) {
+      const x = await api.ctx.fetch(`/api/nodes/${n2id}/vms/${copy.uuid}${path ? "/" + path : ""}`, { method, data });
+      expect(x.status(), `${method} ${path}`).toBe(400);
+    }
   });
 
   test("planned failover: the VM runs on node 2, the old VM is a stale copy", async ({ page, api, n1 }) => {
@@ -140,6 +163,23 @@ test.describe.serial("replication", () => {
       return s.configured && s.config.targetNode === n1 ? s : undefined;
     }, 60_000, 2000);
     expect(st.config.everyMinutes).toBeGreaterThan(0);
+  });
+
+  test("bulk delete offers to delete the replica too", async ({ page, api }) => {
+    const mine = (await api.vms()).find((v) => v.name === NAME && v.node === n2id)!;
+    await api.waitFor("the copy back to finish", async () => !(await api.get(`/nodes/${n2id}/vms/${mine.uuid}/replication`)).running, 240_000, 3000);
+    await api.post(`/nodes/${n2id}/vms/${mine.uuid}/action`, { action: "poweroff" });
+    await api.waitFor("the VM off", async () => (await api.vmDetail(n2id, mine.uuid)).state === "shutoff", 60_000, 1500);
+    await page.goto("/datacenter/vms");
+    await page.getByLabel("Search VMs").fill(NAME);
+    const row = page.locator("tbody tr").filter({ hasText: NAME }).filter({ hasText: env.node2 });
+    await row.getByRole("checkbox").check();
+    await page.locator(".bulkbar").getByRole("button", { name: "Delete" }).click();
+    const dlg = dialog(page, "Delete 1 VM(s)?");
+    await expect(dlg.getByLabel(/Also delete the replica of the VM that has one/)).toBeChecked();
+    await dlg.getByRole("button", { name: "Cancel" }).click();
+    await expect(dlg).toBeHidden();
+    await api.post(`/nodes/${n2id}/vms/${mine.uuid}/action`, { action: "start" });
   });
 
   test("stop replication with its copy, then delete the VM", async ({ page, api, n1 }) => {

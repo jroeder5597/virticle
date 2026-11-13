@@ -72,6 +72,31 @@ type replRun struct {
 
 var errNoReplica = errors.New("replication of this VM is not set up")
 
+// pausedCopies are the VMs that are started paused for a copy right now (guarded by bkRuns' mutex). Start and
+// Resume of such a VM are refused: the guest must not run while its disks are read.
+var pausedCopies = map[string]bool{}
+
+func setPausedCopy(uuid string, on bool) {
+	bkRuns.Lock()
+	defer bkRuns.Unlock()
+	if on {
+		pausedCopies[uuid] = true
+	} else {
+		delete(pausedCopies, uuid)
+	}
+}
+
+// pausedCopyGuard refuses to start or resume a VM that is paused for its copy.
+func pausedCopyGuard(dom libvirt.Domain) error {
+	bkRuns.Lock()
+	on := pausedCopies[cluster.FormatUUID(dom.UUID)]
+	bkRuns.Unlock()
+	if on {
+		return badRequest(dom.Name + " is shut off and is being copied to its standby node right now (it is held paused for the copy and ends by itself within a few minutes). Start it when the copy is done")
+	}
+	return nil
+}
+
 // replStatus is what the controller remembers of a replicated VM between runs (in memory only: what
 // is lost in a restart is the text of the last failure, the copy itself says everything else).
 var replStatus = struct {
@@ -112,6 +137,12 @@ func claimRepl(r *replRun) error {
 	}
 	if _, busy := replRuns[r.uuid]; busy {
 		return badRequest("a replication run of this VM is already in progress")
+	}
+	migRuns.Lock()
+	_, moving := migRuns.m[r.uuid]
+	migRuns.Unlock()
+	if moving && !r.final {
+		return badRequest("this VM is being migrated right now; replication runs when it is done")
 	}
 	if other, busy := replNodes[r.srcID]; busy && !r.final {
 		return badRequest("another VM (" + other + ") is being copied from this node right now; one run at a time per node")
@@ -195,6 +226,11 @@ func (s *Server) planReplica(srcID int64, src *hostconn.Host, dom libvirt.Domain
 		return nil, badRequest("the standby node is not connected: " + err.Error())
 	}
 	dn, _ := s.nodeStatus(cfg.TargetNode)
+	// The setting names the standby by number and by name. A controller that was set up again (nodes added in another
+	// order) numbers its nodes differently: a number that now belongs to another node must not receive the copy.
+	if cfg.TargetName != "" && dst.Name != cfg.TargetName {
+		return nil, badRequest("the standby " + cfg.TargetName + " of this VM is not the node with that number any more (it is " + dst.Name + " now, the nodes were numbered again). Stop replication and set it up again")
+	}
 	ctx, stop := context.WithCancel(context.Background())
 	m := &bkRun{ctx: ctx, stopCtx: stop, s: s, src: src, dom: dom, name: dom.Name, uuid: cluster.FormatUUID(dom.UUID), live: live}
 	no := false
@@ -375,6 +411,11 @@ func (r *replRun) markReplica(dom libvirt.Domain, last *replPoint) error {
 		rm.Points = len(pts)
 		rm.Bytes = r.st.diskBytes(names)
 	}
+	if sm, err := domainMeta(r.src, r.dom); err == nil {
+		if fo := parseFailedOver(sm); fo != nil {
+			rm.SrcGen = fo.Gen
+		}
+	}
 	old, err := domainMeta(r.dst, dom)
 	if err != nil {
 		return err
@@ -447,6 +488,11 @@ func (r *replRun) startPaused() error {
 
 // stopPaused ends the paused VM cleanly (QEMU saves its bitmaps when it is asked, not when it is killed).
 func (r *replRun) stopPaused() error {
+	// Only a VM that is still paused is ended: one that somebody resumed meanwhile (the controller's guard cannot
+	// stop a libvirt client of its own) runs a guest, which a power-off would cut.
+	if st, _, err := r.src.DomainGetState(r.dom, 0); err != nil || stateName(uint8(st)) != "paused" {
+		return errors.New("the VM was not paused any more when the copy ended: somebody started it. It was left running and the copy was discarded")
+	}
 	if err := r.src.DomainDestroyFlags(r.dom, libvirt.DomainDestroyGraceful); err != nil {
 		return err
 	}
@@ -457,6 +503,31 @@ func (r *replRun) stopPaused() error {
 		time.Sleep(time.Second)
 	}
 	return errors.New("the VM did not end after it was asked to")
+}
+
+// finishPausedCopy ends a VM that a run started paused and could not end (the controller stopped, or QEMU did
+// not end in time). The record on the VM says a copy had it paused: a VM that is still paused is ended the same
+// way the run would have; one that is shut off or running (somebody started it) is left alone. Then the record goes.
+func finishPausedCopy(h *hostconn.Host, dom libvirt.Domain) {
+	if st, _, err := h.DomainGetState(dom, 0); err == nil && stateName(uint8(st)) == "paused" {
+		if err := h.DomainDestroyFlags(dom, libvirt.DomainDestroyGraceful); err != nil {
+			log.Printf("replication %s: ending the paused VM: %v", dom.Name, err)
+			return
+		}
+		log.Printf("replication %s: the VM was left paused by an interrupted copy; it was ended", dom.Name)
+	}
+	meta, err := domainMeta(h, dom)
+	if err != nil {
+		return
+	}
+	cfg := parseReplication(meta)
+	if cfg == nil {
+		return
+	}
+	cfg.PausedCopy = false
+	if nm, err := setMetaChildren(meta, map[string]string{replChild: cfg.element()}); err == nil {
+		_ = setDomainMeta(h, dom, nm)
+	}
 }
 
 // run does it all. The new point exists once its manifest is written; before that a failure leaves the
@@ -474,6 +545,15 @@ func (r *replRun) run() (err error) {
 		return err
 	}
 	kept, names, err := r.st.settle()
+	if err != nil && isReplicaDamaged(err) {
+		// A base image that cannot be made clean again is not repaired further: the copy is started over, whole.
+		// The source is intact, so nothing is lost but the old points, which could not be started from anyway.
+		log.Printf("replication %s: the replica on %s is damaged (%v); it is discarded and copied again", r.name, r.dst.Name, err)
+		if werr := r.st.wipe(); werr != nil {
+			return fmt.Errorf("the replica on %s is damaged (%v) and could not be cleared: %w", r.dst.Name, err, werr)
+		}
+		kept, names, err = r.st.settle()
+	}
 	if err != nil {
 		return fmt.Errorf("checking the replica on %s: %w", r.dst.Name, err)
 	}
@@ -650,21 +730,35 @@ func (r *replRun) produce(wd *bkWork, stamp time.Time, plan replPlan) error {
 		}
 		return m.liveBackup(wd, stamp, 0.02, 0.5)
 	}
-	// Shut off: start paused and run the same job; convert whole when that is not possible.
-	if plan.Checkpoint {
+	// Shut off. Only the copy of what changed since the last point is worth starting QEMU for: a planned failover
+	// has to be quick whatever the size of the disks. The VM is started paused (its virtual CPUs never run, so
+	// nothing is written), the same backup job runs as for a live VM, and QEMU is asked to end, which saves the
+	// dirty bitmaps. Start and Resume are refused meanwhile and a restart of the controller ends the paused VM
+	// (finishPausedCopy). Everything else (a first copy, a copy with no usable bitmap, a node that cannot start the
+	// VM) converts the disks whole, which starts nothing.
+	if plan.Kind == kindIncremental && plan.Checkpoint {
 		if err := r.src.ChmodWork(wd.path, "711"); err != nil {
 			return fmt.Errorf("chmod: %w", err)
 		}
+		if err := r.setSourceConfig(func(c *replConfig) { c.PausedCopy = true }); err != nil {
+			return err
+		}
+		setPausedCopy(r.uuid, true)
+		defer setPausedCopy(r.uuid, false)
 		if err := r.startPaused(); err == nil {
 			err := m.liveBackup(wd, stamp, 0.02, 0.5)
-			if serr := r.stopPaused(); serr != nil {
+			serr := r.stopPaused()
+			if serr == nil {
+				_ = r.setSourceConfig(func(c *replConfig) { c.PausedCopy = false })
+			} else {
 				log.Printf("replication %s: ending the paused VM: %v", r.name, serr)
 				if err == nil {
-					err = fmt.Errorf("the VM was started paused for the copy and could not be ended cleanly: %v. It may be running paused; check it before the next run", serr)
+					err = fmt.Errorf("the VM was started paused for the copy and could not be ended cleanly: %v. It may be running paused; the next scheduler round ends it", serr)
 				}
 			}
 			return err
 		} else {
+			_ = r.setSourceConfig(func(c *replConfig) { c.PausedCopy = false })
 			log.Printf("replication %s: cannot start the shut-off VM paused (%v); converting the disks whole", r.name, err)
 		}
 	}

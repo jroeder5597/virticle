@@ -911,6 +911,9 @@ func (s *Server) listBackups(uuidFilter string) []backupEntry {
 				}
 				mu.Lock()
 				for _, d := range doms {
+					if isReplicaOrStale(h, d) {
+						continue // the standby's inert copy and the old VM after a failover are not "the VM"
+					}
 					u := cluster.FormatUUID(d.UUID)
 					exists[u] = where{node: id, name: name, shutOff: !active[u]}
 				}

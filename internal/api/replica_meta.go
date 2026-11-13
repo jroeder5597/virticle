@@ -34,6 +34,9 @@ type replConfig struct {
 	// ReplaceStale says the standby holds an old copy of this very VM (after a failover) that the
 	// first complete copy replaces.
 	ReplaceStale bool
+	// PausedCopy is set while a shut-off VM runs paused for a copy (see replRun.produce): if the controller stops
+	// meanwhile, the next scheduler round ends the paused VM.
+	PausedCopy bool
 	// The last successful run.
 	LastOK    int64 // unix time of the point
 	LastBytes uint64
@@ -46,6 +49,9 @@ func (c replConfig) element() string {
 		replChild, yesNo(c.Enabled), c.TargetNode, esc(c.TargetName), esc(c.Pool), c.EveryMinutes, esc(c.Dir))
 	if c.ReplaceStale {
 		el += ` replace-stale="yes"`
+	}
+	if c.PausedCopy {
+		el += ` paused-copy="yes"`
 	}
 	if c.LastOK > 0 {
 		el += fmt.Sprintf(` last="%d" last-bytes="%d" last-kind="%s" last-secs="%d"`, c.LastOK, c.LastBytes, esc(c.LastKind), c.LastSecs)
@@ -77,6 +83,7 @@ func parseReplication(meta string) *replConfig {
 			Every   int    `xml:"every-minutes,attr"`
 			Dir     string `xml:"dir,attr"`
 			Replace string `xml:"replace-stale,attr"`
+			Paused  string `xml:"paused-copy,attr"`
 			Last    int64  `xml:"last,attr"`
 			Bytes   uint64 `xml:"last-bytes,attr"`
 			Kind    string `xml:"last-kind,attr"`
@@ -88,7 +95,7 @@ func parseReplication(meta string) *replConfig {
 	}
 	r := root.R
 	return &replConfig{Enabled: r.Enabled == "yes", TargetNode: r.Node, TargetName: r.Name, Pool: r.Pool, EveryMinutes: r.Every,
-		Dir: r.Dir, ReplaceStale: r.Replace == "yes", LastOK: r.Last, LastBytes: r.Bytes, LastKind: r.Kind, LastSecs: r.Secs}
+		Dir: r.Dir, ReplaceStale: r.Replace == "yes", PausedCopy: r.Paused == "yes", LastOK: r.Last, LastBytes: r.Bytes, LastKind: r.Kind, LastSecs: r.Secs}
 }
 
 // replicaMeta marks the standby's copy.
@@ -102,11 +109,14 @@ type replicaMeta struct {
 	Checked    int64 // the last time the copy was found to be current (a shut-off VM that did not change needs no new point)
 	Points     int
 	Bytes      uint64 // size of the replica on disk
+	// SrcGen is the failover generation of the source VM when the copy was made (0: it never took over). A VM that
+	// takes over gets this plus one, so the order of failovers does not depend on any clock.
+	SrcGen int
 }
 
 func (m replicaMeta) element() string {
-	return fmt.Sprintf(`<%s dir="%s" pool="%s" source-node="%d" source-name="%s" every-minutes="%d" last="%d" checked="%d" points="%d" bytes="%d"/>`,
-		replicaChild, esc(m.Dir), esc(m.Pool), m.SourceNode, esc(m.SourceName), m.Every, m.Last, m.Checked, m.Points, m.Bytes)
+	return fmt.Sprintf(`<%s dir="%s" pool="%s" source-node="%d" source-name="%s" every-minutes="%d" last="%d" checked="%d" points="%d" bytes="%d" src-gen="%d"/>`,
+		replicaChild, esc(m.Dir), esc(m.Pool), m.SourceNode, esc(m.SourceName), m.Every, m.Last, m.Checked, m.Points, m.Bytes, m.SrcGen)
 }
 
 func parseReplicaMeta(meta string) *replicaMeta {
@@ -124,13 +134,14 @@ func parseReplicaMeta(meta string) *replicaMeta {
 			Checked int64  `xml:"checked,attr"`
 			Points  int    `xml:"points,attr"`
 			Bytes   uint64 `xml:"bytes,attr"`
+			SrcGen  int    `xml:"src-gen,attr"`
 		} `xml:"replica"`
 	}
 	if xml.Unmarshal([]byte(meta), &root) != nil || root.R == nil {
 		return nil
 	}
 	r := root.R
-	return &replicaMeta{Dir: r.Dir, Pool: r.Pool, SourceNode: r.Node, SourceName: r.Name, Every: r.Every, Last: r.Last, Checked: r.Checked, Points: r.Points, Bytes: r.Bytes}
+	return &replicaMeta{Dir: r.Dir, Pool: r.Pool, SourceNode: r.Node, SourceName: r.Name, Every: r.Every, Last: r.Last, Checked: r.Checked, Points: r.Points, Bytes: r.Bytes, SrcGen: r.SrcGen}
 }
 
 // staleMeta marks the old VM after another node took over.
@@ -165,12 +176,14 @@ func parseStale(meta string) *staleMeta {
 type failedOverMeta struct {
 	FromNode int64
 	FromName string
-	At       int64
+	At       int64 // the controller's clock; only informational
 	Planned  bool
+	// Gen orders failovers of one VM: the VM that took over later has the higher one (see decideOldCopy).
+	Gen int
 }
 
 func (m failedOverMeta) element() string {
-	return fmt.Sprintf(`<%s from-node="%d" from-name="%s" at="%d" planned="%s"/>`, failedOverChd, m.FromNode, esc(m.FromName), m.At, yesNo(m.Planned))
+	return fmt.Sprintf(`<%s from-node="%d" from-name="%s" at="%d" planned="%s" gen="%d"/>`, failedOverChd, m.FromNode, esc(m.FromName), m.At, yesNo(m.Planned), m.Gen)
 }
 
 func parseFailedOver(meta string) *failedOverMeta {
@@ -183,12 +196,13 @@ func parseFailedOver(meta string) *failedOverMeta {
 			Name    string `xml:"from-name,attr"`
 			At      int64  `xml:"at,attr"`
 			Planned string `xml:"planned,attr"`
+			Gen     int    `xml:"gen,attr"`
 		} `xml:"failed-over"`
 	}
 	if xml.Unmarshal([]byte(meta), &root) != nil || root.F == nil {
 		return nil
 	}
-	return &failedOverMeta{FromNode: root.F.Node, FromName: root.F.Name, At: root.F.At, Planned: root.F.Planned == "yes"}
+	return &failedOverMeta{FromNode: root.F.Node, FromName: root.F.Name, At: root.F.At, Planned: root.F.Planned == "yes", Gen: root.F.Gen}
 }
 
 // setMetaChildren replaces several children of the application metadata in one go: a child with an

@@ -46,7 +46,7 @@ const (
 	reasonMixed          = "This VM has snapshots of both kinds, which libvirt cannot manage together. Delete its snapshots before taking another."
 	reasonNoStateWhenOff = "A VM that is shut off has no running state to save."
 	reasonKeepState      = "This VM's earlier snapshots only work with the running state saved. Delete them to choose again."
-	reasonAppArmorState  = "This node can only delete snapshots that save the running state."
+	reasonAppArmorState  = "On this node a running VM can only be snapshotted with its running state saved: a snapshot of the disk alone could not be deleted again. Save the running state, or shut the VM down first."
 	reasonStuckExternal  = "This node cannot delete this VM's earlier snapshots, so it does not take new ones."
 	reasonRunningFirmw   = "A running snapshot of this VM cannot sit next to its earlier ones. Delete the earlier snapshots."
 	reasonFirmware       = "This VM's UEFI settings are stored in a form that does not allow a snapshot of the running VM."

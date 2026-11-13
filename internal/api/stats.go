@@ -341,6 +341,15 @@ func (ns *nodeSeries) sample(h *hostconn.Host, at time.Time) metrics.Batch {
 	}
 	var doms []metrics.Dom
 	seen := map[string]bool{}
+	// The standby's inert copy of a VM that runs on another node is not a VM of this node for the figures: it
+	// would show as a VM that is shut off in the counts and in /metrics (the history only keeps running VMs).
+	kept := recs[:0:0]
+	for _, rec := range recs {
+		if !isKnownReplica(ns.trk.ID, cluster.FormatUUID(rec.Dom.UUID)) {
+			kept = append(kept, rec)
+		}
+	}
+	recs = kept
 	ns.total, ns.running = len(recs), 0
 	for _, rec := range recs {
 		uuid := cluster.FormatUUID(rec.Dom.UUID)

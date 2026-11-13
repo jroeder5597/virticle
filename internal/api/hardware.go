@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -750,6 +751,12 @@ func (s *Server) hwDiskResize(w http.ResponseWriter, r *http.Request) {
 		}
 		if size <= capacity {
 			return badRequest(fmt.Sprintf("disks can only grow: %s is already %d GiB", target, capacity>>30))
+		}
+		// A killed QEMU leaves inconsistent backup bitmaps in the image, and the resize fails on them.
+		if gone, herr := healBitmaps(c.h, c.dom); len(gone) > 0 {
+			log.Printf("resize %s/%s: removed %d inconsistent bitmap(s) left by a killed QEMU", c.dom.Name, target, len(gone))
+		} else if herr != nil {
+			log.Printf("resize %s/%s: bitmaps: %v", c.dom.Name, target, herr)
 		}
 		if c.running {
 			if err := c.h.DomainBlockResize(c.dom, target, size, libvirt.DomainBlockResizeBytes); err != nil {

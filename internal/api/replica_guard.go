@@ -1,6 +1,8 @@
 package api
 
 import (
+	"sync"
+
 	"github.com/digitalocean/go-libvirt"
 
 	"virticle/internal/hostconn"
@@ -41,4 +43,34 @@ func isReplicaOrStale(h *hostconn.Host, dom libvirt.Domain) bool {
 		return false
 	}
 	return parseReplicaMeta(meta) != nil || parseStale(meta) != nil
+}
+
+// The replicas each node holds, as the last alert round found them. The statistics round uses it to leave them out
+// of the node's figures without asking libvirt for the metadata of every VM every 15 seconds.
+var knownReplicas = struct {
+	sync.Mutex
+	m map[int64]map[string]bool
+}{m: map[int64]map[string]bool{}}
+
+func noteReplicas(node int64, reps []alertReplica) {
+	set := map[string]bool{}
+	for _, r := range reps {
+		set[r.UUID] = true
+	}
+	knownReplicas.Lock()
+	knownReplicas.m[node] = set
+	knownReplicas.Unlock()
+}
+
+// forgetReplica takes a VM off the list at once, when its replica became the VM (a failover).
+func forgetReplica(node int64, uuid string) {
+	knownReplicas.Lock()
+	delete(knownReplicas.m[node], uuid)
+	knownReplicas.Unlock()
+}
+
+func isKnownReplica(node int64, uuid string) bool {
+	knownReplicas.Lock()
+	defer knownReplicas.Unlock()
+	return knownReplicas.m[node][uuid]
 }

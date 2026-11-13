@@ -466,6 +466,12 @@ func (s *Server) vmAction(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"ok": true, "method": res.Method, "forced": res.Forced})
 		return
 	}
+	if req.Action == "start" || req.Action == "resume" {
+		if err := pausedCopyGuard(dom); err != nil {
+			fail(w, err)
+			return
+		}
+	}
 	if req.Action == "start" {
 		if mark, err := getMark(h, dom); err == nil && mark.Template {
 			fail(w, badRequest(dom.Name+" is a template and is never started. Clone it, or convert it back to a VM first"))
@@ -583,6 +589,10 @@ func (s *Server) vmDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	if stateName(state) != "shutoff" {
 		fail(w, badRequest("power the VM off before deleting it"))
+		return
+	}
+	if replRunning(cluster.FormatUUID(dom.UUID)) {
+		fail(w, badRequest(dom.Name+" is being copied to its standby node right now; delete it when the copy is done, or cancel the copy first"))
 		return
 	}
 	var paths []string

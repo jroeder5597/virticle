@@ -505,11 +505,15 @@ func maxInt64(a, b int64) int64 {
 // runReplicaSchedule starts a run of dom if its replication says one is due. The run is a background task;
 // this only plans and launches it. It is what the scheduler loop calls (and what the lab drives directly).
 func (s *Server) runReplicaSchedule(srcID int64, h *hostconn.Host, dom libvirt.Domain, cfg replConfig) {
-	if !cfg.Enabled {
-		return
-	}
 	uuid := cluster.FormatUUID(dom.UUID)
 	if replRunning(uuid) {
+		return
+	}
+	if cfg.PausedCopy {
+		finishPausedCopy(h, dom)
+		return
+	}
+	if !cfg.Enabled {
 		return
 	}
 	now := time.Now()

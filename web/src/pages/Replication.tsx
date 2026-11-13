@@ -306,7 +306,7 @@ export function StaleCard({ d, base, onChanged }: { d: VMDetail; base: string; o
   const back = async () => {
     const ok = await confirm.ask({
       title: "Replicate back",
-      message: `This old copy is deleted, disks included, once a current copy of the running VM on ${st.toName} has arrived here. The VM then has a replica here again, and you can fail back with one click.`,
+      message: `This old copy is deleted, disks included, once a current copy of the running VM on ${st.toName} has arrived here. The VM then has a replica here again, and you can fail back with one click. The copy sends the whole VM, not only the changes.`,
       confirm: "Replicate back",
       danger: false,
     });

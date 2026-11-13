@@ -106,7 +106,15 @@ func deleteCheckpoint(h *hostconn.Host, dom libvirt.Domain, name string) error {
 	if err := h.DomainCheckpointDelete(c, 0); err == nil {
 		return nil
 	}
-	return h.DomainCheckpointDelete(c, libvirt.DomainCheckpointDeleteMetadataOnly)
+	err = h.DomainCheckpointDelete(c, libvirt.DomainCheckpointDeleteMetadataOnly)
+	if err == nil {
+		// The record is gone but its bitmap may still sit in the image, marked in use by a QEMU that was killed;
+		// qemu-img would refuse to resize the image while it is there.
+		if _, herr := healBitmaps(h, dom); herr != nil {
+			log.Printf("bitmaps of %s: %v", dom.Name, herr)
+		}
+	}
+	return err
 }
 
 // dropBackupCheckpoints deletes all of this program's checkpoints of the VM,

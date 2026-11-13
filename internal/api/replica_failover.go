@@ -59,6 +59,12 @@ func (s *Server) failoverDecision(rm *replicaMeta, dom libvirt.Domain) foDecisio
 	}
 	d.NodeState = ns.State
 	sh, err := s.Nodes.Host(rm.SourceNode)
+	if err == nil && rm.SourceName != "" && sh.Name != rm.SourceName {
+		// The number belongs to another node now (the controller numbered its nodes again): the source is not known.
+		d.NodeState, d.Kind = "removed", foGone
+		d.Message = "the source node " + rm.SourceName + " is not known to this controller under its old number"
+		return d
+	}
 	if ns.State != "online" || err != nil {
 		d.NodeState, d.Kind = "offline", foUnplanned
 		d.Message = rm.SourceName + " is offline"
@@ -183,7 +189,7 @@ func (s *Server) replicaFailover(w http.ResponseWriter, r *http.Request) {
 		if dec.Kind == foPlanned {
 			return s.plannedFailover(r, h, dom, nodeID, rm, dec, progress)
 		}
-		return s.activateReplica(h, dom, nodeID, rm, failedOverMeta{FromNode: rm.SourceNode, FromName: rm.SourceName, At: time.Now().Unix()}, progress)
+		return s.activateReplica(h, dom, nodeID, rm, failedOverMeta{FromNode: rm.SourceNode, FromName: rm.SourceName, At: time.Now().Unix(), Gen: rm.SrcGen + 1}, progress)
 	})
 	if err != nil {
 		fail(w, err)
@@ -251,7 +257,11 @@ func (s *Server) plannedFailover(req *http.Request, h *hostconn.Host, dom libvir
 	}
 	// 3. Here.
 	progress(0.6)
-	fo := failedOverMeta{FromNode: srcID, FromName: sh.Name, At: time.Now().Unix(), Planned: true}
+	gen := rm.SrcGen
+	if sfo := parseFailedOver(dec.srcMeta); sfo != nil && sfo.Gen > gen {
+		gen = sfo.Gen
+	}
+	fo := failedOverMeta{FromNode: srcID, FromName: sh.Name, At: time.Now().Unix(), Planned: true, Gen: gen + 1}
 	if err := s.activateReplicaStage(h, dom, nodeID, rm, fo, func(f float64) { progress(0.6 + 0.3*f) }); err != nil {
 		var moved *movedError
 		if !errors.As(err, &moved) {
@@ -424,6 +434,9 @@ func (s *Server) activateReplicaStage(h *hostconn.Host, dom libvirt.Domain, node
 			base := chain[len(chain)-1]
 			if len(chain) > 1 {
 				if err := h.ReplCommit(st.dir, d.File, base); err != nil {
+					if isReplicaDamaged(err) {
+						return fmt.Errorf("this replica is damaged: its disk image %s could not be made consistent (%w). It cannot be started. When the source VM is reachable again, \"Delete replica\" and set up replication again", base, err)
+					}
 					return fmt.Errorf("applying the copy to %s: %w", base, err)
 				}
 			}
@@ -466,6 +479,7 @@ func (s *Server) activateReplicaStage(h *hostconn.Host, dom libvirt.Domain, node
 	if err != nil {
 		return &movedError{err}
 	}
+	forgetReplica(nodeID, cluster.FormatUUID(dom.UUID))
 	if sel.Autostart {
 		_ = h.DomainSetAutostart(nd, 1)
 	}
@@ -553,7 +567,7 @@ func (s *Server) reconcileFailovers() {
 				continue
 			}
 			fo := parseFailedOver(meta)
-			if fo == nil || parseReplicaMeta(meta) != nil {
+			if fo == nil || parseReplicaMeta(meta) != nil || parseStale(meta) != nil {
 				continue
 			}
 			s.reconcileOne(h, n.ID, d, fo)
@@ -574,18 +588,16 @@ func (s *Server) reconcileOne(h *hostconn.Host, nodeID int64, d libvirt.Domain, 
 	if err != nil {
 		return
 	}
-	if parseStale(ometa) != nil || parseReplicaMeta(ometa) != nil {
-		return // already handled, or it is the replica of the running VM now
-	}
-	if ofo := parseFailedOver(ometa); ofo != nil && ofo.At >= fo.At {
-		return // the VM over there took over later than this one: this one is the old copy, handled from its own record
-	}
 	state, _, err := oh.DomainGetState(od, 0)
 	if err != nil {
 		return
 	}
+	act := decideOldCopy(*fo, oldVMFacts{Meta: ometa, Running: stateName(uint8(state)) != "shutoff"})
+	if act == oldNothing {
+		return
+	}
 	s.markOldVM(oh, od, h.Name, nodeID)
-	if stateName(uint8(state)) != "shutoff" {
+	if act == oldPowerOff {
 		if err := oh.DomainDestroy(od); err != nil {
 			log.Printf("old copy of %s on %s: powering it off: %v", od.Name, oh.Name, err)
 		} else {

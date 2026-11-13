@@ -294,16 +294,30 @@ deleted by Virticle.
    the stale copy and its disks are deleted when that copy is complete. Or **Delete VM** to discard the old copy.
 2. When the copy is current, open the replica on the old node and use **Planned failover** to fail back.
 
-After a planned failover the old VM is marked stale and replication back starts by itself.
+After a planned failover the old VM is marked stale and replication back starts by itself. "Replicate back" is always a
+full copy: the changes since the failover cannot be told apart from the old copy's own, and a copy that is not provably equal
+is worse than a slow one. Which of two VMs is the old copy is decided by a counter that every failover raises by one, never by
+the clocks of the nodes.
 
 ### Other things to know
 
-- **Stop replication** asks whether to delete the copy on the standby (yes by default). Deleting a replicated VM asks "Also delete
-  the replica" (yes by default).
-- Moving a replicated VM (migration) to its standby node is refused: use Planned failover. To another node it is allowed, and the
-  next copy sends everything again.
-- Snapshot revert, disk add, remove, resize or move, and restore make the next copy a full one; nothing to do.
-- A shut-off VM is copied once after it stops (its last writes), then not again until it is started.
+- **Stop replication** asks whether to delete the copy on the standby (yes by default). Deleting a replicated VM, one by one or
+  in bulk, asks "Also delete the replica" (yes by default). If you keep the replica of a deleted VM it stays on the standby and
+  can still be started from its page.
+- Moving a replicated VM (migration) to its standby node is allowed, also by node evacuation and rolling updates: the replica
+  there steps aside, the VM moves as any VM does, and replication back to the node it left starts at once with a full copy.
+  If the move fails, the replica is put back as it was. Moving it to a third node keeps the replication; the next copy sends
+  everything again.
+- Snapshot revert, disk add, remove, resize or move, and restore make the next copy a full one; nothing to do. Restoring a
+  backup over a replicated VM keeps its replication; restoring never brings back the replication state that the backup remembers.
+- A shut-off VM is copied once after it stops (its last writes), then not again until it is started. When that copy can send
+  only the changes (the usual case after a planned failover shut the VM down), the VM is started paused for a moment so QEMU
+  can say what changed, and Start and Resume are refused until it has ended again (a few seconds to minutes, shown in the error).
+  In every other case the disks are copied whole and nothing is started.
+- Removing a node from Virticle switches off the replication of the VMs on other nodes that were copied to it; the replicas it
+  held are out of reach. Replicas of VMs on a removed node show the alert "replica-age"; start one from its page or delete it.
+- A disk that a killed QEMU left with unusable change tracking is cleaned up when it would get in the way (a disk resize,
+  removing the tracking when replication or a backup stops); the next copy or backup is then a full one.
 - The virtual TPM is not copied; the VM starts with an empty TPM on the standby (BitLocker asks for its recovery key).
 - Copies use the migration network and its limit. A copy needs free space on the standby for the changes (or the whole VM for a
   full copy); when there is not enough, the run fails and the earlier copy is kept.

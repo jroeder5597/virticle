@@ -267,6 +267,7 @@ func gatherReplicas(h *hostconn.Host, node int64, nodeName string) ([]alertRepli
 	}
 	var reps []alertReplica
 	var stale []alertStale
+	defer func() { noteReplicas(node, reps) }()
 	for _, d := range doms {
 		meta, err := domainMeta(h, d)
 		if err != nil || meta == "" {

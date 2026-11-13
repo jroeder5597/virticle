@@ -102,7 +102,8 @@ func TestReplCommitRepairsBase(t *testing.T) {
 	n := newNode(t)
 	log := n.abs("qemu.log")
 	flag := n.abs("failed-once")
-	script := "#!/bin/sh\necho \"$*\" >> " + log + "\ncase $1 in\ncommit) if [ ! -f " + flag + " ]; then touch " + flag + "; echo 'ERROR cluster 0 refcount=0 reference=1'; exit 1; fi;;\ncheck) exit 3;;\nesac\nexit 0\n"
+	// check -r (the repair) exits 3, "leaks fixed"; a plain check after it exits 0, or 2 when the file "still-dirty" exists.
+	script := "#!/bin/sh\necho \"$*\" >> " + log + "\ncase $1 in\ncommit) if [ ! -f " + flag + " ]; then touch " + flag + "; echo 'ERROR cluster 0 refcount=0 reference=1'; exit 1; fi;;\ncheck) if [ \"$2\" = -r ]; then exit 3; fi; if [ -f " + n.abs("still-dirty") + " ]; then echo 'ERROR corrupt'; exit 2; fi;;\nesac\nexit 0\n"
 	p := n.abs("fake-qemu-img")
 	if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
@@ -114,7 +115,13 @@ func TestReplCommitRepairsBase(t *testing.T) {
 	n.ok("", "repl-commit", work, "p1-vda.qcow2")
 	got, _ := os.ReadFile(log)
 	lines := strings.Split(strings.TrimSpace(string(got)), "\n")
-	if len(lines) != 3 || !strings.HasPrefix(lines[0], "commit") || !strings.HasPrefix(lines[1], "check -r all -f qcow2 -- "+work+"/b1-vda.qcow2") || !strings.HasPrefix(lines[2], "commit") {
+	if len(lines) != 4 || !strings.HasPrefix(lines[0], "commit") || !strings.HasPrefix(lines[1], "check -r all -f qcow2 -- "+work+"/b1-vda.qcow2") || !strings.HasPrefix(lines[2], "commit") || !strings.HasPrefix(lines[3], "check -f qcow2 -- "+work+"/b1-vda.qcow2") {
 		t.Errorf("calls: %q", lines)
 	}
+	// A base that is still not clean after the repair is reported as damaged (the controller then copies everything again).
+	if err := os.WriteFile(n.abs("still-dirty"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	os.Remove(flag)
+	n.denied("replica-damaged", "", "repl-commit", work, "p1-vda.qcow2")
 }

@@ -252,3 +252,28 @@ func (st replStore) diskBytes(names map[string]uint64) uint64 {
 func isReplFile(n string) bool {
 	return strings.HasSuffix(n, ".qcow2") || strings.HasSuffix(n, ".json") || strings.HasSuffix(n, ".nvram")
 }
+
+// replDamagedMarker is what the node command puts into the error of a commit whose base could not be made clean.
+const replDamagedMarker = "replica-damaged"
+
+func isReplicaDamaged(err error) bool {
+	return err != nil && strings.Contains(err.Error(), replDamagedMarker)
+}
+
+// wipe deletes every file of the replica directory (the points, the images, the UEFI variables). The next run then
+// starts as the first one: a full copy.
+func (st replStore) wipe() error {
+	names, err := st.list()
+	if err != nil {
+		return err
+	}
+	for _, n := range sortedNames(names) {
+		if !isReplFile(n) {
+			continue
+		}
+		if err := st.h.Remove(st.file(n)); err != nil {
+			return err
+		}
+	}
+	return nil
+}

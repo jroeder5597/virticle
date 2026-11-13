@@ -77,7 +77,7 @@ func (s *Server) scheduleTick(failed map[string]time.Time) {
 			if parseReplicaMeta(meta) != nil || parseStale(meta) != nil {
 				continue // the standby's inert copy and the old VM after a failover take no part in schedules
 			}
-			if rc := parseReplication(meta); rc != nil && rc.Enabled {
+			if rc := parseReplication(meta); rc != nil && (rc.Enabled || rc.PausedCopy) {
 				s.runReplicaSchedule(n.ID, h, dom, *rc)
 			}
 			// An unparsable schedule is reported by the GET endpoint.
