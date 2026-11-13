@@ -339,6 +339,13 @@ func (s *Server) reverseReplication(req *http.Request, h *hostconn.Host, dom lib
 		return err
 	}
 	cfg := replConfig{Enabled: true, TargetNode: oldID, TargetName: old.Name, Pool: pool, EveryMinutes: every, ReplaceStale: true}
+	// The setting is stored first: when the first run cannot start now (another VM is being copied from this node, the
+	// old node is not ready), the scheduler starts it as soon as it can, and says why when it cannot.
+	if cur, err := domainMeta(h, dom); err == nil {
+		if nm, err := setMetaChildren(cur, map[string]string{replChild: cfg.element()}); err == nil {
+			_ = setDomainMeta(h, dom, nm)
+		}
+	}
 	run, err := s.planReplica(nodeID, h, dom, cfg, false)
 	if err != nil {
 		return err
@@ -347,6 +354,10 @@ func (s *Server) reverseReplication(req *http.Request, h *hostconn.Host, dom lib
 		return err
 	}
 	if _, _, err := s.launchReplica(req, run); err != nil {
+		if _, busy := err.(badRequest); busy {
+			log.Printf("failover of %s: the first copy back to %s waits: %v", dom.Name, old.Name, err)
+			return nil
+		}
 		return err
 	}
 	return nil
