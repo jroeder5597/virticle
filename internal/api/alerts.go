@@ -99,6 +99,7 @@ func (s *Server) gatherAlertInput(now time.Time) alertInput {
 			in.Debounced = append(in.Debounced, links...)
 		}
 		pools, storage := gatherPools(h, n.ID, name)
+		healSharedPools(h)
 		in.Pools = append(in.Pools, pools...)
 		in.Debounced = append(in.Debounced, storage...)
 		in.VMs = append(in.VMs, gatherBadVMs(h, n.ID, name)...)
@@ -169,7 +170,7 @@ func gatherPools(h *hostconn.Host, node int64, nodeName string) ([]alertPool, []
 			mounts = append(mounts, x.Target.Path)
 		}
 	}
-	health := nfsProber.probe(h, mounts)
+	health := nfsProber.peek(h, mounts)
 	var out []alertPool
 	var alerts []Alert
 	for _, a := range act {

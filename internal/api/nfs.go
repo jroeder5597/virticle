@@ -29,7 +29,7 @@ import (
 //   - The NFS version and the mount options are libvirt's own: `mount -t nfs`, which negotiates the highest
 //     version both sides offer (4.2 with a current server, otherwise 4.1, 4 or 3) and mounts "hard". libvirt does
 //     not let a netfs pool pass other options, and the defaults are the right ones: hard means a program waits
-//     for a server that went away instead of getting an I/O error, so a VM pauses and continues rather than
+//     for a server that went away instead of getting an I/O error, so a VM waits and continues rather than
 //     seeing corrupt data (a soft mount would hand errors to the guest). NFS 4 also gives the cluster file
 //     locks, which is what stops two QEMU processes from opening one disk.
 //   - The pool is autostarted: libvirt mounts it when the node boots, before VMs autostart.
@@ -84,6 +84,12 @@ func nfsHint(msg, node, server, export string) string {
 	m := strings.ToLower(msg)
 	first := firstLine(msg)
 	switch {
+	case strings.Contains(m, "storage source conflict"):
+		other := "another storage"
+		if mm := regexp.MustCompile(`conflict with pool: '([^']+)'`).FindStringSubmatch(msg); mm != nil {
+			other = "the storage " + mm[1]
+		}
+		return fmt.Sprintf("%s:%s is already added on %s as %s. One export can be added only once; use that storage, or remove it first", server, export, node, other)
 	case strings.Contains(m, "access denied by server"), strings.Contains(m, "permission denied") && strings.Contains(m, "mount"):
 		return fmt.Sprintf("the server %s does not allow %s to mount %s. On the server, add this node's address (or its whole subnet) to the clients of the export", server, node, export)
 	case strings.Contains(m, "no such file or directory") && strings.Contains(m, "mount.nfs"), strings.Contains(m, "does not exist") && strings.Contains(m, "export"):
@@ -161,6 +167,7 @@ func (sp nfsSpec) same(x poolXML) bool {
 // addNFSToNode makes the pool exist, run and autostart on one node. Repeating it is safe. A failure leaves nothing
 // of this attempt behind on the node (a pool that was there before is not touched).
 func addNFSToNode(h *hostconn.Host, sp nfsSpec) nodeOutcome {
+	defer nfsProber.forget(h) // the mount state of this node changes here
 	res := nodeOutcome{Node: 0, NodeName: h.Name}
 	fail := func(msg string) nodeOutcome { res.Error = msg; return res }
 
@@ -196,7 +203,7 @@ func addNFSToNode(h *hostconn.Host, sp nfsSpec) nodeOutcome {
 
 	pool, err := h.StoragePoolDefineXML(nfsPoolXML(sp.Name, sp.Server, sp.Export), 0)
 	if err != nil {
-		return fail(err.Error())
+		return fail(nfsHint(err.Error(), h.Name, sp.Server, sp.Export))
 	}
 	undo := func() {
 		h.StoragePoolDestroy(pool)
@@ -218,6 +225,11 @@ func addNFSToNode(h *hostconn.Host, sp nfsSpec) nodeOutcome {
 		return fail("could not set the pool to start with the node: " + err.Error())
 	}
 	res.OK = true
+	if safePathRE.MatchString(nfsMount(sp.Name)) {
+		if out, err := h.Run("awk -v m=" + shq(nfsMount(sp.Name)) + " '$2==m{print $4}' /proc/mounts | tail -n 1"); err == nil {
+			res.Version = parseMountVersion(out)
+		}
+	}
 	return res
 }
 
@@ -289,10 +301,12 @@ func (s *Server) onlineNodes() []cluster.NodeStatus {
 }
 
 type nfsResult struct {
-	Complete bool          `json:"complete"`
-	Message  string        `json:"message"`
-	Nodes    []nodeOutcome `json:"nodes"`
-	Skipped  []string      `json:"skipped,omitempty"`
+	Complete bool   `json:"complete"`
+	Message  string `json:"message"`
+	// Note is a sentence about a mount that works but has a catch (NFS version 3); empty otherwise.
+	Note    string        `json:"note,omitempty"`
+	Nodes   []nodeOutcome `json:"nodes"`
+	Skipped []string      `json:"skipped,omitempty"`
 }
 
 // addShared is POST /api/storage/shared: add the NFS share to every online node (or the listed ones).
@@ -366,7 +380,7 @@ func (s *Server) addShared(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = err // a partial result is reported in the body, not as an HTTP error
 	s.Nodes.Publish(cluster.Event{Type: "pool"})
-	writeJSON(w, nfsResult{Complete: complete, Message: msg, Nodes: results, Skipped: skipped})
+	writeJSON(w, nfsResult{Complete: complete, Message: msg, Note: versionNote(results), Nodes: results, Skipped: skipped})
 }
 
 type sharedView struct {
@@ -396,9 +410,14 @@ func (s *Server) listShared(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var all []sharedMember
+	hosts := map[int64]*hostconn.Host{}
 	for _, n := range s.onlineNodes() {
 		all = append(all, sharedMember{Node: n.ID, NodeName: nodeLabel(n)})
+		if h, err := s.Nodes.Host(n.ID); err == nil {
+			hosts[n.ID] = h
+		}
 	}
+	unifyNFS(nfs, hosts)
 	out := []sharedView{}
 	for _, g := range groupShared(nfs, all) {
 		v := sharedView{sharedGroup: g, Detail: detail[g.Name]}
@@ -523,6 +542,7 @@ func (s *Server) removeShared(w http.ResponseWriter, r *http.Request) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
+				defer nfsProber.forget(m.h)
 				o := nodeOutcome{Node: m.n.ID, NodeName: nodeLabel(m.n), OK: true}
 				if act, _ := m.h.StoragePoolIsActive(m.p); act != 0 {
 					if err := m.h.StoragePoolDestroy(m.p); err != nil {
@@ -600,6 +620,18 @@ func nfsStartHint(h *hostconn.Host, err error) error {
 // nfsGuard refuses to start a VM whose disk is on an NFS share that does not answer: QEMU would block on the
 // mount instead of failing.
 func nfsGuard(h *hostconn.Host, domXML string) error {
+	// First what the prober knows, without asking libvirt (which may itself be waiting behind a stuck call).
+	for _, m := range nfsProber.downMounts(h) {
+		if refsDir(domXML, m) {
+			what := "mounted at " + m
+			if pools, err := poolDescs(h); err == nil {
+				if p, ok := pools[m]; ok && p.isNFS() {
+					what = p.Name + " (" + p.shareText() + ")"
+				}
+			}
+			return badRequest(fmt.Sprintf("The storage %s does not answer from %s, so the VM's disk cannot be read. Check the NFS server and the network; this works again when the storage is back", what, h.Name))
+		}
+	}
 	pools, err := poolsByPathOpt(h, false)
 	if err != nil {
 		return nil

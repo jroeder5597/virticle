@@ -229,6 +229,9 @@ type vmDetail struct {
 	HasSerial   bool     `json:"hasSerial"`
 	TPM         bool     `json:"tpm"`
 	Passthrough int      `json:"passthroughDevices"`
+	// StorageDown names the NFS shares under this VM's disks that do not answer, one sentence each. The VM waits
+	// for the share; the figures that need QEMU (disk use) are not asked for while it does.
+	StorageDown []string `json:"storageDown,omitempty"`
 
 	// Serials are the serial devices of the running definition; SerialPending
 	// is "add" or "remove" when the saved definition differs (applies after a power cycle).
@@ -293,6 +296,8 @@ func (s *Server) vmDetail(w http.ResponseWriter, r *http.Request) {
 	for _, b := range x.OS.Boot {
 		d.Boot = append(d.Boot, b.Dev)
 	}
+	down := nfsProber.freshDown(h)
+	downSeen := map[string]bool{}
 	for _, k := range x.Devices.Disks {
 		src := k.Source.File
 		switch {
@@ -305,13 +310,18 @@ func (s *Server) vmDetail(w http.ResponseWriter, r *http.Request) {
 			src = k.Source.Name
 		}
 		vd := vmDisk{Target: k.Target.Dev, Bus: k.Target.Bus, Device: k.Device, Format: k.Driver.Type, Source: src, ReadOnly: k.ReadOnly != nil, BootOrder: k.Boot.Order}
-		if k.Device == "disk" && src != "" {
+		if m, bad := onMount(src, down); bad && k.Device == "disk" {
+			downSeen[m] = true // QEMU waits for this disk and would not answer: do not ask it
+		} else if k.Device == "disk" && src != "" {
 			if alloc, capacity, _, err := h.DomainGetBlockInfo(dom, k.Target.Dev, 0); err == nil {
 				vd.Capacity = capacity
 				vd.Allocation = alloc
 			}
 		}
 		d.Disks = append(d.Disks, vd)
+	}
+	if len(downSeen) > 0 {
+		d.StorageDown = storageDownText(h, downSeen)
 	}
 	for _, g := range x.Devices.Graphics {
 		if g.Type == "vnc" {
@@ -618,11 +628,7 @@ func (s *Server) vmDelete(w http.ResponseWriter, r *http.Request) {
 				// The file may have been created outside libvirt; let the
 				// pools rescan their directories and look again.
 				refreshed = true
-				if pools, _, perr := h.ConnectListAllStoragePools(1, libvirt.ConnectListStoragePoolsActive); perr == nil {
-					for _, pool := range pools {
-						h.StoragePoolRefresh(pool, 0)
-					}
-				}
+				refreshLive(h)
 				vol, err = h.StorageVolLookupByPath(p)
 			}
 			if err != nil {

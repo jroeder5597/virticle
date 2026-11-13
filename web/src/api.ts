@@ -102,6 +102,8 @@ export interface VM {
   cpu?: { policy: "cluster-baseline"; model: string; relation?: "same" | "newer" | "older" | "differs" };
 }
 export interface VMDetail extends VM {
+  /** The storage under the VM's disks that does not answer, one sentence each. */
+  storageDown?: string[];
   title?: string;
   description?: string;
   arch: string;
@@ -270,7 +272,7 @@ export interface AgentHelp {
 
 export interface Alert {
   id: string;
-  kind: "node-down" | "pool-usage" | "host-memory" | "failed-job" | "vm-state" | "tls-expiry" | "scheduler-conflict" | "net-link" | "net-bond" | "net-drift";
+  kind: "node-down" | "pool-usage" | "host-memory" | "failed-job" | "vm-state" | "tls-expiry" | "scheduler-conflict" | "net-link" | "net-bond" | "net-drift" | "storage-unavailable";
   severity: "warning" | "critical";
   title: string;
   message: string;

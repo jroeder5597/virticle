@@ -305,31 +305,63 @@ func TestProbeCommandAndParse(t *testing.T) {
 	}
 }
 
+func newTestProber(now *time.Time, calls *int, reply *string, rerr *error) (*poolProber, *[]func()) {
+	var bg []func()
+	return &poolProber{
+		cache: map[*hostconn.Host]*probeEntry{}, busy: map[*hostconn.Host]chan struct{}{},
+		asked: map[*hostconn.Host]map[string]time.Time{}, loop: map[*hostconn.Host]bool{},
+		now:   func() time.Time { return *now },
+		run:   func(h *hostconn.Host, cmd string) (string, error) { *calls++; return *reply, *rerr },
+		async: func(f func()) { bg = append(bg, f) },
+	}, &bg
+}
+
 func TestProberCachesAndFailsClosed(t *testing.T) {
 	now := time.Unix(1000, 0)
 	calls := 0
 	reply := "up /mnt/a\n"
 	var rerr error
-	pp := &poolProber{
-		cache: map[*hostconn.Host]*probeEntry{}, busy: map[*hostconn.Host]chan struct{}{},
-		now: func() time.Time { return now },
-		run: func(h *hostconn.Host, cmd string) (string, error) { calls++; return reply, rerr },
-	}
+	pp, bg := newTestProber(&now, &calls, &reply, &rerr)
 	h := &hostconn.Host{}
 	if st := pp.probe(h, []string{"/mnt/a"}); st["/mnt/a"] != mountUp || calls != 1 {
 		t.Fatalf("%v %d", st, calls)
 	}
-	pp.probe(h, []string{"/mnt/a"})
-	if calls != 1 {
-		t.Errorf("answer not reused: %d calls", calls)
+	if len(*bg) != 1 {
+		t.Fatalf("the background loop of the node is started once, got %d", len(*bg))
 	}
+	pp.probe(h, []string{"/mnt/a"})
+	if calls != 1 || len(*bg) != 1 {
+		t.Errorf("answer not reused: %d calls, %d background", calls, len(*bg))
+	}
+	// A page that only shows the state uses an answer past its time at once; the refresh happens in the background.
 	now = now.Add(probeTTL + time.Second)
 	reply = "down /mnt/a\n"
-	if st := pp.probe(h, []string{"/mnt/a"}); st["/mnt/a"] != mountDown || calls != 2 {
+	if st := pp.peek(h, []string{"/mnt/a"}); st["/mnt/a"] != mountUp || calls != 1 || len(*bg) != 2 {
+		t.Errorf("a page must not wait for a probe: %v %d %d", st, calls, len(*bg))
+	}
+	(*bg)[1]()
+	if st := pp.peek(h, []string{"/mnt/a"}); st["/mnt/a"] != mountDown || calls != 2 {
 		t.Errorf("%v %d", st, calls)
 	}
+	// Work that touches the mount acts on an old "down" at once (nothing will be done on the mount) ...
+	reply = "up /mnt/a\n"
+	now = now.Add(probeFresh + time.Second)
+	if st := pp.probe(h, []string{"/mnt/a"}); st["/mnt/a"] != mountDown || calls != 2 {
+		t.Errorf("an old down is used without a probe: %v %d", st, calls)
+	}
+	// ... an answer that is stale is not trusted either way: the caller waits for a new probe ...
+	now = now.Add(probeStale + time.Second)
+	if st := pp.probe(h, []string{"/mnt/a"}); st["/mnt/a"] != mountUp || calls != 3 {
+		t.Errorf("%v %d", st, calls)
+	}
+	// ... and does not act on an old "up": it probes again first.
+	reply = "down /mnt/a\n"
+	now = now.Add(probeFresh + time.Second)
+	if st := pp.probe(h, []string{"/mnt/a"}); st["/mnt/a"] != mountDown || calls != 4 {
+		t.Errorf("an old up is probed again: %v %d", st, calls)
+	}
 	// the node itself not answering is "down", never "fine"
-	now = now.Add(probeTTL + time.Second)
+	now = now.Add(probeStale + time.Second)
 	reply, rerr = "", errors.New("ssh: connection lost")
 	if st := pp.probe(h, []string{"/mnt/a"}); st["/mnt/a"] != mountDown {
 		t.Errorf("%v", st)
@@ -338,6 +370,27 @@ func TestProberCachesAndFailsClosed(t *testing.T) {
 	if st := pp.probe(h, []string{"/mnt/a b"}); st["/mnt/a b"] != mountUp {
 		t.Errorf("%v", st)
 	}
+}
+
+func TestProberLoopEndsWhenNobodyAsks(t *testing.T) {
+	now := time.Unix(1000, 0)
+	calls := 0
+	reply := "up /mnt/a\n"
+	var rerr error
+	pp, _ := newTestProber(&now, &calls, &reply, &rerr)
+	h := &hostconn.Host{}
+	pp.probe(h, []string{"/mnt/a"})
+	pp.mu.Lock()
+	if !pp.anyAsked(h) {
+		t.Fatal("asked just now")
+	}
+	pp.mu.Unlock()
+	now = now.Add(probeKeep + time.Second)
+	pp.mu.Lock()
+	if pp.anyAsked(h) {
+		t.Error("nobody asked for longer than probeKeep: the node is not probed any more")
+	}
+	pp.mu.Unlock()
 }
 
 func TestOwnerProblem(t *testing.T) {

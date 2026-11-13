@@ -148,11 +148,19 @@ func nodeStorage(pools []nodePool) []nodeStore {
 		cap, avail uint64
 	}
 	seen := map[fs]bool{}
+	seenShare := map[string]bool{} // an NFS share that several nodes mount is one storage: counted once
 	idx := map[int64]int{}
 	out := []nodeStore{}
 	for _, p := range pools {
 		if p.State != "running" {
 			continue
+		}
+		if p.Type == "netfs" && p.Server != "" {
+			key := poolDesc{Type: p.Type, Server: p.Server, Export: p.Export, Target: p.Target}.shareKey()
+			if seenShare[key] {
+				continue
+			}
+			seenShare[key] = true
 		}
 		k := fs{p.Node, p.Capacity, p.Available}
 		if seen[k] {

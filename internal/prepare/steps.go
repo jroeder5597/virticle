@@ -463,8 +463,30 @@ func stepServices(r *Runner, p Plan, o Options) (string, bool, error) {
 		return "", false, fmt.Errorf("%w: %s", err, firstLines(out, 6))
 	}
 	d, ch := parseStep(out)
+	// Where libvirt runs as separate daemons, the storage daemon mounts the autostart NFS pools and the QEMU daemon
+	// starts the autostart VMs. Without an order between them a VM whose disk is on NFS fails to start at boot
+	// ("no such file"), because its share is not mounted yet.
+	out, err = r.root(storageOrderScript, "")
+	if err != nil {
+		return "", false, fmt.Errorf("%w: %s", err, firstLines(out, 6))
+	}
+	if d2, ch2 := parseStep(out); d2 != "" {
+		d += "; " + strings.ToLower(d2[:1]) + d2[1:]
+		ch = ch || ch2
+	}
 	return d, ch, nil
 }
+
+// storageOrderScript makes the QEMU daemon start after the storage daemon (and so after the autostart pools are
+// mounted). It does nothing where libvirt is one daemon (libvirtd starts its storage pools before its VMs).
+const storageOrderScript = `
+command -v systemctl >/dev/null 2>&1 || exit 0
+systemctl cat virtstoraged.service >/dev/null 2>&1 && systemctl cat virtqemud.service >/dev/null 2>&1 || exit 0
+f=/etc/systemd/system/virtqemud.service.d/10-virticle-storage.conf
+want=$(printf '[Unit]\nWants=virtstoraged.service\nAfter=virtstoraged.service')
+[ "$(cat "$f" 2>/dev/null)" = "$want" ] && exit 0
+mkdir -p /etc/systemd/system/virtqemud.service.d && printf '%s\n' "$want" > "$f" && systemctl daemon-reload || { echo "could not order the libvirt storage daemon before the VM daemon"; exit 1; }
+echo "libvirt starts its storage daemon before the VM daemon, so VMs on NFS storage can start at boot"; echo @@changed`
 
 const networkScript = `
 V="virsh -c qemu:///system"

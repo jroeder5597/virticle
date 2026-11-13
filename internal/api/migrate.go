@@ -676,7 +676,17 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 		if len(internal) > 0 && plan.active() && len(plan.mirroredTargets()) > 0 {
 			c.bad("Internal snapshots", fmt.Sprintf("snapshot(s) %s are stored inside the disk image, which a migration of a running VM does not copy. Shut the VM down and migrate it offline (the whole image is copied), or delete these snapshots first", strings.Join(internal, ", ")))
 		}
-		c.pass("Snapshots", fmt.Sprintf("%d snapshot(s) (%s): the snapshot-preserving path is used; snapshot files are copied and the snapshots recreated on the target", len(names), strings.Join(names, ", ")))
+		anyCopy := false
+		for _, f := range plan.Files.list {
+			if !f.Shared && !f.Skip {
+				anyCopy = true
+			}
+		}
+		if anyCopy {
+			c.pass("Snapshots", fmt.Sprintf("%d snapshot(s) (%s): the snapshot-preserving path is used; snapshot files are copied and the snapshots recreated on the target", len(names), strings.Join(names, ", ")))
+		} else {
+			c.pass("Snapshots", fmt.Sprintf("%d snapshot(s) (%s): the snapshots are recreated on the target; their data stays in the shared files", len(names), strings.Join(names, ", ")))
+		}
 	} else {
 		for _, d := range plan.Disks {
 			if !d.ReadOnly && len(d.Chain) > 1 {
@@ -703,6 +713,7 @@ func (s *Server) checkTargetFiles(dst *hostconn.Host, plan *migPlan, c *checkLis
 	for i, f := range files {
 		filePaths[i] = f.Path
 	}
+	revalidateNFSDirs(dst, filePaths)
 	exists, err := dst.Exists(filePaths...)
 	if err != nil {
 		c.bad("Files on target", "cannot inspect the target: "+err.Error())
@@ -714,7 +725,11 @@ func (s *Server) checkTargetFiles(dst *hostconn.Host, plan *migPlan, c *checkLis
 			continue // a shared file is meant to be there: both nodes mount the same share
 		}
 		if f.Owned || f.Active || f == plan.NVRAM {
-			c.bad("Volume "+path.Base(f.Path), "already exists on "+dst.Name+" at "+f.Path+"; remove or rename it first")
+			hint := ""
+			if f.Active {
+				hint = ". If both nodes mount the same NFS share there, this is one file seen twice: set the share up with Storage, Add shared storage (not as a directory pool) and no disk is copied"
+			}
+			c.bad("Volume "+path.Base(f.Path), "already exists on "+dst.Name+" at "+f.Path+"; remove or rename it first"+hint)
 			clash = true
 		} else {
 			f.Skip = true
@@ -1474,11 +1489,7 @@ func (m *migRun) cleanSource() error {
 		vol, err := m.src.StorageVolLookupByPath(f.Path)
 		if err != nil && !refreshed {
 			refreshed = true
-			if pools, _, perr := m.src.ConnectListAllStoragePools(1, libvirt.ConnectListStoragePoolsActive); perr == nil {
-				for _, pl := range pools {
-					m.src.StoragePoolRefresh(pl, 0)
-				}
-			}
+			refreshLive(m.src)
 			vol, err = m.src.StorageVolLookupByPath(f.Path)
 		}
 		if err != nil {

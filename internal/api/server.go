@@ -382,7 +382,7 @@ func (s *Server) domain(r *http.Request) (*hostconn.Host, libvirt.Domain, error)
 		return nil, libvirt.Domain{}, store.ErrNotFound
 	}
 	dom, err := h.DomainLookupByUUID(u)
-	if err == nil && r.Method != http.MethodGet && !strings.HasSuffix(r.URL.Path, "/action") {
+	if err == nil && (r.Method != http.MethodGet && !strings.HasSuffix(r.URL.Path, "/action") || readsDiskFiles(r)) {
 		// Changing a VM (snapshot, clone, disks, migration, delete) whose disk is on an NFS share that does not
 		// answer would wait for the server and could stall the node's libvirt. Power actions are not held back.
 		if x, xerr := h.DomainGetXMLDesc(dom, libvirt.DomainXMLInactive); xerr == nil {
@@ -392,6 +392,17 @@ func (s *Server) domain(r *http.Request) (*hostconn.Host, libvirt.Domain, error)
 		}
 	}
 	return h, dom, err
+}
+
+// readsDiskFiles is true for the read-only pages that look at the VM's disk files (volume sizes, backing chains,
+// snapshot files). Like a change, they must not run while the share under the disk does not answer: reading a
+// file on it waits for the server, and a libvirt call stuck in that wait holds the lock of the whole pool.
+func readsDiskFiles(r *http.Request) bool {
+	if r.Method != http.MethodGet {
+		return false
+	}
+	p := r.URL.Path
+	return strings.HasSuffix(p, "/move/plan") || strings.HasSuffix(p, "/clone-info") || strings.HasSuffix(p, "/snapshots") || strings.HasSuffix(p, "/snapshot-options")
 }
 
 // task runs fn, recording it in the task log and announcing start and finish

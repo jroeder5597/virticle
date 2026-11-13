@@ -31,7 +31,7 @@ last, under [Planned](#planned).
 - [~] Guest agent prompt: adds the channel, lists install commands, detects Windows and attaches or downloads the virtio-win ISO (Windows path untested on a real guest)
 
 ## Storage
-- [~] Pools: create, start, stop, remove (dir tested; NFS, LVM, iSCSI forms and raw XML written but untested)
+- [~] Pools: create, start, stop, remove (dir tested; LVM, iSCSI forms and raw XML written but untested; NFS has its own entry below)
 - [x] Volumes: create, resize, clone, upload, download from URL (the node fetches it with curl), delete
 - [x] CD-ROM media: insert, swap, eject (live); boot order (config, next start)
 - [~] Import existing disks: qcow2, raw, VMDK and single-VM OVA tested; VDI, VHDX untested
@@ -98,9 +98,9 @@ Next, in this order of thought, not of date:
 - [ ] **Replication with one-click failover**: copy a VM's disks to a standby node on a schedule, and start it there with one click when its node is lost.
 - [ ] **Incremental backups**: after the first full backup only changed blocks are copied; restore and retention stay as they are.
 - [ ] **Rolling node updates**: update the packages of a node's host one node at a time, moving its VMs away first and back afterwards.
-- [ ] **Shared storage over NFS**: one pool seen by several nodes, so a VM moves without copying its disks. iSCSI and LVM pools follow later.
+- [x] **Shared storage over NFS**: one pool seen by several nodes, so a VM moves without copying its disks (live and offline, mixed disks), an unavailable share is shown and alerted, nothing waits for a dead server. iSCSI and LVM pools follow later. What is not built (failover, NFS options) is in [docs/backlog-storage.md](docs/backlog-storage.md).
 
-Networking ideas that were considered and are not planned yet are in [docs/backlog-networking.md](docs/backlog-networking.md).
+Networking ideas that were considered and are not planned yet are in [docs/backlog-networking.md](docs/backlog-networking.md); storage ideas in [docs/backlog-storage.md](docs/backlog-storage.md).
 
 ## Design notes
 

@@ -290,31 +290,89 @@ dedicated migration network.
 
 ### Shared storage (NFS)
 
-Under Datacenter, Storage, **Add shared storage** takes a name, the NFS server
-and the export path, and mounts the share on every online node at
-`/mnt/NAME` (same pool name and path everywhere). Under **Advanced** you can
-leave nodes out.
+Shared storage is an NFS share that every node mounts at the same path. A VM
+whose disks are on it moves between nodes without copying them: live
+migration takes seconds, whatever the disk size. Without it, every disk is
+copied on each migration.
 
-- VMs with all disks on shared storage migrate without copying disks, live or
-  offline. With one shared and one local disk only the local one is copied.
-  The migration check says which disks are copied.
-- The NFS version and options are not settings: the mount is `hard` and uses
-  the highest NFS version both sides offer (4.2 normally). Hard means a VM
-  waits for a server that went away instead of getting disk errors.
-- `node prepare` installs the NFS client and, with SELinux, turns on
-  `virt_use_nfs`. Run it again on nodes prepared before.
-- The export must let the nodes write. With `root_squash` set on the server,
-  either use `no_root_squash` for the nodes or `all_squash,anonuid=107,anongid=107`
-  (the VM user's id, shown in the error) and give that user the directory.
-  Adding the storage checks this and says what to change.
-- If the server does not answer, the pool shows **Unavailable**, an alert is
-  raised after about two minutes and clears when it answers. VMs on it pause
-  or wait; nothing is lost. Starting such a VM, or changing it, is refused
-  with a message while the storage is away.
-- A node added later shows "Not on NODE" with an **Add to NODE** button.
-- **Remove** unmounts it on every node. It is refused while a VM has a file on it.
-- There is no automatic failover. A VM of a dead node cannot be started on
-  another node from Virticle yet: the VM definition lives only on the dead node.
+**What you need.** An NFS server that the nodes can reach on port 2049, and
+an export that lets the nodes write (see the table below). Nodes prepared
+with an older Virticle need **Prepare** once more: it installs the NFS client,
+turns on the SELinux setting `virt_use_nfs` (Rocky, Fedora) and makes libvirt
+start its storage before the VMs, so VMs on NFS can start at boot.
+
+**Add it**
+
+1. Open Datacenter, **Storage**, and choose **Add shared storage**.
+2. Give the **Name** (it is also the folder: `/mnt/NAME`), the **NFS server**
+   and the **Export path**.
+3. Choose **Add shared storage**. Every online node mounts the share and
+   checks that a VM disk can be made on it. The dialog says what to change on
+   the server if that fails; nothing is left half done.
+4. Make a VM there: in **New VM** or **New disk**, pick the pool named like the
+   share. Under **Advanced** in step 2 you can leave nodes out.
+
+The share is one row in the **Shared storage** table, with the nodes that have
+it. A node added later shows "Not on NODE" and an **Add to NODE** button.
+**Remove** unmounts it on every node; it is refused while a VM has a disk on it
+(move the disks or delete the VMs first). The files on the server are never
+deleted by Virticle when you remove the storage.
+
+**Export settings on the server**
+
+| Setting on the server | Works | What to know |
+| --- | --- | --- |
+| `rw,no_root_squash` for the nodes | yes | Simplest. Root on the node may write, and libvirt hands each disk to the VM user when the VM starts. Works with nodes whose VM user has different ids. |
+| `rw,all_squash,anonuid=107,anongid=107` | yes | The server treats every user as that id. Give the export directory to that id (`chown 107:107`). On Rocky, Fedora and Red Hat the VM user is 107; on Debian and Ubuntu it is 64055. With `all_squash` the id you choose does not have to be the VM user of every node, so one number works for a mixed cluster. |
+| `root_squash` (the default) | no | Root becomes `nobody` on the server, and VM disks cannot be made or handed to the VM user. Add refuses and names the setting to change. |
+| `ro` | no | The nodes must write. |
+| NFS version 3 only | yes, with care | Add works and says so in one sentence. The locks that stop two nodes from running one VM disk then need the server's lock service (`rpc.statd`, `lockd`) reachable from every node. Version 4 has them built in; prefer it. |
+| Kerberos (`sec=krb5`) | no | Not supported. |
+
+The NFS version and the mount options are not settings. Virticle mounts with
+`mount -t nfs`, which takes the highest version both sides offer (4.2
+normally), and the mount is **hard**: a program that talks to an unreachable
+server waits for it instead of getting an error.
+
+Use the same spelling of the server on every node? Not required: a name on
+one node and its address on another are recognised as one server.
+
+**Migration.** The migration check says which disks are copied and which are
+not, for example "no disk is copied: every disk is on shared storage that both
+nodes mount (vda on nas)" or "not copied, on shared storage: vdb on nas.
+Copied, on local storage: vda". An offline migration of such a VM only moves
+the definition. Snapshots stay valid: their data is in the shared files.
+
+**When the server does not answer.** This is what happens, in order:
+
+- The storage shows **Unavailable** in the Storage tables, within about ten
+  seconds, with a line saying which server does not answer.
+- A **critical alert** is raised after about two minutes and clears by itself
+  when the server answers again; it goes to the notification destinations like
+  any other alert (kind `storage-unavailable`).
+- The pages of Virticle keep answering. Everything that would read the share
+  (volume lists, snapshot and clone pages of a VM on it, disk moves, starting or
+  changing such a VM) is refused with a message that says the storage is away.
+  Other storage and other VMs on the node are not affected.
+- A VM with a disk on it keeps running, its network and its memory-only work go
+  on, and anything that needs its disk waits, then continues, without errors
+  and without losing data, when the server is back. The VM page shows a note.
+  It may take up to about a minute after the server answers again.
+- Do not ask the node's libvirt about the share by other means during the
+  outage (`virsh pool-refresh`, another management tool): with a hard mount
+  that call waits for the server and holds the node's storage service with it.
+  Virticle gives up on such a call after a few seconds and reports the storage
+  of that node as not answering until it returns.
+- A node that boots while the server is away boots normally. Its libvirt
+  storage service waits for the mount, VMs on that share do not start at boot,
+  and the share is mounted by Virticle once the server answers (within an hour
+  of the boot). Start those VMs by hand afterwards.
+- Restarting a node while the server is away takes several minutes: the node
+  waits for the server before it lets go of the mount.
+
+**What it does not do.** There is no automatic failover. If a node dies, its
+VMs stay defined only on that node and Virticle cannot start them elsewhere
+yet; the disks on shared storage are safe. See `docs/backlog-storage.md`.
 
 ## Networks
 

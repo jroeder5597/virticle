@@ -409,7 +409,7 @@ func (s *Server) vmAgentHelp(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		pattern := virtioWinPattern()
-		pools, _, err := h.ConnectListAllStoragePools(1, libvirt.ConnectListStoragePoolsActive)
+		pools, err := livePools(h)
 		if err != nil {
 			fail(w, err)
 			return

@@ -121,7 +121,7 @@ export default function Storage({ fixedNode, allNodes }: { fixedNode?: number; a
               <tr key={p.node + "/" + p.name} className={pool?.node === p.node && pool?.name === p.name ? "selected" : ""} onClick={() => setSelected({ node: allNodes ? p.node : 0, name: p.name })}>
                 <td title={p.target}>
                   {p.name}
-                  <AlertMarks alerts={alerts} match={(a) => a.id === `pool:${p.node}:${p.name}`} />
+                  <AlertMarks alerts={alerts} match={(a) => a.id === `pool:${p.node}:${p.name}` || a.id === `nfs:${p.node}:${p.name}`} />
                 </td>
                 {allNodes && <td>{p.nodeName}</td>}
                 <td>{typeName[p.type] ?? p.type}</td>

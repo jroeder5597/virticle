@@ -20,6 +20,7 @@ func (s *Server) markShared(src, dst *hostconn.Host, plan *migPlan, c *checkList
 		c.warn("Shared storage", "cannot read the storage pools of the nodes, so no disk is treated as shared")
 		return
 	}
+	unifyServers(src, dst, srcPools, dstPools)
 	places := map[string]diskPlace{}
 	for _, f := range plan.Files.list {
 		dir := path.Dir(f.Path)
@@ -50,6 +51,7 @@ func (s *Server) markShared(src, dst *hostconn.Host, plan *migPlan, c *checkList
 		}
 	}
 	if len(shared) > 0 {
+		revalidateNFSDirs(dst, shared)
 		ex, err := dst.Exists(shared...)
 		for _, p := range shared {
 			switch {

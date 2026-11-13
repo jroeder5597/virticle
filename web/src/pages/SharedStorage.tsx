@@ -28,6 +28,7 @@ export interface SharedGroup {
 interface AddResult {
   complete: boolean;
   message: string;
+  note?: string;
 }
 
 /**
@@ -38,7 +39,7 @@ export function SharedStorage({ nodes, adding, onAddClose }: { nodes: NodeStatus
   const data = useLiveDebounced(() => get<{ shared: SharedGroup[] }>("/storage/shared"), "storage/shared", poolEvents);
   const act = useAction();
   const confirm = useConfirm();
-  const groups = data.data?.shared ?? [];
+  const groups = (data.data?.shared ?? []).map((g) => ({ ...g, nodes: g.nodes ?? [], missing: g.missing ?? [], differ: g.differ ?? [] }));
   const remove = async (g: SharedGroup) => {
     const ok = await confirm.ask({
       title: `Remove ${g.name}`,
@@ -83,7 +84,7 @@ export function SharedStorage({ nodes, adding, onAddClose }: { nodes: NodeStatus
                     )}
                     {g.differ.length > 0 && (
                       <div className="warnline">
-                        {g.differ.map((n) => n.nodeName).join(", ")} has a pool named {g.name} that points somewhere else. Remove or rename it.
+                        {g.differ.map((n) => n.nodeName).join(", ")} has a storage named {g.name} for another server or export. Remove {g.name} and add it again, so every node uses the same server name or address.
                       </div>
                     )}
                   </td>
@@ -139,7 +140,7 @@ function AddShared({ nodes, onClose, onDone }: { nodes: NodeStatus[]; onClose: (
     });
     if (!ok || !res) return;
     onDone();
-    if (res.complete) onClose();
+    if (res.complete && !res.note) onClose();
     else setResult(res);
   };
   return (
@@ -173,13 +174,20 @@ function AddShared({ nodes, onClose, onDone }: { nodes: NodeStatus[]; onClose: (
         )}
         <ErrorBox error={act.error} />
         {result && !result.complete && <ErrorBox error={result.message} />}
+        {result?.complete && result.note && (
+          <div className="note">
+            <strong>{result.message}.</strong> {result.note}
+          </div>
+        )}
         <footer>
           <button type="button" onClick={onClose}>
             {result ? "Close" : "Cancel"}
           </button>
-          <button className="primary" disabled={act.busy || chosen.length === 0}>
-            {result ? "Add again" : "Add shared storage"}
-          </button>
+          {!result?.complete && (
+            <button className="primary" disabled={act.busy || chosen.length === 0}>
+              {result ? "Add again" : "Add shared storage"}
+            </button>
+          )}
         </footer>
       </form>
     </Modal>

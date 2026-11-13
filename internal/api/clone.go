@@ -380,11 +380,7 @@ func lookupVolByPath(h *hostconn.Host, p string) (libvirt.StorageVol, error) {
 	if err == nil {
 		return vol, nil
 	}
-	if pools, _, perr := h.ConnectListAllStoragePools(1, libvirt.ConnectListStoragePoolsActive); perr == nil {
-		for _, pool := range pools {
-			h.StoragePoolRefresh(pool, 0)
-		}
-	}
+	refreshLive(h)
 	return h.StorageVolLookupByPath(p)
 }
 

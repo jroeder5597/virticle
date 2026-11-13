@@ -337,13 +337,6 @@ func sortAlerts(a []Alert) {
 // raised on the second check in a row, cleared on the second check that finds the share answering again.
 func storageAlert(node int64, nodeName, pool, server string, st mountState) Alert {
 	title := fmt.Sprintf("Storage %s is unavailable on %s", pool, nodeName)
-	msg := fmt.Sprintf("The NFS storage %s does not answer on %s. %s. VMs with disks on it are paused or wait until it answers again; their data is not lost. Check the NFS server and the network between it and the node. This alert clears by itself when the storage answers.", pool, nodeName, upperFirst(unavailableText(server, st)))
+	msg := fmt.Sprintf("The NFS storage %s is unavailable on %s: %s. Check the NFS server and the network between it and the node. This alert clears by itself when the storage answers.", pool, nodeName, unavailableText(server, st))
 	return Alert{ID: fmt.Sprintf("nfs:%d:%s", node, pool), Kind: "storage-unavailable", Severity: "critical", Title: title, Message: msg, Node: node, Link: "/storage"}
-}
-
-func upperFirst(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
 }

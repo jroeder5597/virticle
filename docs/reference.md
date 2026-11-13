@@ -83,7 +83,7 @@ A destination of type **Webhook** receives a `POST` with `Content-Type: applicat
 
 - `event`: `raise`, `clear`, or `test` (the **Send test message** button; its alert has `"id":"test"`).
 - `alert.kind`: `node-down`, `pool-usage`, `host-memory`, `failed-job`, `vm-state`, `tls-expiry`,
-  `scheduler-conflict`, `net-link`, `net-bond`, `net-drift`. `severity` is `warning` or `critical`. `node` is
+  `scheduler-conflict`, `net-link`, `net-bond`, `net-drift`, `storage-unavailable`. `severity` is `warning` or `critical`. `node` is
   the node id and `link` the page in the web UI (both may be missing); `since` and `time` are Unix seconds.
 - One alert per request, always; the webhook is never summarised. Any 2xx answer is success. Other answers are
   retried after 5 s, 30 s and 2 min, except 401, 403, 404, 410 and other 4xx (not 408, 429), which are not.
@@ -288,15 +288,39 @@ The node's own addresses on a VLAN are described below.
 
 | Call | Meaning |
 |---|---|
-| `GET /api/storage/shared` | NFS pools grouped by name: nodes that have it, nodes missing it, state. |
-| `POST /api/storage/shared` | `{name, server, path, nodes?}` adds a netfs pool on every online node (or the listed ones). Answers `complete`, `message`, per-node results; repeatable. |
+| `GET /api/storage/shared` | NFS pools grouped by name: nodes that have it, nodes missing it, nodes that have a pool of that name for another server or export, state, size. A server given by name on one node and by address on another is one share. |
+| `POST /api/storage/shared` | `{name, server, path, nodes?}` adds a netfs pool on every online node (or the listed ones). Answers `complete`, `message`, `note` (a sentence about a mount that works but has a catch: NFS version 3), per-node results with the NFS `version`; repeatable. |
 | `DELETE /api/storage/shared/{name}` | Unmounts and forgets it on all nodes; refused while a defined VM has a file below the mount, or a node is unreachable. |
 
-Pool state `unavailable` means the mount did not answer a `stat` within 4 s
-(probe cached 6 s). Alert kind `storage-unavailable`. Libvirt is not asked
-about an unavailable NFS pool. Migration: a file is shared when source and
-target have netfs pools with the same server, export and mount path; it is
-not copied, mirrored or deleted from the source.
+Facts
+
+- The pool is a libvirt `netfs` pool named NAME, mounted at `/mnt/NAME` on every node, set to autostart, with
+  `<format type='auto'/>` (plain `mount -t nfs`; hard mount; highest version offered). Add creates and removes a
+  small test volume to check that a disk made by root can be used by the VM user.
+- A node that boots while the server is away has the pool stopped; the controller starts a stopped autostart NFS
+  pool when the server answers on port 2049 and the node has been up for less than an hour.
+- `node prepare` writes `/etc/systemd/system/virtqemud.service.d/10-virticle-storage.conf` (Wants and After
+  `virtstoraged.service`) on nodes with separate libvirt daemons, so the NFS pools are mounted before VMs
+  autostart. Without it a VM on NFS fails to autostart with "no such file".
+- Pool state `unavailable` means the mount did not answer `stat -f` within 4 s, or is not an NFS mount. The
+  answer comes from a probe (an SSH command with `timeout -s KILL`) that the controller repeats every few seconds
+  for nodes that have NFS pools; pages use the last answer and never wait for it. Libvirt is not asked to read or
+  refresh a pool that is unavailable. Statistics of VMs with a disk below an unavailable mount are not collected
+  (QEMU does not answer the monitor while it waits for its disk), and the VM detail leaves out the disk figures.
+- Storage calls to one node are limited to three at a time and the short ones to 6 seconds (the libvirt proxy
+  daemon serves the controller's connection with five calls at once; the others stay free for VMs and networks).
+  When three are stuck, further storage calls fail at once with "the storage service of this node is not
+  answering" until one returns.
+- Alert kind `storage-unavailable`, one per node and pool, critical, debounced like the network alerts (raised on
+  the second check in a row, about two minutes; cleared on the second check that finds the share answering).
+- Migration: a file is shared when source and target have netfs pools with the same export and mount path and
+  the same server (by name or by address); it is not copied, not mirrored and not deleted from the source.
+  Internal snapshots do not block a live migration when every disk is shared. Disk move, clone and delete
+  refuse a VM with a disk on an unavailable share.
+- Backups: a backup stored on a shared pool is listed once. Restoring into an NFS pool works (the node command
+  falls back to link-and-unlink where the file system has no `RENAME_NOREPLACE`).
+- Deleting a volume libvirt cannot remove (it removes files on NFS as the file's owner) falls back to the node
+  command, as root.
 
 ## Known limits
 
@@ -305,7 +329,7 @@ not copied, mirrored or deleted from the source.
 - Snapshots and TPM state are not part of a backup.
 - Only file-based, non-shareable disks can be backed up.
 - Internal snapshots pause the guest while memory is saved and block live
-  migration.
+  migration (not when every disk is on shared storage).
 - A VM keeps one kind of snapshot until all its snapshots are deleted (libvirt cannot delete a tree that mixes internal and external ones). On a node that confines QEMU with AppArmor (Debian) external snapshots cannot be reliably deleted, so a running VM there can only take snapshots that save the running state; a live snapshot without it is always external.
 - A UEFI VM made before qcow2 variable stores keeps a raw one: its snapshots are external, and reverting a snapshot does not bring back the UEFI variables of that moment (internal snapshots of a qcow2 store do).
 - No high availability, no shared-storage features, no replication.

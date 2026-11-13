@@ -105,7 +105,7 @@ func collectPools(h *hostconn.Host) ([]poolInfo, error) {
 		}
 		entries = append(entries, e)
 	}
-	health := nfsProber.probe(h, mounts)
+	health := nfsProber.peek(h, mounts)
 	out := []poolInfo{}
 	for _, e := range entries {
 		p := e.p
@@ -286,6 +286,7 @@ func (s *Server) poolAction(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	defer nfsProber.forget(h) // start, stop and remove change what is mounted
 	actions := map[string]func() error{
 		"start":     func() error { return h.StoragePoolCreate(pool, 0) },
 		"stop":      func() error { return h.StoragePoolDestroy(pool) },

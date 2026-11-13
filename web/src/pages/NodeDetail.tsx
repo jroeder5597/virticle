@@ -67,7 +67,7 @@ export default function NodeDetail() {
           <span className="mono muted">
             {n.user}@{n.addr}
           </span>
-          <AlertMarks alerts={alerts} match={(a) => a.node === n.id && a.kind !== "pool-usage" && a.kind !== "vm-state"} />
+          <AlertMarks alerts={alerts} match={(a) => a.node === n.id && a.kind !== "pool-usage" && a.kind !== "vm-state" && a.kind !== "storage-unavailable"} />
         </div>
         {admin && (
           <div className="actions">

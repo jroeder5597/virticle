@@ -117,7 +117,7 @@ func dependentVolumes(h *hostconn.Host, paths, own []string) ([]string, error) {
 	for _, p := range own {
 		skip[path.Clean(p)] = true
 	}
-	pools, _, err := h.ConnectListAllStoragePools(1, libvirt.ConnectListStoragePoolsActive)
+	pools, err := livePools(h) // a dead NFS share is left out: reading its volumes would wait for the server
 	if err != nil {
 		return nil, err
 	}

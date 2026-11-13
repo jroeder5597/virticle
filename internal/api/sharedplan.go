@@ -165,6 +165,12 @@ func groupShared(pools []nodeNFS, all []sharedMember) []sharedGroup {
 				g.Missing = append(g.Missing, sharedMember{Node: n.Node, NodeName: n.NodeName})
 			}
 		}
+		if g.Missing == nil {
+			g.Missing = []sharedMember{} // JSON: an empty list, not null
+		}
+		if g.Differ == nil {
+			g.Differ = []sharedMember{}
+		}
 		g.State = "running"
 		for _, m := range g.Nodes {
 			switch {
@@ -189,6 +195,34 @@ type nodeOutcome struct {
 	// Already is set when the node had the pool with these settings and nothing was changed.
 	Already bool   `json:"already,omitempty"`
 	Error   string `json:"error,omitempty"`
+	// Version is the NFS version the node mounted with ("4.2", "3"), when known.
+	Version string `json:"version,omitempty"`
+}
+
+// versionNote is the one sentence that goes with an NFS version 3 mount, or "" for anything else. Version 3 has
+// no locking in the protocol itself: the file locks that stop two nodes from opening one disk image go through
+// a separate lock service (rpc.statd and lockd) that must be reachable from every node.
+func versionNote(res []nodeOutcome) string {
+	var nodes []string
+	for _, r := range res {
+		if r.OK && r.Version == "3" {
+			nodes = append(nodes, r.NodeName)
+		}
+	}
+	if len(nodes) == 0 {
+		return ""
+	}
+	return "Mounted with NFS version 3 on " + strings.Join(nodes, ", ") + ": the locks that keep two nodes from running one VM disk need the server's lock service (rpc.statd and lockd) reachable from every node. If the server can offer NFS 4, enable it and add the storage again."
+}
+
+// parseMountVersion reads the NFS version out of the options column of /proc/mounts ("vers=4.2").
+func parseMountVersion(opts string) string {
+	for _, o := range strings.Split(strings.TrimSpace(opts), ",") {
+		if v, ok := strings.CutPrefix(o, "vers="); ok {
+			return v
+		}
+	}
+	return ""
 }
 
 // addSummary turns per-node outcomes into one sentence for the user and says whether the result is complete.
