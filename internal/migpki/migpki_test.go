@@ -1,9 +1,15 @@
 package migpki
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/hex"
+	"encoding/pem"
+	"math/big"
 	"net"
 	"os"
 	"path/filepath"
@@ -73,6 +79,10 @@ func TestIssuedCertificate(t *testing.T) {
 		if _, err := crt.Verify(x509.VerifyOptions{Roots: pool, CurrentTime: t0, KeyUsages: []x509.ExtKeyUsage{u}}); err != nil {
 			t.Errorf("usage %v: %v", u, err)
 		}
+	}
+	// QEMU 10.1 (RHEL 10) refuses a server certificate without keyEncipherment.
+	if crt.KeyUsage&x509.KeyUsageKeyEncipherment == 0 || crt.KeyUsage&x509.KeyUsageDigitalSignature == 0 {
+		t.Errorf("key usage %v lacks digitalSignature or keyEncipherment", crt.KeyUsage)
 	}
 	// SANs: duplicates (case-insensitive) dropped, IPs kept.
 	if got := strings.Join(info.DNSNames, ","); got != "vspike-n1,vspike-n1.lab" {
@@ -186,5 +196,29 @@ func TestUsable(t *testing.T) {
 		if (Status{State: state}).Usable() != want {
 			t.Errorf("%s usable != %v", state, want)
 		}
+	}
+}
+
+// A certificate issued before keyEncipherment was added is renewed quietly (state expiring), not reported as a mismatch.
+func TestEvaluateOutdatedKeyUsage(t *testing.T) {
+	ca := newTestCA(t)
+	sn := snapshot(t, ca, "vspike-n1", t0)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl := &x509.Certificate{
+		SerialNumber: big.NewInt(7), Subject: pkix.Name{CommonName: "vspike-n1"}, NotBefore: t0.Add(-time.Hour), NotAfter: t0.Add(NodeValidity),
+		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}, DNSNames: []string{"vspike-n1"},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tpl, ca.Cert, &key.PublicKey, ca.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	sn.Server, sn.Client = old, old
+	st := ca.Evaluate(sn, t0.Add(24*time.Hour))
+	if st.State != StateExpiring || !strings.Contains(strings.Join(st.Problems, "|"), "older form") {
+		t.Fatalf("state %q (%v)", st.State, st.Problems)
 	}
 }

@@ -48,7 +48,8 @@ test.describe.serial("hardware editing", () => {
     const c = card(page, "CPU and memory");
     await c.getByRole("button", { name: "Edit" }).click();
     await c.getByRole("button", { name: "Advanced" }).click();
-    await field(c, "Maximum vCPUs").fill("2");
+    // The maximum only stops following vCPUs once the user types in it, so type a value that differs from the stored one.
+    await field(c, "Maximum vCPUs").fill("3");
     await field(c, "vCPUs").fill("5");
     await expect(c.getByRole("button", { name: "Apply" })).toBeDisabled();
     await c.getByRole("button", { name: "Cancel" }).click();
