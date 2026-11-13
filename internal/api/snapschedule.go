@@ -166,6 +166,7 @@ func (s *Server) runSchedule(h *hostconn.Host, dom libvirt.Domain, sch snapsched
 			// make validation failures (e.g. no guest agent) visible too.
 			var br badRequest
 			if errors.As(err, &br) {
+				err = badRequest("The schedule cannot take a snapshot: " + br.Error())
 				s.recordFailure(r, "snapshot create", dom.Name, h.Name, err)
 			}
 			failed[key] = now

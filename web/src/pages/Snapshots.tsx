@@ -23,6 +23,27 @@ interface Snap {
   reason?: string;
 }
 
+interface Choice {
+  allowed: boolean;
+  reason?: string;
+}
+
+/** What a new snapshot of this VM can be right now; the server decides (snapkind.go). */
+interface SnapOptions {
+  withState: Choice;
+  diskOnly: Choice;
+  reason?: string;
+  mixed?: string;
+}
+
+function useSnapOptions(d: VMDetail, base: string) {
+  return useLive(
+    () => get<SnapOptions>(`${base}/snapshot-options`),
+    `${base}/snapshot-options/${d.state}`,
+    (e) => e.type === "node" || (e.type === "domain" && e.uuid === d.uuid) || (e.type === "task" && e.task?.status !== "running"),
+  ).data;
+}
+
 interface Schedule {
   enabled: boolean;
   mode: "interval" | "daily";
@@ -45,6 +66,8 @@ export default function SnapshotsTab({ d, base }: { d: VMDetail; base: string })
   const [reverting, setReverting] = useState<Snap | undefined>();
   const [deleting, setDeleting] = useState<{ initial?: string }>();
   const list = snaps.data;
+  const opts = useSnapOptions(d, base);
+  const blocked = opts && !opts.withState.allowed && !opts.diskOnly.allowed ? opts.reason : undefined;
 
   return (
     <>
@@ -54,11 +77,13 @@ export default function SnapshotsTab({ d, base }: { d: VMDetail; base: string })
           <button disabled={!list || list.length === 0} onClick={() => setDeleting({})}>
             Delete snapshots
           </button>
-          <button className="primary" onClick={() => setTaking(true)}>
+          <button className="primary" disabled={!!blocked} onClick={() => setTaking(true)}>
             Take snapshot
           </button>
         </div>
       </div>
+      {blocked && <p className="muted">{blocked}</p>}
+      {opts?.mixed && <StatusLine status="warning">{opts.mixed}</StatusLine>}
       <ErrorBox error={snaps.error} />
       {list && list.length === 0 && <div className="empty">No snapshots yet.</div>}
       {list && list.length > 0 && (
@@ -79,9 +104,14 @@ export function TakeSnapshot(props: { d: VMDetail; base: string; onClose: () => 
   const [description, setDescription] = useState("");
   const [memory, setMemory] = useState(d.state === "running");
   const live = d.state !== "shutoff";
+  const opts = useSnapOptions(d, props.base);
+  // When the VM's earlier snapshots allow only one state of the checkbox, it shows that state and is disabled.
+  const forced = live && opts && opts.withState.allowed !== opts.diskOnly.allowed;
+  const saveState = forced ? opts.withState.allowed : memory;
+  const cannot = opts && !opts.withState.allowed && !opts.diskOnly.allowed ? opts.reason : !live && opts && !opts.diskOnly.allowed ? opts.diskOnly.reason : undefined;
   // The server freezes the guest file systems when the guest agent is connected and memory is not saved.
   const submit = async () => {
-    const ok = await act.run(() => post(`${props.base}/snapshots?async=1`, { name, description, memory }));
+    const ok = await act.run(() => post(`${props.base}/snapshots?async=1`, { name, description, memory: saveState }));
     if (ok) {
       props.onDone();
       props.onClose();
@@ -96,17 +126,21 @@ export function TakeSnapshot(props: { d: VMDetail; base: string; onClose: () => 
         <input value={description} onChange={(e) => setDescription(e.target.value)} />
       </Field>
       {live ? (
-        <label className="check">
-          <input type="checkbox" checked={memory} onChange={(e) => setMemory(e.target.checked)} />
-          Save the running state too
-        </label>
+        <>
+          <label className="check">
+            <input type="checkbox" checked={saveState} disabled={!!forced || !!cannot} onChange={(e) => setMemory(e.target.checked)} />
+            Save the running state too
+          </label>
+          {forced && <p className="muted">{saveState ? opts.diskOnly.reason : opts.withState.reason}</p>}
+        </>
       ) : (
         <p className="muted">Shut off: disk only.</p>
       )}
+      {cannot && <p className="muted">{cannot}</p>}
       <ErrorBox error={act.error} />
       <div className="actions" style={{ justifyContent: "flex-end", marginTop: 14 }}>
         <button onClick={props.onClose}>Cancel</button>
-        <button className="primary" disabled={act.busy} onClick={submit}>
+        <button className="primary" disabled={act.busy || !!cannot} onClick={submit}>
           {act.busy ? "Taking snapshot" : "Take snapshot"}
         </button>
       </div>

@@ -195,6 +195,7 @@ func (s *Server) Handler() http.Handler {
 	auth("POST /api/nodes/{node}/migration-tls", s.migTLSSetup)
 	auth("DELETE /api/nodes/{node}/migration-tls", s.migTLSRemove)
 	auth("GET /api/nodes/{node}/vms/{uuid}/snapshots", s.listSnapshots)
+	auth("GET /api/nodes/{node}/vms/{uuid}/snapshot-options", s.snapshotOptionsHandler)
 	auth("POST /api/nodes/{node}/vms/{uuid}/snapshots", s.createSnapshotHandler)
 	auth("POST /api/nodes/{node}/vms/{uuid}/snapshots/{name}/revert", s.revertSnapshot)
 	auth("DELETE /api/nodes/{node}/vms/{uuid}/snapshots/{name}", s.deleteSnapshot)

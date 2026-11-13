@@ -151,6 +151,7 @@ var routeLevels = map[string]string{
 	"DELETE /api/nodes/{node}/migration-tls":                       admin,
 
 	"GET /api/nodes/{node}/vms/{uuid}/snapshots":                viewer,
+	"GET /api/nodes/{node}/vms/{uuid}/snapshot-options":         viewer,
 	"POST /api/nodes/{node}/vms/{uuid}/snapshots":               operator,
 	"POST /api/nodes/{node}/vms/{uuid}/snapshots/{name}/revert": operator,
 	"DELETE /api/nodes/{node}/vms/{uuid}/snapshots/{name}":      operator,

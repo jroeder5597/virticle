@@ -125,6 +125,9 @@ func planSnapshotDelete(list []snapInfo, names []string, apparmor bool) snapPlan
 				reason = "libvirt cannot delete an external snapshot whose parent is an internal snapshot."
 			}
 		}
+		if reason == "" && si.Kind == "internal" && hasLiveExternalBelow(n, kids, children, removed, info) {
+			reason = "libvirt cannot delete an internal snapshot while an external snapshot lies below it."
+		}
 		if reason != "" {
 			plan.Problems = append(plan.Problems, snapProblem{Name: n, Reason: reason})
 			continue
@@ -139,6 +142,19 @@ func planSnapshotDelete(list []snapInfo, names []string, apparmor bool) snapPlan
 		removed[n] = true
 	}
 	return plan
+}
+
+// hasLiveExternalBelow reports whether a snapshot not yet deleted below n is external.
+func hasLiveExternalBelow(n string, kids []string, children func(string) []string, removed map[string]bool, info map[string]snapInfo) bool {
+	for _, k := range kids {
+		if removed[k] {
+			continue
+		}
+		if info[k].Kind == "external" || hasLiveExternalBelow(k, children(k), children, removed, info) {
+			return true
+		}
+	}
+	return false
 }
 
 // scheduledSnapshot reports whether the description marks a snapshot the scheduler made.
