@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"virticle/internal/nodeproto"
@@ -198,6 +199,75 @@ func movedConfig(secs []iniSec) (text, method, gateway string) {
 	return strings.TrimRight(b.String(), "\n") + "\n", method, gateway
 }
 
+// leaseIAID finds the IAID of the DHCP client identifier the uplink's current IPv4 lease was taken with.
+// networkd derives the IAID from the interface name, so the bridge would present another client
+// identifier than the uplink did, and a DHCP server that keys its leases by it hands out another
+// address. The lease files are "private data" of networkd: this is best effort and returns "" when
+// the file or its format is not what is expected (the move then goes on without the IAID).
+func (c *Ctx) leaseIAID(l netLink) string {
+	var addr string
+	for _, a := range l.globalAddrs() {
+		if a.Family == "inet" {
+			addr = a.Local
+			break
+		}
+	}
+	if addr == "" {
+		return ""
+	}
+	files, _ := filepath.Glob(c.hostPath("/run/systemd/netif/leases/*"))
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		var a, id string
+		for _, ln := range strings.Split(string(b), "\n") {
+			if v, ok := strings.CutPrefix(ln, "ADDRESS="); ok {
+				a = strings.TrimSpace(v)
+			}
+			if v, ok := strings.CutPrefix(ln, "CLIENTID="); ok {
+				id = strings.TrimSpace(v)
+			}
+		}
+		// ff + IAID (4 bytes) + DUID: the DUID-based identifier (RFC 4361).
+		if a == addr && len(id) >= 10 && strings.EqualFold(id[:2], "ff") {
+			if _, err := strconv.ParseUint(id[2:10], 16, 32); err == nil {
+				return "0x" + strings.ToLower(id[2:10])
+			}
+		}
+	}
+	return ""
+}
+
+// withIAID adds IAID=... to the DHCPv4 section of a moved configuration, unless it names a client identifier itself.
+func withIAID(text, iaid string) string {
+	if iaid == "" {
+		return text
+	}
+	secs := parseINI(text)
+	var b strings.Builder
+	done := false
+	for i := range secs {
+		if secs[i].Name == "DHCPv4" || secs[i].Name == "DHCP" {
+			if len(secs[i].values("IAID")) > 0 || len(secs[i].values("ClientIdentifier")) > 0 {
+				return text
+			}
+			if !done {
+				secs[i].Lines = append(secs[i].Lines, "IAID="+iaid)
+				done = true
+			}
+		}
+	}
+	if !done {
+		secs = append(secs, iniSec{Name: "DHCPv4", Lines: []string{"IAID=" + iaid}})
+	}
+	for _, s := range secs {
+		b.WriteString("[" + s.Name + "]\n" + strings.Join(s.Lines, "\n") + "\n\n")
+	}
+	return strings.TrimRight(b.String(), "\n") + "\n"
+}
+
 func linkMTU(secs []iniSec) string {
 	if s := secByName(secs, "Link"); s != nil {
 		if v := s.values("MTUBytes"); len(v) > 0 {
@@ -269,8 +339,11 @@ func ndUplinkNetwork(s *bridgeSpec) string {
 	b.WriteString("RequiredForOnline=enslaved\n")
 	if s.VLANAware {
 		b.WriteString("\n[BridgeVLAN]\nPVID=1\nEgressUntagged=1\n")
-		if t := taggedVLANs(s.VLANs); t != "" {
-			b.WriteString("\n[BridgeVLAN]\nVLAN=" + t + "\n")
+		// networkd takes one id or one range M-N per VLAN= line, not a list.
+		for _, r := range strings.Split(taggedVLANs(s.VLANs), ",") {
+			if r != "" {
+				b.WriteString("\n[BridgeVLAN]\nVLAN=" + r + "\n")
+			}
 		}
 	}
 	return b.String()
@@ -386,6 +459,9 @@ func ndCreate(c *Ctx, in *planInput) (*netPlanned, error) {
 			s.Data["mtu"] = linkMTU(secs)
 			if s.MoveAddresses {
 				text, method, gw := movedConfig(secs)
+				if method == "dhcp" {
+					text = withIAID(text, c.leaseIAID(*up))
+				}
 				s.Moved = text
 				if has {
 					mv, txt := moveSummary(in, s, method, gw)

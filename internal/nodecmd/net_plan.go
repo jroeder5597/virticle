@@ -55,7 +55,7 @@ func (c *Ctx) detectStack() stackInfo {
 		return stackInfo{Name: "networkmanager", Tested: false, Supported: true, impl: nmStack{}}
 	case c.unitActive("systemd-networkd"):
 		name := "networkd"
-		if m, _ := filepath.Glob(filepath.Join(c.Cfg.Prefix, "etc/netplan/*.yaml")); len(m) > 0 {
+		if m, _ := filepath.Glob(c.hostPath("etc/netplan/*.yaml")); len(m) > 0 {
 			name = "netplan-networkd"
 		}
 		return stackInfo{Name: name, Tested: false, Supported: true, impl: networkdStack{}}

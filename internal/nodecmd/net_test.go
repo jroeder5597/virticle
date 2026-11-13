@@ -2,6 +2,7 @@ package nodecmd
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -104,13 +105,32 @@ func TestNetPlanVLANAware(t *testing.T) {
 	has(t, "uplink", up, "EgressUntagged=1")
 	r.VLANs = "10, 20-30,1"
 	up = fileOf(n.plan(r), "/etc/systemd/network/05-virticle-br0-eth0.network")
-	has(t, "uplink", up, "VLAN=10,20-30") // id 1 is the untagged default and is left out
+	has(t, "uplink", up, "VLAN=10\n")    // id 1 is the untagged default and is left out
+	has(t, "uplink", up, "VLAN=20-30\n") // networkd takes one id or range per VLAN= line
+	if strings.Contains(up, "VLAN=10,") {
+		t.Errorf("a list in one VLAN= line is rejected by networkd:\n%s", up)
+	}
 	r.VLANs = "1-4094"
 	up = fileOf(n.plan(r), "/etc/systemd/network/05-virticle-br0-eth0.network")
 	has(t, "uplink", up, "VLAN=2-4094")
 	r.VLANs = "10,20-30"
 	up = fileOf(n.plan(r), "/etc/systemd/network/05-virticle-br0-eth0.network")
-	has(t, "uplink", up, "VLAN=10,20-30")
+	has(t, "uplink", up, "VLAN=20-30\n")
+}
+
+func TestWithIAID(t *testing.T) {
+	in := "[Network]\nDHCP=ipv4\n\n[DHCP]\nRouteMetric=100\n"
+	out := withIAID(in, "0x5de26c15")
+	has(t, "iaid", out, "[DHCP]\nRouteMetric=100\nIAID=0x5de26c15")
+	out = withIAID("[Network]\nDHCP=ipv4\n", "0x1")
+	has(t, "new section", out, "[DHCPv4]\nIAID=0x1")
+	keep := "[Network]\nDHCP=ipv4\n\n[DHCPv4]\nClientIdentifier=mac\n"
+	if withIAID(keep, "0x1") != keep {
+		t.Error("an explicit client identifier must be left alone")
+	}
+	if withIAID(in, "") != in {
+		t.Error("no IAID, no change")
+	}
 }
 
 func TestNetApplyArmsBeforeApplyAndConfirmCancels(t *testing.T) {
@@ -401,7 +421,7 @@ func TestNetDeleteAndSetVLANs(t *testing.T) {
 	cmds := strings.Join(p.Commands, "\n")
 	has(t, "set-vlans", cmds, "bridge vlan add dev eth0 vid 21-30")
 	has(t, "set-vlans", cmds, "bridge vlan del dev eth0 vid 10-14")
-	has(t, "set-vlans", fileOf(p, "/etc/systemd/network/05-virticle-br0-eth0.network"), "VLAN=15-30")
+	has(t, "set-vlans", fileOf(p, "/etc/systemd/network/05-virticle-br0-eth0.network"), "VLAN=15-30\n")
 	id2 := n.apply(sv)
 	n.ok("", "net-run", id2)
 	n.ok("", "net-confirm", id2)
@@ -529,5 +549,44 @@ func TestNetworkdMatch(t *testing.T) {
 		if got != c.want || (err != nil) != c.err {
 			t.Errorf("%q: %v %v", c.ini, got, err)
 		}
+	}
+}
+
+func TestLeaseIAID(t *testing.T) {
+	dir := t.TempDir()
+	lease := filepath.Join(dir, "run/systemd/netif/leases")
+	if err := os.MkdirAll(lease, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Two links with a lease: the one whose ADDRESS the uplink has is the right one.
+	os.WriteFile(filepath.Join(lease, "2"), []byte("ADDRESS=192.168.150.15\nCLIENTID=ff56504d9800020000ab11f6edaf3a7574a3aa\n"), 0o644)
+	os.WriteFile(filepath.Join(lease, "5"), []byte("ADDRESS=192.168.150.141\nCLIENTID=ff5de26c1500020000ab11f6edaf3a7574a3aa\n"), 0o644)
+	c := &Ctx{Cfg: &Config{Prefix: dir}}
+	l := netLink{Name: "eth1", Addrs: []netAddr{{Family: "inet", Local: "192.168.150.141", Prefix: 24, Scope: "global"}}}
+	if got := c.leaseIAID(l); got != "0x5de26c15" {
+		t.Errorf("IAID = %q", got)
+	}
+	l.Addrs[0].Local = "10.0.0.1"
+	if got := c.leaseIAID(l); got != "" {
+		t.Errorf("no lease, IAID = %q", got)
+	}
+	// A MAC based identifier (type 01) has no IAID.
+	os.WriteFile(filepath.Join(lease, "5"), []byte("ADDRESS=192.168.150.141\nCLIENTID=01525400977a1b\n"), 0o644)
+	l.Addrs[0].Local = "192.168.150.141"
+	if got := c.leaseIAID(l); got != "" {
+		t.Errorf("mac identifier, IAID = %q", got)
+	}
+}
+
+func TestHostPathIsNeverRelative(t *testing.T) {
+	c := &Ctx{Cfg: &Config{}}
+	if got := c.hostPath("etc/x"); got != "/etc/x" {
+		t.Errorf("hostPath = %q", got)
+	}
+	if got := c.netDir(); got != "/var/lib/virticle-node/net" {
+		t.Errorf("netDir = %q", got)
+	}
+	if got := c.poolRunDir(); got != "/run/virticle-node" {
+		t.Errorf("poolRunDir = %q", got)
 	}
 }

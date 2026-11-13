@@ -166,7 +166,7 @@ func (m *netMeta) pending() bool {
 
 var changeIDRE = regexp.MustCompile(`^[0-9]{8}-[0-9]{6}-[a-z0-9]{4}$`)
 
-func (c *Ctx) netDir() string             { return filepath.Join(c.Cfg.Prefix, "var/lib/virticle-node/net") }
+func (c *Ctx) netDir() string             { return c.hostPath("var/lib/virticle-node/net") }
 func (c *Ctx) changeDir(id string) string { return filepath.Join(c.netDir(), "changes", id) }
 
 func newChangeID(now time.Time) string {
@@ -209,7 +209,9 @@ func (c *Ctx) atomicWrite(path string, data []byte, mode uint32) error {
 	return os.Rename(tmp, path)
 }
 
-func (c *Ctx) hostPath(p string) string { return filepath.Join(c.Cfg.Prefix, p) }
+// hostPath is p below Config.Prefix. The prefix is empty in production, so the root directory is
+// put in front: the path must never be relative to the working directory.
+func (c *Ctx) hostPath(p string) string { return filepath.Join("/", c.Cfg.Prefix, p) }
 
 func (c *Ctx) writeJSON(path string, v any) error {
 	b, err := json.MarshalIndent(v, "", "  ")
