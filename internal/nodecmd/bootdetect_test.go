@@ -1,7 +1,9 @@
 package nodecmd
 
 import (
+	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"strings"
@@ -33,6 +35,28 @@ func disk(ss int, code bool, mbrTypes []byte, gptTypes [][]byte) []byte {
 		}
 	}
 	return b
+}
+
+// guid encodes the text form of a GUID the way a GPT stores it (the first three groups little endian), written
+// separately from the constants in bootdetect.go so a typo there is caught.
+func guid(s string) []byte {
+	h := strings.ReplaceAll(s, "-", "")
+	raw, err := hex.DecodeString(h)
+	if err != nil || len(raw) != 16 {
+		panic(s)
+	}
+	for _, r := range [][2]int{{0, 4}, {4, 6}, {6, 8}} {
+		for i, j := r[0], r[1]-1; i < j; i, j = i+1, j-1 {
+			raw[i], raw[j] = raw[j], raw[i]
+		}
+	}
+	return raw
+}
+
+func TestGUIDConstants(t *testing.T) {
+	if !bytes.Equal(guidESP, guid("C12A7328-F81F-11D2-BA4B-00A0C93EC93B")) || !bytes.Equal(guidBIOSBoo, guid("21686148-6449-6E6F-744E-656564454649")) {
+		t.Error("the partition type GUIDs do not match their published values")
+	}
 }
 
 var linuxFS = []byte{0xAF, 0x3D, 0xC6, 0x0F, 0x83, 0x84, 0x72, 0x47, 0x8E, 0x79, 0x3D, 0x69, 0xD8, 0x47, 0x7D, 0xE4}
