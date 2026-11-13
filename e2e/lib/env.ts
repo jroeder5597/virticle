@@ -6,6 +6,8 @@ export const env = {
   // Hostnames (or addresses) of the two lab nodes as the controller lists them.
   node1: process.env.E2E_NODE1 ?? "vspike-n1",
   node2: process.env.E2E_NODE2 ?? "vspike-n2",
+  // The ssh alias (in lab/ssh_config) of node 1, for the tests that run a command on the node with `virsh` (guest clock).
+  sshNode1: process.env.E2E_SSH_NODE1 ?? "n1",
   // Every object the suite creates starts with this; the global teardown removes only such objects.
   prefix: process.env.E2E_PREFIX ?? "e2e-",
   // Existing images in pool "default" on node 1 (never modified).

@@ -121,7 +121,7 @@ test.describe.serial("serial console", () => {
 test.describe.serial("guest clock", () => {
   let vm: { node: number; uuid: string; name: string };
   const base = () => `/nodes/${vm.node}/vms/${vm.uuid}`;
-  const wrong = (secs: number) => guestSh("n1", CLK, `systemctl stop systemd-timesyncd; date -s @$(( $(date +%s) - ${secs} )) >/dev/null`);
+  const wrong = (secs: number) => guestSh(env.sshNode1, CLK, `systemctl stop systemd-timesyncd; date -s @$(( $(date +%s) - ${secs} )) >/dev/null`);
   const skew = async (api: any) => (await api.get(`${base()}/clock`)).skewMs as number;
 
   test.beforeEach(async () => {
@@ -151,8 +151,8 @@ test.describe.serial("guest clock", () => {
   test("a guest clock in sync reads as in sync", async ({ api }) => {
     test.setTimeout(300_000);
     // hwclock arrives with cloud-init's package list; wait for the guest to be done installing
-    await api.waitFor("hwclock", async () => guestSh("n1", CLK, "command -v hwclock").includes("hwclock"), 180_000, 5000);
-    await guestSh("n1", CLK, "systemctl start systemd-timesyncd; true");
+    await api.waitFor("hwclock", async () => guestSh(env.sshNode1, CLK, "command -v hwclock").includes("hwclock"), 180_000, 5000);
+    await guestSh(env.sshNode1, CLK, "systemctl start systemd-timesyncd; true");
     expect((await api.get(`${base()}/clock`)).offset).toBe("utc");
     await expect.poll(async () => Math.abs(await skew(api)), { timeout: 60_000 }).toBeLessThan(2000);
   });

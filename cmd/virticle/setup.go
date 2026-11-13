@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -46,6 +47,8 @@ type setupEnv struct {
 	pendingPrev func() *webaccess.Settings
 	addrs       []string
 	hasKVM      bool
+	// hasLocalNode is true when this machine is already registered as a node.
+	hasLocalNode bool
 }
 
 // webPorts are the TCP ports the controller listens on for other computers:
@@ -221,7 +224,7 @@ func runSetup(e setupEnv, check, undo bool) []prepare.Row {
 		}
 		rows = append(rows, prepare.Row{ID: "next", Title: "Next", Status: prepare.Info, Detail: line})
 	}
-	if e.hasKVM {
+	if e.hasKVM && !e.hasLocalNode {
 		rows = append(rows, prepare.Row{ID: "vms", Title: "Virtual machines", Status: prepare.Info,
 			Detail: "To run virtual machines on this machine too, choose 'Set up this machine as a node' on the start page."})
 	}
@@ -329,9 +332,49 @@ func setupCommand(args []string) int {
 	}
 	_, kvmErr := os.Stat("/dev/kvm")
 	e := setupEnv{euid: os.Geteuid(), sh: localSh, settings: storedWebSettings(*data), pendingPrev: pendingWebSettings(*data), addrs: suggestedAddresses(), hasKVM: kvmErr == nil}
+	e.hasLocalNode = e.hasKVM && hasLocalNode(*data, e.addrs)
 	rows := runSetup(e, *check, *undo)
 	for _, r := range rows {
 		printRow(r)
 	}
 	return exitCode(rows)
+}
+
+// hasLocalNode says whether the database in data already holds a node whose
+// address is one of this machine's addresses or names.
+func hasLocalNode(data string, local []string) bool {
+	if !store.HasDatabase(data) {
+		return false
+	}
+	dbPath, err := store.DBPath(data, log.Printf)
+	if err != nil {
+		return false
+	}
+	st, err := store.Open(dbPath)
+	if err != nil {
+		return false
+	}
+	defer st.Close()
+	nodes, err := st.Nodes()
+	if err != nil {
+		return false
+	}
+	return anyLocalAddr(nodes, local)
+}
+
+func anyLocalAddr(nodes []store.Node, local []string) bool {
+	here := map[string]bool{"localhost": true, "127.0.0.1": true, "::1": true}
+	for _, l := range local {
+		here[strings.ToLower(l)] = true
+	}
+	for _, n := range nodes {
+		host := n.Addr
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if here[strings.ToLower(strings.Trim(host, "[]"))] {
+			return true
+		}
+	}
+	return false
 }

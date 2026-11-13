@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"virticle/internal/prepare"
+	"virticle/internal/store"
 	"virticle/internal/webaccess"
 )
 
@@ -207,5 +208,25 @@ func TestSetupWhileAPortChangeWaitsOpensBothPorts(t *testing.T) {
 	}
 	if !h.applied("9443 8443") {
 		t.Errorf("both ports must go to the firewall script: %v", h.log)
+	}
+}
+
+func TestAnyLocalAddr(t *testing.T) {
+	local := []string{"192.0.2.10", "Box"}
+	for _, c := range []struct {
+		addr string
+		want bool
+	}{{"192.0.2.10", true}, {"127.0.0.1", true}, {"box:22", true}, {"[::1]:22", true}, {"192.0.2.11", false}, {"other", false}} {
+		if got := anyLocalAddr([]store.Node{{Addr: c.addr}}, local); got != c.want {
+			t.Errorf("%s: %v, want %v", c.addr, got, c.want)
+		}
+	}
+	if anyLocalAddr(nil, local) {
+		t.Error("no nodes")
+	}
+	e := envFor(&host{fwApply: "@@kind firewalld\n@@unchanged\n", unit: "unit=yes\nactive=active\nenabled=yes\n"}, webaccess.FirstRunDefaults(), "stored", true)
+	e.hasLocalNode = true
+	if strings.Contains(rowText(runSetup(e, false, false)), "Set up this machine as a node") {
+		t.Error("a machine that is already a node must not be told to become one")
 	}
 }
