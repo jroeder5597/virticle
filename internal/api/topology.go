@@ -23,17 +23,33 @@ import (
 type topoAddr struct {
 	Address    string `json:"address"`
 	Management bool   `json:"management,omitempty"`
+	// VLAN and Iface are set for an address the node has on a VLAN of the switch (the VLAN device Iface).
+	VLAN  int    `json:"vlan,omitempty"`
+	Iface string `json:"iface,omitempty"`
+}
+
+// topoMember is one card of a bond.
+type topoMember struct {
+	Name      string `json:"name"`
+	State     string `json:"state"` // up | down
+	SpeedMbps int    `json:"speedMbps,omitempty"`
+	Active    bool   `json:"active,omitempty"` // carries the traffic (failover mode)
 }
 
 type topoUplink struct {
-	Name       string     `json:"name"`
-	Type       string     `json:"type"` // physical | bond | vlan
-	State      string     `json:"state"`
-	SpeedMbps  int        `json:"speedMbps,omitempty"`
-	MAC        string     `json:"mac,omitempty"`
-	Members    []string   `json:"members,omitempty"` // the cards of a bond
-	Addresses  []topoAddr `json:"addresses"`
-	Management bool       `json:"management,omitempty"` // carries the address the controller uses
+	Name      string   `json:"name"`
+	Type      string   `json:"type"` // physical | bond | vlan
+	State     string   `json:"state"`
+	SpeedMbps int      `json:"speedMbps,omitempty"`
+	MAC       string   `json:"mac,omitempty"`
+	Members   []string `json:"members,omitempty"` // the cards of a bond
+	// For a bond: Mode is failover or lacp, MemberStates the cards with their link state, and LACPAnswered
+	// says whether the switch at the other end took part in LACP (only for lacp).
+	Mode         string       `json:"mode,omitempty"`
+	MemberStates []topoMember `json:"memberStates,omitempty"`
+	LACPAnswered *bool        `json:"lacpAnswered,omitempty"`
+	Addresses    []topoAddr   `json:"addresses"`
+	Management   bool         `json:"management,omitempty"` // carries the address the controller uses
 }
 
 type topoIface struct {
@@ -61,6 +77,7 @@ type topoSwitch struct {
 	Kind          string          `json:"kind"` // linux-bridge | openvswitch | libvirt | other
 	Name          string          `json:"name"`
 	State         string          `json:"state,omitempty"`
+	MTU           int             `json:"mtu,omitempty"`
 	UplinkNote    string          `json:"uplinkNote,omitempty"` // "NAT to eth0", "Routed", "Isolated (no uplink)" instead of uplinks
 	Uplinks       []topoUplink    `json:"uplinks"`
 	HostAddresses []topoAddr      `json:"hostAddresses"`
@@ -126,6 +143,20 @@ func uplinkOf(n hostNIC, all []hostNIC, mgmt map[string]bool) topoUplink {
 				u.Members = append(u.Members, m.Name)
 			}
 		}
+		if b := n.Bond; b != nil {
+			u.Mode = map[string]string{"active-backup": "failover", "802.3ad": "lacp"}[b.Mode]
+			for _, m := range b.Members {
+				st := "down"
+				if m.Up {
+					st = "up"
+				}
+				u.MemberStates = append(u.MemberStates, topoMember{Name: m.Name, State: st, SpeedMbps: m.SpeedMbps, Active: m.Name == b.ActiveMember})
+			}
+			if b.LACP != nil {
+				a := b.LACP.Answered
+				u.LACPAnswered = &a
+			}
+		}
 	}
 	return u
 }
@@ -179,7 +210,20 @@ func composeTopology(in topoInput) (switches []topoSwitch, unused []topoUplink) 
 			s.Kind = "openvswitch"
 		}
 		s.State = n.State
+		s.MTU = n.MTU
 		s.HostAddresses, _ = topoAddrs(n.Addresses, mgmt)
+		for _, v := range in.NICs {
+			if v.Type == "vlan" && v.Parent == n.Name {
+				as, _ := topoAddrs(v.Addresses, mgmt)
+				if len(as) == 0 { // a DHCP address that has not arrived yet
+					as = []topoAddr{{}}
+				}
+				for _, a := range as {
+					a.VLAN, a.Iface = v.VLANID, v.Name
+					s.HostAddresses = append(s.HostAddresses, a)
+				}
+			}
+		}
 		for _, m := range in.NICs {
 			if m.Master == n.Name && (m.Type == "physical" || m.Type == "bond" || m.Type == "vlan") {
 				s.Uplinks = append(s.Uplinks, uplinkOf(m, in.NICs, mgmt))

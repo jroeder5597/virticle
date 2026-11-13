@@ -232,7 +232,7 @@ func TestSetUplinksNetworkd(t *testing.T) {
 	// mode change: the bond is made again from the new file
 	p = n.plan(set("lacp", "eth0", "eth3"))
 	has(t, "netdev", fileOf(p, "/etc/systemd/network/05-virticle-b-br0.netdev"), "Mode=802.3ad")
-	has(t, "cmds", cmdsOf(p), "ip link del b-br0")
+	has(t, "cmds", cmdsOf(p), "ip link set b-br0 type bond mode 802.3ad lacp_rate fast xmit_hash_policy layer2+3")
 	n.refusedPlan("no change", set("failover", "eth0", "eth3"), "already like this")
 	confirmed(n, set("lacp", "eth0", "eth3"))
 	var info nodeproto.NetInfo

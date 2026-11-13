@@ -46,13 +46,23 @@ const (
 
 // hostnetBody is the request body of plan and apply.
 type hostnetBody struct {
-	Action         string `json:"action"` // create | delete | set-vlans
+	Action         string `json:"action"` // create | delete | set-vlans | set-uplinks | set-mtu | add-vlan-address | remove-vlan-address
 	Bridge         string `json:"bridge"`
-	Uplink         string `json:"uplink"`
+	Uplink         string `json:"uplink"` // one card; scripts only, the UI sends uplinks
 	MoveAddresses  bool   `json:"moveAddresses"`
 	VLANAware      bool   `json:"vlanAware"`
 	VLANs          string `json:"vlans"`
 	TimeoutSeconds int    `json:"timeoutSeconds"`
+	// Two or more cards make a bond: BondMode is failover (default) or lacp.
+	Uplinks  []string `json:"uplinks"`
+	BondMode string   `json:"bondMode"`
+	MTU      int      `json:"mtu"`
+	// The node's own address on a VLAN.
+	VLANID        int    `json:"vlanId"`
+	AddressMethod string `json:"addressMethod"` // dhcp | static
+	Address       string `json:"address"`
+	Gateway       string `json:"gateway"`
+	DefaultRoute  bool   `json:"defaultRoute"`
 }
 
 type hostnetBridge struct {
@@ -247,7 +257,9 @@ func hostnetErr(err error) error {
 
 // hostnetRequest turns the body into the node's request and runs the checks that need libvirt.
 func (s *Server) hostnetRequest(id int64, h *hostconn.Host, b hostnetBody) (nodeproto.NetRequest, error) {
-	req := nodeproto.NetRequest{Action: b.Action, Bridge: b.Bridge, Uplink: b.Uplink, MoveAddresses: b.MoveAddresses, VLANAware: b.VLANAware,
+	req := nodeproto.NetRequest{Action: b.Action, Bridge: b.Bridge, Uplink: b.Uplink, Uplinks: b.Uplinks, BondMode: b.BondMode, MTU: b.MTU,
+		VLANID: b.VLANID, AddressMethod: b.AddressMethod, Address: b.Address, Gateway: b.Gateway, DefaultRoute: b.DefaultRoute,
+		MoveAddresses: b.MoveAddresses, VLANAware: b.VLANAware,
 		VLANs: b.VLANs, TimeoutSeconds: b.TimeoutSeconds, ControllerAddrs: s.controllerAddrs(id)}
 	ver, err := h.ConnectGetLibVersion()
 	if err != nil {
@@ -301,9 +313,9 @@ func vlanStillUsed(req nodeproto.NetRequest, nets []networkInfo) error {
 // checkHostnetRequest is the part of the checks that needs no node.
 func checkHostnetRequest(req nodeproto.NetRequest) error {
 	switch req.Action {
-	case nodeproto.NetCreate, nodeproto.NetDelete, nodeproto.NetSetVLAN:
+	case nodeproto.NetCreate, nodeproto.NetDelete, nodeproto.NetSetVLAN, nodeproto.NetSetUplinks, nodeproto.NetSetMTU, nodeproto.NetAddVLANAddr, nodeproto.NetDelVLANAddr:
 	default:
-		return badRequest("action must be create, delete or set-vlans")
+		return badRequest("action must be create, delete, set-vlans, set-uplinks, set-mtu, add-vlan-address or remove-vlan-address")
 	}
 	if req.Bridge == "" {
 		return badRequest("the bridge name is required")

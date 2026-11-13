@@ -137,12 +137,12 @@ func nmCreate(c *Ctx, in *planInput) (*netPlanned, error) {
 					}
 					mv, txt := moveSummary(in, s, method, cap.prof["ipv4.gateway"])
 					pl.Move = mv
-					pl.Summary = append(pl.Summary, txt, fmt.Sprintf("%s becomes a plain port of %s without addresses; its own connection %q is kept, but set not to start by itself.", up.Name, s.Bridge, cap.prof["connection.id"]))
+					pl.Summary = append(pl.Summary, txt, fmt.Sprintf("%s becomes %s without addresses; its own connection %q is kept, but set not to start by itself.", up.Name, portWords(s), cap.prof["connection.id"]))
 				}
 			}
 		}
 		if !s.MoveAddresses {
-			pl.Summary = append(pl.Summary, fmt.Sprintf("%s becomes a plain port of %s.", up.Name, s.Bridge))
+			pl.Summary = append(pl.Summary, fmt.Sprintf("%s becomes %s.", up.Name, portWords(s)))
 			if has {
 				pl.Warn = append(pl.Warn, fmt.Sprintf("The addresses of %s are removed and not moved to the bridge.", up.Name))
 			}

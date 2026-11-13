@@ -292,9 +292,13 @@ func ndCardsRuntime(from, to *bridgeSpec, ignore bool) []netStep {
 	default:
 		giveBack(d.Removed)
 		if d.ModeChanged {
-			// A bond cannot change its mode while it has members: it is made again from the new file.
-			steps = append(steps, stepRunIgnore("ip", "link", "del", to.Bond), ndIgn(ignore, "networkctl", "reload"),
-				netStep{Kind: "wait-link", Path: to.Bond, Secs: 20, Ignore: ignore})
+			// A bond cannot change its mode while it has members or is up: the members are released and the bond is
+			// set again in place (making it again confuses networkd, which then leaves the cards unconfigured).
+			for _, c := range from.cards() {
+				steps = append(steps, ndIgn(true, "ip", "link", "set", c.Name, "nomaster"))
+			}
+			steps = append(steps, ndIgn(ignore, "ip", "link", "set", to.Bond, "down"),
+				ndIgn(ignore, append([]string{"ip", "link", "set", to.Bond, "type", "bond"}, bondModeArgs(to.BondMode)...)...))
 			re := append([]string{"networkctl", "reconfigure", to.Bond}, to.cardNames()...)
 			steps = append(steps, ndIgn(ignore, re...))
 		} else if len(d.Added) > 0 {
@@ -372,12 +376,12 @@ func ndCreate(c *Ctx, in *planInput) (*netPlanned, error) {
 				if has {
 					mv, txt := moveSummary(in, s, method, gw)
 					pl.Move = mv
-					pl.Summary = append(pl.Summary, txt, fmt.Sprintf("%s becomes a plain port of %s without addresses.", up.Name, s.Bridge))
+					pl.Summary = append(pl.Summary, txt, fmt.Sprintf("%s becomes %s without addresses.", up.Name, portWords(s)))
 				}
 			}
 		}
 		if !s.MoveAddresses {
-			pl.Summary = append(pl.Summary, fmt.Sprintf("%s becomes a plain port of %s.", up.Name, s.Bridge))
+			pl.Summary = append(pl.Summary, fmt.Sprintf("%s becomes %s.", up.Name, portWords(s)))
 			if has {
 				pl.Warn = append(pl.Warn, fmt.Sprintf("The addresses of %s are removed and not moved to the bridge.", up.Name))
 			}

@@ -110,6 +110,14 @@ func bondName(bridge string) string {
 
 func bondModeOK(m string) bool { return m == nodeproto.BondFailover || m == nodeproto.BondLACP }
 
+// bondModeArgs are the arguments of ip link ... type bond for a mode.
+func bondModeArgs(mode string) []string {
+	if mode == nodeproto.BondLACP {
+		return []string{"mode", "802.3ad", "lacp_rate", "fast", "xmit_hash_policy", "layer2+3"}
+	}
+	return []string{"mode", "active-backup"}
+}
+
 func bondOptionsNM(mode string) string {
 	if mode == nodeproto.BondLACP {
 		return "mode=802.3ad,miimon=100,lacp_rate=fast,xmit_hash_policy=layer2+3"

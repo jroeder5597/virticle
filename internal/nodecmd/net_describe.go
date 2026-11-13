@@ -36,6 +36,14 @@ func describeUplinkChange(c *Ctx, pl *netPlanned, in *planInput, d cardDiff) {
 	}
 }
 
+// portWords says what a card becomes: a plain port of the bridge, or a member of the bond.
+func portWords(s *bridgeSpec) string {
+	if s.Bond != "" {
+		return "a member of the bond " + s.Bond
+	}
+	return "a plain port of " + s.Bridge
+}
+
 // vlanAddrPlanSummary is the summary of an add-vlan-address plan.
 func vlanAddrPlanSummary(old, n *bridgeSpec, v vlanAddrSpec) []string {
 	sum := []string{vlanAddrSummary(n, v)}
