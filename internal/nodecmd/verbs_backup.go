@@ -19,7 +19,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// The backup verbs: df, files-size, backup-scan, tar-pack, tar-unpack,
+// The backup verbs: df, files-size, backup-scan, work-stale, tar-pack, tar-unpack,
 // backup-detach, convert-start, convert-poll, convert-kill, convert-finish,
 // and convert-run, the detached half of convert-start (it takes the same
 // arguments and checks them again, so running it by hand is the same as
@@ -29,6 +29,7 @@ func init() {
 	Register("df", verbDF)
 	Register("files-size", verbFilesSize)
 	Register("backup-scan", verbBackupScan)
+	Register("work-stale", verbWorkStale)
 	Register("tar-pack", verbTarPack)
 	Register("tar-unpack", verbTarUnpack)
 	Register("backup-detach", verbBackupDetach)
@@ -199,6 +200,61 @@ func verbBackupScan(c *Ctx) error {
 			fmt.Fprintln(c.Stdout)
 		}
 		unix.Close(bfd)
+	}
+	return nil
+}
+
+// staleWorkRE is a backup work directory: .virticle-bk. and six random characters.
+var staleWorkRE = regexp.MustCompile(`^\.virticle-bk\.[A-Za-z0-9]{6}$`)
+
+// work-stale DIR MINUTES prints, one per line, the backup work directories (.virticle-bk.XXXXXX) of DIR in
+// which nothing has changed for at least MINUTES minutes: what a backup leaves behind when the controller
+// stops while it runs. A running backup writes into its directory all the time, so only the newest change
+// of the directory and the files in it counts. At most 50 are listed.
+func verbWorkStale(c *Ctx) error {
+	if err := c.Need(2, 2, "work-stale DIR MINUTES"); err != nil {
+		return err
+	}
+	mins, err := strconv.Atoi(c.Args[1])
+	if err != nil || mins < 1 || mins > 100000 {
+		return Die("unsupported minutes")
+	}
+	r, fd, err := openDirArg(c, c.Args[0])
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	defer unix.Close(fd)
+	names, _ := listDir(fd)
+	sort.Strings(names)
+	limit := time.Now().Add(-time.Duration(mins) * time.Minute).Unix()
+	count := 0
+	for _, name := range names {
+		if count >= 50 {
+			break
+		}
+		if !staleWorkRE.MatchString(name) {
+			continue
+		}
+		st, err := fstatat(fd, name)
+		if err != nil || !isDirMode(st.Mode) {
+			continue
+		}
+		newest := st.Mtim.Sec
+		if wfd, err := openat(fd, name, oDir, 0); err == nil {
+			if inner, _ := listDir(wfd); len(inner) > 0 {
+				for _, f := range inner {
+					if fs, err := fstatat(wfd, f); err == nil && fs.Mtim.Sec > newest {
+						newest = fs.Mtim.Sec
+					}
+				}
+			}
+			unix.Close(wfd)
+		}
+		if newest <= limit {
+			fmt.Fprintf(c.Stdout, "%s/%s\n", strings.TrimSuffix(c.Args[0], "/"), name)
+			count++
+		}
 	}
 	return nil
 }

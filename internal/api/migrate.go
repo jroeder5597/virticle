@@ -580,7 +580,7 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 	s.checkTuning(dst, plan, &c)
 
 	// Memory.
-	if free, err := dst.NodeGetFreeMemory(); err == nil {
+	if free, err := dst.AvailableMemory(); err == nil {
 		if free < plan.MemKiB*1024 {
 			c.warn("Memory", fmt.Sprintf("the VM has %s of memory, the target reports %s free", fmtBytes(plan.MemKiB*1024), fmtBytes(free)))
 		} else {

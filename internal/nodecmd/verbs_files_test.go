@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestVersionAndUnknown(t *testing.T) {
@@ -367,4 +368,42 @@ func TestToolsMissing(t *testing.T) {
 	n.refused("arbitrary name 2", "", "tools-missing", "ssh;id")
 	n.refused("none", "", "tools-missing")
 	n.refused("too many", "", "tools-missing", "ssh", "ssh", "ssh", "ssh", "ssh", "ssh", "ssh", "ssh", "ssh")
+}
+
+func TestWorkStale(t *testing.T) {
+	n := newNode(t)
+	pool := n.abs("pools/default")
+	old := time.Now().Add(-3 * time.Hour)
+	// an old, untouched work directory
+	oldWd := n.ok("", "mkworkdir", pool, "bk")
+	f := n.put(strings.TrimPrefix(oldWd, n.root+"/")+"/vda.qcow2", "x")
+	for _, p := range []string{f, oldWd} {
+		if err := os.Chtimes(p, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// an old directory in which a file was written a moment ago: a backup still running
+	busy := n.ok("", "mkworkdir", pool, "bk")
+	n.put(strings.TrimPrefix(busy, n.root+"/")+"/vda.qcow2", "y")
+	if err := os.Chtimes(busy, old, old); err != nil {
+		t.Fatal(err)
+	}
+	// a new one, an old restore directory (other tag), a wrong name and a plain directory
+	fresh := n.ok("", "mkworkdir", pool, "bk")
+	rs := n.ok("", "mkworkdir", pool, "rs")
+	_ = os.Chtimes(rs, old, old)
+	for _, name := range []string{".virticle-bk.link", "vm-backup"} {
+		p := n.abs("pools/default/" + name)
+		_ = os.Mkdir(p, 0o700)
+		_ = os.Chtimes(p, old, old)
+	}
+
+	out := n.ok("", "work-stale", pool, "60")
+	if out != oldWd {
+		t.Errorf("stale directories %q, want only %q (not %q, %q, %q)", out, oldWd, busy, fresh, rs)
+	}
+	n.refused("minutes", "", "work-stale", pool, "0")
+	n.refused("minutes text", "", "work-stale", pool, "abc")
+	n.denied("outside", "", "work-stale", n.abs("outside"), "60")
+	n.refused("arguments", "", "work-stale", pool)
 }

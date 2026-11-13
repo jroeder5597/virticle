@@ -139,7 +139,27 @@ function BackupNow(props: { d: VMDetail; onClose: () => void; onDone: () => void
   const [keep, setKeep] = useState(7);
   const [task, setTask] = useState(0);
   const [kind, setKind] = useState("");
+  const [why, setWhy] = useState("");
+  const [finished, setFinished] = useState(false);
   const base = `/nodes/${d.node}/vms/${d.uuid}`;
+  // The kind in the start answer is the plan: libvirt may refuse an incremental backup and the run then makes a
+  // full one. Once the run is over, the manifest of the new backup says what it really is.
+  const done = async (ok: boolean) => {
+    if (ok) {
+      try {
+        const l = await get<BackupEntry[]>(`/backups?uuid=${d.uuid}`);
+        const newest = l.filter((b) => b.manifest).sort((x, y) => Date.parse(y.manifest!.created) - Date.parse(x.manifest!.created))[0];
+        if (newest?.manifest) {
+          setKind(newest.manifest.kind ?? "full");
+          setWhy(newest.manifest.fullReason ?? "");
+          setFinished(true);
+        }
+      } catch {
+        // keep the planned kind
+      }
+    }
+    props.onDone();
+  };
   const submit = async () => {
     await act.run(async () => {
       const r = await post<{ task: number; kind: string }>(`${base}/backup`, { targetNode: node === d.node ? 0 : node, pool, keepLast: keep });
@@ -151,8 +171,16 @@ function BackupNow(props: { d: VMDetail; onClose: () => void; onDone: () => void
     <Modal title={`Back up ${d.name}`} onClose={props.onClose}>
       {task ? (
         <>
-          <p className="muted">{kind === "incremental" ? "Incremental backup: only what changed since the last backup is copied." : "Full backup: the whole disks are copied."}</p>
-          <TaskFollow id={task} onDone={props.onDone} onCancel={() => post(`${base}/backup/cancel`)} />
+          <p className="muted">
+            {finished
+              ? kind === "incremental"
+                ? "Incremental backup: only what changed since the last backup was copied."
+                : `Full backup: the whole disks were copied.${why ? " " + why : ""}`
+              : kind === "incremental"
+                ? "Planned as an incremental backup: only what changed since the last backup is copied. If that is not possible, a full backup is made instead."
+                : "Full backup: the whole disks are copied."}
+          </p>
+          <TaskFollow id={task} onDone={done} onCancel={() => post(`${base}/backup/cancel`)} />
         </>
       ) : (
         <>

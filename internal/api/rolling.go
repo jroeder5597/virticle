@@ -196,7 +196,7 @@ func (s *Server) rollGather(withUpdates bool, sel map[int64]bool, vmsOf int64) r
 		go func(i int, id int64, h *hostconn.Host) {
 			defer wg.Done()
 			in := &infos[i]
-			if free, err := h.NodeGetFreeMemory(); err == nil {
+			if free, err := h.AvailableMemory(); err == nil {
 				in.FreeKiB = free / 1024
 			}
 			if _, mem, _, _, _, _, _, _, err := h.NodeGetInfo(); err == nil {
@@ -893,15 +893,18 @@ func (e *rollExec) pEvacuate(n *rollNode) (string, bool, error) {
 	for _, st := range np.Stuck {
 		if !known[st.VM.UUID] {
 			e.mu.Lock()
-			interrupted := false
+			interrupted, toName := false, "the target node"
 			for _, m := range n.Moved {
 				if m.UUID == st.VM.UUID && m.Status == "moving" {
 					interrupted = true
+					if m.ToName != "" {
+						toName = m.ToName
+					}
 				}
 			}
 			e.mu.Unlock()
 			if interrupted {
-				return "", false, fmt.Errorf("the move of %s was interrupted (the controller stopped) and left a partly copied disk on the target (%s). The VM still runs here. Remove the copy on the target, then press Continue", st.VM.Name, strings.Join(st.Reasons, "; "))
+				return "", false, interruptedMoveError(st.VM.Name, toName, st.Reasons)
 			}
 			return "", false, fmt.Errorf("%s can no longer be moved (%s). The node itself was not changed except that it is in maintenance", st.VM.Name, strings.Join(st.Reasons, "; "))
 		}
@@ -953,6 +956,13 @@ func (e *rollExec) pEvacuate(n *rollNode) (string, bool, error) {
 	return fmt.Sprintf("%d virtual machine(s) moved away", total), false, nil
 }
 
+// interruptedMoveError is the stop message after a move that a controller restart cut short. The pre-flight
+// reasons name the exact file ("already exists on NODE at PATH"). It is not removed automatically: nothing
+// recorded survives the restart that proves the file is the partial copy and not someone's own file.
+func interruptedMoveError(vm, toName string, reasons []string) error {
+	return fmt.Errorf("the move of %s was interrupted (the controller stopped) and left a partly copied disk on %s. %s. The VM still runs here. Remove that file on %s yourself, then press Continue", vm, toName, strings.Join(reasons, "; "), toName)
+}
+
 func (e *rollExec) pStop(n *rollNode) (string, bool, error) {
 	h, err := e.hostWait(n.Node, rollOnlineWait)
 	if err != nil {
@@ -992,7 +1002,7 @@ func (e *rollExec) pStop(n *rollNode) (string, bool, error) {
 				break
 			}
 			if time.Now().After(deadline) {
-				return "", false, fmt.Errorf("%s did not shut down within %s. It is still running; shut it down yourself (or install the guest agent so that it can be shut down cleanly) and press Continue", v.Name, rollShutdownWait)
+				return "", false, fmt.Errorf("%s on %s did not shut down within %s. It is still running; shut it down yourself (a guest agent lets it shut down cleanly) and press Continue", v.Name, n.Name, rollShutdownWait)
 			}
 			time.Sleep(2 * time.Second)
 		}

@@ -115,6 +115,7 @@ function PlanView({ nodes, onStarted, onClose }: { nodes?: number[]; onStarted: 
             <input type="radio" name="roll-choice" checked={choice === "shutdown"} onChange={() => setChoice("shutdown")} />
             Shut them down for the update and start them again afterwards
           </label>
+          <p className="muted">A virtual machine that does not shut down within 3 minutes (one without a guest agent may not react) stops the update; you shut it down yourself and continue.</p>
           <label className="pref-opt">
             <input type="radio" name="roll-choice" checked={choice === "skip"} onChange={() => setChoice("skip")} />
             Leave out the nodes they run on; those nodes are not updated
