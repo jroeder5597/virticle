@@ -72,8 +72,9 @@ fw_kind() {
   else echo none; fi
 }
 fw_nft() {
-  if command -v nft >/dev/null 2>&1 && nft list ruleset 2>/dev/null | grep -q 'hook input'; then echo yes
-  elif command -v iptables >/dev/null 2>&1 && iptables -S INPUT 2>/dev/null | grep -qv '^-P INPUT ACCEPT'; then echo yes
+  # libvirt's own rules for its NAT network (table libvirt_network, chain LIBVIRT_INP) are not a firewall
+  if command -v nft >/dev/null 2>&1 && nft list ruleset 2>/dev/null | awk '/^table /{skip=($3=="libvirt_network"||$3=="libvirt_nwfilter")} !skip && /hook input/{f=1} END{exit !f}'; then echo yes
+  elif command -v iptables >/dev/null 2>&1 && iptables -S INPUT 2>/dev/null | grep -v '^-P INPUT ACCEPT' | grep -v -- '-j LIBVIRT_INP$' | grep -q .; then echo yes
   fi
 }
 fw_ufw_ours() { ufw show added 2>/dev/null | grep -F "comment '$fwsvc'" | sed -n 's/^ufw allow \([^ ]*\) .*/\1/p'; }
