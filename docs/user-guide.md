@@ -247,28 +247,64 @@ each node has its own button). Nothing else is needed on the node: Virticle writ
 | Word in the app | What it is |
 | --- | --- |
 | Virtual switch | A Linux bridge on the node. |
-| Uplink | The network card the virtual switch uses to reach the outside network. A switch without one connects the virtual machines on this node only. |
+| Uplink | A network card the virtual switch uses to reach the outside network. A switch without one connects the virtual machines on this node only. With two or more uplinks the cards work together as a bond. |
 | Network | What a virtual machine attaches to. A network on a virtual switch is a libvirt network in bridge mode, so it appears in **New VM** and **Add network interface** like any other. |
 | VLAN | A tag on a network, so that several networks share one switch and one cable. |
-| This node's address | The node's own address. When the uplink had one, it moves to the virtual switch and stays the same. |
+| This node's address | The node's own address. When the uplink had one, it moves to the virtual switch and stays the same. A node can have more addresses on a switch, each on its own VLAN. |
+| MTU | The largest packet the switch passes. 1500 unless you set it (for example 9000 for storage or migration traffic). |
 
 **Add a virtual switch**
 
 1. Open the node's **Topology** tab and select **Add virtual switch**. On a card under **Unused network cards**, select
    **Use for a new virtual switch** instead.
-2. Enter a name (the dialog offers `vsw0`, `vsw1` and so on) and choose the **Uplink**, or **None (internal only)**.
-   Keep **VLANs** selected if you want VLAN tags. **Advanced** has the allowed VLAN ids (empty allows all) and the time
-   the node waits for the controller to confirm (90 seconds).
+2. Enter a name (the dialog offers `vsw0`, `vsw1` and so on) and tick the **Uplinks**: none for an internal switch,
+   one card, or two or more for a bond. With two or more cards the **Mode** select appears.
+   Keep **VLANs** selected if you want VLAN tags. **Advanced** has the allowed VLAN ids (empty allows all), the MTU
+   and the time the node waits for the controller to confirm (90 seconds).
 3. Select **Review**. The dialog lists in plain words what will happen on the node; **Details** has the files and
    commands.
 4. Select **Apply**. The dialog shows three steps: applying on the node, waiting for the node, confirmed. You can close
    it; the result is also in the task log.
 
+**Several uplinks.** Two or more cards on one switch work as a bond: if a cable or a card fails, the node and its virtual
+machines stay connected. Choose the mode when you add the switch or later under **Edit uplinks**:
+
+| Mode | Use it when | What happens |
+| --- | --- | --- |
+| Failover (works with any switch) | The cards go to ordinary switch ports, or to two different switches. | One card carries the traffic. If its link fails, another takes over. No setting is needed on the physical switch. |
+| Load balance, needs LACP on the switch | The cards go to ports of one switch that are set up as an LACP group (link aggregation). | The traffic is spread over all cards. Without LACP on the other end the bond carries traffic on one link at best; the topology then says "LACP not answered by the switch". Cards of different speed are not combined well. |
+
+The topology shows the bond as one uplink with its cards: each card's link state and, in failover, which one is active.
+
+1. In the box of the switch, open **Actions** and select **Edit uplinks**.
+2. Tick the cards the switch should have. A card with an address of its own loses it while it is part of the switch
+   and gets it back when it leaves (the review says so). The card whose address moved to the switch stays until the switch is removed.
+3. Choose the **Mode** if it is shown, select **Review**, then **Apply**.
+
+A switch with a bond keeps it when you remove cards down to one; the one card then works like a plain uplink and you can add cards later.
+The cards of a bond are set up so that the node keeps its address, also when the card that carried it joins the bond.
+
+**This node's address on a VLAN.** A node can have addresses of its own on the VLANs of a switch, for example a network for
+migration or storage. The switch must filter VLANs. The new address does not become the node's main address and adds no default route.
+
+1. In the box of the switch, open **Actions** and select **Add this node's address**.
+2. Enter the **VLAN id** (a new id is added to the allowed ids of the switch) and choose **From DHCP** or **Enter an address**
+   (with prefix, for example `10.30.0.5/24`).
+3. Only if this VLAN should carry the node's default route: **Advanced**, **Use this VLAN for the default route of this node**, and the gateway.
+4. Select **Review**, then **Apply**. The address appears under **This node's address** with its VLAN. With DHCP the change does not wait for a lease.
+
+**Actions** also has **Remove address on VLAN N** (not possible for the address the controller uses to reach the node). Moving
+the node's main address onto a VLAN is not offered.
+
+**MTU.** **Actions**, **Edit MTU** sets one MTU (1280 to 9000) on the cards, the bond, the switch and the VLAN addresses of the
+switch together. The ports of the physical switch and the other nodes on that network must use the same MTU, or large packets
+are lost. Virtual machines need the same MTU in their own network settings; libvirt does not take an MTU for a network on a host bridge.
+
 **Add a network with a VLAN.** Select **Add network** in the box of the virtual switch, enter a name and, if the
 switch has VLANs, a VLAN number (empty means no tag). The dialog shows the ids already in use on the switch. When other
 nodes have a virtual switch with the same name, **Create the same network on ...** is selected: a virtual machine can
 only migrate to a node that has a network of the same name. **Actions** on the switch has **Edit VLANs** (refused while a
-network uses an id you remove) and **Remove** (not possible while networks or virtual machines use the switch; the
+network or an address of the node uses an id you remove) and **Remove** (not possible while networks or virtual machines use the switch; the
 node's address returns to the card). A bridge that somebody made by hand shows **Not managed by Virticle** and cannot be
 changed here.
 

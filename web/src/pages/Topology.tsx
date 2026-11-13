@@ -10,14 +10,23 @@ import { atLeast, useRole } from "../auth";
 import { DropdownMenu } from "../Menu";
 import { ErrorBox, StateBadge } from "../ui";
 import { NodeFilter, netEvents, nodeEvents } from "./dcShared";
-import { AddNetworkDialog, ChangeBanner, SwitchDialog, useHostnet } from "./VirtualSwitch";
-import { addBlocked, HostBridge, HostnetState } from "./vswitchApi";
+import { AddNetworkDialog, ChangeBanner, SwitchDialog, SwitchMode, useHostnet } from "./VirtualSwitch";
+import { addBlocked, addrIP, HostBridge, HostnetState } from "./vswitchApi";
 import "./topology.css";
 
 // The shape of GET /api/topology (internal/api/topology.go).
 interface Addr {
   address: string;
   management?: boolean;
+  /** An address of the node on a VLAN of the switch (the VLAN device `iface`). */
+  vlan?: number;
+  iface?: string;
+}
+interface Member {
+  name: string;
+  state: "up" | "down";
+  speedMbps?: number;
+  active?: boolean;
 }
 interface Uplink {
   name: string;
@@ -25,6 +34,9 @@ interface Uplink {
   state: string;
   speedMbps?: number;
   members?: string[];
+  mode?: "failover" | "lacp";
+  memberStates?: Member[];
+  lacpAnswered?: boolean;
   addresses: Addr[];
   management?: boolean;
 }
@@ -51,6 +63,7 @@ interface Switch {
   kind: "linux-bridge" | "openvswitch" | "libvirt" | "other";
   name: string;
   state?: string;
+  mtu?: number;
   uplinkNote?: string;
   uplinks: Uplink[];
   hostAddresses: Addr[];
@@ -80,8 +93,9 @@ function Addrs({ list }: { list: Addr[] }) {
   return (
     <>
       {list.filter((a) => !/^fe80:/i.test(a.address)).map((a) => (
-        <span key={a.address} className="mono topoaddr">
-          {a.address}
+        <span key={a.iface ?? "" + a.address} className="mono topoaddr">
+          {a.vlan ? <span className="muted">VLAN {a.vlan} </span> : null}
+          {a.address || <span className="muted">waiting for an address</span>}
           {a.management && <span className="topomgmt"> Management</span>}
         </span>
       ))}
@@ -100,8 +114,28 @@ function UplinkBox({ node, u, action }: { node: number; u: Uplink; action?: Reac
       </div>
       <div className="muted">
         {u.type === "bond" ? "Bond" : u.type === "vlan" ? "VLAN device" : "Network card"}
-        {u.members && u.members.length > 0 && <> of {u.members.join(", ")}</>}
+        {u.type === "bond" && u.mode && <>, {u.mode === "lacp" ? "load balance (LACP)" : "failover"}</>}
+        {!u.memberStates && u.members && u.members.length > 0 && <> of {u.members.join(", ")}</>}
       </div>
+      {u.memberStates && u.memberStates.length > 0 && (
+        <ul className="topoifs" aria-label={`Cards of ${u.name}`}>
+          {u.memberStates.map((m) => (
+            <li key={m.name} className="topoif" data-topo-id={`member:${m.name}`}>
+              <StateBadge state={m.state} />
+              <span className="mono">{m.name}</span>
+              {speed(m.speedMbps) && <span className="muted">{speed(m.speedMbps)}</span>}
+              {m.active && u.mode === "failover" && <span className="topomgmt">Active</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {u.type === "bond" && u.mode === "lacp" && u.lacpAnswered === false && (
+        <div>
+          <span className="topodown" data-topo-id={`lacp:${u.name}`}>
+            LACP not answered by the switch
+          </span>
+        </div>
+      )}
       {u.addresses.length > 0 && (
         <div>
           <Addrs list={u.addresses} />
@@ -156,6 +190,10 @@ interface SwitchActions {
   canAddNetwork: boolean;
   onAddNetwork: () => void;
   onEditVlans: () => void;
+  onEditUplinks: () => void;
+  onEditMtu: () => void;
+  onAddAddress: () => void;
+  onRemoveAddress: (id: number) => void;
   onRemove: () => void;
 }
 
@@ -170,6 +208,7 @@ function SwitchBox({ node, s, accents, act }: { node: number; s: Switch; accents
         <span className="muted">{KIND[s.kind]}</span>
         {s.state && s.kind !== "other" && <StateBadge state={s.state === "up" ? "up" : s.state === "down" ? "down" : "unknown"} />}
         {info?.vlanFiltering && <span className="muted">VLANs {info.vlans && info.vlans !== "2-4094" ? info.vlans : "all"}</span>}
+        {s.mtu && s.mtu !== 1500 ? <span className="muted">MTU {s.mtu}</span> : null}
         {act && s.kind === "linux-bridge" && info && !info.managed && info.readOnly !== "managed by libvirt" && <span className="muted">Not managed by Virticle</span>}
         {act && (
           <span className="vsacts">
@@ -183,7 +222,19 @@ function SwitchBox({ node, s, accents, act }: { node: number; s: Switch; accents
                 label="Actions"
                 ariaLabel={`Actions for ${s.name}`}
                 items={[
+                  ...(info.uplink ? [{ label: "Edit uplinks", run: act.onEditUplinks }] : []),
                   ...(act.st?.vlanCapable ? [{ label: "Edit VLANs", run: act.onEditVlans }] : []),
+                  ...(info.vlanFiltering ? [{ label: "Add this node's address", run: act.onAddAddress }] : []),
+                  ...(info.vlanAddresses ?? []).map((v) => {
+                    const used = !!v.address && (act.st?.controllerAddresses ?? []).includes(addrIP(v.address));
+                    return {
+                      label: `Remove address on VLAN ${v.id}`,
+                      run: () => act.onRemoveAddress(v.id),
+                      disabled: used,
+                      title: used ? "The controller reaches this node at this address." : undefined,
+                    };
+                  }),
+                  { label: "Edit MTU", run: act.onEditMtu },
                   { label: removeWhy ? "Remove (in use)" : "Remove", run: act.onRemove, danger: true, disabled: !!removeWhy, title: removeWhy || undefined },
                 ]}
               />
@@ -242,7 +293,7 @@ function filterNode(n: TopoNode, text: string): TopoNode {
 function NodeBody({ n, accents, admin, reload }: { n: TopoNode; accents: boolean; admin: boolean; reload: () => void }) {
   const net = useHostnet(n.node, admin && !n.error);
   const st = net.data;
-  const [dlg, setDlg] = useState<{ mode: "add" | "vlans" | "remove"; bridge?: HostBridge; uplink?: string } | null>(null);
+  const [dlg, setDlg] = useState<{ mode: SwitchMode; bridge?: HostBridge; uplink?: string; vlanId?: number } | null>(null);
   const [addNet, setAddNet] = useState<string | null>(null);
   const changed = () => {
     reload();
@@ -259,6 +310,10 @@ function NodeBody({ n, accents, admin, reload }: { n: TopoNode; accents: boolean
       canAddNetwork: s.kind === "linux-bridge",
       onAddNetwork: () => setAddNet(s.name),
       onEditVlans: () => info && setDlg({ mode: "vlans", bridge: info }),
+      onEditUplinks: () => info && setDlg({ mode: "uplinks", bridge: info }),
+      onEditMtu: () => info && setDlg({ mode: "mtu", bridge: info }),
+      onAddAddress: () => info && setDlg({ mode: "address", bridge: info }),
+      onRemoveAddress: (id) => info && setDlg({ mode: "removeaddr", bridge: info, vlanId: id }),
       onRemove: () => info && setDlg({ mode: "remove", bridge: info }),
     };
   };
@@ -306,7 +361,7 @@ function NodeBody({ n, accents, admin, reload }: { n: TopoNode; accents: boolean
           </div>
         </section>
       )}
-      {dlg && st && <SwitchDialog key={dlg.mode + (dlg.bridge?.name ?? "") + (dlg.uplink ?? "")} node={n.node} st={st} mode={dlg.mode} bridge={dlg.bridge} uplink={dlg.uplink} onClose={() => setDlg(null)} onChanged={changed} />}
+      {dlg && st && <SwitchDialog key={dlg.mode + (dlg.bridge?.name ?? "") + (dlg.uplink ?? "") + (dlg.vlanId ?? "")} node={n.node} st={st} mode={dlg.mode} bridge={dlg.bridge} uplink={dlg.uplink} vlanId={dlg.vlanId} onClose={() => setDlg(null)} onChanged={changed} />}
       {addNet !== null && (
         <AddNetworkDialog
           node={n.node}

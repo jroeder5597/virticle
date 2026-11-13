@@ -34,7 +34,7 @@ test.describe.serial("virtual switch dialog", () => {
     await page.getByRole("button", { name: "Add virtual switch" }).click();
     const dlg = page.getByRole("dialog", { name: "Add virtual switch" });
     await expect(dlg.getByLabel("Name")).toHaveValue(/^vsw\d+$/);
-    await expect(dlg.getByRole("combobox", { name: "Uplink" })).toBeVisible();
+    await expect(dlg.getByRole("group", { name: "Uplinks" })).toBeVisible();
     if (n!.vlanCapable) await expect(dlg.getByRole("checkbox", { name: "VLANs" })).toBeChecked();
     else await expect(dlg.getByText("VLANs need libvirt 11 or later on this node.")).toBeVisible();
     // one Advanced section, closed: the confirm time is inside it
@@ -42,8 +42,7 @@ test.describe.serial("virtual switch dialog", () => {
     await dlg.getByRole("button", { name: "Advanced" }).click();
     await expect(dlg.getByLabel("Confirm time (seconds)")).toHaveValue("90");
     // choose the free card: when it has an address, the dialog says what happens to it
-    await dlg.getByRole("combobox", { name: "Uplink" }).click();
-    await page.getByRole("listbox").last().getByRole("option").filter({ hasText: n!.card }).first().click();
+    await dlg.getByRole("group", { name: "Uplinks" }).getByRole("checkbox", { name: new RegExp("^" + n!.card + " ") }).check();
     // Review is read-only
     await dlg.getByRole("button", { name: "Review" }).click();
     await expect(dlg.getByText("This will happen on the node:")).toBeVisible();
@@ -66,7 +65,7 @@ test.describe.serial("virtual switch dialog", () => {
     test.skip((await unused.count()) === 0, "this node has no card outside a bridge");
     await unused.getByRole("button", { name: "Use for a new virtual switch" }).first().click();
     const dlg = page.getByRole("dialog", { name: "Add virtual switch" });
-    await expect(dlg.getByRole("combobox", { name: "Uplink" })).not.toContainText("None (internal only)");
+    await expect(dlg.getByRole("group", { name: "Uplinks" }).getByRole("checkbox", { checked: true })).not.toHaveCount(0);
     await dlg.getByRole("button", { name: "Cancel" }).click();
     await expect(dlg).toBeHidden();
   });

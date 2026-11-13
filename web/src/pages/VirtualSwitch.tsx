@@ -18,6 +18,7 @@ import {
   failureWords,
   freeCards,
   HostBridge,
+  HostNic,
   HostnetState,
   NetBody,
   NetPlan,
@@ -212,22 +213,66 @@ function Run({ task, timeout, started }: { task: Task | undefined; timeout: numb
   );
 }
 
-// --- add, edit VLANs, remove ---
+// --- add, edit uplinks, edit VLANs, add or remove this node's address on a VLAN, edit MTU, remove ---
 
-type Mode = "add" | "vlans" | "remove";
+export type SwitchMode = "add" | "uplinks" | "vlans" | "address" | "removeaddr" | "mtu" | "remove";
 const isDone = (t?: Task) => !!t && t.status !== "running";
 const cardLine = (n: { name: string; state: string; addresses: string[]; speedMbps?: number }) =>
-  `${n.name} (${n.state === "up" ? "link up" : n.state === "down" ? "no link" : "link unknown"}${shownAddrs(n.addresses).length ? ", " + shownAddrs(n.addresses).join(", ") : ", no address"})`;
+  `${n.name} (${n.state === "up" ? "link up" : n.state === "down" ? "no link" : "link unknown"}${n.speedMbps ? ", " + (n.speedMbps >= 1000 ? n.speedMbps / 1000 + " Gbit/s" : n.speedMbps + " Mbit/s") : ""}${shownAddrs(n.addresses).length ? ", " + shownAddrs(n.addresses).join(", ") : ", no address"})`;
 
-export function SwitchDialog(props: { node: number; st: HostnetState; mode: Mode; bridge?: HostBridge; uplink?: string; onClose: () => void; onChanged: () => void }) {
+const MODE_OPTIONS = [
+  { value: "failover", label: "Failover (works with any switch)" },
+  { value: "lacp", label: "Load balance, needs LACP on the switch" },
+];
+const MODE_HINT: Record<string, string> = {
+  failover: "One card carries the traffic. If its link fails, another card takes over.",
+  lacp: "The traffic is spread over all cards. The ports of the physical switch must be set up for LACP.",
+};
+
+/** The list of cards with a checkbox each, and the Mode select once there is a bond to set up. */
+function UplinkPicker(props: { cards: HostNic[]; chosen: Set<string>; onChoose: (s: Set<string>) => void; locked?: string; showMode: boolean; bondMode: string; onMode: (m: string) => void }) {
+  const toggle = (name: string, on: boolean) => {
+    const s = new Set(props.chosen);
+    on ? s.add(name) : s.delete(name);
+    props.onChoose(s);
+  };
+  return (
+    <>
+      <Field label="Uplinks" group>
+        {props.cards.length === 0 && <p className="muted">This node has no free network card.</p>}
+        {props.cards.map((c) => (
+          <label className="check" key={c.name}>
+            <input type="checkbox" checked={props.chosen.has(c.name)} disabled={props.locked === c.name} onChange={(e) => toggle(c.name, e.target.checked)} />
+            {cardLine(c)}
+          </label>
+        ))}
+        {props.locked && <small>{props.locked} carries this node's address on the switch and stays until the switch is removed.</small>}
+      </Field>
+      {props.showMode && (
+        <Field label="Mode" hint={MODE_HINT[props.bondMode]}>
+          <Select label="Mode" value={props.bondMode} onChange={props.onMode} options={MODE_OPTIONS} />
+        </Field>
+      )}
+    </>
+  );
+}
+
+export function SwitchDialog(props: { node: number; st: HostnetState; mode: SwitchMode; bridge?: HostBridge; uplink?: string; vlanId?: number; onClose: () => void; onChanged: () => void }) {
   const { node, st, mode, bridge } = props;
-  const cards = freeCards(st);
-  const firstFree = cards.find((c) => c.name !== st.managementInterface);
+  const free = freeCards(st);
+  const firstFree = free.find((c) => c.name !== st.managementInterface);
   const [name, setName] = useState(st.nextBridgeName || "vsw0");
-  const [uplink, setUplink] = useState(props.uplink ?? firstFree?.name ?? "");
+  const [chosen, setChosen] = useState<Set<string>>(() => new Set(mode === "uplinks" ? bridge?.uplinks ?? (bridge?.uplink ? [bridge.uplink] : []) : props.uplink ? [props.uplink] : firstFree ? [firstFree.name] : []));
+  const [bondMode, setBondMode] = useState<string>(bridge?.bondMode || "failover");
   const [vlanOn, setVlanOn] = useState(st.vlanCapable);
   const initialIds = bridge?.vlans && bridge.vlans !== "2-4094" ? bridge.vlans : "";
   const [ids, setIds] = useState(mode === "vlans" ? initialIds : "");
+  const [mtu, setMtu] = useState(mode === "mtu" ? String(bridge?.mtu || 1500) : "");
+  const [vlanId, setVlanId] = useState("");
+  const [method, setMethod] = useState("dhcp");
+  const [address, setAddress] = useState("");
+  const [defRoute, setDefRoute] = useState(false);
+  const [gateway, setGateway] = useState("");
   const [secs, setSecs] = useState(String(DEFAULT_CONFIRM_SECONDS));
   const [stage, setStage] = useState<"form" | "plan" | "run">("form");
   const [plan, setPlan] = useState<NetPlan | undefined>();
@@ -239,15 +284,56 @@ export function SwitchDialog(props: { node: number; st: HostnetState; mode: Mode
   const changed = useRef(false);
 
   const timeout = Math.min(600, Math.max(30, Number(secs) || DEFAULT_CONFIRM_SECONDS));
-  const card = st.interfaces.find((n) => n.name === uplink);
-  const moving = mode === "add" && !!card && shownAddrs(card.addresses).length > 0;
-  const mgmt = mode === "add" ? !!uplink && st.managementInterface === uplink : bridge?.name === st.managementInterface;
+  const picked = [...chosen];
+  const cardOf = (n: string) => st.interfaces.find((i) => i.name === n);
+  // The card whose configuration the switch takes over: the one the controller uses, else the first with an address.
+  const mover = mode === "add" ? (picked.includes(st.managementInterface ?? "") ? cardOf(st.managementInterface!) : picked.map(cardOf).find((c) => c && shownAddrs(c.addresses).length > 0)) : undefined;
+  const mgmt =
+    mode === "add"
+      ? !!st.managementInterface && chosen.has(st.managementInterface)
+      : mode === "address" || mode === "removeaddr"
+        ? false
+        : bridge?.name === st.managementInterface;
+  const bondExists = !!bridge?.bond;
+  const showMode = picked.length >= 2 || (mode === "uplinks" && bondExists);
+  const mtuNum = mtu.trim() === "" ? 0 : Number(mtu);
+  const sw = bridge?.name ?? "";
+  const vlanAddr = bridge?.vlanAddresses?.find((v) => v.id === props.vlanId);
+  const base = { timeoutSeconds: timeout };
   const body: NetBody =
     mode === "add"
-      ? { action: "create", bridge: name.trim(), uplink: uplink || undefined, moveAddresses: !!uplink, vlanAware: vlanOn, vlans: vlanOn ? ids.trim() : undefined, timeoutSeconds: timeout }
-      : mode === "vlans"
-        ? { action: "set-vlans", bridge: bridge!.name, vlanAware: true, vlans: ids.trim(), timeoutSeconds: timeout }
-        : { action: "delete", bridge: bridge!.name, timeoutSeconds: timeout };
+      ? {
+          action: "create",
+          bridge: name.trim(),
+          uplinks: picked.length ? picked : undefined,
+          bondMode: picked.length >= 2 ? bondMode : undefined,
+          moveAddresses: picked.length > 0,
+          vlanAware: vlanOn,
+          vlans: vlanOn ? ids.trim() : undefined,
+          mtu: mtuNum || undefined,
+          ...base,
+        }
+      : mode === "uplinks"
+        ? { action: "set-uplinks", bridge: sw, uplinks: picked, bondMode: showMode ? bondMode : undefined, ...base }
+        : mode === "vlans"
+          ? { action: "set-vlans", bridge: sw, vlanAware: true, vlans: ids.trim(), ...base }
+          : mode === "mtu"
+            ? { action: "set-mtu", bridge: sw, mtu: mtuNum, ...base }
+            : mode === "address"
+              ? {
+                  action: "add-vlan-address",
+                  bridge: sw,
+                  vlanId: Number(vlanId) || 0,
+                  addressMethod: method as "dhcp" | "static",
+                  address: method === "static" ? address.trim() : undefined,
+                  defaultRoute: defRoute,
+                  gateway: defRoute && method === "static" ? gateway.trim() : undefined,
+                  ...base,
+                }
+              : mode === "removeaddr"
+                ? { action: "remove-vlan-address", bridge: sw, vlanId: props.vlanId, ...base }
+                : { action: "delete", bridge: sw, ...base };
+  const direct = mode === "remove" || mode === "removeaddr";
 
   useEffect(() => {
     if (isDone(task) && !changed.current) {
@@ -262,7 +348,7 @@ export function SwitchDialog(props: { node: number; st: HostnetState; mode: Mode
 
   const review = async (e: FormEvent) => {
     e.preventDefault();
-    if (mode === "remove") return apply();
+    if (direct) return apply();
     setBusy(true);
     setError(undefined);
     try {
@@ -290,9 +376,18 @@ export function SwitchDialog(props: { node: number; st: HostnetState; mode: Mode
     }
   };
 
-  const title = mode === "add" ? "Add virtual switch" : mode === "vlans" ? `Edit VLANs of ${bridge!.name}` : `Remove virtual switch ${bridge!.name}`;
+  const title = {
+    add: "Add virtual switch",
+    uplinks: `Edit uplinks of ${sw}`,
+    vlans: `Edit VLANs of ${sw}`,
+    address: `Add this node's address on ${sw}`,
+    removeaddr: `Remove this node's address on VLAN ${props.vlanId} of ${sw}`,
+    mtu: `Edit MTU of ${sw}`,
+    remove: `Remove virtual switch ${sw}`,
+  }[mode];
   const running = stage === "run" && !isDone(task);
-  const noCards = cards.length === 0;
+  const lockedCard = mode === "uplinks" && bridge?.movedAddresses ? bridge.uplink : undefined;
+  const pickerCards = mode === "uplinks" ? [...(bridge?.uplinks ?? []).map(cardOf).filter((c): c is HostNic => !!c), ...free] : free;
 
   return (
     <Modal title={title} onClose={close}>
@@ -303,15 +398,8 @@ export function SwitchDialog(props: { node: number; st: HostnetState; mode: Mode
               <Field label="Name">
                 <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={15} pattern="[A-Za-z0-9_\-]+" autoFocus />
               </Field>
-              <Field label="Uplink">
-                <Select
-                  label="Uplink"
-                  value={uplink}
-                  onChange={setUplink}
-                  options={[{ value: "", label: "None (internal only)" }, ...cards.map((c) => ({ value: c.name, label: cardLine(c) }))]}
-                />
-              </Field>
-              {noCards && <p className="muted">This node has no free network card, so the new switch can only connect virtual machines on this node.</p>}
+              <UplinkPicker cards={free} chosen={chosen} onChoose={setChosen} showMode={showMode} bondMode={bondMode} onMode={setBondMode} />
+              {free.length === 0 && <p className="muted">The new switch can only connect virtual machines on this node.</p>}
               {st.vlanCapable ? (
                 <label className="check">
                   <input type="checkbox" checked={vlanOn} onChange={(e) => setVlanOn(e.target.checked)} />
@@ -320,14 +408,24 @@ export function SwitchDialog(props: { node: number; st: HostnetState; mode: Mode
               ) : (
                 <p className="muted">VLANs need libvirt 11 or later on this node.</p>
               )}
-              {moving && (
+              {mover && (
                 <StatusLine status="info">
-                  This node's address {shownAddrs(card!.addresses).map(addrIP).join(", ")} moves to the virtual switch. The node stays reachable at the same address.
+                  This node's address {shownAddrs(mover.addresses).map(addrIP).join(", ")} moves to the virtual switch. The node stays reachable at the same address.
                 </StatusLine>
               )}
               {mgmt && (
                 <StatusLine status="warning">
                   This is the card the controller uses to reach the node. If the node cannot be reached afterwards, it restores its previous settings by itself within {timeout} seconds.
+                </StatusLine>
+              )}
+            </>
+          )}
+          {mode === "uplinks" && (
+            <>
+              <UplinkPicker cards={pickerCards} chosen={chosen} onChoose={setChosen} locked={lockedCard} showMode={showMode} bondMode={bondMode} onMode={setBondMode} />
+              {mgmt && (
+                <StatusLine status="warning">
+                  This switch carries the address the controller uses to reach the node. If the node cannot be reached afterwards, it restores its previous settings by itself within {timeout} seconds.
                 </StatusLine>
               )}
             </>
@@ -340,11 +438,44 @@ export function SwitchDialog(props: { node: number; st: HostnetState; mode: Mode
               {bridge!.networks.length > 0 && <p className="muted">Networks on this switch keep their VLAN: {bridge!.networks.join(", ")}.</p>}
             </>
           )}
+          {mode === "mtu" && (
+            <>
+              <Field label="MTU" hint="Between 1280 and 9000. The same value is set on the cards, the bond, the switch and the VLAN interfaces.">
+                <input type="number" min={1280} max={9000} value={mtu} onChange={(e) => setMtu(e.target.value)} required autoFocus />
+              </Field>
+              <p className="muted">The ports of the physical switch and the other nodes must use the same MTU. Virtual machines need it in their own network settings too.</p>
+              {mgmt && (
+                <StatusLine status="warning">
+                  This switch carries the address the controller uses to reach the node. If the node cannot be reached afterwards, it restores its previous settings by itself within {timeout} seconds.
+                </StatusLine>
+              )}
+            </>
+          )}
+          {mode === "address" && (
+            <>
+              <Field label="VLAN id" hint={`Between 2 and 4094.${bridge?.vlans && bridge.vlans !== "2-4094" ? ` Allowed on this switch now: ${bridge.vlans}. A new id is added to the list.` : ""}`}>
+                <input type="number" min={2} max={4094} value={vlanId} onChange={(e) => setVlanId(e.target.value)} required autoFocus />
+              </Field>
+              <Field label="Address">
+                <Select label="Address" value={method} onChange={setMethod} options={[{ value: "dhcp", label: "From DHCP" }, { value: "static", label: "Enter an address" }]} />
+              </Field>
+              {method === "static" && (
+                <Field label="IP address with prefix" hint="For example 10.30.0.5/24.">
+                  <input value={address} onChange={(e) => setAddress(e.target.value)} required placeholder="10.30.0.5/24" />
+                </Field>
+              )}
+            </>
+          )}
+          {mode === "removeaddr" && (
+            <p>
+              Remove this node's address{vlanAddr?.address ? ` ${vlanAddr.address}` : ""} on VLAN {props.vlanId} of <strong>{sw}</strong>? The VLAN stays allowed on the switch.
+            </p>
+          )}
           {mode === "remove" && (
             <>
               <p>
-                Remove the virtual switch <strong>{bridge!.name}</strong> from this node?
-                {bridge!.movedAddresses && bridge!.uplink ? ` This node's address returns to ${bridge!.uplink}.` : bridge!.uplink ? ` ${bridge!.uplink} becomes a plain network card again.` : ""}
+                Remove the virtual switch <strong>{sw}</strong> from this node?
+                {bridge!.movedAddresses && bridge!.uplink ? ` This node's address returns to ${bridge!.uplink}.` : bridge!.uplink ? ` ${(bridge!.uplinks ?? [bridge!.uplink]).join(", ")} become plain network cards again.` : ""}
               </p>
               {mgmt && (
                 <StatusLine status="warning">
@@ -353,12 +484,30 @@ export function SwitchDialog(props: { node: number; st: HostnetState; mode: Mode
               )}
             </>
           )}
-          {mode !== "remove" && (
+          {!direct && (
             <DialogAdvanced>
-              {(mode === "vlans" || vlanOn) && mode === "add" && (
+              {mode === "add" && vlanOn && (
                 <Field label="Allowed VLAN ids" hint="Leave empty to allow all. For example 10,20,30-40.">
                   <input value={ids} onChange={(e) => setIds(e.target.value)} placeholder="All" />
                 </Field>
+              )}
+              {mode === "add" && (
+                <Field label="MTU" hint="Leave empty to keep the cards as they are. Between 1280 and 9000.">
+                  <input type="number" min={1280} max={9000} value={mtu} onChange={(e) => setMtu(e.target.value)} placeholder="Unchanged" />
+                </Field>
+              )}
+              {mode === "address" && (
+                <>
+                  <label className="check">
+                    <input type="checkbox" checked={defRoute} onChange={(e) => setDefRoute(e.target.checked)} />
+                    Use this VLAN for the default route of this node
+                  </label>
+                  {defRoute && method === "static" && (
+                    <Field label="Gateway">
+                      <input value={gateway} onChange={(e) => setGateway(e.target.value)} required placeholder="10.30.0.1" />
+                    </Field>
+                  )}
+                </>
               )}
               <Field label="Confirm time (seconds)" hint="How long the node waits for the controller to confirm before it restores its settings.">
                 <input type="number" min={30} max={600} value={secs} onChange={(e) => setSecs(e.target.value)} />
@@ -370,12 +519,12 @@ export function SwitchDialog(props: { node: number; st: HostnetState; mode: Mode
             <button type="button" onClick={close}>
               Cancel
             </button>
-            {mode === "remove" ? (
+            {direct ? (
               <button className="danger" disabled={busy}>
                 Remove
               </button>
             ) : (
-              <button className="primary" disabled={busy}>
+              <button className="primary" disabled={busy || (mode === "uplinks" && picked.length === 0)}>
                 Review
               </button>
             )}

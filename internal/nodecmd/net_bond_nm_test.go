@@ -168,5 +168,64 @@ func TestNMVLANAddress(t *testing.T) {
 	d := vlanReq("dhcp", "")
 	d.VLANID = 31
 	has(t, "dhcp", cmdsOf(n.plan(d)), "ipv4.method auto ipv4.ignore-auto-dns yes ipv4.never-default yes")
-	_ = f
+	// an id outside the list is added to it; apply, roll back, apply again and remove
+	out := vlanReq("static", "10.50.0.5/24")
+	out.VLANID = 50
+	p = n.plan(out)
+	has(t, "list grows", strings.Join(p.Summary, "\n"), "VLAN 50 was not in the list of allowed ids")
+	has(t, "port ids", cmdsOf(p), "bridge-port.vlans")
+	id := n.apply(out)
+	n.ok("", "net-run", id)
+	n.ok("", "net-rollback", id, "timer")
+	for _, w := range []string{"nmcli connection delete id virticle-vlan-br0.50", "ip link del br0.50", "bridge vlan del dev br0 vid 50 self"} {
+		if !f.ran(w) {
+			t.Errorf("rollback did not run %q", w)
+		}
+	}
+	confirmed(n, vlanReq("static", "10.30.0.5/24"))
+	rm := nodeproto.NetRequest{Action: nodeproto.NetDelVLANAddr, Bridge: "br0", VLANID: 30, LibvirtVersion: libvirt113, ControllerAddrs: []string{"192.0.2.10"}}
+	p = n.plan(rm)
+	for _, w := range []string{"nmcli connection delete id virticle-vlan-br0.30", "bridge vlan del dev br0 vid 30 self", "nmcli connection modify id virticle-br0 bridge.vlans"} {
+		has(t, "remove", cmdsOf(p), w)
+	}
+	n.refusedPlan("controller on it", func() nodeproto.NetRequest { r := rm; r.ControllerAddrs = []string{"10.30.0.5"}; return r }(), "controller reaches this node through br0.30")
+	n.f.link("br0.30").addrs = []fAddr{{"10.30.0.5/24", false}}
+	n.refusedPlan("controller on it", func() nodeproto.NetRequest { r := rm; r.ControllerAddrs = []string{"10.30.0.5"}; return r }(), "controller reaches this node through br0.30")
+}
+
+func TestNMMTU(t *testing.T) {
+	n := newNMBondNode(t)
+	f := n.f
+	r := bondReq("", "eth0", "eth3")
+	r.MTU = 9000
+	p := n.plan(r)
+	cmds := cmdsOf(p)
+	for _, w := range []string{"connection add type bridge ifname br0", "802-3-ethernet.mtu 9000"} {
+		has(t, "create", cmds, w)
+	}
+	for _, c := range p.Commands {
+		if strings.Contains(c, "connection add") && !strings.Contains(c, "802-3-ethernet.mtu 9000") {
+			t.Errorf("a profile without the MTU: %s", c)
+		}
+	}
+	confirmed(n, r)
+	for _, l := range []string{"eth0", "eth3", "b-br0", "br0"} {
+		if x := f.link(l); x != nil {
+			x.mtu = 9000
+		}
+	}
+	set := nodeproto.NetRequest{Action: nodeproto.NetSetMTU, Bridge: "br0", MTU: 1500, LibvirtVersion: libvirt113, ControllerAddrs: []string{"192.0.2.10"}}
+	p = n.plan(set)
+	for _, w := range []string{"nmcli connection modify id virticle-port-eth0 802-3-ethernet.mtu 1500", "nmcli connection modify id virticle-bond-b-br0 802-3-ethernet.mtu 1500",
+		"nmcli connection modify id virticle-br0 802-3-ethernet.mtu 1500", "ip link set dev br0 mtu 1500", "ip link set dev eth0 mtu 1500"} {
+		has(t, "set-mtu", cmdsOf(p), w)
+	}
+	id := n.apply(set)
+	n.ok("", "net-run", id)
+	n.ok("", "net-rollback", id, "timer")
+	for _, w := range []string{"nmcli connection modify id virticle-br0 802-3-ethernet.mtu 9000", "ip link set dev eth0 mtu 9000"} {
+		if !f.ran(w) {
+			t.Errorf("rollback did not run %q", w)
+		}
+	}
 }

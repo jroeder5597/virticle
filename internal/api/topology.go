@@ -152,6 +152,7 @@ func uplinkOf(n hostNIC, all []hostNIC, mgmt map[string]bool) topoUplink {
 				}
 				u.MemberStates = append(u.MemberStates, topoMember{Name: m.Name, State: st, SpeedMbps: m.SpeedMbps, Active: m.Name == b.ActiveMember})
 			}
+			sort.Slice(u.MemberStates, func(i, j int) bool { return u.MemberStates[i].Name < u.MemberStates[j].Name })
 			if b.LACP != nil {
 				a := b.LACP.Answered
 				u.LACPAnswered = &a
