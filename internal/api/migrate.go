@@ -498,6 +498,15 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 		return nil, c
 	}
 	c.pass("Target node", dst.Name+" is connected")
+	if meta, merr := domainMeta(src, dom); merr == nil {
+		if rc := parseReplication(meta); rc != nil {
+			if rc.TargetNode == req.Target {
+				c.bad("Replica", "this VM is replicated to "+dst.Name+": its copy there is what a move to that node would collide with. Use \"Planned failover\" on the replica to move the VM there without losing anything, or stop replication first")
+			} else {
+				c.warn("Replica", "this VM is replicated to "+rc.TargetName+"; after the move the replication continues from the new node, and its next run copies all disks again")
+			}
+		}
+	}
 	if dstNode.Maintenance {
 		c.warn("Maintenance", dst.Name+" is marked as in maintenance; node evacuation never picks it, so this move is only sensible if you know why it is flagged")
 	}

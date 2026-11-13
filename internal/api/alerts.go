@@ -64,6 +64,7 @@ func (s *Server) runAlerts(ctx context.Context, every, first time.Duration) {
 		case <-time.After(wait):
 		}
 		wait = every
+		s.reconcileFailovers()
 		raised, cleared, all := tr.step(s.gatherAlertInput(time.Now()), time.Now())
 		alertHub.Lock()
 		alertHub.list = all
@@ -103,6 +104,9 @@ func (s *Server) gatherAlertInput(now time.Time) alertInput {
 		in.Pools = append(in.Pools, pools...)
 		in.Debounced = append(in.Debounced, storage...)
 		in.VMs = append(in.VMs, gatherBadVMs(h, n.ID, name)...)
+		reps, stale := gatherReplicas(h, n.ID, name)
+		in.Replicas = append(in.Replicas, reps...)
+		in.Stale = append(in.Stale, stale...)
 		if t, ok := s.migCertExpiry(h); ok {
 			in.MigCerts = append(in.MigCerts, alertMigCert{Node: n.ID, NodeName: name, NotAfter: t})
 		}
@@ -253,4 +257,33 @@ func (s *Server) listAlerts(w http.ResponseWriter, r *http.Request) {
 	// The pool-usage thresholds travel along so pickers can colour pools by the same limits.
 	c := alertConfig{PoolWarn: s.Alerts.PoolWarn, PoolCrit: s.Alerts.PoolCrit}.withDefaults()
 	writeJSON(w, map[string]any{"alerts": out, "poolWarn": c.PoolWarn, "poolCritical": c.PoolCrit})
+}
+
+// gatherReplicas reads the replica and old-copy markers of the node's VMs.
+func gatherReplicas(h *hostconn.Host, node int64, nodeName string) ([]alertReplica, []alertStale) {
+	doms, _, err := h.ConnectListAllDomains(1, 0)
+	if err != nil {
+		return nil, nil
+	}
+	var reps []alertReplica
+	var stale []alertStale
+	for _, d := range doms {
+		meta, err := domainMeta(h, d)
+		if err != nil || meta == "" {
+			continue
+		}
+		uuid := cluster.FormatUUID(d.UUID)
+		if rm := parseReplicaMeta(meta); rm != nil {
+			last := maxInt64(rm.Last, rm.Checked)
+			a := alertReplica{Node: node, NodeName: nodeName, UUID: uuid, Name: d.Name, Source: rm.SourceName, Every: rm.Every}
+			if last > 0 {
+				a.Last = time.Unix(last, 0)
+			}
+			reps = append(reps, a)
+		}
+		if sm := parseStale(meta); sm != nil {
+			stale = append(stale, alertStale{Node: node, NodeName: nodeName, UUID: uuid, Name: d.Name, To: sm.ToName})
+		}
+	}
+	return reps, stale
 }

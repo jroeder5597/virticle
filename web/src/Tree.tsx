@@ -341,7 +341,7 @@ export default function Tree() {
 
   const quick = useCallback(
     (v: VM): Quick[] => {
-      if (!canOp || v.template) return [];
+      if (!canOp || v.template || v.state === "replica" || v.state === "stale") return [];
       const go = (tab: string) => nav(`/vm/${v.node}/${v.uuid}?tab=${tab}`);
       if (v.state === "shutoff") return [{ label: powerLabel.start, icon: Play, run: () => power(v, "start") }];
       if (v.state === "paused") return [{ label: powerLabel.resume, icon: Play, run: () => power(v, "resume") }];
@@ -358,7 +358,7 @@ export default function Tree() {
     (v: VM): MenuItem[] => {
       const page = (tab?: string) => nav(`/vm/${v.node}/${v.uuid}` + (tab ? `?tab=${tab}` : ""));
       const items: MenuItem[] = [{ label: "Open", icon: ExternalLink, run: () => page() }];
-      if (!canOp) return items;
+      if (!canOp || v.state === "replica" || v.state === "stale") return items;
       const on = v.state !== "shutoff";
       if (v.state === "shutoff" && !v.template) items.push({ label: powerLabel.start, icon: Play, run: () => power(v, "start") });
       if (v.state === "paused") items.push({ label: powerLabel.resume, icon: Play, run: () => power(v, "resume") });

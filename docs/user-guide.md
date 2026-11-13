@@ -248,6 +248,67 @@ You do not choose. The list shows each backup as **Full** or **Incremental**, wi
 - **Delete** on a backup that later incremental backups need deletes them too, and the dialog says how many.
 - **Export** of an incremental backup puts it together into one full backup file.
 
+## Replication and failover
+
+A VM can have a copy on a second node, at most one interval old, that you start with one click when the first node
+fails. There is no shared storage: the copy is a set of disk files on the standby node. Failover is by hand; see
+[backlog-ha.md](backlog-ha.md) for what automatic failover would need.
+
+### Set it up
+
+1. Open the VM, **Overview**, card **Replication**, **Set up replication**.
+2. Pick **Replicate to** (the standby node) and **Every** (5 minutes, 15 minutes, 30 minutes, 1 hour, 6 hours, 1 day).
+3. **Save**. The first copy sends the whole VM; later copies send only what changed. The pool on the standby is chosen for you
+   (the one with the name of the VM's pool when it has room).
+
+The card shows the last copy (time and age), how much was sent, when the next copy is due, and a warning when a run failed or
+the copy is older than twice its interval. **Replicate now** copies at once. Disks must be qcow2 and the VM must have no
+passthrough devices; the dialog says what to change. The standby needs the VM's networks and bridges.
+
+On the standby the VM appears with the state **Replica**. It is inert: it cannot be started, edited, backed up, moved or
+deleted with the normal buttons, and backups, schedules, evacuation, network checks and bulk actions skip it. Its definition
+(CPU, memory, networks, firmware, UEFI variables) follows the source after every copy.
+
+### Fail over
+
+| | Source node online | Source node offline |
+|---|---|---|
+| Button on the replica | **Planned failover** | **Start here from the copy of HH:MM** |
+| What happens | The VM is shut down, the last changes are copied, the VM starts on the standby, replication runs back to the old node. | The VM starts on the standby from the newest copy that reads. |
+| What you lose | Nothing. | Everything the VM wrote after HH:MM. |
+
+1. Open the replica on the standby node.
+2. Click the button. Read the confirmation: it states what is lost and, for an offline node, the risk below.
+3. Confirm. The VM runs on the standby; the replica page becomes a normal VM page.
+
+**The risk of an unplanned failover.** Virticle cannot stop a node it cannot reach. If the VM is in fact still running on
+the old node (for instance only the network to it is down), two copies of the VM run at once with the same MAC and IP
+addresses. Each copy has its own disks, so no data is destroyed, but the copies diverge and you must throw one away. Only
+fail over when you know the node is down.
+
+**When the old node comes back.** Its VM is marked **Stale copy**: replication from it is switched off, it is powered off at
+once if it is running (within a minute of the node returning), it cannot be started, and an alert is raised. Its disks are never
+deleted by Virticle.
+
+1. Open the stale copy and choose **Replicate back**: the running VM is copied to this node as a new replica (a full copy), and
+   the stale copy and its disks are deleted when that copy is complete. Or **Delete VM** to discard the old copy.
+2. When the copy is current, open the replica on the old node and use **Planned failover** to fail back.
+
+After a planned failover the old VM is marked stale and replication back starts by itself.
+
+### Other things to know
+
+- **Stop replication** asks whether to delete the copy on the standby (yes by default). Deleting a replicated VM asks "Also delete
+  the replica" (yes by default).
+- Moving a replicated VM (migration) to its standby node is refused: use Planned failover. To another node it is allowed, and the
+  next copy sends everything again.
+- Snapshot revert, disk add, remove, resize or move, and restore make the next copy a full one; nothing to do.
+- A shut-off VM is copied once after it stops (its last writes), then not again until it is started.
+- The virtual TPM is not copied; the VM starts with an empty TPM on the standby (BitLocker asks for its recovery key).
+- Copies use the migration network and its limit. A copy needs free space on the standby for the changes (or the whole VM for a
+  full copy); when there is not enough, the run fails and the earlier copy is kept.
+- A cloned VM is not replicated.
+
 ## Migration
 
 ![Migration pre-flight](img/migrate.png)

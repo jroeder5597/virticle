@@ -13,6 +13,7 @@ import BackupsTab from "./Backups";
 import VMActions from "./VMActions";
 import Overview from "./VMOverview";
 import { TagEditor } from "./Tags";
+import { ReplicaCard, StaleCard } from "./Replication";
 
 export default function VMDetailPage() {
   const { node: nodeParam, uuid = "" } = useParams();
@@ -70,6 +71,7 @@ export default function VMDetailPage() {
     ["snapshots", "Snapshots"],
     ["backups", "Backups"],
   ].filter(([id]) => id !== "console" || role !== "viewer"); // a console is control
+  const replica = d.state === "replica"; // the standby's inert copy: only the Overview, and no actions
 
   return (
     <>
@@ -83,7 +85,7 @@ export default function VMDetailPage() {
           <TagEditor tags={d.tags ?? []} base={base} vmName={d.name} onChanged={vm.reload} />
         </div>
         <div className="actions">
-          <VMActions d={d} base={base} goto={goto} onChanged={vm.reload} run={act.run} busy={act.busy} />
+          {!replica && <VMActions d={d} base={base} goto={goto} onChanged={vm.reload} run={act.run} busy={act.busy} />}
         </div>
       </div>
       <ErrorBox error={act.error ?? vm.error} />
@@ -92,20 +94,22 @@ export default function VMDetailPage() {
           <strong>Storage not answering.</strong> {t}
         </p>
       ))}
+      {replica && <ReplicaCard d={d} base={base} />}
+      {d.state === "stale" && <StaleCard d={d} base={base} onChanged={vm.reload} />}
       <div className="tabs">
-        {tabs.map(([id, label]) => (
+        {(replica ? tabs.slice(0, 1) : tabs).map(([id, label]) => (
           <button key={id} className={tab === id ? "on" : ""} onClick={() => setParams(id === "overview" ? {} : { tab: id })}>
             {label}
           </button>
         ))}
       </div>
-      {tab === "overview" && <Overview d={d} base={base} onChanged={vm.reload} />}
-      {tab === "performance" && <PerformanceTab kind="vm" id={uuid} passthrough={d.passthroughDevices > 0} />}
-      {tab === "hardware" && <Hardware d={d} base={base} onChanged={vm.reload} />}
-      {tab === "console" && <ConsoleTab d={d} base={base} onChanged={vm.reload} />}
-      {tab === "snapshots" && <SnapshotsTab d={d} base={base} />}
-      {tab === "backups" && <BackupsTab d={d} base={base} />}
-      {tab === "xml" && <XMLEditor d={d} base={base} onSaved={vm.reload} />}
+      {(tab === "overview" || replica) && <Overview d={d} base={base} onChanged={vm.reload} />}
+      {!replica && tab === "performance" && <PerformanceTab kind="vm" id={uuid} passthrough={d.passthroughDevices > 0} />}
+      {!replica && tab === "hardware" && <Hardware d={d} base={base} onChanged={vm.reload} />}
+      {!replica && tab === "console" && <ConsoleTab d={d} base={base} onChanged={vm.reload} />}
+      {!replica && tab === "snapshots" && <SnapshotsTab d={d} base={base} />}
+      {!replica && tab === "backups" && <BackupsTab d={d} base={base} />}
+      {!replica && tab === "xml" && <XMLEditor d={d} base={base} onSaved={vm.reload} />}
     </>
   );
 }

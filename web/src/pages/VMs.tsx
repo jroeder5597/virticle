@@ -55,6 +55,8 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
       (!needle || [v.name, v.nodeName, v.state, ...(v.tags ?? [])].some((s) => s.toLowerCase().includes(needle))),
   );
   const keyOf = (v: VM) => v.node + "/" + v.uuid;
+  // A replica and an old copy cannot be started, changed or deleted in bulk.
+  const fixed = (v: VM) => v.state === "replica" || v.state === "stale";
   const picked = all.filter((v) => selected.has(keyOf(v)));
   const toggle = (v: VM) =>
     setSelected((s) => {
@@ -62,7 +64,8 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
       n.has(keyOf(v)) ? n.delete(keyOf(v)) : n.add(keyOf(v));
       return n;
     });
-  const allShown = list.length > 0 && list.every((v) => selected.has(keyOf(v)));
+  const selectable = list.filter((v) => !fixed(v));
+  const allShown = selectable.length > 0 && selectable.every((v) => selected.has(keyOf(v)));
   const confirm = useConfirm();
   const action = async (vm: VM, a: string) => {
     const spec = powerConfirm(a, [vm.name]);
@@ -104,7 +107,7 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
                   type="checkbox"
                   aria-label="Select all shown VMs"
                   checked={allShown}
-                  onChange={() => setSelected((s) => { const n = new Set(s); list.forEach((v) => (allShown ? n.delete(keyOf(v)) : n.add(keyOf(v)))); return n; })}
+                  onChange={() => setSelected((s) => { const n = new Set(s); selectable.forEach((v) => (allShown ? n.delete(keyOf(v)) : n.add(keyOf(v)))); return n; })}
                 />
               </th>
               <th>Name</th>
@@ -121,7 +124,7 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
             {list.map((vm) => (
               <tr key={vm.node + vm.uuid} className={selected.has(keyOf(vm)) ? "selected" : ""}>
                 <td className="sel">
-                  <input type="checkbox" aria-label={`Select ${vm.name}`} checked={selected.has(keyOf(vm))} onChange={() => toggle(vm)} />
+                  <input type="checkbox" aria-label={`Select ${vm.name}`} checked={selected.has(keyOf(vm))} disabled={fixed(vm)} title={fixed(vm) ? "A replica cannot be started or changed here" : undefined} onChange={() => toggle(vm)} />
                 </td>
                 <td className="vmname">
                   <Link to={`/vm/${vm.node}/${vm.uuid}`}>{vm.name}</Link>
@@ -136,7 +139,11 @@ export default function VMs({ fixedNode }: { fixedNode?: number } = {}) {
                 <td className="num">{bytes(vm.memoryKiB * 1024)}</td>
                 <UsageCells p={vm.state === "running" ? live?.vms[`${vm.node}/${vm.uuid}`] : undefined} />
                 <td className="actions">
-                  {vm.state === "shutoff" && vm.template ? null : vm.state === "shutoff" ? (
+                  {fixed(vm) ? (
+                    <button className="iconbtn" disabled aria-label={powerLabel.start} title={vm.state === "replica" ? "A replica cannot be started or changed here" : "An old copy cannot be started or changed here"}>
+                      <Play size={15} aria-hidden="true" />
+                    </button>
+                  ) : vm.state === "shutoff" && vm.template ? null : vm.state === "shutoff" ? (
                     <button className="iconbtn" disabled={act.busy} onClick={() => action(vm, "start")} aria-label={powerLabel.start} title={powerLabel.start}>
                       <Play size={15} aria-hidden="true" />
                     </button>
