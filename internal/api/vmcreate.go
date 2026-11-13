@@ -55,10 +55,10 @@ type createVMRequest struct {
 	// yes, and the web UI no longer sends it.
 	Serial *bool `json:"serial"`
 
-	fwDefaulted bool // Firmware came from defaultLinuxFirmware, not from the caller
-	seedPath   string // set while creating, once the seed volume exists
-	diskFormat string // driver type of the disk; qcow2 unless an existing volume says otherwise
-	tpmModel   string
+	fwDefaulted bool   // Firmware came from defaultLinuxFirmware, not from the caller
+	seedPath    string // set while creating, once the seed volume exists
+	diskFormat  string // driver type of the disk; qcow2 unless an existing volume says otherwise
+	tpmModel    string
 }
 
 type cloudInitRequest struct {
@@ -106,6 +106,18 @@ func (q *createVMRequest) normalize() error {
 		q.diskFormat = "qcow2"
 	}
 	return nil
+}
+
+// uefiMinMemoryMiB is the memory below which UEFI guests often fail to boot
+// (OVMF with a Linux kernel EFI stub, seen with cirros at 128 and 256 MiB).
+const uefiMinMemoryMiB = 512
+
+// uefiMemoryWarning is the non-blocking hint for a small UEFI guest.
+func (q createVMRequest) uefiMemoryWarning() string {
+	if q.Firmware == "uefi" && q.MemoryMiB > 0 && q.MemoryMiB < uefiMinMemoryMiB {
+		return "UEFI guests usually need at least 512 MiB to boot."
+	}
+	return ""
 }
 
 func (q createVMRequest) domainXML(diskPath string) string {
@@ -233,10 +245,13 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 		fail(w, badRequest("a VM named "+q.Name+" already exists on this node"))
 		return
 	}
+	var warnings []string
 	if q.Firmware == "uefi" || q.TPM || q.SecureBoot {
 		caps, err := nodeFwCaps(h)
 		if err == nil {
-			q.fallBackToBIOS(caps)
+			if q.fallBackToBIOS(caps) {
+				warnings = append(warnings, "This node has no UEFI firmware, so the VM uses BIOS.")
+			}
 			err = q.checkFirmware(caps)
 		}
 		if err != nil {
@@ -265,6 +280,9 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var uuid string
+	if w := q.uefiMemoryWarning(); w != "" {
+		warnings = append(warnings, w)
+	}
 	err = s.task(r, "create", q.Name, h.Name, func(func(float64)) error {
 		volName := q.Name + ".qcow2"
 		size := uint64(q.DiskGiB) << 30
@@ -333,6 +351,11 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		uuid = cluster.FormatUUID(dom.UUID)
+		if q.Firmware == "uefi" {
+			if note := useQcow2Nvram(h, dom); note != "" {
+				warnings = append(warnings, note)
+			}
+		}
 		if q.Start {
 			return h.DomainCreate(dom)
 		}
@@ -345,6 +368,9 @@ func (s *Server) createVM(w http.ResponseWriter, r *http.Request) {
 	// A VM that was defined but failed to start is still reported, with the
 	// start error, so the UI can take the user to it.
 	resp := map[string]string{"uuid": uuid}
+	if len(warnings) > 0 {
+		resp["warning"] = strings.Join(warnings, " ")
+	}
 	if err != nil {
 		resp["startError"] = err.Error()
 	}

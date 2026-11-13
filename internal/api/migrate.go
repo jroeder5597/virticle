@@ -247,7 +247,13 @@ func buildPlan(src *hostconn.Host, dom libvirt.Domain, mode string, c *checkList
 	for _, d := range p.Dom.Disks {
 		if d.Device == "cdrom" || d.Device == "floppy" {
 			if d.Path != "" {
-				p.Media = append(p.Media, d.Path)
+				if d.Device == "cdrom" && path.Base(d.Path) == seedVolumeName(p.Name) {
+					// The cloud-init seed this app made for the VM travels with
+					// it like a disk (and is removed from the source with them).
+					p.Files.add(d.Path, true, false)
+				} else {
+					p.Media = append(p.Media, d.Path)
+				}
 			}
 			continue
 		}
@@ -1052,6 +1058,28 @@ func (m *migRun) createActive() error {
 	return nil
 }
 
+// createNVRAM gives the target an empty qcow2 UEFI variable store to receive
+// the variables in the migration stream. Without the file libvirt would build
+// one from the raw firmware template, which it cannot do for qcow2 ("conversion
+// of the nvram template to another target format is not supported").
+func (m *migRun) createNVRAM() error {
+	d := m.plan.Dom
+	if d.NVRAMFormat != "qcow2" || d.NVRAM == "" {
+		return nil
+	}
+	if d.NVRAMTemplate == "" || !safePathRE.MatchString(d.NVRAM) || !safePathRE.MatchString(d.NVRAMTemplate) {
+		return fmt.Errorf("the VM's UEFI variable store has no usable firmware template, so %s cannot create it", m.dst.Name)
+	}
+	if ex, err := m.dst.Exists(d.NVRAM); err != nil || ex[d.NVRAM] {
+		return fmt.Errorf("the UEFI variable file %s already exists on %s", d.NVRAM, m.dst.Name)
+	}
+	m.created = append(m.created, d.NVRAM)
+	if err := m.dst.NewNVRAM(d.NVRAMTemplate, d.NVRAM); err != nil {
+		return fmt.Errorf("creating the UEFI variable store on %s (is the same OVMF package installed there?): %w", m.dst.Name, err)
+	}
+	return nil
+}
+
 // rollbackDst removes what this run created on the target and describes
 // anything it could not remove.
 func (m *migRun) rollbackDst() string {
@@ -1131,6 +1159,9 @@ func (m *migRun) runOnline() error {
 		return withNote(err, m.rollbackDst())
 	}
 	if err := m.createActive(); err != nil {
+		return withNote(err, m.rollbackDst())
+	}
+	if err := m.createNVRAM(); err != nil {
 		return withNote(err, m.rollbackDst())
 	}
 	if err := m.checkCancel(); err != nil {

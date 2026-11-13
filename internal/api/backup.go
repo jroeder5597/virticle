@@ -396,6 +396,19 @@ func (m *bkRun) run() (err error) {
 			return fmt.Errorf("saving the UEFI variables %s: %w", m.md.NVRAM, err)
 		}
 		man.NVRAM = backupNVRAMFile
+		man.NVRAMFormat = m.md.NVRAMFormat
+		if man.NVRAMFormat == "qcow2" {
+			if err := m.checkQcow2NVRAM(srcWork.file(backupNVRAMFile)); err != nil {
+				// A running VM may have been writing while the file was copied: once more.
+				_ = m.src.Remove(srcWork.file(backupNVRAMFile))
+				if err2 := m.src.Copy(m.md.NVRAM, srcWork.file(backupNVRAMFile)); err2 != nil {
+					return fmt.Errorf("saving the UEFI variables %s: %w", m.md.NVRAM, err2)
+				}
+				if err := m.checkQcow2NVRAM(srcWork.file(backupNVRAMFile)); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	if err = m.measure(srcWork); err != nil {
 		return err
@@ -901,3 +914,17 @@ func (s *Server) deleteBackup(w http.ResponseWriter, r *http.Request) {
 
 // VIR_DOMAIN_BACKUP_BEGIN_QUIESCE, which go-libvirt does not name.
 const backupBeginQuiesce libvirt.DomainBackupBeginFlags = 2
+
+// checkQcow2NVRAM verifies the copy of a qcow2 UEFI variable store: it must
+// read as qcow2 and not be marked corrupt (a running VM could have changed
+// the file during the copy).
+func (m *bkRun) checkQcow2NVRAM(file string) error {
+	out, err := m.src.QemuInfo(file, false)
+	if err != nil {
+		return fmt.Errorf("the saved UEFI variables are not readable: %s", impFirstLine(out))
+	}
+	if !strings.Contains(out, `"format": "qcow2"`) || strings.Contains(out, `"corrupt": true`) {
+		return fmt.Errorf("the saved UEFI variables are not a consistent qcow2 file")
+	}
+	return nil
+}

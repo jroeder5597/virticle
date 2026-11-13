@@ -219,6 +219,18 @@ func (h *Host) ChmodWork(dir, mode string) error {
 	return nil
 }
 
+// NewNVRAM creates dst, a qcow2 UEFI variable store inside the NVRAM
+// directory, from the raw VARS template of the firmware package (a file below
+// /usr/share). It never replaces an existing file. An older node command that
+// lacks the verb answers with an error.
+func (h *Host) NewNVRAM(template, dst string) error {
+	out, err := h.run("nvram-new", template, dst)
+	if err != nil {
+		return nodeErr(out, err)
+	}
+	return nil
+}
+
 // QemuInfo runs qemu-img info as JSON (a shared lock is not taken). chain asks
 // for the whole backing chain. The output of a failing run is returned with the error.
 func (h *Host) QemuInfo(path string, chain bool) (string, error) {

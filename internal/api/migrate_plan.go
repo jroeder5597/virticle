@@ -48,11 +48,15 @@ type migDomain struct {
 	Hostdevs int
 	TPM      bool
 	NVRAM    string
-	CPUMode  string
-	CPUXML   string // the <cpu> element verbatim
-	Arch     string
-	Machine  string // machine type, e.g. pc-q35-10.0
-	Emulator string // QEMU binary path
+	// NVRAMFormat is "qcow2" or "raw" (libvirt: raw unless the definition says so).
+	NVRAMFormat string
+	// NVRAMTemplate is the firmware package file the store was made from.
+	NVRAMTemplate string
+	CPUMode       string
+	CPUXML        string // the <cpu> element verbatim
+	Arch          string
+	Machine       string // machine type, e.g. pc-q35-10.0
+	Emulator      string // QEMU binary path
 }
 
 type migIf struct {
@@ -73,7 +77,11 @@ func parseMigDomain(raw string) (migDomain, error) {
 				Arch    string `xml:"arch,attr"`
 				Machine string `xml:"machine,attr"`
 			} `xml:"type"`
-			NVRAM string `xml:"nvram"`
+			NVRAM struct {
+				Format   string `xml:"format,attr"`
+				Template string `xml:"template,attr"`
+				Path     string `xml:",chardata"`
+			} `xml:"nvram"`
 		} `xml:"os"`
 		CPU struct {
 			Mode string `xml:"mode,attr"`
@@ -112,7 +120,7 @@ func parseMigDomain(raw string) (migDomain, error) {
 	}
 	d := migDomain{
 		Name: x.Name, UUID: x.UUID, Hostdevs: len(x.Devices.Hostdevs), TPM: x.Devices.TPM != nil,
-		NVRAM: strings.TrimSpace(x.OS.NVRAM), CPUMode: x.CPU.Mode, Arch: x.OS.Type.Arch, Machine: x.OS.Type.Machine, Emulator: strings.TrimSpace(x.Devices.Emulator),
+		NVRAM: strings.TrimSpace(x.OS.NVRAM.Path), NVRAMTemplate: x.OS.NVRAM.Template, NVRAMFormat: map[bool]string{true: "qcow2", false: "raw"}[x.OS.NVRAM.Format == "qcow2"], CPUMode: x.CPU.Mode, Arch: x.OS.Type.Arch, Machine: x.OS.Type.Machine, Emulator: strings.TrimSpace(x.Devices.Emulator),
 	}
 	if m := cpuFullRE.FindString(raw); m != "" {
 		d.CPUXML = m

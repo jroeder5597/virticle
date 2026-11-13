@@ -246,10 +246,19 @@ func (p *restorePlan) checkReplaceFiles() error {
 }
 
 func (p *restorePlan) planNVRAM(md migDomain) error {
+	// The saved file is placed byte for byte, so the definition's format must
+	// be the one the manifest recorded (no entry: an old backup, raw).
+	if (p.man.NVRAMFormat == "qcow2") != (md.NVRAMFormat == "qcow2") {
+		return badRequest("this backup is inconsistent: the manifest and the VM definition disagree about the format of the UEFI variables")
+	}
 	if p.req.Mode == "original" {
 		p.nvram = md.NVRAM
 	} else {
-		p.nvram = "/var/lib/libvirt/qemu/nvram/" + p.name + "_VARS.fd"
+		ext := ".fd"
+		if md.NVRAMFormat == "qcow2" {
+			ext = ".qcow2"
+		}
+		p.nvram = "/var/lib/libvirt/qemu/nvram/" + p.name + "_VARS" + ext
 	}
 	if !safePathRE.MatchString(p.nvram) {
 		return badRequest("unsupported characters in the NVRAM path " + p.nvram)

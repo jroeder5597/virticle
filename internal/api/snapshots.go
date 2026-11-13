@@ -23,8 +23,9 @@ import (
 //     and reverted but deleting them fails and leaks overlay files.
 //   - running/paused with memory: INTERNAL by default (QEMU savevm; the guest
 //     is paused while memory is written). Create, revert and delete all work.
-//     UEFI guests default to EXTERNAL instead because internal snapshots of
-//     pflash firmware are not generally possible. EXTERNAL can be requested:
+//     UEFI guests with a raw variable store default to EXTERNAL instead
+//     (libvirt: "internal snapshots of a VM with pflash based firmware
+//     require QCOW2 nvram format"); new UEFI VMs have a qcow2 store. EXTERNAL can be requested:
 //     it keeps the guest running and writes "<vm>.<snap>.qcow2" and
 //     "<vm>.<snap>.mem" next to the disk (the layout the migration feature
 //     relies on), but see the delete caveat below.
@@ -46,8 +47,11 @@ const snapNameRule = "snapshot name must start with a letter or digit and contai
 type snapDomXML struct {
 	OS struct {
 		Firmware string `xml:"firmware,attr"`
-		NVRAM    string `xml:"nvram"`
-		Loader   struct {
+		NVRAM    struct {
+			Format string `xml:"format,attr"`
+			Path   string `xml:",chardata"`
+		} `xml:"nvram"`
+		Loader struct {
 			Type string `xml:"type,attr"`
 		} `xml:"loader"`
 	} `xml:"os"`
@@ -267,7 +271,9 @@ func (s *Server) createSnapshot(r *http.Request, h *hostconn.Host, dom libvirt.D
 	default:
 		return "", badRequest(`mode must be "", "internal" or "external"`)
 	}
-	uefi := dx.OS.Firmware == "efi" || dx.OS.Loader.Type == "pflash" || dx.OS.NVRAM != ""
+	// libvirt refuses internal snapshots of pflash firmware unless its
+	// variable store is qcow2; VMs made before that stay on external ones.
+	rawUEFI := (dx.OS.Firmware == "efi" || dx.OS.Loader.Type == "pflash" || strings.TrimSpace(dx.OS.NVRAM.Path) != "") && dx.OS.NVRAM.Format != "qcow2"
 	external := false
 	switch {
 	case !active:
@@ -280,7 +286,7 @@ func (s *Server) createSnapshot(r *http.Request, h *hostconn.Host, dom libvirt.D
 		}
 		external = true
 	default:
-		external = q.Mode == "external" || (q.Mode == "" && (uefi || autoExternal(h, dom)))
+		external = q.Mode == "external" || (q.Mode == "" && (rawUEFI || autoExternal(h, dom)))
 	}
 
 	var (
