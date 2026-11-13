@@ -200,6 +200,46 @@ Good to know:
   migration** on the node.
 - A Debian node and a RHEL-family node cannot exchange VMs.
 
+### Migration network
+
+By default a node receives migration data at its management address, the one
+the controller uses. When a node has more than one network card, choose which
+one carries the data, so that management traffic is not held up by a big
+transfer:
+
+1. Open the node, **Settings**, and choose **Change** next to **Migration
+   network**. The row appears only when the node has more than one address.
+   (The same list is under **Advanced** in **Edit connection**. In the
+   **Topology** tab, **Use for migration** next to an address does the same,
+   and a **Migration** mark shows the address in use.)
+2. Pick the card, for example `enp2s0 (10.0.1.5), 10 Gb/s`. **Same as
+   management** is the default.
+
+Saving checks that the other nodes can reach the address on the migration
+ports and on SSH, and renews the node's encryption certificate for it at once.
+A problem with another node is a warning; the setting is saved anyway. The
+data of live migrations, copied files (offline migration, snapshots) and
+backups restored on another node all use this network, so the firewall must
+allow the migration ports and SSH there. The pre-flight row **Migration
+network** names the cards in use.
+
+When the data travels over the same card as management, the transfer is
+limited so that it cannot fill the link:
+
+| Situation | Limit |
+| --- | --- |
+| Migration has its own card on both nodes | None. |
+| Migration shares the management card, link speed known | 80% of the link, for example 800 Mbit/s on 1 Gb/s. The lower of the two nodes' limits applies. |
+| Migration shares the management card, link speed unknown (virtual network cards often report none) | None. The pre-flight row **Transfer limit** says so. |
+
+Change this for a node under **Advanced** (**Limit on a shared link**):
+**80% of the link (default)**, **No limit**, or **Custom (Mbit/s)**. The limit
+covers the memory stream, the live disk copy and file copies. Libvirt counts
+the whole disk, including empty space, so a large sparse disk takes
+longer than its stored data suggests. Two networks on one subnet need a route
+that sends the traffic to the chosen card; use a separate subnet or VLAN for a
+dedicated migration network.
+
 ## Storage
 
 ![Storage](img/storage.png)

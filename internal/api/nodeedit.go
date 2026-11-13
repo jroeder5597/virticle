@@ -257,7 +257,8 @@ func (s *Server) editNode(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if !detect && n.Addr == cur.Addr && n.User == cur.User && n.Jump == cur.Jump && n.Privilege == cur.Privilege {
+	migChanged := n.MigrationAddr != cur.MigrationAddr || n.MigrationLimit != cur.MigrationLimit
+	if migChanged && !detect && n.Addr == cur.Addr && n.User == cur.User && n.Jump == cur.Jump && n.Privilege == cur.Privilege {
 		// Only the migration network or its limit changed: no new connection, no trial login.
 		res, err := s.applyMigrationNetwork(id, cur, n.MigrationAddr, n.MigrationLimit, userOf(r))
 		if err != nil {

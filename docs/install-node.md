@@ -257,7 +257,9 @@ private half stays on the node. You set up nothing by hand. When a file has to b
 
 Facts:
 
-- The file data goes from node to node. It does not pass through the controller.
+- The file data goes from node to node. It does not pass through the controller. It is sent to the target's migration
+  address (its management address unless a migration network is chosen), and `peer-send` slows itself down to the
+  rate the controller passes (bytes per second, optional) when migration shares a link with management.
 - The migration pre-flight does these steps in its **SSH between nodes** row. It repeats safely.
 - Removing a node from the controller removes its key from the other nodes, and theirs from it.
   `virticle node unprepare` removes the node's key and the keys of peers installed on it.
@@ -363,7 +365,7 @@ virticle-node ALL=(root) NOPASSWD: /usr/local/libexec/virticle-node
 | `net-run ID` | internal: the part of `net-apply` that runs in a transient systemd unit, so the SSH session may die while the network changes |
 | `peer-key`, `peer-allow`, `peer-disallow` | the account's own node key; install or remove a peer's key (restricted to `peer-recv`) |
 | `peer-hostkey-set HOST PORT`, `peer-hostkey-unset HOST PORT`, `peer-list` | host keys the node accepts for its peers; what is on record |
-| `peer-send HOST PORT USER SRC DST MODE`, `peer-ping HOST PORT USER`, `peer-recv` | send a file to a peer node; test a peer; receive (the forced command of a peer's key) |
+| `peer-send HOST PORT USER SRC DST MODE [BYTES_PER_SECOND]`, `peer-ping HOST PORT USER`, `peer-recv` | send a file to a peer node; test a peer; receive (the forced command of a peer's key) |
 | `svc-allow`, `svc-hosts`, `svc-list`, `svc-peerkey` | internal: the node command starts itself again as the service account to edit that account's `~/.ssh` files, so root never follows a link planted there. Not meant to be called by hand. |
 | `convert-run`, `import-convert-run` | internal: the detached part of `convert-start` and `import-convert-start` |
 

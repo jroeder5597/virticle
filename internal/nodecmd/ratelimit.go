@@ -73,9 +73,7 @@ func (l *rateReader) take(n float64) error {
 		return nil
 	}
 	wait := time.Duration(-l.tokens / l.rate * float64(time.Second))
-	if err := l.sleep(l.ctx, wait); err != nil {
-		return err
-	}
-	l.tokens, l.last = 0, l.now()
-	return nil
+	// The debt stays on the books: the time the sleep overshoots is credited by the next call, so timer
+	// granularity does not slow the transfer down.
+	return l.sleep(l.ctx, wait)
 }

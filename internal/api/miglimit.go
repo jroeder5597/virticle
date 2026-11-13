@@ -100,7 +100,7 @@ func capOf(s linkSide) (sideCap, bool) {
 	case limitNone:
 		return sideCap{kind: limitNone}, true
 	case limitCustom:
-		return sideCap{mbit: s.Limit.Mbit, kind: limitCustom, detail: "set for " + s.Name}, true
+		return sideCap{mbit: s.Limit.Mbit, kind: limitCustom, detail: "custom limit"}, true
 	}
 	if s.SpeedMbps <= 0 {
 		return sideCap{kind: "unknown"}, true

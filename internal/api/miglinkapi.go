@@ -175,8 +175,8 @@ func reachState(h *hostconn.Host, host, port string) string {
 		return "open"
 	case strings.Contains(err.Error(), "124"):
 		return "silent" // no answer at all: typically a firewall dropping the packets
-	case strings.Contains(out, "unreachable") || strings.Contains(out, "No route"):
-		return "unreachable"
+	case strings.Contains(out, "unreachable") || strings.Contains(out, "No route") || strings.Contains(out, "not known") || strings.Contains(out, "Invalid argument"):
+		return "unreachable" // no route, or the name does not resolve
 	}
 	return "closed" // refused: the host answered, nothing listens (yet)
 }

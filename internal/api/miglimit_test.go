@@ -28,7 +28,7 @@ func TestDecideLimit(t *testing.T) {
 		{"target shared only", side("n1", false, 10000, ""), side("n2", true, 2500, ""), 2000, true, "80% of 2.5 Gb/s"},
 		{"different links, the lower wins", side("n1", true, 10000, ""), side("n2", true, 1000, ""), 800, true, "Shared with management on n2: limited to 800 Mbit/s"},
 		{"100 Mb/s card", side("n1", true, 100, ""), side("n2", false, 0, ""), 80, true, "80% of 100 Mb/s"},
-		{"custom", side("n1", true, 1000, "custom:80"), side("n2", true, 1000, ""), 80, true, "set for n1"},
+		{"custom", side("n1", true, 1000, "custom:80"), side("n2", true, 1000, ""), 80, true, "custom limit"},
 		{"custom on a link of unknown speed", side("n1", true, 0, "custom:80"), side("n2", true, 0, ""), 80, true, "limited to 80 Mbit/s"},
 		{"custom higher than the other's 80%", side("n1", true, 1000, "custom:900"), side("n2", true, 1000, ""), 800, true, "limited to 800 Mbit/s"},
 		{"no limit on both", side("n1", true, 1000, "none"), side("n2", true, 1000, "none"), 0, true, "limit is turned off"},

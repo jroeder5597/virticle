@@ -21,7 +21,7 @@ func TestRateReaderRate(t *testing.T) {
 	}
 	// The bucket lets 0.1 s of data through at once: (size - rate/10) / rate seconds remain.
 	want := time.Duration(float64(size-rate/10) / rate * float64(time.Second))
-	if took < want*7/10 || took > want*14/10 {
+	if took < want*9/10 || took > want*115/100 {
 		t.Errorf("took %v, expected about %v", took, want)
 	}
 }

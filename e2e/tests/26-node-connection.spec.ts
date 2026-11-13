@@ -67,7 +67,6 @@ test.describe.serial("node connection", () => {
     await field(dlg, "SSH user").fill(before.user); // the same values typed again
     await dlg.getByText("Advanced", { exact: true }).click();
     await field(dlg, "Jump host (optional)").fill(before.jump ?? "");
-    await field(dlg, "Migration address (optional)").fill(before.addr);
     await dlg.getByRole("button", { name: "Test connection" }).click();
     await expect(dlg.locator("ul.checklist")).toContainText("Node access", { timeout: 30_000 });
     await expect(dlg.getByRole("img", { name: "failed" })).toHaveCount(0);
@@ -77,7 +76,7 @@ test.describe.serial("node connection", () => {
     await expect.poll(async () => (await api.nodes()).find((n) => n.id === n1)?.state, { timeout: 60_000 }).toBe("online");
     const after = (await api.nodes()).find((n) => n.id === n1) as any;
     expect(after.id).toBe(before.id);
-    expect(after.migrationAddress).toBe(before.addr);
+    expect(after.migrationAddress ?? "").toBe(before.migrationAddress ?? "");
     expect(after.privilege).toBe(before.privilege);
     await expect.poll(async () => (await api.vms()).some((v) => v.name === VM && v.node === n1), { timeout: 30_000 }).toBe(true);
     await expect(page.locator(".card", { hasText: "Connection" }).locator("dd", { hasText: before.addr }).first()).toBeVisible();
