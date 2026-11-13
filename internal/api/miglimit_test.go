@@ -96,13 +96,13 @@ func TestRequestBandwidthWins(t *testing.T) {
 	}
 }
 
-func nic(name, ip string, speed int) hostNIC {
+func migNIC(name, ip string, speed int) hostNIC {
 	return hostNIC{Name: name, Type: "physical", State: "up", SpeedMbps: speed, Addresses: []string{ip + "/24"}}
 }
 
 func TestBuildTransferRows(t *testing.T) {
-	nicsA := []hostNIC{nic("enp1s0", "10.0.0.5", 1000), nic("enp2s0", "10.0.1.5", 10000)}
-	nicsB := []hostNIC{nic("enp1s0", "10.0.0.6", 1000), nic("enp2s0", "10.0.1.6", 10000)}
+	nicsA := []hostNIC{migNIC("enp1s0", "10.0.0.5", 1000), migNIC("enp2s0", "10.0.1.5", 10000)}
+	nicsB := []hostNIC{migNIC("enp1s0", "10.0.0.6", 1000), migNIC("enp2s0", "10.0.1.6", 10000)}
 	mk := func(name, mgmt, mig string, nics []hostNIC, lim string) nodeNet {
 		return buildNodeNet(name, store.Node{Addr: mgmt, MigrationAddr: mig, MigrationLimit: lim}, nics)
 	}
@@ -127,7 +127,7 @@ func TestBuildTransferRows(t *testing.T) {
 		t.Errorf("fallback: %+v", tr.Src)
 	}
 	// Virtual cards report no speed.
-	nicsV := []hostNIC{nic("ens3", "10.0.0.7", 0)}
+	nicsV := []hostNIC{migNIC("ens3", "10.0.0.7", 0)}
 	tr = buildTransfer(mk("n1", "10.0.0.7", "", nicsV, ""), mk("n2", "10.0.0.7", "", nicsV, ""), "ens3", "10.0.0.7")
 	if tr.Limit.Mbit != 0 || !strings.Contains(tr.Limit.Text, "Link speed unknown") {
 		t.Errorf("unknown speed: %+v", tr.Limit)
@@ -147,8 +147,8 @@ func TestBridgeTakesSpeedOfItsCard(t *testing.T) {
 
 func TestMigrationOptionsAndDescribe(t *testing.T) {
 	nics := []hostNIC{
-		nic("enp1s0", "10.0.0.5", 1000),
-		nic("enp2s0", "10.0.1.5", 10000),
+		migNIC("enp1s0", "10.0.0.5", 1000),
+		migNIC("enp2s0", "10.0.1.5", 10000),
 		{Name: "virbr0", Type: "bridge", Kind: "bridge", State: "up", Addresses: []string{"192.168.122.1/24"}},
 		{Name: "enp3s0", Type: "physical", State: "down", Addresses: []string{"10.0.2.5/24"}},
 		{Name: "enp4s0", Type: "physical", State: "up", Addresses: []string{"fe80::1/64", "10.0.3.5/24"}},
