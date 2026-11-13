@@ -121,7 +121,7 @@ func (ca *CA) Evaluate(sn Snapshot, now time.Time) Status {
 
 	var info *Info
 	var days int
-	expired, expiring := false, false
+	expired, expiring, outdated := false, false, false
 	if len(sn.Server) > 0 {
 		crt, in, err := ParseCert(sn.Server)
 		if err != nil {
@@ -132,6 +132,8 @@ func (ca *CA) Evaluate(sn Snapshot, now time.Time) Status {
 				problems = append(problems, FileServerCert+": "+err.Error())
 			}
 			problems = append(problems, missingNames(crt, sn.Want)...)
+			// Certificates issued before the key usage was widened are refused by newer QEMU: renew them quietly.
+			outdated = crt.KeyUsage&x509.KeyUsageKeyEncipherment == 0
 			left := in.NotAfter.Sub(now)
 			days = int(left.Hours() / 24)
 			expired, expiring = left <= 0, left < RenewLeft
@@ -158,6 +160,9 @@ func (ca *CA) Evaluate(sn Snapshot, now time.Time) Status {
 	case expired:
 		st.State = StateExpired
 		st.Problems = []string{"the certificate has expired; issue it again"}
+	case outdated:
+		st.State = StateExpiring
+		st.Problems = []string{"the certificate was issued in an older form that newer QEMU refuses; issue it again"}
 	case expiring:
 		st.State = StateExpiring
 		st.Problems = []string{fmt.Sprintf("the certificate expires in %d days; issue it again", days)}

@@ -192,9 +192,11 @@ func (ca *CA) Issue(n Names, now time.Time) (certPEM, keyPEM []byte, err error) 
 		Subject:      pkix.Name{CommonName: hosts[0], Organization: []string{"virticle migration"}},
 		NotBefore:    now.Add(-time.Hour),
 		NotAfter:     notAfter,
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-		DNSNames:     hosts,
+		// QEMU 10.1 on RHEL 10 refuses a server certificate without keyEncipherment ("usage does not permit key
+		// encipherment"), even for an EC key, so both usages are set.
+		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		DNSNames:    hosts,
 	}
 	seen := map[string]bool{}
 	for _, ip := range n.IPs {

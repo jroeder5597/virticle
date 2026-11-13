@@ -23,6 +23,8 @@ test.describe.serial("live migration", () => {
     expect(await checks.count()).toBeGreaterThan(2);
     await expect(dlg.getByRole("img", { name: "failed" })).toHaveCount(0);
     await expect(dlg).toContainText("Live: the VM keeps running");
+    // the controller sets encrypted migration up by itself when a node comes online: memory and disk go over TLS
+    await expect(dlg.locator(".badge").filter({ hasText: /^\s*encrypted\s*$/ })).toBeVisible();
     const go = dlg.getByRole("button", { name: "Migrate", exact: true });
     await expect(go).toBeEnabled();
     await go.click();
