@@ -494,6 +494,7 @@ func (r *replRun) run() (err error) {
 			if d, ok := r.standbyDomain(); ok {
 				_ = r.markReplica(d, latest)
 			}
+			r.Took = time.Since(started)
 			return r.finishStatus(latest, nil)
 		}
 	}
@@ -632,6 +633,7 @@ func (r *replRun) run() (err error) {
 	}
 	note(r.afterPoint(kept[0]))
 	note(r.dropOldCheckpoints())
+	r.Took = time.Since(started)
 	note(r.finishStatus(pt, nil))
 	if len(problems) > 0 {
 		return fmt.Errorf("the copy of %s is complete, but afterwards: %s", stamp.Format("15:04"), strings.Join(problems, "; "))

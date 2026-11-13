@@ -128,7 +128,7 @@ func (s *Server) replicaChecks(src, dst *hostconn.Host, md migDomain) (bad, warn
 		warn = append(warn, "the virtual TPM is not copied: the VM starts on the standby with an empty TPM, and anything bound to it (BitLocker, for instance) asks for its recovery key")
 	}
 	for _, d := range md.Disks {
-		if d.Path != "" && (d.Device == "cdrom" || d.Device == "floppy") {
+		if d.Path != "" && (d.Device == "cdrom" || d.Device == "floppy") && path.Base(d.Path) != seedVolumeName(md.Name) {
 			warn = append(warn, "the install media "+d.Path+" is left out of the replica")
 		}
 	}

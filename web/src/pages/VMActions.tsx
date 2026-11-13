@@ -88,7 +88,11 @@ export default function VMActions(props: {
     { label: "Delete VM", danger: true, run: () => setDeleting(true), ...when(off, "Shut the VM down first") },
   ];
 
-  const items: MenuEntry[] = [
+  // The old copy after a failover can only be deleted (everything else is refused).
+  const stale = d.state === "stale";
+  const items: MenuEntry[] = stale
+    ? [{ label: "Delete VM", danger: true, run: () => setDeleting(true), disabled: !op, title: need }]
+    : [
     { label: "Power", items: power, disabled: !op, title: need },
     { label: "Edit Settings", items: settings, disabled: !op, title: need },
     { label: "Snapshots", items: snapshots },
@@ -98,7 +102,7 @@ export default function VMActions(props: {
       : { label: "Convert to template", run: () => setConverting(true), ...when(canConvert, "Shut the VM down first, or start it with the guest agent connected") },
     { label: "Migrate", items: migrate, disabled: !op, title: need },
     { label: "More", items: more },
-  ];
+    ];
 
   return (
     <>
@@ -119,12 +123,19 @@ function DeleteVM(props: { d: VMDetail; base: string; onClose: () => void; onDel
   const [disks, setDisks] = useState(true);
   const act = useAction();
   const [leftDisks, setLeftDisks] = useState<string[]>();
+  const [replicaNote, setReplicaNote] = useState<string>();
+  const [replica, setReplica] = useState(true);
   const owned = d.disks.filter((k) => k.device === "disk" && !k.readOnly && k.source);
-  if (leftDisks)
+  if (leftDisks || replicaNote)
     return (
       <Modal title={`${d.name} was deleted`} onClose={props.onDeleted}>
-        <p>These disks are not in any storage pool and were left in place:</p>
-        <p className="mono wrap">{leftDisks.join(", ")}</p>
+        {replicaNote && <p>The replica on {d.replication?.targetName} was not deleted: {replicaNote}</p>}
+        {leftDisks && leftDisks.length > 0 && (
+          <>
+            <p>These disks are not in any storage pool and were left in place:</p>
+            <p className="mono wrap">{leftDisks.join(", ")}</p>
+          </>
+        )}
         <footer>
           <button autoFocus onClick={props.onDeleted}>Close</button>
         </footer>
@@ -139,17 +150,29 @@ function DeleteVM(props: { d: VMDetail; base: string; onClose: () => void; onDel
           Also delete its disk{owned.length > 1 ? "s" : ""}: <span className="mono">{owned.map((k) => k.source).join(", ")}</span>
         </label>
       )}
+      {d.replication && (
+        <label className="check">
+          <input type="checkbox" checked={replica} onChange={(e) => setReplica(e.target.checked)} />
+          Also delete the replica on {d.replication.targetName}
+        </label>
+      )}
       <ErrorBox error={act.error} />
       <footer>
         <button autoFocus onClick={props.onClose}>Cancel</button>
         <button className="danger" disabled={act.busy} onClick={async () => {
             let left: string[] = [];
+            let note = "";
+            const q = [...(disks ? ["disks=1"] : []), ...(d.replication && replica ? ["replica=1"] : [])].join("&");
             const ok = await act.run(async () => {
-              left = (await del<{ leftDisks: string[] }>(`${props.base}${disks ? "?disks=1" : ""}`)).leftDisks;
+              const r = await del<{ leftDisks: string[]; replicaNote?: string }>(`${props.base}${q ? "?" + q : ""}`);
+              left = r.leftDisks ?? [];
+              note = r.replicaNote ?? "";
             });
             if (!ok) return;
-            if (left.length) setLeftDisks(left);
-            else props.onDeleted();
+            if (left.length || note) {
+              setLeftDisks(left);
+              setReplicaNote(note || undefined);
+            } else props.onDeleted();
           }}>
           Delete VM
         </button>

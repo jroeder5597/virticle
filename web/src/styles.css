@@ -146,6 +146,8 @@ table.compact tr:hover { background: none; }
 .badge[class*=" s-"]:not(.s-template)::before, .badge[class*=" es-"]::before, .badge.maint::before, .badge.catok::before, .tstatus::before, .sev::before, .mark::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; box-sizing: content-box; border: 1.5px solid var(--st, var(--muted)); background: var(--st, transparent); }
 .s-running, .s-online, .s-ok, .s-active, .s-agent-connected, .es-ok, .catok { --st: var(--ok); }
 .s-template { color: var(--text); margin-left: 8px; }
+.s-replica { --st: var(--accent); }
+.s-stale { --st: var(--accent-2); }
 .s-paused, .s-connecting, .s-suspended, .s-building, .s-agent-disconnected, .sev, .mark, .badge.maint { --st: var(--warn); }
 .s-crashed, .s-offline, .s-failed, .s-inaccessible, .s-unavailable, .s-degraded, .es-failed, .es-blocked, .sev.critical, .mark.critical { --st: var(--danger); }
 

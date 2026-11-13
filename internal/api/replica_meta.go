@@ -42,13 +42,13 @@ type replConfig struct {
 }
 
 func (c replConfig) element() string {
-	el := fmt.Sprintf(`<%s enabled=%q target-node="%d" target-name=%q pool=%q every-minutes="%d" dir=%q`,
-		replChild, yesNo(c.Enabled), c.TargetNode, c.TargetName, c.Pool, c.EveryMinutes, c.Dir)
+	el := fmt.Sprintf(`<%s enabled="%s" target-node="%d" target-name="%s" pool="%s" every-minutes="%d" dir="%s"`,
+		replChild, yesNo(c.Enabled), c.TargetNode, esc(c.TargetName), esc(c.Pool), c.EveryMinutes, esc(c.Dir))
 	if c.ReplaceStale {
 		el += ` replace-stale="yes"`
 	}
 	if c.LastOK > 0 {
-		el += fmt.Sprintf(` last="%d" last-bytes="%d" last-kind=%q last-secs="%d"`, c.LastOK, c.LastBytes, c.LastKind, c.LastSecs)
+		el += fmt.Sprintf(` last="%d" last-bytes="%d" last-kind="%s" last-secs="%d"`, c.LastOK, c.LastBytes, esc(c.LastKind), c.LastSecs)
 	}
 	return el + "/>"
 }
@@ -105,8 +105,8 @@ type replicaMeta struct {
 }
 
 func (m replicaMeta) element() string {
-	return fmt.Sprintf(`<%s dir=%q pool=%q source-node="%d" source-name=%q every-minutes="%d" last="%d" checked="%d" points="%d" bytes="%d"/>`,
-		replicaChild, m.Dir, m.Pool, m.SourceNode, m.SourceName, m.Every, m.Last, m.Checked, m.Points, m.Bytes)
+	return fmt.Sprintf(`<%s dir="%s" pool="%s" source-node="%d" source-name="%s" every-minutes="%d" last="%d" checked="%d" points="%d" bytes="%d"/>`,
+		replicaChild, esc(m.Dir), esc(m.Pool), m.SourceNode, esc(m.SourceName), m.Every, m.Last, m.Checked, m.Points, m.Bytes)
 }
 
 func parseReplicaMeta(meta string) *replicaMeta {
@@ -141,7 +141,7 @@ type staleMeta struct {
 }
 
 func (m staleMeta) element() string {
-	return fmt.Sprintf(`<%s to-node="%d" to-name=%q at="%d"/>`, staleChild, m.ToNode, m.ToName, m.At)
+	return fmt.Sprintf(`<%s to-node="%d" to-name="%s" at="%d"/>`, staleChild, m.ToNode, esc(m.ToName), m.At)
 }
 
 func parseStale(meta string) *staleMeta {
@@ -170,7 +170,7 @@ type failedOverMeta struct {
 }
 
 func (m failedOverMeta) element() string {
-	return fmt.Sprintf(`<%s from-node="%d" from-name=%q at="%d" planned=%q/>`, failedOverChd, m.FromNode, m.FromName, m.At, yesNo(m.Planned))
+	return fmt.Sprintf(`<%s from-node="%d" from-name="%s" at="%d" planned="%s"/>`, failedOverChd, m.FromNode, esc(m.FromName), m.At, yesNo(m.Planned))
 }
 
 func parseFailedOver(meta string) *failedOverMeta {
