@@ -397,9 +397,7 @@ test.describe.serial("visual pass", () => {
       await page.locator(".head").getByRole("button", { name: "Actions", exact: true }).click();
       await page.getByRole("menuitem", { name: "Snapshots", exact: true }).click();
       await page.getByRole("menuitem", { name: "Take snapshot", exact: true }).click();
-      await page.getByRole("button", { name: "About snapshot types" }).hover();
-      await shot("snapshot-help-tip", () => expect(page.getByRole("tooltip")).toContainText("External"), { viewportOnly: true });
-      await page.keyboard.press("Escape");
+      await shot("snapshot-dialog", () => expect(page.getByRole("dialog", { name: "Take snapshot" })).toBeVisible(), { viewportOnly: true });
       await page.keyboard.press("Escape");
       await page.goto(vmUrl + "?tab=hardware");
       await page.locator("section.card").filter({ has: page.getByRole("heading", { name: "Disks", exact: true }) }).getByRole("row", { name: /vda/ }).getByRole("button", { name: "Move", exact: true }).click();

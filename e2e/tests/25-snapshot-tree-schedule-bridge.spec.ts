@@ -175,14 +175,13 @@ test.describe.serial("snapshot tree, delete dialog, schedule, bridge picker", ()
     expect(Math.abs(cb!.y + cb!.height / 2 - (rb!.y + rb!.height / 2))).toBeLessThan(6);
     expect(cb!.x + cb!.width).toBeLessThanOrEqual(rb!.x + rb!.width);
     await page.keyboard.press("Escape");
-    // the Revert dialog: the force option's text starts on the check box's line
+    // the Revert dialog has no force option up front: one sentence, then Cancel and Revert
     await node(page, "a").getByRole("button", { name: "Revert to a" }).click();
     const rv = dialog(page, "Revert to a");
-    const label = rv.locator("label.check");
-    const input = await label.locator("input").boundingBox();
-    const lb = await label.boundingBox();
-    expect(input!.y - lb!.y).toBeLessThan(8);
-    expect(lb!.height).toBeLessThan(80);
+    await expect(rv.locator("label.check")).toHaveCount(0);
+    for (const p of await rv.locator("p").all()) expect(await p.evaluate((e) => getComputedStyle(e).overflowWrap)).toBe("normal");
+    await expect(rv.getByRole("button", { name: "Revert", exact: true })).toBeVisible();
+    await expect(rv.getByRole("button", { name: "Revert anyway" })).toHaveCount(0);
     await page.keyboard.press("Escape");
   });
 

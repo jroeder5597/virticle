@@ -121,6 +121,10 @@ test.describe.serial("overview and actions", () => {
     await expect(item(page, "Clone")).toHaveAttribute("title", /Shut the VM down to clone/);
     // a running VM without the guest agent cannot reset its identity, so it cannot be converted either
     await expect(item(page, "Convert to template")).toBeDisabled();
+    // Escape steps back out of a submenu (focus is on its first enabled entry), a second one closes the menu
+    await expect(item(page, "Edit XML")).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(1);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
   });
@@ -168,7 +172,7 @@ test.describe.serial("overview and actions", () => {
     await page.keyboard.press("ArrowUp");
     await expect(item(page, "Power")).toBeFocused();
     await page.keyboard.press("End");
-    await expect(item(page, "Delete")).toBeFocused();
+    await expect(item(page, "More")).toBeFocused();
     await page.keyboard.press("Home");
     await page.keyboard.press("ArrowRight");
     await expect(item(page, "Power")).toHaveAttribute("aria-expanded", "true");
@@ -256,6 +260,7 @@ test.describe.serial("overview and actions", () => {
     await item(page, "More").click();
     await expect(item(page, "Edit XML")).toBeEnabled();
     await expect(item(page, "Delete VM")).toBeDisabled();
+    await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await actions(page).click();
     await item(page, "Snapshots").click();
