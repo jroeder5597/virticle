@@ -2,13 +2,15 @@ import { ReactNode, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import ChevronDown from "lucide-react/icons/chevron-down";
 import ChevronRight from "lucide-react/icons/chevron-right";
-import { get, NodeStatus } from "../api";
+import { get, NodeStatus, put } from "../api";
+import { CheckItem } from "../Checks";
 import { useLive } from "../live";
 import { useLiveDebounced } from "../liveDebounced";
 import { PRESETS } from "../tagColor";
 import { atLeast, useRole } from "../auth";
 import { DropdownMenu } from "../Menu";
-import { ErrorBox, StateBadge } from "../ui";
+import { ErrorBox, StateBadge, useAction } from "../ui";
+import { MigNetResult, MigrationResult, resultItems } from "./MigrationNetwork";
 import { NodeFilter, netEvents, nodeEvents } from "./dcShared";
 import { AddNetworkDialog, ChangeBanner, SwitchDialog, useHostnet } from "./VirtualSwitch";
 import { addBlocked, HostBridge, HostnetState } from "./vswitchApi";
@@ -18,6 +20,7 @@ import "./topology.css";
 interface Addr {
   address: string;
   management?: boolean;
+  migration?: boolean;
 }
 interface Uplink {
   name: string;
@@ -27,6 +30,7 @@ interface Uplink {
   members?: string[];
   addresses: Addr[];
   management?: boolean;
+  migration?: boolean;
 }
 interface Iface {
   vm: string;
@@ -76,20 +80,33 @@ function accent(name: string): string {
 
 const speed = (m?: number) => (m ? (m >= 1000 ? `${m / 1000} Gbit/s` : `${m} Mbit/s`) : "");
 
-function Addrs({ list }: { list: Addr[] }) {
+/** "Use for migration" on an address (administrators): `can` says for which address it is offered. */
+interface UseMigration {
+  can: (a: Addr) => boolean;
+  run: (a: Addr) => void;
+  busy: boolean;
+}
+
+function Addrs({ list, use }: { list: Addr[]; use?: UseMigration }) {
   return (
     <>
       {list.filter((a) => !/^fe80:/i.test(a.address)).map((a) => (
         <span key={a.address} className="mono topoaddr">
           {a.address}
           {a.management && <span className="topomgmt"> Management</span>}
+          {a.migration && <span className="topomgmt"> Migration</span>}
+          {use?.can(a) && (
+            <button className="link topouse" onClick={() => use.run(a)} disabled={use.busy} data-topo-use={a.address}>
+              Use for migration
+            </button>
+          )}
         </span>
       ))}
     </>
   );
 }
 
-function UplinkBox({ node, u, action }: { node: number; u: Uplink; action?: ReactNode }) {
+function UplinkBox({ node, u, action, use }: { node: number; u: Uplink; action?: ReactNode; use?: UseMigration }) {
   return (
     <div className="topouplink" data-topo-id={`uplink:${u.name}`}>
       <div className="topotitle">
@@ -97,6 +114,7 @@ function UplinkBox({ node, u, action }: { node: number; u: Uplink; action?: Reac
         <StateBadge state={u.state === "up" ? "up" : u.state === "down" ? "down" : "unknown"} />
         {speed(u.speedMbps) && <span className="muted">{speed(u.speedMbps)}</span>}
         {u.management && <span className="topomgmt">Management</span>}
+        {u.migration && <span className="topomgmt">Migration</span>}
       </div>
       <div className="muted">
         {u.type === "bond" ? "Bond" : u.type === "vlan" ? "VLAN device" : "Network card"}
@@ -104,7 +122,7 @@ function UplinkBox({ node, u, action }: { node: number; u: Uplink; action?: Reac
       </div>
       {u.addresses.length > 0 && (
         <div>
-          <Addrs list={u.addresses} />
+          <Addrs list={u.addresses} use={use} />
         </div>
       )}
       {action}
@@ -159,7 +177,7 @@ interface SwitchActions {
   onRemove: () => void;
 }
 
-function SwitchBox({ node, s, accents, act }: { node: number; s: Switch; accents: boolean; act?: SwitchActions }) {
+function SwitchBox({ node, s, accents, act, use }: { node: number; s: Switch; accents: boolean; act?: SwitchActions; use?: UseMigration }) {
   const info = act?.info;
   const inUse = info ? [...(info.networks.length ? [`${info.networks.length} ${info.networks.length === 1 ? "network" : "networks"}`] : []), ...(info.vms.length ? [`${info.vms.length} ${info.vms.length === 1 ? "VM" : "VMs"}`] : [])] : [];
   const removeWhy = info && inUse.length ? `The virtual switch is used by ${inUse.join(" and ")}. Remove or move them first.` : "";
@@ -200,7 +218,7 @@ function SwitchBox({ node, s, accents, act }: { node: number; s: Switch; accents
         <div className="topocol">
           <div className="topocolhead">Uplinks</div>
           {s.uplinks.map((u) => (
-            <UplinkBox key={u.name} node={node} u={u} />
+            <UplinkBox key={u.name} node={node} u={u} use={use} />
           ))}
           {s.uplinks.length === 0 && s.uplinkNote && <div className="topouplink topoplain">{s.uplinkNote}</div>}
           {s.hostAddresses.length > 0 && (
@@ -208,7 +226,7 @@ function SwitchBox({ node, s, accents, act }: { node: number; s: Switch; accents
               <div className="topotitle">
                 <span>This node's address</span>
               </div>
-              <Addrs list={s.hostAddresses} />
+              <Addrs list={s.hostAddresses} use={s.kind === "linux-bridge" || s.kind === "openvswitch" ? use : undefined} />
             </div>
           )}
         </div>
@@ -262,6 +280,26 @@ function NodeBody({ n, accents, admin, reload }: { n: TopoNode; accents: boolean
       onRemove: () => info && setDlg({ mode: "remove", bridge: info }),
     };
   };
+  const migAct = useAction();
+  const [migDone, setMigDone] = useState<CheckItem[]>([]);
+  const allAddrs = [...n.switches.flatMap((s) => [...s.hostAddresses, ...s.uplinks.flatMap((u) => u.addresses)]), ...n.unused.flatMap((u) => u.addresses)];
+  const explicitMig = allAddrs.some((a) => a.migration);
+  // The management address is offered only to go back to the default; an address that already carries migration is marked instead.
+  const use: UseMigration | undefined = admin
+    ? {
+        can: (a) => !a.migration && (!a.management || explicitMig),
+        busy: migAct.busy,
+        run: async (a) => {
+          setMigDone([]);
+          let res: MigNetResult | undefined;
+          const ok = await migAct.run(async () => {
+            res = await put<MigNetResult>(`/nodes/${n.node}/migration-network`, { address: a.management ? "" : a.address.split("/")[0] });
+          });
+          if (ok && res) setMigDone(resultItems(res, "Migration network saved."));
+          reload();
+        },
+      }
+    : undefined;
   const canAdd = admin && !!st && !blocked;
   const usable = (u: Uplink) => canAdd && u.type === "physical";
   if (n.error) return <div className="error">This node could not be read: {n.error}</div>;
@@ -278,9 +316,11 @@ function NodeBody({ n, accents, admin, reload }: { n: TopoNode; accents: boolean
           </div>
         </div>
       )}
+      <ErrorBox error={migAct.error} />
+      {migDone.length > 0 && <MigrationResult items={migDone} onClose={() => setMigDone([])} />}
       {n.switches.length === 0 && <p className="muted">This node has no bridges and no virtual networks.</p>}
       {n.switches.map((s) => (
-        <SwitchBox key={s.id} node={n.node} s={s} accents={accents} act={switchActions(s)} />
+        <SwitchBox key={s.id} node={n.node} s={s} accents={accents} act={switchActions(s)} use={use} />
       ))}
       {n.unused.length > 0 && (
         <section className="toposwitch topounused" aria-label="Unused network cards">
@@ -294,6 +334,7 @@ function NodeBody({ n, accents, admin, reload }: { n: TopoNode; accents: boolean
                 key={u.name}
                 node={n.node}
                 u={u}
+                use={use}
                 action={
                   usable(u) ? (
                     <button className="vsuse" onClick={() => setDlg({ mode: "add", uplink: u.name })} data-vsw="use-card">

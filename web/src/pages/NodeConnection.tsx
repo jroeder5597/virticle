@@ -4,6 +4,7 @@ import { CheckItem, CheckList, CheckStatus, StatusLine } from "../Checks";
 import DialogAdvanced from "./DialogAdvanced";
 import PrepareNode from "./PrepareNode";
 import { ErrorBox, Field, Modal, StateBadge, useAction, useConfirm } from "../ui";
+import { LimitField, MigNetInfo, MigNetResult, MigrationNetworkDialog, MigrationResult, NetworkSelect, resultItems, useMigNet } from "./MigrationNetwork";
 
 export interface Capability {
   ok: boolean;
@@ -75,7 +76,10 @@ export default function ConnectionCard({ n, admin }: { n: NodeStatus; admin: boo
   const [err, setErr] = useState<string | undefined>();
   const [editing, setEditing] = useState(false);
   const [preparing, setPreparing] = useState(false);
+  const [changing, setChanging] = useState(false);
   const [notes, setNotes] = useState<CheckItem[]>([]);
+  const [migDone, setMigDone] = useState<CheckItem[]>([]);
+  const mig = useMigNet(n.id, [n.state, n.addr, n.migrationAddress, n.migrationLimit]);
   const act = useAction();
   const confirm = useConfirm();
   // Reloaded when the node's connection settings or state change, not on a timer.
@@ -106,7 +110,28 @@ export default function ConnectionCard({ n, admin }: { n: NodeStatus; admin: boo
   return (
     <div className="card">
       <h3>Connection</h3>
-      <Facts rows={[["Address", mono(n.addr, "a")], ["SSH user", mono(n.user, "u")], ["State", <StateBadge key="s" state={n.state} />]]} />
+      <Facts
+        rows={[
+          ["Address", mono(n.addr, "a")],
+          ["SSH user", mono(n.user, "u")],
+          ["State", <StateBadge key="s" state={n.state} />],
+          ...(mig.info?.show
+            ? ([
+                [
+                  "Migration network",
+                  <span key="mn" className="migrow">
+                    <span>{mig.info.current}</span>
+                    {admin && (
+                      <button className="link" onClick={() => setChanging(true)} aria-label="Change the migration network">
+                        Change
+                      </button>
+                    )}
+                  </span>,
+                ],
+              ] as [string, ReactNode][])
+            : []),
+        ]}
+      />
       {n.error && <StatusLine status="error">{n.error}</StatusLine>}
       {hostKeyError && admin && (
         <p>
@@ -123,6 +148,7 @@ export default function ConnectionCard({ n, admin }: { n: NodeStatus; admin: boo
             ["Resolved IP", info?.resolvedIps?.length ? mono(info.resolvedIps.join(", "), "r") : "–"],
             ["Reported hostname", info?.hostname ? mono(info.hostname, "h") : n.state === "online" ? "–" : "unknown while offline"],
             ["Migration address", mono(info?.effectiveMigrationAddress ?? n.addr, "m")],
+            ["Limit on a shared link", mig.info?.limitText ?? "–"],
             ["Jump host", n.jump ? mono(n.jump, "j") : "none"],
           ]}
         />
@@ -139,6 +165,7 @@ export default function ConnectionCard({ n, admin }: { n: NodeStatus; admin: boo
       )}
       <ErrorBox error={act.error} />
       {notes.length > 0 && <CheckList summary={false} label="Result of the change" items={notes} />}
+      {migDone.length > 0 && <MigrationResult items={migDone} onClose={() => setMigDone([])} />}
       {admin && (
         <div className="actions">
           <button onClick={() => setEditing(true)}>Edit connection</button>
@@ -146,10 +173,22 @@ export default function ConnectionCard({ n, admin }: { n: NodeStatus; admin: boo
       )}
       {confirm.dialog}
       {preparing && <PrepareNode mode="prepare" nodeId={n.id} nodeUser={n.user} addr={n.addr} jump={n.jump ?? ""} onClose={() => setPreparing(false)} onRegistered={() => setPreparing(false)} />}
+      {changing && mig.info && (
+        <MigrationNetworkDialog
+          node={n.id}
+          info={mig.info}
+          onClose={() => setChanging(false)}
+          onSaved={(r: MigNetResult) => {
+            setChanging(false);
+            setMigDone(resultItems(r, "Migration settings saved."));
+          }}
+        />
+      )}
       {editing && info && (
         <EditConnection
           n={n}
           info={info}
+          mig={mig.info}
           onClose={() => setEditing(false)}
           onSaved={(r) => {
             setEditing(false);
@@ -165,11 +204,12 @@ export default function ConnectionCard({ n, admin }: { n: NodeStatus; admin: boo
   );
 }
 
-function EditConnection({ n, info, onClose, onSaved }: { n: NodeStatus; info: ConnInfo; onClose: () => void; onSaved: (r: EditResponse) => void }) {
+function EditConnection({ n, info, mig: migInfo, onClose, onSaved }: { n: NodeStatus; info: ConnInfo; mig?: MigNetInfo; onClose: () => void; onSaved: (r: EditResponse) => void }) {
   const [addr, setAddr] = useState(n.addr);
   const [user, setUser] = useState(n.user);
   const [jump, setJump] = useState(n.jump ?? "");
-  const [mig, setMig] = useState(info.migrationAddress);
+  const [mig, setMig] = useState(info.migrationAddress === migInfo?.management.address ? "" : info.migrationAddress);
+  const [limit, setLimit] = useState(migInfo?.limit ?? "");
   const [publicKey, setPublicKey] = useState("");
   const [copied, setCopied] = useState(false);
   const [tested, setTested] = useState<EditResponse | undefined>();
@@ -179,7 +219,8 @@ function EditConnection({ n, info, onClose, onSaved }: { n: NodeStatus; info: Co
     get<{ publicKey: string }>("/nodes").then((d) => setPublicKey(d.publicKey), () => {});
   }, []);
   // The access mode is detected by the server when the login changes; it is not sent.
-  const body = (force: boolean) => ({ addr, user, jump, migrationAddress: mig, force });
+  // The migration settings are sent only when the choices were loaded, so that a slow load cannot reset them.
+  const body = (force: boolean) => ({ addr, user, jump, force, ...(migInfo ? { migrationAddress: mig, migrationLimit: limit } : {}) });
   const test = () =>
     act.run(async () => {
       setTested(undefined);
@@ -222,10 +263,10 @@ function EditConnection({ n, info, onClose, onSaved }: { n: NodeStatus; info: Co
             <Field label="Jump host (optional)" hint="user@address of a host to connect through.">
               <input value={jump} onChange={(e) => setJump(e.target.value)} />
             </Field>
-            <Field label="Migration address (optional)" hint="How other nodes reach this one. Empty uses the address above.">
-              <input value={mig} onChange={(e) => setMig(e.target.value)} />
-            </Field>
+            {migInfo?.show && <NetworkSelect info={migInfo} value={mig} onChange={setMig} />}
+            {migInfo && !migInfo.show && <LimitField value={limit} onChange={setLimit} />}
           </div>
+          {migInfo?.show && <LimitField value={limit} onChange={setLimit} />}
           <p className="muted">Add this key to ~/.ssh/authorized_keys of the SSH user on the node.</p>
           <div className="keybox">
             <code>{publicKey}</code>

@@ -75,6 +75,7 @@ export interface NodeStatus {
   maintenance?: boolean;
   privilege?: "root" | "helper" | "none" | "";
   migrationAddress?: string;
+  migrationLimit?: string;
   capabilities?: Record<string, { ok: boolean; reason?: string }>;
 }
 export interface NodeInfo {
