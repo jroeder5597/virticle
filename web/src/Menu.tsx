@@ -145,6 +145,7 @@ function Panel(props: { items: MenuEntry[]; onClose: () => void; onBack?: () => 
               aria-expanded={it.items ? open : undefined}
               onClick={() => {
                 if (it.items) {
+                  window.clearTimeout(timer.current);
                   setSub(open && (inline || sub?.focus) ? null : { i, focus: true });
                   return;
                 }
@@ -164,6 +165,7 @@ function Panel(props: { items: MenuEntry[]; onClose: () => void; onBack?: () => 
                 focusFirst={sub!.focus}
                 onClose={props.onClose}
                 onBack={() => {
+                  window.clearTimeout(timer.current); // a hover that is still pending must not open it again
                   setSub(null);
                   ref.current?.querySelector<HTMLElement>(`:scope > .mi > button[data-i="${i}"]`)?.focus();
                 }}
