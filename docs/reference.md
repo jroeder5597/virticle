@@ -77,12 +77,16 @@ session, not a token.
     web access settings, task log, audit log.
   - `virticle.db.bak-<version>-<time>`: copy made before a schema upgrade
     (newest 3 kept).
+  - `metrics.db`: the performance history of VMs and nodes, up to 7 days
+    (see [metrics.md](metrics.md)). It is not part of the schema-upgrade copy
+    and can be deleted at any time; only the history is lost.
   - `id_ed25519`, `id_ed25519.pub`: the controller's SSH key.
   - `known_hosts`: node host keys, trusted on first use.
   - `tls-cert.pem`, `tls-key.pem`, `web-own/`, `acme/`: certificates.
   - `instance-id`: stamped into scheduled snapshots.
-- **Memory only**: live stats (about 10 minutes), alert state, rate-limit
-  counters.
+- **Memory only**: the newest statistics of every node and VM (the live
+  charts show the last 10 minutes of them, and `/metrics` serves the latest),
+  alert state, rate-limit counters.
 
 ## New VM defaults
 

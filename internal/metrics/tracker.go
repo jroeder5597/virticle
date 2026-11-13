@@ -54,7 +54,7 @@ func NewNodeTracker(id int64, name string) *NodeTracker {
 // doms is nil when the domain call failed; VM rows are then skipped too.
 func (t *NodeTracker) Collect(at time.Time, doms []Dom, domsOK bool, nr *NodeRaw) Batch {
 	step := Tiers[0].Step
-	b := Batch{T: at.Unix() / step * step}
+	b := Batch{T: (at.Unix() + step/2) / step * step} // nearest slot
 
 	if domsOK {
 		seen := map[string]bool{}

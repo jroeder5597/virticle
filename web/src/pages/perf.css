@@ -28,7 +28,7 @@ main .pchips button.pchip.on { color: var(--text); border-color: var(--accent); 
 .pnote { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
 .preadout {
   position: sticky; top: 0; z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 6px 10px; margin-bottom: 8px; font-size: 13px; min-height: 2.2em; box-shadow: var(--shadow);
+  padding: 6px 10px; margin-bottom: 8px; font-size: 13px; height: 6.4em; overflow-y: auto; box-shadow: var(--shadow);
 }
 .preadout.muted { color: var(--muted); }
 .prgrid { display: flex; flex-wrap: wrap; gap: 2px 18px; margin-top: 3px; }
@@ -55,6 +55,7 @@ main .pchips button.pchip.on { color: var(--text); border-color: var(--accent); 
 .pbgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px 20px; }
 .pbcol td, .pbcol th { padding: 3px 6px; }
 @media (max-width: 700px) {
+  .preadout { height: 11em; }
   .pfield { flex: 1 1 140px; }
   .pfield input[type="datetime-local"] { width: 100%; }
 }

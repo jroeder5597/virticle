@@ -1,5 +1,5 @@
 // Live statistics: polling hooks and small inline-SVG charts. The server keeps
-// the history (10 minutes at 5 s); the UI just polls and draws it.
+// the history (10 minutes at 15 s, from the same collector that feeds the history); the UI just polls and draws it.
 import { useEffect, useState } from "react";
 import { bytes, get } from "./api";
 

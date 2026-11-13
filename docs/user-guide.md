@@ -13,6 +13,7 @@ How to do the everyday things in the web UI. To install, see
 - [Migration](#migration)
 - [Storage](#storage)
 - [Networks](#networks)
+- [Performance](#performance)
 - [Users, tokens and the audit log](#users-tokens-and-the-audit-log)
 - [Troubleshooting](#troubleshooting)
 
@@ -281,6 +282,49 @@ rolled back is shown as one line you can dismiss.
 **Which nodes.** Nodes that use NetworkManager, or netplan with systemd-networkd. A node that uses ifupdown is not
 supported yet (the button is disabled and says so). VLANs on a virtual switch need libvirt 11 or later on the node. A
 node prepared with an older version of Virticle must be prepared again.
+
+## Performance
+
+The **Performance** tab of a VM and of a node shows what happened in the last hour, 6 hours, 24 hours or 7 days, for
+troubleshooting ("why was it slow at 03:00?"). The controller records every online node and all its VMs every 15
+seconds, whether or not anyone looks, and keeps it like this:
+
+| Age | One point is | Kept for |
+| --- | --- | --- |
+| Up to 2 hours | 15 seconds | 2 hours |
+| Up to 48 hours | 1 minute | 48 hours |
+| Up to 7 days | 5 minutes | 7 days |
+
+Longer steps keep the average and the highest value, so a short spike stays visible: the line is the average, the light
+band above it is the peak. The note above the charts says which step is in use.
+
+**Controls.** *Time range* picks a preset; *Custom* shows two date and time fields (your local time). The chips switch
+metric groups on and off: CPU, Memory, Disk and Network for both, plus Storage (pool use) and GPU on a node when there is
+data. When a VM has several disks or network cards, or a node has several, a select appears for one device; the default
+is *All (sum)*. For a node, the sum counts physical cards, not bridges.
+
+**Reading the charts.** All charts share one time axis. Hover over a chart (or tap it) to read the values of every chart
+at that time in the box above the charts. Drag across a chart to zoom into that time span; *Back* returns to the
+previous range. A gap is a gap: the VM was not running, or the node or the controller could not be read; nothing is
+drawn as zero. Small markers on the axis show that a VM started (triangle), stopped (square) or moved to another node
+(diamond). *Download CSV* saves the current view for a spreadsheet.
+
+**What is shown.**
+
+- VM: CPU (percent of its virtual CPUs, and time spent waiting for a host CPU), memory (assigned, used inside the guest
+  when the balloon driver reports it, resident on the host), disk (read and write throughput, operations, latency),
+  network (bits per second, dropped packets).
+- Node: CPU (busy, user, system, waiting for disk, stolen) and load average, memory (used, cache, available, swap),
+  disk per device (throughput, operations, busy percent, latency), network per card and bridge, storage pool use, and
+  GPU use, memory and temperature for NVIDIA cards that the node itself drives (the node needs `nvidia-smi`). A GPU passed
+  through to a VM cannot be seen from the node; its usage is only visible inside the guest. AMD and Intel GPUs are not
+  shown.
+
+On a node's Performance tab, *Busiest virtual machines in this range* lists the top 5 by CPU, memory, disk and network;
+each name opens that VM's Performance tab with the same range. The Datacenter has the same table for all nodes.
+
+The history is stored in `metrics.db` in the data directory; deleting the file only loses the history. To feed Grafana or
+another tool, see [metrics.md](metrics.md).
 
 ## Users, tokens and the audit log
 

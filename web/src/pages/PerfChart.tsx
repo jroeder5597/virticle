@@ -2,7 +2,7 @@
 // is longer than the finest, gaps where there is no data, markers for starts, stops and moves of a VM.
 // All charts of a page share one crosshair (cursor) and one drag selection (sel).
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Line, Panel, PerfEvent, clock, dayLabel, fmt, linesOf, niceTicks, unitFor, valueScale, PerfResult } from "./perfApi";
+import { Line, Panel, PerfEvent, clock, fmt, linesOf, niceTicks, unitFor, valueScale, PerfResult } from "./perfApi";
 
 export interface Sel {
   a: number; // seconds
@@ -79,9 +79,14 @@ export default function PerfChart(props: {
   const cand = [60, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400, 172800];
   const tickStep = cand.find((c) => span / c <= wantTicks) ?? 172800;
   const xt: number[] = [];
-  for (let s = Math.ceil(x0 / tickStep) * tickStep; s <= x1; s += tickStep) xt.push(s);
-  // Align ticks to local midnight multiples for day-sized steps
-  const long = span > 86400 * 1.2;
+  const off = -new Date(x0 * 1000).getTimezoneOffset() * 60; // ticks at round local times
+  for (let s = Math.ceil((x0 + off) / tickStep) * tickStep - off; s <= x1; s += tickStep) xt.push(s);
+  const long = span > 20 * 3600; // longer than a day: the label names the day
+  const tickLabel = (s: number) => {
+    if (!long) return clock(s);
+    const wd = new Date(s * 1000).toLocaleDateString(undefined, { weekday: "short" });
+    return tickStep >= 86400 ? `${wd} ${new Date(s * 1000).getDate()}` : `${wd} ${clock(s)}`;
+  };
 
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<{ x: number; moved: boolean } | null>(null);
@@ -152,7 +157,7 @@ export default function PerfChart(props: {
       </figcaption>
       <div ref={wrap as React.RefObject<HTMLDivElement>} className="pframe">
         <svg ref={svgRef} width={W} height={H} role="img" aria-label={panel.title} className="psvg"
-          onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { drag.current = null; onSel(null); }}
+          onMouseDown={(e) => e.preventDefault()} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { drag.current = null; onSel(null); }}
           onPointerLeave={(e) => { if (e.pointerType === "mouse" && !drag.current) onCursor(null); }}>
           {ticks.filter((v) => v <= topV).map((v) => (
             <g key={v}>
@@ -163,7 +168,7 @@ export default function PerfChart(props: {
           {xt.map((s) => (
             <g key={s}>
               <line x1={x(s)} x2={x(s)} y1={M.t + ph} y2={M.t + ph + 4} className="paxis" />
-              <text x={x(s)} y={H - 6} textAnchor="middle" className="ptick">{long ? `${dayLabel(s).replace(/^\w+ /, "")} ${clock(s)}` : clock(s)}</text>
+              <text x={x(s)} y={H - 6} textAnchor={x(s) > W - M.r - 30 ? "end" : x(s) < M.l + 20 ? "start" : "middle"} className="ptick">{tickLabel(s)}</text>
             </g>
           ))}
           <line x1={M.l} x2={W - M.r} y1={M.t + ph} y2={M.t + ph} className="paxis" />

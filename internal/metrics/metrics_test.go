@@ -547,3 +547,57 @@ func TestOpenReplacesUnusableFile(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestSizeTenNodesHundredVMs measures the file for a large installation. It takes minutes, so it only runs with
+// METRICS_SIZE=1 (go test ./internal/metrics -run TenNodes -v).
+func TestSizeTenNodesHundredVMs(t *testing.T) {
+	if os.Getenv("METRICS_SIZE") == "" {
+		t.Skip("set METRICS_SIZE=1 to measure")
+	}
+	start := time.Unix(1_800_000_000, 0).Truncate(time.Hour)
+	d, now := newDB(t, start)
+	var pending []Batch
+	flush := func() {
+		if err := d.InsertMany(pending); err != nil {
+			t.Fatal(err)
+		}
+		pending = pending[:0]
+	}
+	end := start.Add(8 * 24 * time.Hour)
+	for ts := start; ts.Before(end); ts = ts.Add(15 * time.Second) {
+		*now = ts
+		var rows []Row
+		for n := 1; n <= 10; n++ {
+			for i := 0; i < 10; i++ {
+				rows = append(rows, vmRow(fmt.Sprintf("vm-%d-%d", n, i), int64(n), float64(ts.Unix()%100),
+					DevRow{Kind: "disk", Name: "vda", Vals: [nDev]float64{1.5, 2.5, 3.5, 4.5, 5.5, NaN}},
+					DevRow{Kind: "disk", Name: "vdb", Vals: [nDev]float64{1.5, 2.5, 3.5, 4.5, 5.5, NaN}},
+					DevRow{Kind: "vnet", Name: "vnet0", Vals: [nDev]float64{1234.5, 2345.5, 0, 0, NaN, NaN}}))
+			}
+			nv := blankRow(len(nodeCols))
+			for k := range nv {
+				nv[k] = float64(ts.Unix()%1000) / 7
+			}
+			rows = append(rows, Row{Ent: fmt.Sprintf("node:%d", n), Label: "n", Vals: nv, Devs: []DevRow{
+				{Kind: "nic", Name: "eth0", Vals: [nDev]float64{1234.5, 2345.5, 0, 0, 0, 0}},
+				{Kind: "nic", Name: "eth1", Vals: [nDev]float64{1234.5, 2345.5, 0, 0, 0, 0}},
+				{Kind: "net", Name: "br0", Vals: [nDev]float64{1234.5, 2345.5, 0, 0, 0, 0}},
+				{Kind: "bdev", Name: "sda", Vals: [nDev]float64{1e6, 2e6, 30, 40, 12.5, 3.5}},
+				{Kind: "bdev", Name: "sdb", Vals: [nDev]float64{1e6, 2e6, 30, 40, 12.5, 3.5}},
+				{Kind: "pool", Name: "default", Vals: [nDev]float64{20e9, 5e9, 15e9, NaN, NaN, NaN}},
+			}})
+		}
+		pending = append(pending, Batch{T: ts.Unix() / 15 * 15, Rows: rows})
+		if len(pending) == 240 {
+			flush()
+			if err := d.Maintain(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	flush()
+	d.Maintain()
+	d.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
+	fi, _ := os.Stat(d.path)
+	t.Logf("10 nodes, 100 VMs (2 disks, 1 card each), 8 simulated days: %.1f MB", float64(fi.Size())/1e6)
+}

@@ -48,7 +48,7 @@ func Open(path string) (*DB, error) {
 func open(path string) (*DB, error) {
 	// Appends dominate: WAL, and a sync only at checkpoints. Losing the last
 	// seconds on a power cut is fine for a performance history.
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=auto_vacuum(INCREMENTAL)")
+	db, err := sql.Open("sqlite", "file:"+path+"?_txlock=immediate&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=auto_vacuum(INCREMENTAL)")
 	if err != nil {
 		return nil, err
 	}

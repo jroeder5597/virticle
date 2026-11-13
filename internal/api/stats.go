@@ -139,11 +139,15 @@ func (s *Server) sampleNode(id int64) {
 		ns.mu.Lock()
 		ns.tookMS = time.Since(start).Milliseconds()
 		ns.mu.Unlock()
-		wait := stats.Interval - time.Since(start)
+		// Wake on the next 15-second boundary, not 15 seconds after this
+		// start: a period that is a few milliseconds long drifts across the
+		// boundaries of the history's time slots and would leave a slot empty
+		// every few minutes.
+		wait := time.Until(start.Truncate(stats.Interval).Add(stats.Interval))
 		if wait < time.Second {
-			wait = time.Second
+			wait += stats.Interval
 		}
-		time.Sleep(wait)
+		time.Sleep(wait + 50*time.Millisecond)
 	}
 }
 
