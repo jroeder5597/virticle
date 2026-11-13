@@ -31,8 +31,13 @@ func splitAddr(addr string) (host, port string) {
 // is set, else the address the controller uses. The port, when there is one,
 // is the SSH port.
 func migrationTarget(n store.Node) (host, port string) {
+	_, port = splitAddr(n.Addr)
 	if a := strings.TrimSpace(n.MigrationAddr); a != "" {
-		return splitAddr(a)
+		host, p := splitAddr(a)
+		if p == "" {
+			p = port // the SSH port of the node, when the migration network has none of its own
+		}
+		return host, p
 	}
 	return splitAddr(n.Addr)
 }
@@ -58,6 +63,8 @@ func tcpURI(host string) string { return "tcp://" + bracket(host) }
 // migEndpoint is everything the migration needs to know about the target.
 type migEndpoint struct {
 	User, Host, Port string
+	// RateBps limits file copies to that many bytes per second (0: not limited); see miglimit.go.
+	RateBps uint64
 }
 
 func (e migEndpoint) String() string {
@@ -78,7 +85,7 @@ func endpointFor(n store.Node) (migEndpoint, error) {
 	if !userRE.MatchString(user) || !validAddrHost(host) {
 		return migEndpoint{}, fmt.Errorf("unsupported characters in user %q or address %q", user, host)
 	}
-	return migEndpoint{user, host, port}, nil
+	return migEndpoint{User: user, Host: host, Port: port}, nil
 }
 
 // migrateAddrParams are the migration parameters that name the destination:

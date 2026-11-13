@@ -131,7 +131,7 @@ func peerMode(mode string) string {
 // copy gets (empty: 600). progress, when set, is called with the bytes of this
 // file sent so far.
 func copyToNode(ctx context.Context, from, to *hostconn.Host, ep migEndpoint, srcPath, dstPath, mode string, progress func(done uint64)) error {
-	return from.PeerSend(ctx, ep.Host, ep.port(), ep.User, srcPath, dstPath, peerMode(mode), func(done, total uint64) {
+	return from.PeerSend(ctx, ep.Host, ep.port(), ep.User, srcPath, dstPath, peerMode(mode), ep.RateBps, func(done, total uint64) {
 		if progress != nil {
 			progress(done)
 		}

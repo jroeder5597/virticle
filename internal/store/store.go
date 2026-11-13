@@ -40,6 +40,9 @@ type Node struct {
 	// MigrationAddr is what other nodes use to reach this one (IP or name).
 	// Empty means the address the controller uses.
 	MigrationAddr string `json:"migrationAddress"`
+	// MigrationLimit is the setting "Limit on a shared link": empty (80% of the link, the default), "none"
+	// or "custom:<Mbit/s>". See internal/api/miglimit.go.
+	MigrationLimit string `json:"migrationLimit,omitempty"`
 	// HostUUID is the libvirt host UUID last seen on this node, used to tell
 	// whether an edited address still leads to the same machine.
 	HostUUID string `json:"hostUuid,omitempty"`
@@ -101,7 +104,7 @@ func (s *Store) Close() error { return s.db.Close() }
 // --- nodes ---
 
 func (s *Store) Nodes() ([]Node, error) {
-	rows, err := s.db.Query(`SELECT id, addr, user, jump, maintenance, privilege, migration_addr, host_uuid, migtls_off FROM nodes ORDER BY id`)
+	rows, err := s.db.Query(`SELECT id, addr, user, jump, maintenance, privilege, migration_addr, host_uuid, migtls_off, migration_limit FROM nodes ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +112,7 @@ func (s *Store) Nodes() ([]Node, error) {
 	var out []Node
 	for rows.Next() {
 		var n Node
-		if err := rows.Scan(&n.ID, &n.Addr, &n.User, &n.Jump, &n.Maintenance, &n.Privilege, &n.MigrationAddr, &n.HostUUID, &n.MigTLSOff); err != nil {
+		if err := rows.Scan(&n.ID, &n.Addr, &n.User, &n.Jump, &n.Maintenance, &n.Privilege, &n.MigrationAddr, &n.HostUUID, &n.MigTLSOff, &n.MigrationLimit); err != nil {
 			return nil, err
 		}
 		out = append(out, n)

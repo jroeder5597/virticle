@@ -42,7 +42,7 @@ func (s *Server) checkNodeTransfer(src, dst *hostconn.Host, n store.Node, plan *
 	} else {
 		port := ep.port()
 		if _, err := src.Run(reachCmd(ep.Host, port)); err != nil {
-			c.bad("SSH between nodes", fmt.Sprintf("%s cannot open a TCP connection to %s port %s. Nodes reach each other by the IP address or name configured in the node's settings (migration address); check that it is right and that no firewall blocks the SSH port.", src.Name, ep.Host, port))
+			c.bad("SSH between nodes", sshBlockedMsg(src.Name, ep, n))
 			return
 		}
 		if err := s.ensurePeerTrust(src, dst, n, ep); err != nil {
@@ -57,4 +57,13 @@ func (s *Server) checkNodeTransfer(src, dst *hostconn.Host, n store.Node, plan *
 	} else {
 		c.pass("Migration ports", fmt.Sprintf("%s can reach %s on the migration port range (tested 49152)", src.Name, ep.Host))
 	}
+}
+
+// sshBlockedMsg says why the files of a transfer cannot be sent: the source gets no TCP connection to the SSH
+// port of the target at the address used for the files (its migration network).
+func sshBlockedMsg(srcName string, ep migEndpoint, n store.Node) string {
+	if n.MigrationAddr != "" && !sameHost(n.MigrationAddr, n.Addr) {
+		return fmt.Sprintf("%s cannot open a TCP connection to %s port %s, the migration network of the target. Files are copied over SSH on the same network as the migration data: allow SSH there in the target's firewall, or set the target's migration network back to \"Same as management\" in its Settings.", srcName, ep.Host, ep.port())
+	}
+	return fmt.Sprintf("%s cannot open a TCP connection to %s port %s. Nodes reach each other at the address in the node's settings; check that it is right and that no firewall blocks the SSH port.", srcName, ep.Host, ep.port())
 }

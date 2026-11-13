@@ -23,6 +23,8 @@ import (
 type topoAddr struct {
 	Address    string `json:"address"`
 	Management bool   `json:"management,omitempty"`
+	// Migration marks the address other nodes send migration data to, when it is not the management address.
+	Migration bool `json:"migration,omitempty"`
 }
 
 type topoUplink struct {
@@ -34,6 +36,7 @@ type topoUplink struct {
 	Members    []string   `json:"members,omitempty"` // the cards of a bond
 	Addresses  []topoAddr `json:"addresses"`
 	Management bool       `json:"management,omitempty"` // carries the address the controller uses
+	Migration  bool       `json:"migration,omitempty"`  // carries the address other nodes send migration data to
 }
 
 type topoIface struct {
@@ -316,6 +319,7 @@ func forwardDev(raw string) string {
 
 // mgmtAddrs turns the address the controller uses for a node into IP addresses (a literal IP is used as it is).
 func mgmtAddrs(addr string) []string {
+	addr, _ = splitAddr(addr)
 	if ip, err := netip.ParseAddr(addr); err == nil {
 		return []string{ip.String()}
 	}
@@ -335,7 +339,7 @@ type topoResult struct {
 
 // collectTopology reads one node. Per VM it costs one definition read and one state read; addresses come from
 // DHCP leases only, never from the guest agent.
-func collectTopology(h *hostconn.Host, addr string) (topoResult, error) {
+func collectTopology(h *hostconn.Host, addr, migAddr string) (topoResult, error) {
 	nics, err := hostNICList(h)
 	if err != nil {
 		return topoResult{}, err
@@ -380,6 +384,9 @@ func collectTopology(h *hostconn.Host, addr string) (topoResult, error) {
 	}
 	var r topoResult
 	r.switches, r.unused = composeTopology(in)
+	if migAddr != "" && !sameHost(migAddr, addr) {
+		markMigration(r.switches, r.unused, mgmtAddrs(migAddr))
+	}
 	return r, nil
 }
 
@@ -399,7 +406,7 @@ func (s *Server) topology(w http.ResponseWriter, r *http.Request) {
 		if only >= 0 && cfg.ID != only {
 			return nil, nil // not asked for: no work on that node
 		}
-		r, err := collectTopology(h, cfg.Addr)
+		r, err := collectTopology(h, cfg.Addr, cfg.MigrationAddr)
 		return []topoResult{r}, err
 	})
 	out := []topoNode{}
@@ -420,4 +427,31 @@ func (s *Server) topology(w http.ResponseWriter, r *http.Request) {
 		return out[i].Node < out[j].Node
 	})
 	writeJSON(w, map[string]any{"nodes": out})
+}
+
+// markMigration sets the Migration mark on the addresses and uplinks that hold one of ips.
+func markMigration(switches []topoSwitch, unused []topoUplink, ips []string) {
+	want := map[string]bool{}
+	for _, ip := range ips {
+		want[ip] = true
+	}
+	mark := func(as []topoAddr) bool {
+		any := false
+		for i := range as {
+			if want[addrIP(as[i].Address)] {
+				as[i].Migration, any = true, true
+			}
+		}
+		return any
+	}
+	for i := range switches {
+		mark(switches[i].HostAddresses)
+		for j := range switches[i].Uplinks {
+			u := &switches[i].Uplinks[j]
+			u.Migration = mark(u.Addresses)
+		}
+	}
+	for i := range unused {
+		unused[i].Migration = mark(unused[i].Addresses)
+	}
 }

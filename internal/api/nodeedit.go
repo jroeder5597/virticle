@@ -27,6 +27,8 @@ type nodeEditReq struct {
 	Jump             *string `json:"jump"`
 	Privilege        *string `json:"privilege"` // root | helper (the service account) | none | auto (detect)
 	MigrationAddress *string `json:"migrationAddress"`
+	// MigrationLimit is "Limit on a shared link": "", "none" or "custom:<Mbit/s>".
+	MigrationLimit *string `json:"migrationLimit"`
 	// Force saves without a successful trial connection, to fix a node that
 	// is down.
 	Force bool `json:"force"`
@@ -48,6 +50,7 @@ func mergeNodeEdit(cur store.Node, req nodeEditReq) (n store.Node, detect bool, 
 	n.User = trimPtr(req.User, cur.User)
 	n.Jump = trimPtr(req.Jump, cur.Jump)
 	n.MigrationAddr = trimPtr(req.MigrationAddress, cur.MigrationAddr)
+	n.MigrationLimit = trimPtr(req.MigrationLimit, cur.MigrationLimit)
 	if n.User == "" {
 		n.User = "root"
 	}
@@ -70,7 +73,15 @@ func mergeNodeEdit(cur store.Node, req nodeEditReq) (n store.Node, detect bool, 
 		if h, _ := splitAddr(n.MigrationAddr); !validAddrHost(h) {
 			return n, false, badRequest("the migration address must be a host name or an IP address")
 		}
+		if a, err := normalizeMigAddr(n, n.MigrationAddr); err == nil {
+			n.MigrationAddr = a // the management address itself is the same as no setting
+		}
 	}
+	lim, err := parseLimit(n.MigrationLimit)
+	if err != nil {
+		return n, false, err
+	}
+	n.MigrationLimit = lim.String()
 	connChanged := n.Addr != cur.Addr || n.User != cur.User || n.Jump != cur.Jump
 	switch {
 	case req.Privilege != nil && *req.Privilege != "auto" && *req.Privilege != "":
@@ -246,6 +257,19 @@ func (s *Server) editNode(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	migChanged := n.MigrationAddr != cur.MigrationAddr || n.MigrationLimit != cur.MigrationLimit
+	if migChanged && !detect && n.Addr == cur.Addr && n.User == cur.User && n.Jump == cur.Jump && n.Privilege == cur.Privilege {
+		// Only the migration network or its limit changed: no new connection, no trial login.
+		res, err := s.applyMigrationNetwork(id, cur, n.MigrationAddr, n.MigrationLimit, userOf(r))
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		out := nodeEditResult{Warnings: res.Warnings, Notes: res.Notes}
+		out.Node, _ = s.nodeStatus(id)
+		writeJSON(w, out)
+		return
+	}
 	out := nodeEditResult{}
 	if !req.Force {
 		res, err := s.Nodes.TestConnect(n, nodeTestTimeout)
@@ -300,6 +324,7 @@ func describeNodeChange(a, b store.Node) string {
 	add("jump", a.Jump, b.Jump)
 	add("privilege", a.Privilege, b.Privilege)
 	add("migration address", a.MigrationAddr, b.MigrationAddr)
+	add("migration limit", a.MigrationLimit, b.MigrationLimit)
 	if len(c) == 0 {
 		return "no change"
 	}

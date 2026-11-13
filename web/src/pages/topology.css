@@ -35,3 +35,4 @@
   .topotrunk { display: none; }
   .topopg::after, .topouplink::before { display: none; }
 }
+.topouse { margin-left: 8px; font-size: 13px; font-family: var(--sans); }

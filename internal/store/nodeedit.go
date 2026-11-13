@@ -14,6 +14,7 @@ func migrateNodeConnection(tx *sql.Tx, have map[string]bool) error {
 		{"privilege", "''"},
 		{"migration_addr", "''"},
 		{"host_uuid", "''"},
+		{"migration_limit", "''"},
 	} {
 		if have[c.name] {
 			continue
@@ -32,8 +33,8 @@ func migrateNodeConnection(tx *sql.Tx, have map[string]bool) error {
 // UpdateNodeConnection changes how a node is reached. The id, the maintenance
 // flag and everything keyed to the id stay.
 func (s *Store) UpdateNodeConnection(id int64, n Node) error {
-	res, err := s.db.Exec(`UPDATE nodes SET addr=?, user=?, jump=?, privilege=?, migration_addr=?, host_uuid=? WHERE id=?`,
-		n.Addr, n.User, n.Jump, n.Privilege, n.MigrationAddr, n.HostUUID, id)
+	res, err := s.db.Exec(`UPDATE nodes SET addr=?, user=?, jump=?, privilege=?, migration_addr=?, migration_limit=?, host_uuid=? WHERE id=?`,
+		n.Addr, n.User, n.Jump, n.Privilege, n.MigrationAddr, n.MigrationLimit, n.HostUUID, id)
 	if err != nil {
 		return err
 	}
@@ -67,4 +68,17 @@ func (s *Store) GetNode(id int64) (Node, error) {
 		}
 	}
 	return Node{}, ErrNotFound
+}
+
+// SetNodeMigration stores the migration network (the address other nodes use, empty for the management
+// address) and the limit on a shared link of a node.
+func (s *Store) SetNodeMigration(id int64, addr, limit string) error {
+	res, err := s.db.Exec(`UPDATE nodes SET migration_addr=?, migration_limit=? WHERE id=?`, addr, limit, id)
+	if err != nil {
+		return err
+	}
+	if c, _ := res.RowsAffected(); c == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

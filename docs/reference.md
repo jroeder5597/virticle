@@ -95,6 +95,14 @@ session, not a token.
 - **Serial console**: added to every new VM; the Console tab adds one to a VM that has none.
 - **Firmware** (Linux): UEFI, with the UEFI variables in a qcow2 file so the VM can take internal snapshots. A node without UEFI firmware gets BIOS. Windows always gets UEFI.
 
+## Migration network and limit
+
+- Each node has a migration network: the address other nodes send migration data and file copies to. Default: the
+  management address. `GET` and `PUT /api/nodes/{id}/migration-network` read and change it (`address`, and `limit`).
+- Limit on a shared link, per node: `""` (default, 80% of the link speed when known, else none), `"none"` or
+  `"custom:<Mbit/s>"`. It applies only while migration data shares the interface of the management address. The lower
+  limit of the two nodes wins. `bandwidthMiB` in a migrate request replaces it.
+
 ## Schedules
 
 - Stored in the VM's metadata and run by the controller. You enter and see times in your browser's time zone; they are stored in UTC.

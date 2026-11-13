@@ -63,7 +63,7 @@ func TestOperationsNeedTheNodeCommand(t *testing.T) {
 	if err := h.Remove("/x"); !errors.Is(err, ErrNoPrivilege) && (err == nil || !strings.Contains(err.Error(), "node command")) {
 		t.Errorf("Remove: %v", err)
 	}
-	if err := h.PeerSend(context.Background(), "h", "22", "u", "/a", "/b", "600", nil); !errors.Is(err, ErrNoPrivilege) {
+	if err := h.PeerSend(context.Background(), "h", "22", "u", "/a", "/b", "600", 0, nil); !errors.Is(err, ErrNoPrivilege) {
 		t.Errorf("PeerSend: %v", err)
 	}
 }
