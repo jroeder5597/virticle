@@ -173,7 +173,7 @@ Package names, checked on Debian 13 and Rocky Linux 10:
 
 | | Debian family | RHEL family |
 | --- | --- | --- |
-| Base | `qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients dnsmasq-base ovmf swtpm swtpm-tools sudo curl ca-certificates openssh-client` | `qemu-kvm libvirt virt-install edk2-ovmf swtpm swtpm-tools sudo curl openssh-clients` |
+| Base | `qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients dnsmasq-base ovmf swtpm swtpm-tools sudo curl ca-certificates openssh-client iproute2` | `qemu-kvm libvirt virt-install edk2-ovmf swtpm swtpm-tools sudo curl openssh-clients iproute-tc` |
 | Guest disk tools (left out by `--minimal`) | `libguestfs-tools` | `guestfs-tools` |
 
 The guest disk tools provide `virt-sysprep`, which **clone with sysprep** uses. `virtiofsd` is not installed; nothing
@@ -186,14 +186,14 @@ If you cannot use `virticle node prepare`, do the same steps yourself. Run these
 ```sh
 apt-get update
 apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients \
-    dnsmasq-base ovmf swtpm swtpm-tools sudo curl ca-certificates openssh-client libguestfs-tools
+    dnsmasq-base ovmf swtpm swtpm-tools sudo curl ca-certificates openssh-client iproute2 libguestfs-tools
 systemctl enable --now libvirtd
 ```
 
 RHEL family (libvirt runs as modular daemons there; prepare enables the sockets):
 
 ```sh
-dnf install -y qemu-kvm libvirt virt-install edk2-ovmf swtpm swtpm-tools sudo curl openssh-clients guestfs-tools
+dnf install -y qemu-kvm libvirt virt-install edk2-ovmf swtpm swtpm-tools sudo curl openssh-clients iproute-tc guestfs-tools
 systemctl enable --now virtqemud.socket virtnetworkd.socket virtstoraged.socket virtnodedevd.socket \
     virtsecretd.socket virtproxyd.socket virtlogd.socket
 ```

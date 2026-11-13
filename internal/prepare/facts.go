@@ -329,8 +329,8 @@ func Classify(id, version, like, name string) Distro {
 // The guest disk tools provide virt-sysprep, which "sysprep on clone" uses;
 // "prepare --minimal" leaves them out.
 var (
-	debianBase  = []string{"qemu-system-x86", "qemu-utils", "libvirt-daemon-system", "libvirt-clients", "dnsmasq-base", "ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "ca-certificates", "openssh-client"}
-	rhelBase    = []string{"qemu-kvm", "libvirt", "virt-install", "edk2-ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "openssh-clients"}
+	debianBase  = []string{"qemu-system-x86", "qemu-utils", "libvirt-daemon-system", "libvirt-clients", "dnsmasq-base", "ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "ca-certificates", "openssh-client", "iproute2"}
+	rhelBase    = []string{"qemu-kvm", "libvirt", "virt-install", "edk2-ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "openssh-clients", "iproute-tc"}
 	debianGuest = []string{"libguestfs-tools"}
 	rhelGuest   = []string{"guestfs-tools"}
 )

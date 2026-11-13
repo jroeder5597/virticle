@@ -230,3 +230,23 @@ func TestTopologyRunningVMOnBridgeNetworkBelongsToTheNetwork(t *testing.T) {
 		}
 	}
 }
+
+// libvirt's NAT bridge has no carrier while no VM runs on it: that is its normal state, shown as Idle.
+func TestTopologyIdleNATBridgeIsNotDown(t *testing.T) {
+	in := testInput()
+	for i := range in.NICs {
+		if in.NICs[i].Name == "virbr0" {
+			in.NICs[i].State = "down"
+		}
+	}
+	sw, _ := composeTopology(in)
+	if s := findSwitch(t, sw, "virbr0").State; s != "idle" {
+		t.Fatalf("an active NAT network with a carrier-less bridge must be idle, got %q", s)
+	}
+	// A plain Linux bridge without link stays down.
+	in.NICs = append(in.NICs, hostNIC{Name: "br9", Type: "bridge", Kind: "bridge", State: "down"})
+	sw, _ = composeTopology(in)
+	if s := findSwitch(t, sw, "br9"); s.State != "down" {
+		t.Fatalf("br9 = %+v", s)
+	}
+}

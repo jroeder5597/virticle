@@ -247,6 +247,10 @@ func composeTopology(in topoInput) (switches []topoSwitch, unused []topoUplink) 
 		// A bridge-mode network only names a host bridge; every other mode makes libvirt own the bridge.
 		if nw.Forward != "bridge" {
 			s.Kind = "libvirt"
+			// libvirt's own bridge has no carrier while no VM is attached; that is its normal state, not a fault.
+			if nw.Active && s.State == "down" {
+				s.State = "idle"
+			}
 		}
 		if s.State == "" {
 			s.State = map[bool]string{true: "up", false: "down"}[nw.Active]

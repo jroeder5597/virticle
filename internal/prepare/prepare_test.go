@@ -280,12 +280,12 @@ func TestPackageLists(t *testing.T) {
 		}
 		return false
 	}
-	for _, p := range []string{"qemu-system-x86", "libvirt-daemon-system", "libvirt-clients", "ovmf", "swtpm", "swtpm-tools", "libguestfs-tools"} {
+	for _, p := range []string{"qemu-system-x86", "libvirt-daemon-system", "libvirt-clients", "ovmf", "swtpm", "swtpm-tools", "libguestfs-tools", "iproute2"} {
 		if !has(d, p) {
 			t.Errorf("debian list lacks %s", p)
 		}
 	}
-	for _, p := range []string{"qemu-kvm", "libvirt", "virt-install", "edk2-ovmf", "swtpm", "swtpm-tools", "guestfs-tools"} {
+	for _, p := range []string{"qemu-kvm", "libvirt", "virt-install", "edk2-ovmf", "swtpm", "swtpm-tools", "guestfs-tools", "iproute-tc"} {
 		if !has(r, p) {
 			t.Errorf("rhel list lacks %s", p)
 		}

@@ -97,6 +97,7 @@ test.describe.serial("web access", () => {
     await page.goto("/web-access");
     await expect(page.getByRole("heading", { name: "Web access" })).toBeVisible();
     await expect(page.getByText("HTTP on " + PLAIN)).toBeVisible();
+    await expect(page.getByText("Mode: plain HTTP.")).toBeVisible(); // said without opening Advanced
     await setMode(page, "Self-signed certificate");
     await setListen(page, u.hostname, HTTPS_PORT);
     await advanced(page);

@@ -536,7 +536,7 @@ func (s *Server) preflight(srcID int64, src *hostconn.Host, dom libvirt.Domain, 
 		case i.Type == "network":
 			n, err := dst.NetworkLookupByName(i.Network)
 			if err != nil {
-				c.bad("Network "+i.Network, "does not exist on "+dst.Name+" ("+err.Error()+")")
+				c.bad("Network "+i.Network, "does not exist on "+dst.Name+" ("+err.Error()+"). See Datacenter, Network.")
 			} else if act, _ := dst.NetworkIsActive(n); act == 0 {
 				c.bad("Network "+i.Network, "exists on "+dst.Name+" but is not active")
 			} else {

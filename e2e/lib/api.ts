@@ -27,7 +27,7 @@ export class Api {
   put = <T = any>(p: string, d: unknown = {}) => this.call<T>("PUT", p, d);
   del = <T = any>(p: string) => this.call<T>("DELETE", p);
 
-  async nodes(): Promise<{ id: number; hostname?: string; addr: string; state: string; maintenance?: boolean }[]> {
+  async nodes(): Promise<{ id: number; hostname?: string; addr: string; state: string; maintenance?: boolean; user?: string }[]> {
     return (await this.get("/nodes")).nodes;
   }
   async nodeId(name: string): Promise<number> {

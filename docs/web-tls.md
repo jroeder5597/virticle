@@ -87,7 +87,7 @@ server {
 ```
 (The page shows the complete file, including the port 80 redirect; the other four are generated the same way: `proxy_pass`-equivalents are `ProxyPass` plus a `RewriteRule ... ws://` for Apache httpd, `server ... check` with `timeout tunnel 1h` for HAProxy, `reverse_proxy` with `flush_interval -1` for Caddy, and a router and `loadBalancer` service for Traefik.)
 
-The complete generated text for all five is checked into `internal/webaccess/testdata/*.golden`. The HAProxy text was run for real in the end-to-end test (`e2e/tests/32-web-access.spec.ts`, with `E2E_HAPROXY` set). The nginx, Apache, Caddy and Traefik texts were not run against the real programs.
+The complete generated text for all five is checked into `internal/webaccess/testdata/*.golden`. The HAProxy text was run for real in the end-to-end test (`e2e/tests/33-web-access.spec.ts`, with `E2E_HAPROXY` set). The nginx, Apache, Caddy and Traefik texts were not run against the real programs.
 
 ## Command line and environment
 

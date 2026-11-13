@@ -36,11 +36,11 @@ const px = (v: string | undefined) => (v && Number(v) > 0 ? Number(v) : undefine
 /** The administrator's pages, behind one menu in the top bar. */
 const SETTINGS = [
   { label: "Users", to: "/users" },
-  { label: "Audit", to: "/audit" },
-  { label: "Web access", to: "/web-access" },
   { label: "Sign-in", to: "/sign-in" },
+  { label: "Web access", to: "/web-access" },
   { label: "Alerts", to: "/alerts-settings" },
   { label: "Backup", to: "/controller-backup" },
+  { label: "Audit", to: "/audit" },
 ];
 
 type Session = { needsSetup: boolean; user: string; role: Role; source?: string; twoStepSetup?: boolean; oidc?: string };
@@ -139,12 +139,7 @@ export default function App() {
         <NavLink to="/datacenter/backups">Backups</NavLink>
         <NavLink to="/datacenter/nodes">Nodes</NavLink>
         <NavLink to="/datacenter/tasks">Tasks</NavLink>
-        {session.role === "admin" && <NavLink to="/users">Users</NavLink>}
-        {session.role === "admin" && <NavLink to="/audit">Audit</NavLink>}
-        {session.role === "admin" && <NavLink to="/web-access">Web access</NavLink>}
-        {session.role === "admin" && <NavLink to="/sign-in">Sign-in</NavLink>}
-        {session.role === "admin" && <NavLink to="/alerts-settings">Alerts</NavLink>}
-        {session.role === "admin" && <NavLink to="/controller-backup">Backup</NavLink>}
+        {session.role === "admin" && SETTINGS.map((x) => <NavLink key={x.to} to={x.to}>{x.label}</NavLink>)}
         </div>
         <Tree />
         <Resizer axis="x" cssVar="--sidebar-w" pref="sidebarW" min={SIDEBAR_MIN} max={sidebarMax} current={() => document.querySelector(".sidebar")?.getBoundingClientRect().width ?? 260} label="Resize the resource tree" />

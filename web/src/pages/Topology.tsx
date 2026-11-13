@@ -121,14 +121,18 @@ function Addrs({ list, use }: { list: Addr[]; use?: UseMigration }) {
 }
 
 function UplinkBox({ node, u, action, use }: { node: number; u: Uplink; action?: ReactNode; use?: UseMigration }) {
+  // The mark sits by the address when the card shows that address; by the name only when no address carries it.
+  const shown = u.addresses.filter((a) => !/^fe80:/i.test(a.address));
+  const markManagement = u.management && !shown.some((a) => a.management);
+  const markMigration = u.migration && !shown.some((a) => a.migration);
   return (
     <div className="topouplink" data-topo-id={`uplink:${u.name}`}>
       <div className="topotitle">
         <Link to={`/node/${node}/network`}>{u.name}</Link>
         <StateBadge state={u.state === "up" ? "up" : u.state === "down" ? "down" : "unknown"} />
         {speed(u.speedMbps) && <span className="muted">{speed(u.speedMbps)}</span>}
-        {u.management && <span className="topomgmt">Management</span>}
-        {u.migration && <span className="topomgmt">Migration</span>}
+        {markManagement && <span className="topomgmt">Management</span>}
+        {markMigration && <span className="topomgmt">Migration</span>}
       </div>
       <div className="muted">
         {u.type === "bond" ? "Bond" : u.type === "vlan" ? "VLAN device" : "Network card"}
@@ -224,7 +228,7 @@ function SwitchBox({ node, s, accents, act, use }: { node: number; s: Switch; ac
       <header>
         <h4>{s.name}</h4>
         <span className="muted">{KIND[s.kind]}</span>
-        {s.state && s.kind !== "other" && <StateBadge state={s.state === "up" ? "up" : s.state === "down" ? "down" : "unknown"} />}
+        {s.state && s.kind !== "other" && <StateBadge state={s.state === "up" || s.state === "down" || s.state === "idle" ? s.state : "unknown"} />}
         {info?.vlanFiltering && <span className="muted">VLANs {info.vlans && info.vlans !== "2-4094" ? info.vlans : "all"}</span>}
         {s.mtu && s.mtu !== 1500 ? <span className="muted">MTU {s.mtu}</span> : null}
         {act && s.kind === "linux-bridge" && info && !info.managed && info.readOnly !== "managed by libvirt" && <span className="muted">Not managed by Virticle</span>}

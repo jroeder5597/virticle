@@ -343,6 +343,8 @@ export default function WebAccess() {
           </StatusLine>
         ))}
         {(portChanged || pend || st.source === "default") && <FirewallHint />}
+        {st.settings.mode === "off" && <StatusLine status="info">Mode: plain HTTP.</StatusLine>}
+        {st.settings.mode === "proxy" && <StatusLine status="info">Mode: behind a reverse proxy, which provides HTTPS.</StatusLine>}
         {plainOpen && <StatusLine status="warning">Sign-ins travel unencrypted</StatusLine>}
         {!resp.tls && st.settings.mode !== "off" && st.settings.mode !== "proxy" && <StatusLine status="info">This page was opened over plain HTTP.</StatusLine>}
         {st.cert && (
