@@ -12,6 +12,7 @@ import NodeDetail from "./pages/NodeDetail";
 import Users from "./pages/Users";
 import Audit from "./pages/Audit";
 import WebAccess from "./pages/WebAccess";
+import ControllerBackup from "./pages/ControllerBackup";
 import Account from "./pages/Account";
 import CloudProfiles from "./pages/CloudProfiles";
 import ConsolePage from "./pages/ConsolePage";
@@ -35,6 +36,7 @@ const SETTINGS = [
   { label: "Audit", to: "/audit" },
   { label: "Web access", to: "/web-access" },
   { label: "Alerts", to: "/alerts-settings" },
+  { label: "Backup", to: "/controller-backup" },
 ];
 
 type Session = { needsSetup: boolean; user: string; role: Role };
@@ -135,6 +137,7 @@ export default function App() {
         {session.role === "admin" && <NavLink to="/audit">Audit</NavLink>}
         {session.role === "admin" && <NavLink to="/web-access">Web access</NavLink>}
         {session.role === "admin" && <NavLink to="/alerts-settings">Alerts</NavLink>}
+        {session.role === "admin" && <NavLink to="/controller-backup">Backup</NavLink>}
         </div>
         <Tree />
         <Resizer axis="x" cssVar="--sidebar-w" pref="sidebarW" min={SIDEBAR_MIN} max={sidebarMax} current={() => document.querySelector(".sidebar")?.getBoundingClientRect().width ?? 260} label="Resize the resource tree" />
@@ -160,6 +163,7 @@ export default function App() {
           {session.role === "admin" && <Route path="/audit" element={<Audit />} />}
           {session.role === "admin" && <Route path="/web-access" element={<WebAccess />} />}
           {session.role === "admin" && <Route path="/alerts-settings" element={<AlertSettings />} />}
+          {session.role === "admin" && <Route path="/controller-backup" element={<ControllerBackup />} />}
           <Route path="*" element={<div className="empty">There is nothing at this address, or your role does not allow it.</div>} />
         </Routes>
       </main>

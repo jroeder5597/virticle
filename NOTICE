@@ -8,5 +8,7 @@ This product bundles third-party software under their own licences:
 - xterm.js, React, React Router, MIT License
 - Lucide, ISC License
 - Source Sans 3, JetBrains Mono, SIL Open Font License 1.1
+- age and hpke (filippo.io/age, filippo.io/hpke), BSD 3-Clause License:
+  encryption of controller backups
 - Go modules listed in go.mod, under BSD, MIT, ISC, Apache 2.0 and MPL 2.0
   licences

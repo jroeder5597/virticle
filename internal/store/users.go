@@ -531,3 +531,17 @@ func (s *Store) Audit(f AuditFilter) ([]AuditEntry, error) {
 	}
 	return out, rows.Err()
 }
+
+// CheckPassword reports ErrBadPassword unless password is the user's current
+// password. It is the second proof asked before something sensitive is
+// handed out.
+func (s *Store) CheckPassword(id int64, password string) error {
+	var hash string
+	if err := s.db.QueryRow(`SELECT pwhash FROM users WHERE id=?`, id).Scan(&hash); err != nil {
+		return ErrNotFound
+	}
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
+		return ErrBadPassword
+	}
+	return nil
+}

@@ -46,6 +46,10 @@ var routeLevels = map[string]string{
 	"POST /api/web/renew":        admin,
 	"POST /api/web/acme/request": admin,
 
+	"GET /api/controller-backup":           admin,
+	"PUT /api/controller-backup":           admin,
+	"POST /api/controller-backup/download": admin,
+
 	"GET /api/version": viewer,
 	"GET /api/events":  viewer,
 	"GET /api/tasks":   viewer,
