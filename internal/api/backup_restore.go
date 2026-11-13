@@ -545,9 +545,12 @@ func (p *restorePlan) run(progress func(float64)) (uuid string, err error) {
 }
 
 // removeOld undefines the VM this restore replaces and deletes its disks.
-func (p *restorePlan) removeOld() error {
-	dst := p.dst
-	x, err := dst.DomainGetXMLDesc(*p.old, libvirt.DomainXMLInactive)
+func (p *restorePlan) removeOld() error { return removeVMAndDisks(p.dst, *p.old) }
+
+// removeVMAndDisks undefines a (shut-off) VM with its UEFI variables, snapshot and checkpoint
+// records and TPM state, then deletes its disks: pool volumes through libvirt, plain files directly.
+func removeVMAndDisks(dst *hostconn.Host, dom libvirt.Domain) error {
+	x, err := dst.DomainGetXMLDesc(dom, libvirt.DomainXMLInactive)
 	if err != nil {
 		return err
 	}
@@ -557,7 +560,7 @@ func (p *restorePlan) removeOld() error {
 	}
 	f := libvirt.DomainUndefineManagedSave | libvirt.DomainUndefineSnapshotsMetadata | libvirt.DomainUndefineNvram |
 		libvirt.DomainUndefineCheckpointsMetadata | libvirt.DomainUndefineTpm
-	if err := dst.DomainUndefineFlags(*p.old, f); err != nil {
+	if err := dst.DomainUndefineFlags(dom, f); err != nil {
 		return fmt.Errorf("removing the existing VM: %w", err)
 	}
 	var left []string

@@ -318,6 +318,9 @@ func collectDrift(h *hostconn.Host, id int64, withBridges bool) (driftNode, erro
 		return d, err
 	}
 	for _, dom := range doms {
+		if isReplicaOrStale(h, dom) {
+			continue
+		}
 		raw, err := h.DomainGetXMLDesc(dom, 0)
 		if err != nil {
 			continue

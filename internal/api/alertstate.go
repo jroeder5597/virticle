@@ -18,7 +18,7 @@ import (
 
 type Alert struct {
 	ID       string `json:"id"`
-	Kind     string `json:"kind"`     // node-down | pool-usage | host-memory | failed-job | vm-state | tls-expiry | scheduler-conflict | net-link | net-bond | net-drift | storage-unavailable
+	Kind     string `json:"kind"`     // node-down | pool-usage | host-memory | failed-job | vm-state | tls-expiry | scheduler-conflict | net-link | net-bond | net-drift | storage-unavailable | replica-age | stale-copy
 	Severity string `json:"severity"` // warning | critical
 	Title    string `json:"title"`
 	Message  string `json:"message"`
@@ -72,6 +72,22 @@ type alertMem struct {
 	UsedKiB, TotalKiB uint64
 }
 
+// alertReplica is a standby's copy of a VM: how old it is against its interval. alertStale is the old VM
+// after a failover.
+type alertReplica struct {
+	Node           int64
+	NodeName, UUID string
+	Name, Source   string
+	Last           time.Time // the newest point, or the last time the copy was found current
+	Every          int
+}
+
+type alertStale struct {
+	Node           int64
+	NodeName, UUID string
+	Name, To       string
+}
+
 type alertVM struct {
 	Node           int64
 	NodeName, UUID string
@@ -95,6 +111,8 @@ type alertInput struct {
 	Pools      []alertPool
 	Mem        []alertMem
 	VMs        []alertVM
+	Replicas   []alertReplica
+	Stale      []alertStale
 	Jobs       []store.Task    // tasks of the scheduler in the window
 	Conflicts  []schedConflict // nodes where another controller takes scheduled snapshots
 	CertExpiry time.Time       // zero when the UI does not use a certificate of its own
@@ -179,6 +197,24 @@ func (t *alertTracker) step(in alertInput, now time.Time) (raised, cleared, all 
 			Title: v.Name + " " + v.Why, Link: fmt.Sprintf("/vm/%d/%s", v.Node, v.UUID),
 			Message: fmt.Sprintf("VM %s on %s is %s.", v.Name, v.NodeName, v.Why)})
 	}
+	for _, rp := range in.Replicas {
+		if rp.Last.IsZero() || rp.Every <= 0 {
+			continue // the first copy is still on its way
+		}
+		age := now.Sub(rp.Last)
+		if age <= 2*time.Duration(rp.Every)*time.Minute+time.Minute {
+			continue
+		}
+		add(Alert{ID: fmt.Sprintf("replica:%d:%s", rp.Node, rp.UUID), Kind: "replica-age", Severity: "warning", Node: rp.Node,
+			Title: fmt.Sprintf("The replica of %s on %s is %s old", rp.Name, rp.NodeName, ageText(age)), Link: fmt.Sprintf("/vm/%d/%s", rp.Node, rp.UUID),
+			Message: fmt.Sprintf("The copy of %s from %s on %s was last brought up to date at %s, more than twice its interval of %d minutes ago. A failover now would lose what changed since. Check the standby node, the source node and the failed runs under Tasks; the alert clears when a run succeeds.",
+				rp.Name, rp.Source, rp.NodeName, rp.Last.Format("2006-01-02 15:04"), rp.Every)})
+	}
+	for _, st := range in.Stale {
+		add(Alert{ID: fmt.Sprintf("stale:%d:%s", st.Node, st.UUID), Kind: "stale-copy", Severity: "warning", Node: st.Node,
+			Title: fmt.Sprintf("%s on %s is an old copy", st.Name, st.NodeName), Link: fmt.Sprintf("/vm/%d/%s", st.Node, st.UUID),
+			Message: fmt.Sprintf("%s was started on %s from its replica. This VM is the old one: it is kept shut off and cannot be started. Delete it, or use Replicate back on the running VM to make it the new replica.", st.Name, st.To)})
+	}
 	for _, c := range in.Conflicts {
 		add(Alert{ID: "sched-conflict:" + strconv.FormatInt(c.Node, 10), Kind: "scheduler-conflict", Severity: "warning", Node: c.Node,
 			Title: "Another controller is running schedules on node " + c.NodeName, Link: "/nodes",
@@ -202,8 +238,12 @@ func (t *alertTracker) step(in alertInput, now time.Time) (raised, cleared, all 
 				Message: fmt.Sprintf("The backup written to the backups folder failed at %s: %s", time.Unix(j.Finished, 0).Format("2006-01-02 15:04:05"), j.Error)})
 			continue
 		}
+		title := fmt.Sprintf("Scheduled %s of %s failed", j.Kind, jobVM(j.Target))
+		if j.Kind == "replicate" {
+			title = fmt.Sprintf("Replication of %s failed", jobVM(j.Target))
+		}
 		add(Alert{ID: fmt.Sprintf("job:%s:%s:%s", j.Kind, j.Node, jobVM(j.Target)), Kind: "failed-job", Severity: "warning",
-			Title: fmt.Sprintf("Scheduled %s of %s failed", j.Kind, jobVM(j.Target)), Link: "/tasks",
+			Title: title, Link: "/tasks",
 			Message: fmt.Sprintf("%s on %s failed at %s: %s", j.Kind, j.Node, time.Unix(j.Finished, 0).Format("2006-01-02 15:04:05"), j.Error)})
 	}
 	for _, c := range in.MigCerts {
@@ -312,6 +352,7 @@ func (t *alertTracker) debounce(in alertInput, cur map[string]Alert) {
 // is involved; both belong to the same job.
 func jobVM(target string) string {
 	vm, _, _ := strings.Cut(target, "@")
+	vm, _, _ = strings.Cut(vm, " → ") // replicate: "vm → node"
 	return vm
 }
 
