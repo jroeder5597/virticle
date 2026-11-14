@@ -109,7 +109,7 @@ Details are in [docs/install-node.md](docs/install-node.md).
 | See how a VM was doing | The **Performance** tab of the VM or node. |
 | Change the web address, certificate or port | **Settings > Web access** (administrator). A change you do not confirm is undone after 60 seconds. |
 | Update all nodes | **Nodes > Update all nodes**. The plan is shown first. |
-| Keep a standby copy of a VM | The VM's **Overview**, card **Replication**. |
+| Keep a standby copy of a VM | The VM's **Actions** menu, **Replication**. |
 | Back up the controller | **Settings > Controller backup**, or `sudo virticle backup`. |
 
 ![Migration pre-flight](docs/img/migrate.png)
