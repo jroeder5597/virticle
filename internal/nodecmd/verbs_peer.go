@@ -627,12 +627,12 @@ func verbPeerList(c *Ctx) error {
 // peerSSH runs ssh to the peer as the account, with its own key and the host
 // keys recorded by peer-hostkey-set. Checking is strict: an unknown or changed
 // host key is an error, never accepted. The result is the combined output.
-func (c *Ctx) peerSSH(a *Account, host, port, user string, stdin io.Reader) ([]byte, error) {
+func (c *Ctx) peerSSH(a *Account, host, port, user string, connect int, stdin io.Reader) ([]byte, error) {
 	cmd, err := c.Command("ssh",
 		"-F", "/dev/null", "-T", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-i", a.Home+"/.ssh/"+peerKeyName,
 		"-o", "UserKnownHostsFile="+a.Home+"/.ssh/"+peerHostsName, "-o", "GlobalKnownHostsFile=/dev/null", "-o", "StrictHostKeyChecking=yes",
 		"-o", "PasswordAuthentication=no", "-o", "ClearAllForwardings=yes", "-o", "ForwardAgent=no",
-		"-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8", "-o", "LogLevel=ERROR",
+		"-o", "ConnectTimeout="+strconv.Itoa(connect), "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8", "-o", "LogLevel=ERROR",
 		"-p", port, "--", user+"@"+host, "peer-recv")
 	if err != nil {
 		return nil, err
@@ -669,7 +669,7 @@ func verbPeerPing(c *Ctx) error {
 	if err != nil {
 		return err
 	}
-	out, err := c.peerSSH(a, c.Args[0], c.Args[1], c.Args[2], strings.NewReader("virticle-peer 1 ping\n"))
+	out, err := c.peerSSH(a, c.Args[0], c.Args[1], c.Args[2], 10, strings.NewReader("virticle-peer 1 ping\n"))
 	if err != nil {
 		var e *Error
 		if errors.As(err, &e) {
@@ -753,7 +753,7 @@ func verbPeerSend(c *Ctx) error {
 			}
 		}
 	}()
-	out, err := c.peerSSH(a, host, port, user, stdin)
+	out, err := c.peerSSH(a, host, port, user, 10, stdin)
 	close(stop)
 	<-stopped
 	if err != nil {
@@ -772,7 +772,8 @@ func verbPeerSend(c *Ctx) error {
 
 // verbPeerRecv is the forced command of a peer key. Stdin: one header line,
 // then the data. A path is checked like for every other verb, and an existing
-// file is never replaced.
+// file is never replaced. Besides "recv" the key can ask "ping", "took-over UUID
+// GEN" and "vm-state UUID": answers from this node's own libvirt, nothing that changes it.
 func verbPeerRecv(c *Ctx) error {
 	if err := c.Need(0, 0, "peer-recv"); err != nil {
 		return err
@@ -808,6 +809,17 @@ func verbPeerRecv(c *Ctx) error {
 		}
 		fmt.Fprintf(c.Stdout, "@@pong %s\n", Version)
 		return nil
+	case "took-over":
+		if len(f) != 5 || !uuidRE.MatchString(f[3]) || !numOK(f[4]) {
+			return Die("unsupported header")
+		}
+		gen, _ := strconv.Atoi(f[4])
+		return c.peerTookOver(f[3], gen)
+	case "vm-state":
+		if len(f) != 4 || !uuidRE.MatchString(f[3]) {
+			return Die("unsupported header")
+		}
+		return c.peerVMState(f[3])
 	case "recv":
 		if len(f) != 6 {
 			return Die("unsupported header")

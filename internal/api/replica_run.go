@@ -300,6 +300,8 @@ func (s *Server) planReplica(srcID int64, src *hostconn.Host, dom libvirt.Domain
 	if r.ep, err = s.checkBackupTransfer(src, dst, dn.Node); err != nil {
 		return nil, err
 	}
+	r.cfg.PeerHost, r.cfg.PeerPort, r.cfg.PeerUser = r.ep.Host, r.ep.port(), r.ep.User
+	s.ensureStandbyCanAskSource(srcID, src, dst, cfg.TargetNode)
 	return r, nil
 }
 
@@ -424,6 +426,14 @@ func (r *replRun) markReplica(dom libvirt.Domain, last *replPoint) error {
 	old, err := domainMeta(r.dst, dom)
 	if err != nil {
 		return err
+	}
+	// The addresses the VM has now; when none are known (it is shut off, or the guest does not say), what the
+	// last copy knew stays.
+	rm.Addrs = vmAddrs(r.src, r.dom)
+	if rm.Addrs == "" {
+		if prev := parseReplicaMeta(old); prev != nil {
+			rm.Addrs = prev.Addrs
+		}
 	}
 	meta, err := setMetaChildren(old, map[string]string{replicaChild: rm.element()})
 	if err != nil {

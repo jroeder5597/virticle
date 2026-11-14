@@ -130,6 +130,15 @@ export interface ReplicationStatus {
   stale?: { toNode: number; toName: string; at: number };
   now: number;
 }
+/** GET .../replica/failover-check: what the standby found out before an unplanned failover. */
+export interface FailoverCheck {
+  /** Set when the failover must not go on: the source node answers to the standby and the VM runs there. */
+  refuse?: string;
+  /** Set when the VM still answers on the network: the failover needs "Start anyway". */
+  warning?: string;
+  /** One line: what was checked. */
+  checked: string;
+}
 /** GET .../replica on the standby's copy. */
 export interface ReplicaInfo {
   sourceNode: number;

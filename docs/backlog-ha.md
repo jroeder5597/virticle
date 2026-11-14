@@ -9,6 +9,11 @@ When a node stops answering, Virticle cannot tell a dead node from a node that i
 standby while the old node still runs it gives two copies with the same MAC and IP addresses. The disks are separate,
 so nothing is destroyed, but the two copies diverge. A person who knows the node is down is the only fence there is.
 
+What exists instead of a fence: before an unplanned failover the standby asks the old node directly and looks for the
+VM on the network (it refuses or asks for **Start anyway**), and a hook on every node keeps the old copy off when its
+node reboots (the start guard). Neither can see a node that is cut off from the controller and from the standby but
+still serves clients; only fencing closes that.
+
 ## What automatic failover needs
 
 | Need | Why | Notes |

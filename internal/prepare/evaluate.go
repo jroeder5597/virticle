@@ -1,8 +1,13 @@
 package prepare
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"strconv"
 	"strings"
+
+	"virticle/internal/nodeproto"
 )
 
 const gib = 1 << 30
@@ -168,6 +173,9 @@ func Evaluate(p Plan, o Options) []Row {
 
 	// Service account
 	rows = append(rows, accountRows(p, o)...)
+
+	// Start guard
+	rows = append(rows, guardRow(p, o))
 	return rows
 }
 
@@ -279,4 +287,37 @@ func HasError(rows []Row) bool {
 		}
 	}
 	return false
+}
+
+// libvirtMajor is the major number of a libvirt version text, 0 when it is not known.
+func libvirtMajor(v string) int {
+	n, _ := strconv.Atoi(major(strings.TrimSpace(v)))
+	return n
+}
+
+// guardMinLibvirt is the first libvirt that runs the scripts of a hook directory (qemu.d).
+const guardMinLibvirt = 7
+
+// guardRow says what prepare does about the start guard (the libvirt hook that keeps the old copy of a
+// failed-over VM off).
+func guardRow(p Plan, o Options) Row {
+	row := Row{ID: "guard", Title: "Start guard"}
+	switch {
+	case p.Facts.Virsh != "" && p.Facts.LibvirtVersion != "" && libvirtMajor(p.Facts.LibvirtVersion) < guardMinLibvirt:
+		row.Status, row.Detail = Warning, "libvirt "+p.Facts.LibvirtVersion+" has no hook directory, so the start guard is not installed; a failed-over VM can start again on its old node until the controller shuts it down"
+	case p.Facts.GuardSHA != "" && p.Facts.GuardSHA == sha(nodeproto.HookScript(o.ServiceUser())):
+		row.Status, row.Detail = OK, "Installed at "+nodeproto.HookPath
+	case p.Facts.GuardSHA != "" && !p.Facts.GuardOurs:
+		row.Status, row.Detail = Warning, nodeproto.HookPath+" exists and was not written by Virticle; it is left alone"
+	case p.Facts.GuardSHA != "":
+		row.Status, row.Detail = Info, "Installed, will be updated"
+	default:
+		row.Status, row.Detail = Info, "Will be installed: before a replicated VM starts, libvirt asks its standby node whether it took the VM over, and keeps this copy off when it did. Other VMs are not affected. An administrator's own hook is not touched"
+	}
+	return row
+}
+
+func sha(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"virticle/internal/hostconn"
+	"virticle/internal/nodeproto"
 )
 
 func init() {
@@ -356,6 +357,8 @@ func hostOnDebian(changed bool, extra func(cmd, stdin string) (string, bool, err
 			return "", true, nil
 		case strings.Contains(cmd, hostconn.NodeCmdPath+" version") && !strings.Contains(cmd, "os_id="):
 			return hostconn.NodeCmdVersion, true, nil
+		case strings.Contains(cmd, "virticle-guard-selftest"):
+			return "result: " + nodeproto.SelftestMark + " exec=ok ssh=ok key=ok net=ok", true, nil
 		case strings.Contains(cmd, "dpkg -s"):
 			if changed {
 				return "libvirt-daemon-system\nqemu-system-x86", true, nil
@@ -378,8 +381,8 @@ func TestPrepareRunsStepsInOrder(t *testing.T) {
 	for _, r := range rows {
 		ids = append(ids, r.ID)
 	}
-	order := []string{"admin", "arch", "distro", "cpu", "kvm", "nested", "iommu", "space", "mac", "time", "libvirt", "controller", "packages", "firewall", "account",
-		"do-packages", "do-firewall", "do-services", "do-network", "do-pool", "do-account", "do-key", "do-nodecmd", "do-sudoers", "do-peerkey", "test-ssh", "summary"}
+	order := []string{"admin", "arch", "distro", "cpu", "kvm", "nested", "iommu", "space", "mac", "time", "libvirt", "controller", "packages", "firewall", "account", "guard",
+		"do-packages", "do-firewall", "do-services", "do-network", "do-pool", "do-account", "do-key", "do-nodecmd", "do-sudoers", "do-peerkey", "do-guard", "test-ssh", "summary"}
 	if strings.Join(ids, ",") != strings.Join(order, ",") {
 		t.Errorf("rows:\n%v\nwant\n%v", ids, order)
 	}

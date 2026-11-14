@@ -98,6 +98,8 @@ echo "old_script=$([ -e ` + oldHelperPath + ` ] && echo yes)"
 echo "node_version=$(` + nodeCmdPath + ` version 2>/dev/null | head -n 1)"
 echo "node_sha=$(sha256sum ` + nodeCmdPath + ` 2>/dev/null | cut -d' ' -f1)"
 echo "sudoers_file=$([ -f ` + sudoersPath + ` ] && head -c 4096 ` + sudoersPath + ` | tr '\n' '|')"
+echo "guard_sha=$(sha256sum ` + nodeproto.HookPath + ` 2>/dev/null | cut -d' ' -f1)"
+echo "guard_ours=$(grep -c '` + nodeproto.HookMark + `' ` + nodeproto.HookPath + ` 2>/dev/null | grep -v '^0$')"
 ` + fwProbe
 
 // accountScript prints what is known about the service account $1 (a
@@ -137,7 +139,9 @@ type Facts struct {
 	Domains                                                    int
 	Controllers                                                []string // instance ids found in snapshot descriptions
 	SudoBin, VisudoBin, NodeCmdVersion, NodeCmdSHA, SudoersRaw string
-	OldScript                                                  bool // the shell script of an earlier version is still installed
+	OldScript                                                  bool   // the shell script of an earlier version is still installed
+	GuardSHA                                                   string // sha256 of the start guard hook file; empty when there is none
+	GuardOurs                                                  bool   // the file carries this tool's mark
 	Firewall                                                   FirewallFacts
 }
 
@@ -212,6 +216,10 @@ func ParseFacts(out string) Facts {
 			f.NodeCmdSHA = v
 		case "sudoers_file":
 			f.SudoersRaw = v
+		case "guard_sha":
+			f.GuardSHA = v
+		case "guard_ours":
+			f.GuardOurs = v != ""
 		}
 	}
 	for id := range ctl {
@@ -326,12 +334,13 @@ func Classify(id, version, like, name string) Distro {
 }
 
 // Package names per family. The lists were checked on Debian 13 and Rocky 10.
-// nfs-common / nfs-utils is the NFS client (mount.nfs) that shared storage needs.
+// nfs-common / nfs-utils is the NFS client (mount.nfs) that shared storage needs. iputils-arping / iputils
+// provide arping, which the checks before an unplanned failover use.
 // The guest disk tools provide virt-sysprep, which "sysprep on clone" uses;
 // "prepare --minimal" leaves them out.
 var (
-	debianBase  = []string{"qemu-system-x86", "qemu-utils", "libvirt-daemon-system", "libvirt-clients", "dnsmasq-base", "ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "ca-certificates", "openssh-client", "iproute2", "nfs-common"}
-	rhelBase    = []string{"qemu-kvm", "libvirt", "virt-install", "edk2-ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "openssh-clients", "iproute-tc", "nfs-utils"}
+	debianBase  = []string{"qemu-system-x86", "qemu-utils", "libvirt-daemon-system", "libvirt-clients", "dnsmasq-base", "ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "ca-certificates", "openssh-client", "iproute2", "iputils-arping", "nfs-common"}
+	rhelBase    = []string{"qemu-kvm", "libvirt", "virt-install", "edk2-ovmf", "swtpm", "swtpm-tools", "sudo", "curl", "openssh-clients", "iproute-tc", "iputils", "nfs-utils"}
 	debianGuest = []string{"libguestfs-tools"}
 	rhelGuest   = []string{"guestfs-tools"}
 )

@@ -2,7 +2,7 @@
 // cards of the standby's copy ("replica": fail over, delete) and of the old VM after a failover ("stale copy").
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { bytes, del, get, NodeStatus, post, put, ReplicaInfo, ReplicationStatus, VMDetail } from "../api";
+import { bytes, del, FailoverCheck, get, NodeStatus, post, put, ReplicaInfo, ReplicationStatus, VMDetail } from "../api";
 import { atLeast, useRole } from "../auth";
 import { StatusLine } from "../Checks";
 import { useLive } from "../live";
@@ -225,6 +225,7 @@ export function ReplicaCard({ d, base }: { d: VMDetail; base: string }) {
   const info = useLive(() => get<ReplicaInfo>(`${base}/replica`), `${base}/replica`, (e) => e.type === "domain" ? e.uuid === d.uuid : e.type === "node" || e.type === "task");
   const act = useAction();
   const confirm = useConfirm();
+  const [unplanned, setUnplanned] = useState(false);
   const r = info.data;
   const copying = !!r?.running;
   useEffect(() => {
@@ -239,12 +240,14 @@ export function ReplicaCard({ d, base }: { d: VMDetail; base: string }) {
   const t = at ? clock(at) : "";
   const points = r.points?.length ?? d.replica?.points ?? 0;
   const failover = async () => {
+    if (fo.kind === "unplanned") {
+      setUnplanned(true);
+      return;
+    }
     const planned = fo.kind === "planned";
     const message = planned
       ? `${fo.vmState && fo.vmState !== "running" ? `The VM is shut off on ${src}. Its last changes are copied here, and the VM starts here.` : `${src} runs this VM now. It is shut down (if the guest has not shut down after 3 minutes, nothing is changed and the VM keeps running), its last changes are copied here, and the VM starts here.`} Nothing is lost. Replication then runs back to ${src}.`
-      : fo.kind === "gone"
-        ? `${src} no longer has this VM. Start it here from the copy of ${t}. Changes after that time are lost.`
-        : `What you lose: everything ${d.name} wrote on ${src} after ${t}. Risk: Virticle cannot stop ${src}, it is offline. If the VM is still running there (for example only the network to it is down), two copies of the VM would run at the same time with the same MAC and IP addresses on your network. Each copy has its own disks, so no data is destroyed, but the two copies diverge and you will have to throw one away. When ${src} comes back, its copy is shut off and marked as old; its disks are not deleted. Only continue if you know ${src} is down.`;
+      : `${src} no longer has this VM. Start it here from the copy of ${t}. Changes after that time are lost.`;
     const ok = await confirm.ask({
       title: planned ? "Planned failover" : "Start from the copy",
       message,
@@ -290,7 +293,79 @@ export function ReplicaCard({ d, base }: { d: VMDetail; base: string }) {
         </div>
       )}
       {confirm.dialog}
+      {unplanned && (
+        <UnplannedDialog
+          base={base}
+          name={d.name}
+          src={src}
+          t={t}
+          onClose={() => setUnplanned(false)}
+          onDone={() => {
+            setUnplanned(false);
+            info.reload();
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+/** The confirmation of an unplanned failover. It asks the server what the standby could find out first. */
+function UnplannedDialog(props: { base: string; name: string; src: string; t: string; onClose: () => void; onDone: () => void }) {
+  const [chk, setChk] = useState<FailoverCheck>();
+  const [err, setErr] = useState<string>();
+  const [anyway, setAnyway] = useState(false);
+  const act = useAction();
+  useEffect(() => {
+    let live = true;
+    get<FailoverCheck>(`${props.base}/replica/failover-check`).then(
+      (c) => live && setChk(c),
+      (e) => live && setErr(String(e?.message ?? e)),
+    );
+    return () => {
+      live = false;
+    };
+  }, [props.base]);
+  const start = async () => {
+    if (await act.run(() => post(`${props.base}/replica/failover?async=1`, { mode: "unplanned", startAnyway: anyway }))) props.onDone();
+  };
+  const refused = !!chk?.refuse;
+  return (
+    <Modal title="Start from the copy" onClose={props.onClose}>
+      {refused ? (
+        <StatusLine status="error">{chk?.refuse}</StatusLine>
+      ) : (
+        <>
+          <p>
+            What you lose: everything {props.name} wrote on {props.src} after {props.t}. {props.src} is offline and Virticle cannot stop it. If the VM still runs there, two copies run with the same MAC and IP addresses. Each copy has its own disks, so no data is destroyed, but the copies diverge and you must throw one away. When {props.src} comes back, its copy is kept off and marked as old; its disks are not deleted.
+          </p>
+          <p className="muted">A node that is cut off from Virticle and from this node, but still reachable by your clients, cannot be seen from here.</p>
+        </>
+      )}
+      {!chk && !err && <p className="muted">Checking from this node. This takes up to 7 seconds.</p>}
+      {err && <StatusLine status="warning">The checks could not be run: {err}</StatusLine>}
+      {chk && !refused && <p className="muted">{chk.checked}</p>}
+      {chk?.warning && (
+        <>
+          <StatusLine status="warning">{chk.warning}</StatusLine>
+          <label className="check">
+            <input type="checkbox" checked={anyway} onChange={(e) => setAnyway(e.target.checked)} />
+            Start anyway
+          </label>
+        </>
+      )}
+      <ErrorBox error={act.error} />
+      <footer>
+        <button autoFocus onClick={props.onClose}>
+          {refused ? "Close" : "Cancel"}
+        </button>
+        {!refused && (
+          <button className="danger" disabled={act.busy || (!chk && !err) || (!!chk?.warning && !anyway)} onClick={start}>
+            Start here from the copy of {props.t}
+          </button>
+        )}
+      </footer>
+    </Modal>
   );
 }
 

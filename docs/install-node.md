@@ -118,6 +118,7 @@ What is on the node afterwards:
 | Sudo rule | `/etc/sudoers.d/virticle`: the account may run the node command as root | Yes | No |
 | Node command | `/usr/local/libexec/virticle-node`, `root:root 0755` | Yes | Yes |
 | Node key | `~/.ssh/virticle_peer_ed25519`, the account's own key for copies between nodes | Yes | Yes |
+| Start guard | `/etc/libvirt/hooks/qemu.d/virticle-guard`, a libvirt hook that keeps the old copy of a failed-over VM off (libvirt 7 or newer) | Yes | Yes |
 
 The sudoers file names one account, so a host has one Service account. Preparing it for another account replaces the
 rule.
