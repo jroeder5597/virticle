@@ -65,6 +65,8 @@ type Config struct {
 	Pools func(c *Ctx) []string
 	// NVRAMDir is the UEFI NVRAM directory, an allowed root of its own.
 	NVRAMDir string
+	// TPMDir is where libvirt keeps the state of emulated TPMs (default /var/lib/libvirt/swtpm).
+	TPMDir string
 	// ShareDir is where firmware templates live (default /usr/share).
 	ShareDir string
 	// Prefix is put in front of the /etc paths of the migration certificate

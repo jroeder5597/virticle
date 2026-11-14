@@ -215,7 +215,11 @@ Rules:
   a controller restarted in between ends the paused VM in its next round. Any other case converts the disks whole and starts
   nothing.
 - Refused: raw disks, shareable or non-file disks, passthrough devices, a standby with another VM of that name or UUID, a
-  missing network or bridge on the standby, no pool with room.
+  missing network or bridge on the standby, no pool with room, and a VM with any writable disk in a directory that the standby
+  mounts as the same NFS share. The replica is never put in an NFS pool.
+- TPM: the state of an emulated TPM 2.0 (one small file under `/var/lib/libvirt/swtpm/<uuid>/`) is copied with every run (node
+  verb `tpm-save`) and put back at failover before the disks move (`tpm-place`). Other TPMs are not copied (warning at setup); the
+  VM then starts with a new, empty TPM.
 
 ### Failover and the old copy
 
@@ -310,7 +314,7 @@ passwordless sudo but no node command is also not prepared.
 
 ## Versions and the node command
 
-- The node command protocol is **18** (0.2.0 had 10). A node whose node command has another number shows "prepared by an
+- The node command protocol is **19** (0.2.0 had 10). A node whose node command has another number shows "prepared by an
   older version" and must be prepared again ([install.md](install.md#upgrading)). The old node command would also refuse
   the new requests, because it rejects fields it does not know.
 - Verbs new since 0.2.0, by feature (all described in [install-node.md](install-node.md#verbs)): virtual switches

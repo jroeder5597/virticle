@@ -249,6 +249,9 @@ func (s *Server) planReplica(srcID int64, src *hostconn.Host, dom libvirt.Domain
 	if m.md.Hostdevs > 0 {
 		return nil, badRequest("this VM has passthrough devices (PCI, USB or mediated); they belong to this node, so the VM cannot be replicated. Remove them first")
 	}
+	if err := refuseSharedDisks(src, dst, m.md); err != nil {
+		return nil, err
+	}
 	if err := missingTools(src, "qemu-img"); err != nil {
 		return nil, err
 	}
@@ -543,6 +546,14 @@ func (r *replRun) run() (err error) {
 	r.progress(0.01)
 	stamp := time.Now().UTC()
 
+	// The VM may have been started or shut down since the run was planned (a failover starts the first copy back at
+	// once, and the user or a test shuts the VM down in the same second): a live backup job of a VM that is off fails.
+	if st, _, serr := r.src.DomainGetState(r.dom, 0); serr == nil {
+		if live := stateName(uint8(st)) != "shutoff"; live != r.live {
+			r.live, m.live = live, live
+		}
+	}
+
 	if err := r.ensureStandby(); err != nil {
 		return err
 	}
@@ -664,6 +675,12 @@ func (r *replRun) run() (err error) {
 			return err
 		}
 	}
+	tpmFile := ""
+	if m.md.TPMState2 {
+		if tpmFile, err = r.copyTPM(srcWork); err != nil {
+			return err
+		}
+	}
 	if err = m.measure(srcWork); err != nil {
 		return err
 	}
@@ -680,7 +697,7 @@ func (r *replRun) run() (err error) {
 		sent += d.Size
 	}
 	r.Sent = sent
-	if err = r.send(srcWork, seq, nvramFile, sent); err != nil {
+	if err = r.send(srcWork, seq, nvramFile, tpmFile, sent); err != nil {
 		return err
 	}
 	if err = m.checkCancel(); err != nil {
@@ -692,7 +709,7 @@ func (r *replRun) run() (err error) {
 	if kind == kindFull {
 		gen = nextGen(sortedNames(names))
 	}
-	pt, err := r.addPoint(latest, seq, gen, kind, stamp, nvramFile != "", stamps0)
+	pt, err := r.addPoint(latest, seq, gen, kind, stamp, nvramFile != "", tpmFile != "", stamps0)
 	if err != nil {
 		return err
 	}
@@ -796,8 +813,22 @@ func (r *replRun) copyNVRAM(wd *bkWork) (string, error) {
 	return backupNVRAMFile, nil
 }
 
+// copyTPM stages the state of the VM's emulated TPM (swtpm) next to the disk files. swtpm writes the file as a whole
+// and replaces it in one step, so a copy of a running VM is always a state the TPM had.
+func (r *replRun) copyTPM(wd *bkWork) (string, error) {
+	f := wd.file("tpm.state")
+	saved, err := r.src.TPMSave(r.uuid, f)
+	if err != nil {
+		return "", fmt.Errorf("saving the state of the virtual TPM: %w", err)
+	}
+	if !saved {
+		return "", nil // a VM that never ran has no TPM state; the replica's first start makes the same new one
+	}
+	return "tpm.state", nil
+}
+
 // send copies the staged files into the replica directory under names no point uses, and checks them.
-func (r *replRun) send(wd *bkWork, seq int, nvram string, total uint64) error {
+func (r *replRun) send(wd *bkWork, seq int, nvram, tpm string, total uint64) error {
 	m := r.bk
 	if total == 0 {
 		total = 1
@@ -836,11 +867,16 @@ func (r *replRun) send(wd *bkWork, seq int, nvram string, total uint64) error {
 			return fmt.Errorf("sending the UEFI variables to %s failed: %w", r.dst.Name, err)
 		}
 	}
+	if tpm != "" {
+		if err := copyToNode(m.ctx, r.src, r.dst, r.ep, wd.file(tpm), r.st.file(replTPMName(seq)), "600", nil); err != nil {
+			return fmt.Errorf("sending the TPM state to %s failed: %w", r.dst.Name, err)
+		}
+	}
 	return nil
 }
 
 // addPoint links the received files into the chain and writes the manifest.
-func (r *replRun) addPoint(latest *replPoint, seq, gen int, kind string, stamp time.Time, hasNVRAM bool, stamps []string) (*replPoint, error) {
+func (r *replRun) addPoint(latest *replPoint, seq, gen int, kind string, stamp time.Time, hasNVRAM, hasTPM bool, stamps []string) (*replPoint, error) {
 	m := r.bk
 	x, vols, err := r.definition()
 	if err != nil {
@@ -855,6 +891,9 @@ func (r *replRun) addPoint(latest *replPoint, seq, gen int, kind string, stamp t
 	if hasNVRAM {
 		p.NVRAM = replNVRAMName(seq)
 		p.NVRAMPath = m.md.NVRAM
+	}
+	if hasTPM {
+		p.TPMState = replTPMName(seq)
 	}
 	for _, d := range m.disks {
 		in := replIncomingName(seq, d.Target)
@@ -896,7 +935,7 @@ func (r *replRun) cleanIncoming(seq int) {
 	for _, d := range r.bk.disks {
 		_ = r.dst.Remove(r.st.file(replIncomingName(seq, d.Target)), r.st.file(replOverlayName(seq, d.Target)))
 	}
-	_ = r.dst.Remove(r.st.file(replNVRAMName(seq)))
+	_ = r.dst.Remove(r.st.file(replNVRAMName(seq)), r.st.file(replTPMName(seq)))
 }
 
 // afterPoint updates the standby's domain to the definition of the newest point.

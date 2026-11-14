@@ -102,6 +102,25 @@ func (h *Host) ReplList(work string) (map[string]uint64, error) {
 	return res, nil
 }
 
+// TPMSave copies the emulated TPM's state of the VM (swtpm, one small file) into dst, a new file in a work directory.
+// saved is false when the VM has no state yet (it never ran): nothing was written.
+func (h *Host) TPMSave(uuid, dst string) (saved bool, err error) {
+	out, err := h.RunNode("tpm-save", uuid, dst)
+	if err != nil {
+		return false, nodeErr(out, err)
+	}
+	return strings.TrimSpace(out) != "NONE", nil
+}
+
+// TPMPlace makes src (a file in a work directory) the state of the VM's emulated TPM on this node.
+func (h *Host) TPMPlace(src, uuid string) error {
+	out, err := h.RunNode("tpm-place", src, uuid)
+	if err != nil {
+		return nodeErr(out, err)
+	}
+	return nil
+}
+
 // WorkList returns the replication work directories directly in a pool directory, with their modification time (unix seconds).
 func (h *Host) WorkList(dir string) (map[string]int64, error) {
 	out, err := h.RunNode("work-ls", dir)

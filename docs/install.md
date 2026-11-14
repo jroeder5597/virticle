@@ -264,7 +264,7 @@ made when the schema version does not change.
 
 ### From 0.2.0 to 0.3.0
 
-Nodes need to be prepared again, because the node command has a new version (protocol 18, it was 10). Until you do, a node
+Nodes need to be prepared again, because the node command has a new version (protocol 19, it was 10). Until you do, a node
 shows "prepared by an older version" and the features that need root on it are off: migration, backups, replication,
 shared storage, rolling updates, downloads into a pool and network changes. VMs keep running. The database schema goes from
 2 to 6; the controller copies the database first (see above).

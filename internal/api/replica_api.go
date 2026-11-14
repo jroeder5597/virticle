@@ -45,6 +45,16 @@ func (s *Server) replicaPoolFor(src *hostconn.Host, dst *hostconn.Host, md migDo
 	if err != nil {
 		return "", err
 	}
+	// Never a share: the replica must not be on storage the source node sees as well.
+	if descs, derr := poolDescs(dst); derr == nil {
+		local := dirs[:0:0]
+		for _, d := range dirs {
+			if !descs[d.Dir].isNFS() {
+				local = append(local, d)
+			}
+		}
+		dirs = local
+	}
 	type cand struct {
 		name string
 		free int64
@@ -124,8 +134,8 @@ func (s *Server) replicaChecks(src, dst *hostconn.Host, md migDomain) (bad, warn
 	if md.CPUMode == "host-passthrough" {
 		warn = append(warn, "the VM uses the host CPU model (host-passthrough): it starts on "+dst.Name+" only if that node has an identical CPU")
 	}
-	if md.TPM {
-		warn = append(warn, "the virtual TPM is not copied: the VM starts on the standby with an empty TPM, and anything bound to it (BitLocker, for instance) asks for its recovery key")
+	if md.TPM && !md.TPMState2 {
+		warn = append(warn, "the virtual TPM of this VM is not an emulated TPM 2.0, so its state is not copied: the VM starts on the standby with an empty TPM, and anything bound to it (BitLocker, for instance) asks for its recovery key")
 	}
 	for _, d := range md.Disks {
 		if d.Path != "" && (d.Device == "cdrom" || d.Device == "floppy") && path.Base(d.Path) != seedVolumeName(md.Name) {
@@ -208,6 +218,10 @@ func (s *Server) putReplication(w http.ResponseWriter, r *http.Request) {
 	md, err := parseMigDomain(raw)
 	if err != nil {
 		fail(w, badRequest("cannot read the domain definition: "+err.Error()))
+		return
+	}
+	if err := refuseSharedDisks(h, dst, md); err != nil {
+		fail(w, err)
 		return
 	}
 	disks, _, allQcow2, need, err := inspectBackupDisks(h, md, "replicated")

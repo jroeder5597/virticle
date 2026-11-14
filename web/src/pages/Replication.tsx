@@ -173,7 +173,7 @@ function SetupDialog(props: { d: VMDetail; base: string; nodes: NodeStatus[]; cu
       <Field label="Every">
         <Select label="Every" value={every} onChange={setEvery} options={everyOptions} />
       </Field>
-      <p className="muted">The first copy sends the whole VM, later copies only what changed. The standby node keeps a copy that is ready to start.</p>
+      <p className="muted">The first copy sends the whole VM, later copies only what changed. The standby node keeps a copy that is ready to start. A VM with a disk on shared storage cannot be replicated: that disk is already on both nodes.</p>
       <ErrorBox error={act.error} />
       <footer>
         <button onClick={props.onClose}>Cancel</button>
@@ -241,7 +241,7 @@ export function ReplicaCard({ d, base }: { d: VMDetail; base: string }) {
   const failover = async () => {
     const planned = fo.kind === "planned";
     const message = planned
-      ? `${fo.vmState && fo.vmState !== "running" ? `The VM is shut off on ${src}. Its last changes are copied here, and the VM starts here.` : `${src} runs this VM now. It is shut down, its last changes are copied here, and the VM starts here.`} Nothing is lost. Replication then runs back to ${src}.`
+      ? `${fo.vmState && fo.vmState !== "running" ? `The VM is shut off on ${src}. Its last changes are copied here, and the VM starts here.` : `${src} runs this VM now. It is shut down (if the guest has not shut down after 3 minutes, nothing is changed and the VM keeps running), its last changes are copied here, and the VM starts here.`} Nothing is lost. Replication then runs back to ${src}.`
       : fo.kind === "gone"
         ? `${src} no longer has this VM. Start it here from the copy of ${t}. Changes after that time are lost.`
         : `What you lose: everything ${d.name} wrote on ${src} after ${t}. Risk: Virticle cannot stop ${src}, it is offline. If the VM is still running there (for example only the network to it is down), two copies of the VM would run at the same time with the same MAC and IP addresses on your network. Each copy has its own disks, so no data is destroyed, but the two copies diverge and you will have to throw one away. When ${src} comes back, its copy is shut off and marked as old; its disks are not deleted. Only continue if you know ${src} is down.`;

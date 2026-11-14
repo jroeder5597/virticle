@@ -361,9 +361,14 @@ marked when it is back, and **Replicate back** on it does the rest.
 | Snapshot revert; disk added, removed, resized or moved; restore | The next copy is a full one. Nothing to do. Restoring a backup over a replicated VM keeps its replication. |
 | The VM is shut off | It is copied once after it stops, then not again until it is started. When only the changes can be sent, the VM is started paused for a moment and Start is refused until that ends (seconds to minutes; the error says so). |
 | A node is removed from Virticle | Replication to it is switched off. Replicas it held are out of reach; the replica alert (copy too old) stays until you start one from its page or delete it. |
-| Virtual TPM | Not copied. The VM starts with an empty TPM on the standby (BitLocker asks for its recovery key). |
+| Virtual TPM | An emulated TPM 2.0 (what Virticle creates for a Windows VM) is copied with every run, so a disk locked to it opens after a failover. A TPM of another kind is not copied: setup warns, and the VM starts with an empty TPM on the standby. |
 | Network | Copies use the migration network and its limit. |
 | Clones | A cloned VM is not replicated. |
+
+Two more rules:
+
+- **A VM with a disk on shared storage cannot be replicated.** That disk is already on both nodes. Use **Migrate** for such a VM; it moves between the nodes without copying the shared disk.
+- **A planned failover waits up to 3 minutes for the guest to shut down.** If the guest does not react, nothing is changed and the VM keeps running. Shut it down from inside the guest, or power it off with **Actions**, and try again.
 
 How it works inside, and the API, are in [reference.md](reference.md#replication).
 
