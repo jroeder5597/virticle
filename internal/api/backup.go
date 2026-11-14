@@ -717,8 +717,8 @@ func (m *bkRun) liveBackup(wd *bkWork, stamp time.Time, lo, hi float64) error {
 			st[tp.Field] = toFloat(tp.Value.I)
 		}
 		switch {
-		case st["file_total"] > 0:
-			m.spread(lo, hi, st["file_processed"]/st["file_total"])
+		case st["disk_total"] > 0: // what a backup job reports (virsh shows it as "File total")
+			m.spread(lo, hi, st["disk_processed"]/st["disk_total"])
 		case st["data_total"] > 0:
 			m.spread(lo, hi, st["data_processed"]/st["data_total"])
 		}

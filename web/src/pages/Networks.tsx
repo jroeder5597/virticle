@@ -562,13 +562,13 @@ function CreateNetwork({ node: initialNode, nodes, onClose, onDone }: { node: nu
               </Field>
             )}
             {mode === "bridge" && (
-              <Field label="Bridge on the node">
+              <Field label="Bridge on the node" hint="Bridges that exist on the node. To create a new one on a network card, use Add virtual switch on the Topology tab of the node.">
                 {nicError ? (
                   <div className="muted">The bridges of the node could not be read.</div>
                 ) : !nics ? (
                   <div className="muted">Loading the bridges of the node.</div>
                 ) : bridges.length === 0 ? (
-                  <div className="muted">This node has no bridge. Create one on the node first.</div>
+                  <div className="muted">This node has no bridge.</div>
                 ) : (
                   <Select
                     label="Bridge on the node"
