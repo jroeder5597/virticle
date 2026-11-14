@@ -9,6 +9,7 @@ import (
 
 	"virticle/internal/hostconn"
 	"virticle/internal/nodebin"
+	"virticle/internal/nodeproto"
 )
 
 // Node is the administrator's shell on the host: the plain SSH connection.
@@ -246,6 +247,7 @@ func steps(o Options) []stepDef {
 		}
 	}
 	list = append(list, stepDef{id: "do-peerkey", title: "Node key", run: stepPeerKey})
+	list = append(list, stepDef{id: "do-guard", title: "Start guard", run: stepGuard})
 	return list
 }
 
@@ -761,6 +763,11 @@ if [ -n "$home" ] && [ -d "$home/.ssh" ]; then
   done
 fi
 if [ -f ` + sudoersPath + ` ] && head -c 200 ` + sudoersPath + ` | grep -q 'Written by virticle node prepare' && grep -q "^$u ALL=" ` + sudoersPath + `; then rm -f ` + sudoersPath + `; echo "sudo rule removed"; changed=1; else echo "no sudo rule for $u"; fi
+if [ -f ` + nodeproto.HookPath + ` ] && grep -q '` + nodeproto.HookMark + `' ` + nodeproto.HookPath + `; then
+  rm -f ` + nodeproto.HookPath + `; rmdir "$(dirname ` + nodeproto.HookPath + `)" 2>/dev/null
+  for s in virtqemud libvirtd; do if systemctl is-active --quiet "$s" 2>/dev/null; then systemctl reload "$s" >/dev/null 2>&1 || systemctl kill -s HUP "$s" >/dev/null 2>&1; fi; done
+  echo "start guard removed"; changed=1
+fi
 if { [ -f ` + nodeCmdPath + ` ] || [ -f ` + oldHelperPath + ` ]; } && [ ! -f ` + sudoersPath + ` ]; then rm -f ` + nodeCmdPath + ` ` + oldHelperPath + `; systemctl disable virticle-net-boot.service >/dev/null 2>&1; rm -f /etc/systemd/system/virticle-net-boot.service; rmdir /usr/local/libexec 2>/dev/null; echo "node command removed"; changed=1; elif [ -f ` + nodeCmdPath + ` ] || [ -f ` + oldHelperPath + ` ]; then echo "node command kept, another account's sudo rule uses it"; else echo "no node command"; fi
 if [ "$u" != root ] && getent passwd "$u" | grep -q "` + AccountComment + `"; then
   pkill -KILL -u "$u" 2>/dev/null; sleep 1
@@ -817,6 +824,8 @@ func (r *Runner) Unprepare(o Options) []Row {
 func titleOf(s string) string {
 	s = strings.ToLower(s)
 	switch {
+	case strings.Contains(s, "start guard"):
+		return "Start guard"
 	case strings.Contains(s, "node key"), strings.Contains(s, "peer key"):
 		return "Node key"
 	case strings.Contains(s, "key"):

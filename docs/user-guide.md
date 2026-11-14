@@ -332,14 +332,36 @@ deleted with the normal buttons, and backups, schedules, evacuation, network che
 
 ![Planned failover confirmation](img/failover-confirm.png)
 
-**The risk of an unplanned failover.** Virticle cannot stop a node it cannot reach. If the VM is in fact still running on
-the old node (for instance only the network to it is down), two copies run at once with the same MAC and IP addresses.
-Each has its own disks, so no data is destroyed, but the copies diverge and you must throw one away. Fail over only when
-you know the node is down.
+**What Virticle checks before an unplanned failover.** The confirmation asks the standby node, which may see more than
+the controller does:
+
+1. Can the standby reach the old node directly, and is the VM running there? If so, the failover is refused: use
+   **Planned failover** when the controller can reach the node again, or shut the VM down on the old node.
+2. Does the VM still answer on the network? For each network card on a bridge that the standby has too, the standby asks
+   for the addresses the VM had at its last copy (ARP requests, 2 seconds; the standby needs an address of its own on that
+   bridge, and the VM's addresses come from the guest agent, else the DHCP leases or the host's ARP table). If the VM answers, the dialog warns and the button
+   needs the box **Start anyway**.
+
+The dialog says in one line what was checked, or that nothing could be checked (the VM has only NAT networks, no
+address is known, or the standby cannot reach the old node because the node-to-node access is not set up). A check that
+cannot be made never stops the failover.
+
+**What remains.** Virticle cannot stop a node it cannot reach. A node that is cut off from the controller and from the
+standby, but still reachable by your clients, looks dead to both checks. If the VM runs on there, two copies run at once
+with the same MAC and IP addresses. Each has its own disks, so no data is destroyed, but the copies diverge and you must
+throw one away. Fail over only when you know the node is down.
+
+**The start guard.** `virticle node prepare` puts a libvirt hook on every node (`/etc/libvirt/hooks/qemu.d/virticle-guard`;
+an administrator's own hook is not touched). Before a replicated VM starts, the hook asks its standby whether it started
+the VM from its copy. If it did, the start is refused with "this VM was started on NODE from its copy; it is kept off
+here. Use Replicate back in Virticle." This stops an old node that reboots, or an administrator's `virsh start`, from
+running the VM twice. If the standby cannot be reached, does not answer within 5 seconds or answers badly, the VM
+starts: a dead standby never keeps a healthy VM down. Other VMs are not affected. Prepare checks that libvirt runs the
+hook on that host (it starts a test VM that the hook refuses on purpose) and says so in the **Start guard** row.
 
 **When the old node comes back.** Its VM is marked **Old copy**. Replication from it is switched off, it is powered off at
-once if it is running (within a minute of the node or the controller returning), it cannot be started, and an alert is
-raised. Which of the two VMs is old is decided by a counter that every failover raises, never by the clocks of the nodes,
+once if it is running (as soon as the controller's connection to the node is up again, and in the minute pass as a second
+net), it cannot be started, and an alert is raised. Which of the two VMs is old is decided by a counter that every failover raises, never by the clocks of the nodes,
 and it is stored on the nodes: a controller that was down during the failover, or restored from an older backup, comes to
 the same answer. Virticle never deletes its disks by itself.
 

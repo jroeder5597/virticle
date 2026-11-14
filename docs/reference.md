@@ -176,7 +176,8 @@ How to use it: [user-guide.md](user-guide.md#replication-and-failover).
 | `GET`, `PUT`, `DELETE /api/nodes/{id}/vms/{uuid}/replication` | `GET` viewer, others operator | Read, set up or change, stop. `PUT` takes `{targetNode, everyMinutes}`; with `replaceStale: true` it replaces the old copy on the standby (the **Replicate back** button). |
 | `POST .../replication/run`, `.../replication/cancel` | operator | Copy now; stop a running copy. |
 | `GET`, `DELETE .../replica` | `GET` viewer, `DELETE` operator | Read or delete the replica on the standby. |
-| `POST .../replica/failover` | operator | `{"mode":"planned"\|"unplanned"}`. Refused with 409 when the situation changed since the page was read. |
+| `GET .../replica/failover-check` | viewer | The checks before an unplanned failover, run from the standby (up to about 7 seconds): `{refuse?, warning?, checked, answers?}`. Empty `checked` when the failover is not unplanned. |
+| `POST .../replica/failover` | operator | `{"mode":"planned"\|"unplanned", "startAnyway"?}`. Refused with 409 when the situation changed since the page was read, when the source node answers to the standby with the VM running (`refuse`), or when the VM answers on the network and `startAnyway` is not true (`warning`). |
 | `DELETE .../vms/{uuid}?replica=1` | operator | Delete the VM and its replica. |
 
 Task kinds: `replicate`, `failover`, `replication stop`, `replica delete`. Alerts: `replica-age` (the copy is older than
@@ -230,7 +231,27 @@ Rules:
   source (the replica's `src-gen`, copied at every run from the source's own `failed-over`). The old VM is marked and powered
   off only when its own generation is lower (or it has none); equal generations do nothing. `at` (the controller's clock) is
   informational only. The decision is `decideOldCopy` (`replica_reconcile.go`), a pure function with a table test. The
-  controller marks the old VM when its node is online again (alert loop, once a minute).
+  controller marks the old VM when its node is online again: at once when the node's connection comes up
+  (`reconcileOnReconnect`), and in the alert loop once a minute.
+- Start guard. The `replication` child also holds `peer-host`, `peer-port`, `peer-user` (the standby as the source node
+  reaches it; written at every run), the `replica` child `addrs="MAC=ip,ip;..."` (the VM's IPv4 addresses at the last copy,
+  from the guest agent, else DHCP leases). `node prepare` installs `/etc/libvirt/hooks/qemu.d/virticle-guard`, a
+  `#!/bin/sh` file that runs `virticle-node hook-qemu ACCOUNT "$@"` and maps its exit status 13 to a failure (anything else,
+  or a missing command, lets the VM start). On `prepare begin` the verb reads the domain XML from stdin; without a
+  `replication` child it exits at once. Otherwise it asks the standby over the node key (`peer-recv` header
+  `took-over UUID GEN`, GEN being the VM's own `failed-over` generation, 0 if none): the standby answers from its libvirt
+  metadata, "took over" when its `failed-over` generation is higher (`nodeproto.TookOver`, the rule of `decideOldCopy`).
+  Ask limit 5 seconds, hard limit 7. Libvirt reads the hook directory at start and on SIGHUP, so prepare reloads
+  `virtqemud`/`libvirtd` (running VMs are not touched). Prepare starts a probe VM `virticle-guard-selftest` that the hook
+  refuses with a line naming what it may do (`exec`, `ssh`, `key`, `net`); a hook that libvirt cannot run is removed
+  again. The hook directory form needs libvirt 7 or newer. On Rocky 10 `virtqemud_t` is a permissive SELinux domain: the
+  hook runs, and denials (execute of the hook file, TCP connect to port 22) are only logged.
+- Checks before an unplanned failover (`replica_checks.go`; the decision is the pure `decideFailoverChecks`): node verb
+  `peer-ask HOST PORT USER vm-state UUID` (run on the standby; answers from the source node's libvirt, over the standby's
+  node key, which is installed on the source when replication starts) and `vm-probe BRIDGE IP...` (an ARP request with
+  `arping`, else ping and `ip neigh`; an answer counts only from the card's own MAC). The standby needs an IPv4 address on
+  the bridge to ask from. Duplicate address detection is not used: in the lab a guest dropped its address after two such probes. Only cards on a bridge
+  the standby has too are probed (a `type=bridge` card, or a libvirt network in `bridge` mode).
 - Moving a replicated VM to its standby: the replica's domain is undefined (its directory stays), the source's `replication`
   child and its checkpoints are removed, the migration runs, then the old directory is deleted and replication to the old
   node is set up (full copy). A failed migration puts the replica domain and the setting back. Deleting a node switches off

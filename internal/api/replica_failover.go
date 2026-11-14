@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/digitalocean/go-libvirt"
@@ -148,6 +149,34 @@ type failoverReq struct {
 	// Mode is what the page showed the user: "planned" or "unplanned" ("gone" counts as unplanned). The
 	// request is refused when the situation has changed since.
 	Mode string `json:"mode"`
+	// StartAnyway is the user's explicit "Start anyway" when the VM still answers on the network (see
+	// replica_checks.go). Without it such a failover is refused.
+	StartAnyway bool `json:"startAnyway"`
+}
+
+// getFailoverCheck runs the checks before an unplanned failover (replica_checks.go) for the confirmation
+// dialog. For every other situation there is nothing to check.
+func (s *Server) getFailoverCheck(w http.ResponseWriter, r *http.Request) {
+	h, dom, err := s.domainAny(r)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	meta, err := domainMeta(h, dom)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	rm := parseReplicaMeta(meta)
+	if rm == nil {
+		fail(w, badRequest("this VM is not a replica"))
+		return
+	}
+	if dec := s.failoverDecision(rm, dom); dec.Kind != foUnplanned {
+		writeJSON(w, foChecks{})
+		return
+	}
+	writeJSON(w, s.failoverChecks(h, dom, rm, meta))
 }
 
 func (s *Server) replicaFailover(w http.ResponseWriter, r *http.Request) {
@@ -184,6 +213,19 @@ func (s *Server) replicaFailover(w http.ResponseWriter, r *http.Request) {
 	if req.Mode != want {
 		fail(w, conflictError("the situation changed while the page was open: "+dec.Message+". Reload the page and read the confirmation again"))
 		return
+	}
+	if dec.Kind == foUnplanned {
+		// The source node cannot be reached from the controller. Ask from the standby whether the VM still
+		// runs, and whether it still answers on the network.
+		chk := s.failoverChecks(h, dom, rm, meta)
+		if chk.Refuse != "" {
+			fail(w, conflictError(chk.Refuse))
+			return
+		}
+		if chk.Warning != "" && !req.StartAnyway {
+			fail(w, conflictError(chk.Warning+" Tick \"Start anyway\" if you are sure the VM is down."))
+			return
+		}
 	}
 	err = s.taskAsync(r, "failover", dom.Name, h.Name, func(progress func(float64)) error {
 		if dec.Kind == foPlanned {
@@ -561,12 +603,14 @@ func (s *Server) deleteReplicaHandler(w http.ResponseWriter, r *http.Request) {
 
 // --- the old node comes back ---
 
-// reconcileFailovers finds the old VMs of failovers whose node is back and makes them safe. It runs with the
-// alert checks (once a minute). A VM that took over keeps a record of where it came from; when that node is
+// reconcileFailovers finds the old VMs of failovers whose node is back and makes them safe. It runs when a node comes
+// back up and with the alert checks (once a minute). A VM that took over keeps a record of where it came from; when that node is
 // online and still holds a running or replicating VM of the same identity, that VM is marked as the old copy,
 // its replication is switched off, and if it runs it is powered off at once: two copies of one VM with the
 // same MAC and IP addresses must not run. Its disks are left alone.
 func (s *Server) reconcileFailovers() {
+	reconcileMu.Lock() // the once-a-minute pass and the pass for a node that came back do not overlap
+	defer reconcileMu.Unlock()
 	for _, n := range s.Nodes.Status() {
 		if n.State != "online" {
 			continue
@@ -592,6 +636,8 @@ func (s *Server) reconcileFailovers() {
 		}
 	}
 }
+
+var reconcileMu sync.Mutex
 
 func (s *Server) reconcileOne(h *hostconn.Host, nodeID int64, d libvirt.Domain, fo *failedOverMeta) {
 	oh, err := s.Nodes.Host(fo.FromNode)

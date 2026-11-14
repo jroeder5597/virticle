@@ -52,7 +52,26 @@ var (
 )
 
 func (s *Server) startAlerts() {
-	alertOnce.Do(func() { go s.runAlerts(context.Background(), alertEvery, 10*time.Second) })
+	alertOnce.Do(func() {
+		go s.runAlerts(context.Background(), alertEvery, 10*time.Second)
+		s.reconcileOnReconnect()
+	})
+}
+
+// reconcileOnReconnect looks for the old copies of failed-over VMs as soon as a node's connection comes (back) up,
+// not only in the next minute's pass: a node that returns from a crash may have started its old VM already.
+func (s *Server) reconcileOnReconnect() {
+	if s.Nodes == nil {
+		return
+	}
+	events, _ := s.Nodes.Subscribe()
+	go func() {
+		for ev := range events {
+			if ev.Type == "node" && ev.Detail == "online" {
+				s.reconcileFailovers()
+			}
+		}
+	}()
 }
 
 func (s *Server) runAlerts(ctx context.Context, every, first time.Duration) {

@@ -267,6 +267,7 @@ func (s *Server) Handler() http.Handler {
 	auth("POST /api/nodes/{node}/vms/{uuid}/replication/run", s.needs("backups", s.replicationRun))
 	auth("POST /api/nodes/{node}/vms/{uuid}/replication/cancel", s.replicationCancel)
 	auth("GET /api/nodes/{node}/vms/{uuid}/replica", s.getReplica)
+	auth("GET /api/nodes/{node}/vms/{uuid}/replica/failover-check", s.getFailoverCheck)
 	auth("POST /api/nodes/{node}/vms/{uuid}/replica/failover", s.needs("backups", s.replicaFailover))
 	auth("DELETE /api/nodes/{node}/vms/{uuid}/replica", s.deleteReplicaHandler)
 	auth("POST /api/nodes/{node}/vms/{uuid}/backup/cancel", s.vmBackupCancel)

@@ -37,6 +37,10 @@ type replConfig struct {
 	// PausedCopy is set while a shut-off VM runs paused for a copy (see replRun.produce): if the controller stops
 	// meanwhile, the next scheduler round ends the paused VM.
 	PausedCopy bool
+	// Where the standby is reached from this node (the node's own address as the controller knows it, the SSH
+	// port and the login account). The start guard on the node (a libvirt hook) asks the standby there; it has
+	// no other way to find it. Set at every run.
+	PeerHost, PeerPort, PeerUser string
 	// The last successful run.
 	LastOK    int64 // unix time of the point
 	LastBytes uint64
@@ -52,6 +56,9 @@ func (c replConfig) element() string {
 	}
 	if c.PausedCopy {
 		el += ` paused-copy="yes"`
+	}
+	if c.PeerHost != "" {
+		el += fmt.Sprintf(` peer-host="%s" peer-port="%s" peer-user="%s"`, esc(c.PeerHost), esc(c.PeerPort), esc(c.PeerUser))
 	}
 	if c.LastOK > 0 {
 		el += fmt.Sprintf(` last="%d" last-bytes="%d" last-kind="%s" last-secs="%d"`, c.LastOK, c.LastBytes, esc(c.LastKind), c.LastSecs)
@@ -84,6 +91,9 @@ func parseReplication(meta string) *replConfig {
 			Dir     string `xml:"dir,attr"`
 			Replace string `xml:"replace-stale,attr"`
 			Paused  string `xml:"paused-copy,attr"`
+			PHost   string `xml:"peer-host,attr"`
+			PPort   string `xml:"peer-port,attr"`
+			PUser   string `xml:"peer-user,attr"`
 			Last    int64  `xml:"last,attr"`
 			Bytes   uint64 `xml:"last-bytes,attr"`
 			Kind    string `xml:"last-kind,attr"`
@@ -95,7 +105,7 @@ func parseReplication(meta string) *replConfig {
 	}
 	r := root.R
 	return &replConfig{Enabled: r.Enabled == "yes", TargetNode: r.Node, TargetName: r.Name, Pool: r.Pool, EveryMinutes: r.Every,
-		Dir: r.Dir, ReplaceStale: r.Replace == "yes", PausedCopy: r.Paused == "yes", LastOK: r.Last, LastBytes: r.Bytes, LastKind: r.Kind, LastSecs: r.Secs}
+		Dir: r.Dir, ReplaceStale: r.Replace == "yes", PausedCopy: r.Paused == "yes", PeerHost: r.PHost, PeerPort: r.PPort, PeerUser: r.PUser, LastOK: r.Last, LastBytes: r.Bytes, LastKind: r.Kind, LastSecs: r.Secs}
 }
 
 // replicaMeta marks the standby's copy.
@@ -112,11 +122,18 @@ type replicaMeta struct {
 	// SrcGen is the failover generation of the source VM when the copy was made (0: it never took over). A VM that
 	// takes over gets this plus one, so the order of failovers does not depend on any clock.
 	SrcGen int
+	// Addrs are the addresses the VM had when it was last copied, "MAC=ip,ip;MAC=ip" (see vmAddrs): what the
+	// checks before an unplanned failover look for on the network.
+	Addrs string
 }
 
 func (m replicaMeta) element() string {
-	return fmt.Sprintf(`<%s dir="%s" pool="%s" source-node="%d" source-name="%s" every-minutes="%d" last="%d" checked="%d" points="%d" bytes="%d" src-gen="%d"/>`,
+	el := fmt.Sprintf(`<%s dir="%s" pool="%s" source-node="%d" source-name="%s" every-minutes="%d" last="%d" checked="%d" points="%d" bytes="%d" src-gen="%d"`,
 		replicaChild, esc(m.Dir), esc(m.Pool), m.SourceNode, esc(m.SourceName), m.Every, m.Last, m.Checked, m.Points, m.Bytes, m.SrcGen)
+	if m.Addrs != "" {
+		el += fmt.Sprintf(` addrs="%s"`, esc(m.Addrs))
+	}
+	return el + "/>"
 }
 
 func parseReplicaMeta(meta string) *replicaMeta {
@@ -135,13 +152,14 @@ func parseReplicaMeta(meta string) *replicaMeta {
 			Points  int    `xml:"points,attr"`
 			Bytes   uint64 `xml:"bytes,attr"`
 			SrcGen  int    `xml:"src-gen,attr"`
+			Addrs   string `xml:"addrs,attr"`
 		} `xml:"replica"`
 	}
 	if xml.Unmarshal([]byte(meta), &root) != nil || root.R == nil {
 		return nil
 	}
 	r := root.R
-	return &replicaMeta{Dir: r.Dir, Pool: r.Pool, SourceNode: r.Node, SourceName: r.Name, Every: r.Every, Last: r.Last, Checked: r.Checked, Points: r.Points, Bytes: r.Bytes, SrcGen: r.SrcGen}
+	return &replicaMeta{Dir: r.Dir, Pool: r.Pool, SourceNode: r.Node, SourceName: r.Name, Every: r.Every, Last: r.Last, Checked: r.Checked, Points: r.Points, Bytes: r.Bytes, SrcGen: r.SrcGen, Addrs: r.Addrs}
 }
 
 // staleMeta marks the old VM after another node took over.
