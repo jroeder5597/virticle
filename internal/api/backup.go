@@ -699,6 +699,7 @@ func (m *bkRun) liveBackup(wd *bkWork, stamp time.Time, lo, hi float64) error {
 			}
 			switch libvirt.DomainJobType(ct) {
 			case libvirt.DomainJobCompleted:
+				m.spread(lo, hi, 1) // the last counters read are rarely the final ones
 				return nil
 			case libvirt.DomainJobCancelled:
 				return errBackupCancelled
