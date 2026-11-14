@@ -15,7 +15,7 @@ test.describe("network link alerts", () => {
       expect(a.since).toBeGreaterThan(0);
       if (a.kind === "net-link" || a.kind === "net-bond") {
         expect(a.node, a.id).toBeGreaterThan(0);
-        expect(a.link, a.id).toMatch(/^\/node\/\d+\/topology$/);
+        expect(a.link, a.id).toMatch(/^\/node\/\d+\/network$/);
         expect(a.title, a.id).toMatch(/ on .+ (has no link\.|runs on \d+ of \d+ cards\.)$|^LACP is not answered by the switch for /);
       }
     }

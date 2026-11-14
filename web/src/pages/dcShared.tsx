@@ -1,10 +1,9 @@
 import Select from "../Select";
-import { Network, NodeStatus, Pool, ServerEvent } from "../api";
+import { NodeStatus, Pool, ServerEvent } from "../api";
 import { CheckList } from "../Checks";
 
-/** Pool and network as returned by GET /api/pools and /api/networks: tagged with the node they live on. */
+/** A pool as returned by GET /api/pools: tagged with the node they live on. */
 export type NodePool = Pool & { node: number; nodeName: string };
-export type NodeNetwork = Network & { node: number; nodeName: string };
 /** A node that is missing from an all-nodes list, and why. */
 export interface NodeErr {
   node: number;

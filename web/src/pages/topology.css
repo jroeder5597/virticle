@@ -36,3 +36,10 @@
   .topopg::after, .topouplink::before { display: none; }
 }
 .topouse { margin-left: 8px; font-size: 13px; font-family: var(--sans); }
+.topotitle button.link { font-weight: 600; font-family: var(--sans); text-align: left; }
+.topopg .vsacts { margin-left: auto; }
+/* The lease and reservation tables of a network fit a narrow dialog: addresses wrap instead of running off. */
+@media (max-width: 520px) {
+  .modal table.compact td, .modal table.compact th { padding-right: 6px; overflow-wrap: anywhere; }
+  .modal table.compact td.mono { word-break: break-all; }
+}

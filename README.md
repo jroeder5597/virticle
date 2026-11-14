@@ -18,7 +18,7 @@ Virticle look the same.
 | Snapshots and backups | Manual or scheduled, with retention. Incremental backups that copy only what changed. Restore, export, import. Backup and restore of the controller itself. |
 | Replication | A copy of a VM on a standby node, kept up to date on a schedule, that starts with one click when the first node fails. Failover is by hand. |
 | Storage | Pools, volumes, uploads, an image catalogue. Shared storage over NFS: VMs move between nodes without copying their disks. |
-| Networks | NAT and bridged networks, DHCP reservations. Virtual switches with VLANs, several uplinks (failover or LACP), rollback if a change cuts the node off. A topology view per datacenter and per node. Warnings when nodes differ. |
+| Networks | One Network tab per datacenter and per node: switches, uplinks and the VMs on each network. NAT, isolated and bridged networks with start, stop, autostart, DHCP leases and reservations. Virtual switches with VLANs, several uplinks (failover or LACP), rollback if a change cuts the node off. Warnings when nodes differ. |
 | Monitoring | Performance history for 7 days with charts, a `/metrics` endpoint for Prometheus, alerts, and notifications to Slack, Mattermost, Discord or a webhook. |
 | Passthrough | PCI devices and GPUs. |
 | Access | Users with three roles, two-step sign-in, sign-in through OIDC or LDAP, API tokens, audit log, task log. |

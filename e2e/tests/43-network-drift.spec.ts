@@ -30,7 +30,7 @@ test.describe.serial("network drift", () => {
   test("the line is absent when nothing differs", async ({ page, api }) => {
     const r = await api.get("/cluster/network-drift");
     test.skip(r.networks > 0, "the lab already has networks that differ between its nodes");
-    for (const path of ["/datacenter/network", "/datacenter/topology"]) {
+    for (const path of ["/datacenter/network"]) {
       await page.goto(path);
       await expect(page.getByRole("tab", { name: "Network", exact: true })).toBeVisible();
       await page.waitForTimeout(1500);
@@ -51,7 +51,7 @@ test.describe.serial("network drift", () => {
     expect(rows[0].fix).toBeUndefined();
     expect(r.blocked).not.toContain(NET); // no VM uses it: no alert
 
-    for (const [path, tabName] of [["/datacenter/network", "Network"], ["/datacenter/topology", "Topology"]]) {
+    for (const [path, tabName] of [["/datacenter/network", "Network"]]) {
       await page.goto(path);
       await expect(page.getByRole("tab", { name: tabName, exact: true })).toHaveAttribute("aria-selected", "true");
       const line = page.getByRole("button", { name: differs });

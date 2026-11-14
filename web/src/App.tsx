@@ -1,6 +1,6 @@
 import { Menu, User, LogOut } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import Tree from "./Tree";
 import "./shell.css";
 import { get, post, Role, setUnauthorizedHandler, Task } from "./api";
@@ -149,6 +149,7 @@ export default function App() {
       <div className="content-scroll" ref={scroller}>
       <main className={session.role}>
         <Routes>
+          <Route path="/datacenter/topology" element={<Legacy to="/datacenter/network" />} />
           <Route path="/datacenter/:tab?" element={<Datacenter />} />
           {/* Old addresses keep working; query strings (?new=, ?pool=&catalogue=1) are kept. */}
           <Route path="/" element={<Legacy to="/datacenter" whenQuery="new" otherwise="/datacenter/vms" />} />
@@ -158,6 +159,7 @@ export default function App() {
           <Route path="/nodes" element={<Legacy to="/datacenter/nodes" />} />
           <Route path="/tasks" element={<Legacy to="/datacenter/tasks" />} />
           <Route path="/vm/:node/:uuid" element={<VMDetailPage />} />
+          <Route path="/node/:id/topology" element={<NodeTopologyRedirect />} />
           <Route path="/node/:id/:tab?" element={<NodeDetail />} />
           <Route path="/account" element={<Account />} />
           {session.role !== "viewer" && <Route path="/cloudinit-profiles" element={<CloudProfiles />} />}
@@ -185,6 +187,12 @@ function Legacy({ to, whenQuery, otherwise }: { to: string; whenQuery?: string; 
   const { search } = useLocation();
   const dest = whenQuery && otherwise && new URLSearchParams(search).has(whenQuery) ? otherwise : to;
   return <Navigate to={{ pathname: dest, search }} replace />;
+}
+
+/** The Topology tab became the Network tab. */
+function NodeTopologyRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/node/${id}/network`} replace />;
 }
 
 function SignIn({ setup, oidc, signedOut, onDone }: { setup: boolean; oidc?: string; signedOut?: { url: string; provider: string }; onDone: () => void }) {

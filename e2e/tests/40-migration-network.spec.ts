@@ -83,7 +83,7 @@ test.describe.serial("migration network", () => {
     const info: Info = await api.get(`/nodes/${n1}/migration-network`);
     test.skip(info.options.length === 0, "needs a node with two addresses");
     test.skip(info.address !== "", "the node already has a migration network set");
-    await page.goto(`/node/${n1}/topology`);
+    await page.goto(`/node/${n1}/network`);
     const use = page.locator(`[data-topo-use="${info.options[0].address}"]`);
     await expect(use).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(".topomgmt", { hasText: /^\s*Migration\s*$/ })).toHaveCount(0); // no mark while it is the default
@@ -108,7 +108,7 @@ test.describe.serial("migration network", () => {
       expect(after.current).toBe(target.label);
       await expect(page.locator(".card", { has: page.getByRole("heading", { name: "Connection", exact: true }) })).toContainText(target.label);
       // the topology now marks it, and offers going back on the management address
-      await page.goto(`/node/${n1}/topology`);
+      await page.goto(`/node/${n1}/network`);
       await expect(page.locator(".topomgmt", { hasText: /^\s*Migration\s*$/ }).first()).toBeVisible({ timeout: 30_000 });
       await expect(page.locator(`[data-topo-use="${before.management.address}"]`)).toBeVisible();
       // the encryption certificate covers the new address when encrypted migration is set up

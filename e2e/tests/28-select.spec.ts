@@ -24,7 +24,7 @@ test.describe.serial("themed select", () => {
   });
 
   test("no native select or datalist on the pages used here", async ({ page }) => {
-    for (const p of ["/users", "/audit", "/networks", "/storage", "/account"]) {
+    for (const p of ["/users", "/audit", "/datacenter/network", "/storage", "/account"]) {
       await page.goto(p);
       await expect(page.getByRole("heading").first()).toBeVisible();
       await expect(page.locator("select, datalist")).toHaveCount(0);
@@ -133,10 +133,9 @@ test.describe.serial("themed select", () => {
 
   test("editable combo: MAC suggestions with the VM name, filtering, free text, Escape", async ({ page, api, n1 }) => {
     const mac = ((await api.vmDetail(vm.node, vm.uuid)).nics[0].mac as string).toLowerCase();
-    await page.goto("/networks");
-    await pick(page, page.getByRole("combobox").first(), env.node1);
-    await row(page, "default").first().click();
-    const card = page.locator(".card", { hasText: "DHCP reservations" });
+    await page.goto(`/node/${n1}/network`);
+    await page.locator('[data-topo-id="net:default"]').getByRole("button", { name: "default", exact: true }).click();
+    const card = dialog(page, "Network default").locator(".card", { hasText: "DHCP reservations" });
     const input = field(card, "MAC address");
     await input.click();
     const opt = list(page).getByRole("option", { name: new RegExp(mac) });

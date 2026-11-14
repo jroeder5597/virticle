@@ -11,7 +11,6 @@ import MaintenanceActions from "./Maintenance";
 import HostUpdates from "./HostUpdates";
 import ConnectionCard from "./NodeConnection";
 import MigrationTLS from "./MigrationTLS";
-import Networks from "./Networks";
 import Storage from "./Storage";
 import Topology from "./Topology";
 import { PerformanceTab } from "./Performance";
@@ -25,7 +24,6 @@ const TABS = [
   ["vms", "Virtual machines"],
   ["storage", "Storage"],
   ["network", "Network"],
-  ["topology", "Topology"],
   ["updates", "Updates"],
   ["settings", "Settings"],
 ] as const;
@@ -99,8 +97,7 @@ export default function NodeDetail() {
           {tab === "performance" && <PerformanceTab kind="node" id={String(id)} />}
           {tab === "vms" && <VMs fixedNode={id} />}
           {tab === "storage" && <Storage fixedNode={id} />}
-          {tab === "network" && <NetworkTab id={id} />}
-          {tab === "topology" && <Topology node={id} />}
+          {tab === "network" && <Topology node={id} />}
           {tab === "updates" && <HostUpdates node={id} online={online} />}
           {tab === "settings" && <Settings n={n} admin={admin} />}
         </>
@@ -187,77 +184,6 @@ function Summary({ n, alerts }: { n: NodeStatus; alerts: ReturnType<typeof useAl
             </ul>
           )}
         </div>
-      </div>
-    </>
-  );
-}
-
-interface HostNIC {
-  name: string;
-  mac?: string;
-  state: string;
-  type: string;
-  master?: string;
-  mtu: number;
-  speedMbps?: number;
-  addresses: string[];
-}
-
-function NetworkTab({ id }: { id: number }) {
-  const nets = useLive(() => get<Network[]>(`/nodes/${id}/networks`), `nets/${id}`, (e) => e.type === "network");
-  // Once per visit and on request; interfaces change rarely and cost an SSH command.
-  const nics = useLive(() => get<{ interfaces: HostNIC[] }>(`/nodes/${id}/interfaces`), `nics/${id}`, () => false);
-  const byBridge = new Map<string, string[]>();
-  (nets.data ?? []).forEach((x) => x.bridge && byBridge.set(x.bridge, [...(byBridge.get(x.bridge) ?? []), x.name]));
-  return (
-    <>
-      <Networks fixedNode={id} />
-      <div className="head sub">
-        <h2>Host interfaces</h2>
-        <button className="ghost" onClick={nics.reload}>
-          Refresh
-        </button>
-      </div>
-      <ErrorBox error={nics.error} />
-      <div className="table-scroll nicbox">
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Type</th>
-              <th>State</th>
-              <th>MAC</th>
-              <th>Addresses</th>
-              <th>Attached to</th>
-              <th className="num">MTU</th>
-              <th className="num">Speed</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(nics.data?.interfaces ?? []).map((i) => (
-              <tr key={i.name}>
-                <td className="mono">{i.name}</td>
-                <td>{i.type}</td>
-                <td>
-                  <StateBadge state={i.state} />
-                </td>
-                <td className="mono">{i.mac}</td>
-                <td className="mono">
-                  {i.addresses.map((a) => (
-                    <div key={a}>{a}</div>
-                  ))}
-                </td>
-                <td>
-                  {i.master && <span className="mono">{i.master}</span>}
-                  {byBridge.has(i.name) && <span>network {byBridge.get(i.name)!.join(", ")}</span>}
-                </td>
-                <td className="num">{i.mtu}</td>
-                <td className="num">{i.speedMbps ? `${i.speedMbps} Mb/s` : ""}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {nics.data && nics.data.interfaces.length === 0 && <p className="muted">No interfaces reported.</p>}
       </div>
     </>
   );

@@ -35,7 +35,7 @@ test.describe.serial("virtual switch with several uplinks", () => {
     const n = await nodeWithTwoFreeCards(api);
     test.skip(!n, "no node with two free network cards: nothing to review");
     const before = await api.get(`/nodes/${n!.id}/hostnet`);
-    await page.goto(`/node/${n!.id}/topology`);
+    await page.goto(`/node/${n!.id}/network`);
     await page.getByRole("button", { name: "Add virtual switch" }).click();
     const dlg = page.getByRole("dialog", { name: "Add virtual switch" });
     const group = dlg.getByRole("group", { name: "Uplinks" });
@@ -82,7 +82,7 @@ test.describe.serial("virtual switch with several uplinks", () => {
       found = true;
       const hasAddr = (i: any) => (i.addresses as string[]).some((a) => !/^fe80:/i.test(a));
       const bare = free.filter((i) => !hasAddr(i));
-      await page.goto(`/node/${n.id}/topology`);
+      await page.goto(`/node/${n.id}/network`);
       await page.getByRole("button", { name: "Add virtual switch" }).click();
       const dlg = page.getByRole("dialog", { name: "Add virtual switch" });
       const boxes = dlg.getByRole("group", { name: "Uplinks" }).getByRole("checkbox");
@@ -108,7 +108,7 @@ test.describe.serial("virtual switch with several uplinks", () => {
   test("Edit uplinks, Edit MTU and Add this node's address open with their fields", async ({ page, api }) => {
     const sw = await managedVlanSwitch(api);
     test.skip(!sw, "no managed VLAN-aware virtual switch with an uplink in this lab");
-    await page.goto(`/node/${sw!.id}/topology`);
+    await page.goto(`/node/${sw!.id}/network`);
     const acts = page.getByRole("button", { name: `Actions for ${sw!.name}` });
     await acts.click();
     await page.getByRole("menuitem", { name: "Edit uplinks" }).click();
@@ -146,7 +146,7 @@ test.describe.serial("virtual switch with several uplinks", () => {
     const n = await nodeWithTwoFreeCards(api);
     test.skip(!n, "no node with two free network cards");
     await page.setViewportSize({ width: 390, height: 800 });
-    await page.goto(`/node/${n!.id}/topology`);
+    await page.goto(`/node/${n!.id}/network`);
     await page.getByRole("button", { name: "Add virtual switch" }).click();
     const dlg = page.getByRole("dialog", { name: "Add virtual switch" });
     const group = dlg.getByRole("group", { name: "Uplinks" });

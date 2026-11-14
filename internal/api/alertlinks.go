@@ -201,7 +201,7 @@ func linkAlerts(node int64, nodeName string, f linkFacts, mgmt []string) []Alert
 
 	var out []Alert
 	id := strconv.FormatInt(node, 10)
-	route := "/node/" + id + "/topology"
+	route := "/node/" + id + "/network"
 	for _, n := range f.NICs {
 		switch n.Type {
 		case "physical":
