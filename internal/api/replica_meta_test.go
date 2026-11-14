@@ -47,6 +47,7 @@ func TestReplicationMetaRoundTrip(t *testing.T) {
 func TestReplicaAndStaleMeta(t *testing.T) {
 	rm := replicaMeta{Dir: "/p/.virticle-rp.x", Pool: "default", SourceNode: 1, SourceName: "vspike-n1", Every: 5, Last: 100, Checked: 200, Points: 2, Bytes: 4096}
 	st := staleMeta{ToNode: 2, ToName: "vspike-n2", At: 300}
+	st.Gen, st.PeerHost, st.PeerPort, st.PeerUser = 2, "10.0.0.2", "22", "virticle"
 	fo := failedOverMeta{FromNode: 1, FromName: "vspike-n1", At: 400, Planned: true}
 	meta, err := setMetaChildren("", map[string]string{replicaChild: rm.element(), staleChild: st.element(), failedOverChd: fo.element()})
 	if err != nil {
@@ -199,5 +200,23 @@ func TestReplicaAlerts(t *testing.T) {
 func TestJobVMOfReplicate(t *testing.T) {
 	if jobVM("web \u2192 vspike-n2") != "web" || jobVM("web@snap") != "web" || jobVM("web") != "web" {
 		t.Error("job names")
+	}
+}
+
+func TestNewStaleMetaCarriesWhereToAsk(t *testing.T) {
+	rc := replConfig{Enabled: true, TargetNode: 2, TargetName: "n2", PeerHost: "10.0.0.2", PeerPort: "22", PeerUser: "virticle"}
+	fo := failedOverMeta{FromNode: 3, Gen: 4}
+	old, _ := setMetaChildren("", map[string]string{replChild: rc.element(), failedOverChd: fo.element()})
+	st := newStaleMeta(old, "n2", 2)
+	if st.Gen != 4 || st.PeerHost != "10.0.0.2" || st.PeerPort != "22" || st.PeerUser != "virticle" {
+		t.Errorf("%+v", st)
+	}
+	// a replication to some other node says nothing about how to reach the one that took over
+	if st := newStaleMeta(old, "n9", 9); st.PeerHost != "" {
+		t.Errorf("address of another node taken: %+v", st)
+	}
+	// no record at all (marked by an older version): no address, generation 0
+	if st := newStaleMeta("", "n2", 2); st.PeerHost != "" || st.Gen != 0 {
+		t.Errorf("%+v", st)
 	}
 }

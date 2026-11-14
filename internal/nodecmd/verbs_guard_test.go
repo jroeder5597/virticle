@@ -85,6 +85,51 @@ func TestHookSendsTheVMsOwnGeneration(t *testing.T) {
 	}
 }
 
+func staleMeta(attrs string) string {
+	return `<virticle:meta ` + ns + `><virticle:stale-copy to-node="2" to-name="n4" at="5" ` + attrs + `/></virticle:meta>`
+}
+
+func TestHookRefusesTheOldCopyWhenTheNodeThatTookOverHoldsTheVM(t *testing.T) {
+	n, notes := guardNode(t, "@@took-over 3", 0)
+	_, errOut, code := hook(n, domXML(staleMeta(`gen="2" peer-host="10.0.0.4" peer-port="2222" peer-user="virticle"`)), "prepare", "begin", "-")
+	if code != nodeproto.HookRefuse {
+		t.Fatalf("exit %d, want %d (stderr %q)", code, nodeproto.HookRefuse, errOut)
+	}
+	if !strings.Contains(errOut, "started on n4 from its copy") || len(*notes) == 0 {
+		t.Errorf("message %q, journal %v", errOut, *notes)
+	}
+	hdr, _ := os.ReadFile(n.abs("header"))
+	if strings.TrimSpace(string(hdr)) != "virticle-peer 1 took-over "+gUUID+" 2" {
+		t.Errorf("header sent: %q", hdr)
+	}
+	args, _ := os.ReadFile(n.abs("ssh-args"))
+	if !strings.Contains(string(args), "virticle@10.0.0.4") || !strings.Contains(string(args), "2222") {
+		t.Errorf("ssh arguments: %q", args)
+	}
+}
+
+func TestHookStartsTheOldCopyWhenItCannotBeSure(t *testing.T) {
+	good := staleMeta(`gen="0" peer-host="10.0.0.4" peer-port="22" peer-user="virticle"`)
+	cases := []struct {
+		name, answer string
+		exit         int
+		xml          string
+	}{
+		{"node did not take over", "@@not-took-over", 0, domXML(good)},
+		{"node unreachable", "", 255, domXML(good)},
+		{"nonsense answer", "hello", 0, domXML(good)},
+		{"no address stored (marked by an older version)", "@@took-over 1", 0, domXML(staleMeta(``))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			n, _ := guardNode(t, tc.answer, tc.exit)
+			if _, e, code := hook(n, tc.xml, "prepare", "begin", "-"); code != 0 {
+				t.Errorf("exit %d (%s): the VM must start", code, e)
+			}
+		})
+	}
+}
+
 func TestHookStartsWhenNothingSaysOtherwise(t *testing.T) {
 	cases := []struct {
 		name   string

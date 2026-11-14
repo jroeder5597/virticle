@@ -54,6 +54,10 @@ type guardFacts struct {
 	// HasFailedOver and Gen: the VM's own failover record (generation 0: it never took over).
 	HasFailedOver bool
 	Gen           int
+	// Stale is set on the old copy of a VM that another node took over: it names that node (Name, and where it
+	// is reached from here), and StaleGen is the generation the old VM had when it was marked.
+	Stale    *guardRepl
+	StaleGen int
 }
 
 type guardRepl struct{ Name, Host, Port, User string }
@@ -101,6 +105,23 @@ func parseGuardXML(r io.Reader) guardFacts {
 						}
 					}
 					f.Repl = rp
+				case "stale-copy":
+					rp := &guardRepl{}
+					for _, a := range t.Attr {
+						switch a.Name.Local {
+						case "to-name":
+							rp.Name = a.Value
+						case "peer-host":
+							rp.Host = a.Value
+						case "peer-port":
+							rp.Port = a.Value
+						case "peer-user":
+							rp.User = a.Value
+						case "gen":
+							f.StaleGen, _ = strconv.Atoi(a.Value)
+						}
+					}
+					f.Stale = rp
 				case "failed-over":
 					f.HasFailedOver = true
 					for _, a := range t.Attr {
@@ -152,10 +173,16 @@ func verbHookQemu(c *Ctx) (err error) {
 		return guardSelftest(c, account)
 	}
 	f := parseGuardXML(io.LimitReader(c.Stdin, 4<<20))
-	if f.Repl == nil {
+	// The standby of a replicated VM, or the node that took over a VM whose old copy this is, is asked the same
+	// question with the generation this VM has.
+	peer, gen := f.Repl, f.Gen
+	if peer == nil {
+		peer, gen = f.Stale, f.StaleGen
+	}
+	if peer == nil {
 		return nil // not a replicated VM: nothing to ask
 	}
-	if f.Repl.Host == "" || !uuidRE.MatchString(f.UUID) {
+	if peer.Host == "" || !uuidRE.MatchString(f.UUID) {
 		c.guardNote("%s: no standby address on record yet; the VM starts without asking", object)
 		return nil
 	}
@@ -170,7 +197,7 @@ func verbHookQemu(c *Ctx) (err error) {
 				ch <- answer{err: fmt.Errorf("%v", r)}
 			}
 		}()
-		took, err := guardAsk(c, account, f)
+		took, err := guardAsk(c, account, f.UUID, peer, gen)
 		ch <- answer{took, err}
 	}()
 	var a answer
@@ -179,9 +206,9 @@ func verbHookQemu(c *Ctx) (err error) {
 	case <-time.After(guardHardLimit):
 		a.err = errors.New("no answer in time")
 	}
-	name := f.Repl.Name
+	name := peer.Name
 	if name == "" {
-		name = f.Repl.Host
+		name = peer.Host
 	}
 	if a.err != nil {
 		c.guardNote("%s: could not ask the standby %s (%v); the VM starts", object, name, a.err)
@@ -196,23 +223,23 @@ func verbHookQemu(c *Ctx) (err error) {
 }
 
 // guardAsk asks the standby whether it took the VM over.
-func guardAsk(c *Ctx, account string, f guardFacts) (bool, error) {
+func guardAsk(c *Ctx, account, uuid string, peer *guardRepl, gen int) (bool, error) {
 	a, err := c.hookAccount(account)
 	if err != nil {
 		return false, err
 	}
-	port := f.Repl.Port
+	port := peer.Port
 	if port == "" {
 		port = "22"
 	}
-	user := f.Repl.User
+	user := peer.User
 	if user == "" {
 		user = "root"
 	}
-	if err := peerArgs(f.Repl.Host, port, user); err != nil {
+	if err := peerArgs(peer.Host, port, user); err != nil {
 		return false, err
 	}
-	out, err := c.peerAsk(a, f.Repl.Host, port, user, fmt.Sprintf("took-over %s %d", f.UUID, f.Gen), guardAskTotal, 3)
+	out, err := c.peerAsk(a, peer.Host, port, user, fmt.Sprintf("took-over %s %d", uuid, gen), guardAskTotal, 3)
 	if err != nil {
 		return false, err
 	}

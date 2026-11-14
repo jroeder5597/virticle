@@ -327,6 +327,19 @@ func (s *Server) plannedFailover(req *http.Request, h *hostconn.Host, dom libvir
 
 func nil2(msg string) error { return errors.New(msg) }
 
+// newStaleMeta is the stale-copy marker for the VM whose metadata is old.
+func newStaleMeta(old, toName string, toNode int64) staleMeta {
+	st := staleMeta{ToNode: toNode, ToName: toName, At: time.Now().Unix()}
+	if fo := parseFailedOver(old); fo != nil {
+		st.Gen = fo.Gen
+	}
+	// The node that took over is the standby the VM was copied to: the record says where to reach it from here.
+	if rc := parseReplication(old); rc != nil && rc.TargetNode == toNode && rc.PeerHost != "" {
+		st.PeerHost, st.PeerPort, st.PeerUser = rc.PeerHost, rc.PeerPort, rc.PeerUser
+	}
+	return st
+}
+
 // markOldVM turns the VM on the old node into the old copy: marked, never to autostart, without replication.
 func (s *Server) markOldVM(sh *hostconn.Host, sd libvirt.Domain, toName string, toNode int64) {
 	old, err := domainMeta(sh, sd)
@@ -334,10 +347,11 @@ func (s *Server) markOldVM(sh *hostconn.Host, sd libvirt.Domain, toName string, 
 		log.Printf("marking the old VM %s: %v", sd.Name, err)
 		return
 	}
+	st := newStaleMeta(old, toName, toNode)
 	meta, err := setMetaChildren(old, map[string]string{
 		replChild:     "",
 		failedOverChd: "",
-		staleChild:    staleMeta{ToNode: toNode, ToName: toName, At: time.Now().Unix()}.element(),
+		staleChild:    st.element(),
 	})
 	if err == nil {
 		err = setDomainMeta(sh, sd, meta)

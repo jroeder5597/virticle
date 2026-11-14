@@ -167,10 +167,19 @@ type staleMeta struct {
 	ToNode int64
 	ToName string
 	At     int64
+	// Gen is the failover generation the old VM had (0: it never took over). With the address of the node that took
+	// over (where this node reaches it, copied from the replication record the VM had), it lets the start guard on
+	// the node ask that node whether the VM runs there, so a hand start of the old copy is refused too.
+	Gen                          int
+	PeerHost, PeerPort, PeerUser string
 }
 
 func (m staleMeta) element() string {
-	return fmt.Sprintf(`<%s to-node="%d" to-name="%s" at="%d"/>`, staleChild, m.ToNode, esc(m.ToName), m.At)
+	el := fmt.Sprintf(`<%s to-node="%d" to-name="%s" at="%d" gen="%d"`, staleChild, m.ToNode, esc(m.ToName), m.At, m.Gen)
+	if m.PeerHost != "" {
+		el += fmt.Sprintf(` peer-host="%s" peer-port="%s" peer-user="%s"`, esc(m.PeerHost), esc(m.PeerPort), esc(m.PeerUser))
+	}
+	return el + "/>"
 }
 
 func parseStale(meta string) *staleMeta {
@@ -182,12 +191,16 @@ func parseStale(meta string) *staleMeta {
 			Node int64  `xml:"to-node,attr"`
 			Name string `xml:"to-name,attr"`
 			At   int64  `xml:"at,attr"`
+			Gen  int    `xml:"gen,attr"`
+			Host string `xml:"peer-host,attr"`
+			Port string `xml:"peer-port,attr"`
+			User string `xml:"peer-user,attr"`
 		} `xml:"stale-copy"`
 	}
 	if xml.Unmarshal([]byte(meta), &root) != nil || root.S == nil {
 		return nil
 	}
-	return &staleMeta{ToNode: root.S.Node, ToName: root.S.Name, At: root.S.At}
+	return &staleMeta{ToNode: root.S.Node, ToName: root.S.Name, At: root.S.At, Gen: root.S.Gen, PeerHost: root.S.Host, PeerPort: root.S.Port, PeerUser: root.S.User}
 }
 
 // failedOverMeta is kept by the VM that took over.
