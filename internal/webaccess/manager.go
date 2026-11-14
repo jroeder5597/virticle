@@ -122,7 +122,10 @@ type pending struct {
 type Pending struct {
 	Gen      int       `json:"gen"`
 	Deadline time.Time `json:"deadline"`
-	PrevMode string    `json:"previousMode"`
+	// SecondsLeft is the time to the deadline by this machine's clock, so a
+	// browser with a wrong clock still counts down correctly.
+	SecondsLeft int    `json:"secondsLeft"`
+	PrevMode    string `json:"previousMode"`
 	// URL is where the new settings can be reached (best guess).
 	URL string `json:"url"`
 }
@@ -580,7 +583,16 @@ func (m *Manager) pendingInfo(host string) *Pending {
 	if p == nil {
 		return nil
 	}
-	return &Pending{Gen: p.gen, Deadline: p.deadline, PrevMode: p.prev.Mode, URL: m.urlFor(m.cur, host)}
+	return &Pending{Gen: p.gen, Deadline: p.deadline, SecondsLeft: secondsUntil(p.deadline), PrevMode: p.prev.Mode, URL: m.urlFor(m.cur, host)}
+}
+
+// secondsUntil rounds up, and is never negative.
+func secondsUntil(t time.Time) int {
+	d := time.Until(t)
+	if d <= 0 {
+		return 0
+	}
+	return int((d + time.Second - 1) / time.Second)
 }
 
 // urlFor is where a browser reaches settings s, given the host it used so far.

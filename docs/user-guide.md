@@ -812,6 +812,7 @@ API tokens are described in [reference.md](reference.md#api-tokens). To read the
 | A virtual switch change did not stay | The node did not come back in time and restored its previous settings. Read the line in the node's **Topology** tab, check the cable and address, and try again. From the node's console: [reference.md](reference.md#host-bridges-virtual-switches). |
 | Charts have gaps | The VM was not running, or the node or the controller could not be read. Nothing is drawn as zero. |
 | Locked out after a web access change | Wait 60 seconds for the automatic revert, or run `virticle web reset` and restart. |
+| A web access change is waiting | Any page asks "Keep the new web access setting?" for an administrator, also right after signing in at the new address. Choose **Keep this setting**, or it is undone after 60 seconds. |
 | Lost the phone with the authenticator | An administrator chooses **Reset two-step sign-in** for you. If you are the only administrator: `virticle user reset-2fa USER` on the controller. See [sign-in.md](sign-in.md#two-step-sign-in-authenticator-app). |
 | "No ISO images on this node" | Upload one under **Storage**. |
 | A task failed | **Tasks** shows the error in the Result column. |

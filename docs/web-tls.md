@@ -31,7 +31,7 @@ HSTS is off by default. The toggle sends `Strict-Transport-Security: max-age=315
 
 1. Choose **Apply**. The page first runs checks and shows failures as a list: the certificate parses and its key matches, it is not expired, its names cover the public URL, the address can be bound, the trusted proxy sends the headers on this very request, and so on. Any failed check blocks the change.
 2. The new listener starts at once. The old one stays.
-3. Open the new address, as the page tells you (the address and port you chose; the page says when it moves). There, choose **Keep this setting**.
+3. Open the new address, as the page tells you (the address and port you chose; the page says when it moves). There, sign in (and accept the certificate if it is self-signed). A dialog on whatever page opens asks "Keep the new web access setting?" with the seconds left; choose **Keep this setting**. If you close the dialog, a line above the page offers the same two choices (**Keep this setting** and **Undo now**) until the change is kept or undone. The button on the Web access page does the same.
 4. If nobody confirms within 60 seconds, the new listener is closed and the previous settings return, so a typo cannot lock you out. (`VIRTICLE_WEB_CONFIRM_SECONDS` changes the time, for tests.)
 
 Good to know:
