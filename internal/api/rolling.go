@@ -644,23 +644,32 @@ func rollSummary(r *rollRun) string {
 	return strings.Join(parts, " ")
 }
 
+// rollStepCounts counts the steps that will run or have run on the nodes being updated. A skipped step (it does not
+// apply to the node) is in neither number, so "7 of 20" never counts work that was never going to happen.
+func rollStepCounts(nodes []*rollNode) (total, done int) {
+	for _, n := range nodes {
+		if n.Action != "update" {
+			continue
+		}
+		for _, s := range n.Steps {
+			if s.Status == "skipped" {
+				continue
+			}
+			total++
+			if s.Status == "ok" {
+				done++
+			}
+		}
+	}
+	return total, done
+}
+
 func (e *rollExec) updateProgress() {
 	if e.progress == nil {
 		return
 	}
 	e.mu.Lock()
-	total, done := 0, 0
-	for _, n := range e.run.Nodes {
-		if n.Action != "update" {
-			continue
-		}
-		for _, s := range n.Steps {
-			total++
-			if s.Status == "ok" || s.Status == "skipped" {
-				done++
-			}
-		}
-	}
+	total, done := rollStepCounts(e.run.Nodes)
 	e.mu.Unlock()
 	if total > 0 {
 		e.progress(float64(done) / float64(total))

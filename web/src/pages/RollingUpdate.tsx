@@ -174,7 +174,9 @@ function RunView({ run, lost, onChange, onClose }: { run: RollRun; lost: boolean
   const confirm = useConfirm();
   const updating = run.nodes.filter((n) => n.action === "update");
   const steps = updating.flatMap((n) => n.steps);
-  const done = steps.filter((s) => s.status === "ok" || s.status === "skipped").length;
+  // Skipped steps never run: they are in neither number (same rule as the progress bar on the server).
+  const counted = steps.filter((s) => s.status !== "skipped");
+  const done = counted.filter((s) => s.status === "ok").length;
   const running = run.status === "running";
   const call = (path: string) => act.run(async () => (await post(path), onChange()));
   const stop = async () => {
@@ -190,9 +192,9 @@ function RunView({ run, lost, onChange, onClose }: { run: RollRun; lost: boolean
     <>
       <p className="rollhead">
         <strong>{heading}</strong>
-        {running && <span className="muted"> {done} of {steps.length} steps done</span>}
+        {running && <span className="muted"> {done} of {counted.length} steps done</span>}
       </p>
-      <Progress value={steps.length ? done / steps.length : 0} failed={run.status === "failed"} />
+      <Progress value={counted.length ? done / counted.length : 0} failed={run.status === "failed"} />
       {lost && <p className="muted">The controller does not answer. It may be restarting. The update carries on by itself when it is back.</p>}
       {(run.resumed ?? 0) > 0 && <p className="muted">The controller was restarted during this update and carried on by itself.</p>}
       {run.status === "ok" && <StatusLine status="ok">{run.summary || "All nodes are done."}</StatusLine>}
