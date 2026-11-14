@@ -245,10 +245,9 @@ export function ReplicaCard({ d, base }: { d: VMDetail; base: string }) {
       : fo.kind === "gone"
         ? `${src} no longer has this VM. Start it here from the copy of ${t}. Changes after that time are lost.`
         : `What you lose: everything ${d.name} wrote on ${src} after ${t}. Risk: Virticle cannot stop ${src}, it is offline. If the VM is still running there (for example only the network to it is down), two copies of the VM would run at the same time with the same MAC and IP addresses on your network. Each copy has its own disks, so no data is destroyed, but the two copies diverge and you will have to throw one away. When ${src} comes back, its copy is shut off and marked as old; its disks are not deleted. Only continue if you know ${src} is down.`;
-    const tpmNote = r.tpm ? ` This VM has a virtual TPM, which is not copied: it starts here with an empty TPM, and a disk that is locked to the TPM (BitLocker, for instance) asks for its recovery key. Have the key at hand.` : "";
     const ok = await confirm.ask({
       title: planned ? "Planned failover" : "Start from the copy",
-      message: message + tpmNote,
+      message,
       confirm: planned ? "Planned failover" : `Start here from the copy of ${t}`,
       danger: !planned,
     });

@@ -228,6 +228,28 @@ func TestReplIntervalAndAge(t *testing.T) {
 	}
 }
 
+func TestTPMStateFileOfAPoint(t *testing.T) {
+	p := testPoint(5, 1, "")
+	p.TPMState = replTPMName(5)
+	if replTPMName(5) != "t5.tpm" {
+		t.Fatalf("name %s", replTPMName(5))
+	}
+	found := false
+	for _, f := range p.files() {
+		found = found || f == "t5.tpm"
+	}
+	if !found {
+		t.Errorf("the point does not list its TPM state: %v", p.files())
+	}
+	if got := nextSeq([]string{"b1-vda.qcow2", "t9.tpm"}); got != 10 {
+		t.Errorf("nextSeq = %d: the TPM file of an interrupted run must count", got)
+	}
+	keep := map[string]bool{"t5.tpm": true}
+	if got := strays([]string{"t5.tpm", "t4.tpm", "t6.tpm"}, keep); !reflect.DeepEqual(got, []string{"t4.tpm", "t6.tpm"}) {
+		t.Errorf("strays %v", got)
+	}
+}
+
 func TestReplVolNames(t *testing.T) {
 	if replVolName("web", "vda", 0) != "web.qcow2" || replVolName("web", "vdb", 1) != "web-vdb.qcow2" {
 		t.Error("volume names follow the restore's")

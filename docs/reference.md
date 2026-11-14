@@ -211,8 +211,9 @@ earlier versions no longer exist.
 - Refused: raw disks, shareable or non-file disks, passthrough devices, a standby with another VM of that name or UUID, a missing
   network or bridge on the standby, no pool with room, a VM with any writable disk in a directory that the standby mounts as the
   same NFS share (`sharedDisksOf`, replica_shared.go; migration's rule for "shared"). The replica is never put in an NFS pool.
-- TPM: not copied (`swtpm` state, one 6 KB file `/var/lib/libvirt/swtpm/<uuid>/tpm2/tpm2-00.permall`); the replica's definition keeps
-  the `<tpm>` device and libvirt makes a new, empty state at the first start.
+- TPM: the swtpm state of an emulated TPM 2.0, one 6 KB file `/var/lib/libvirt/swtpm/<uuid>/tpm2/tpm2-00.permall`, is copied with every
+  run (node verb `tpm-save`, sent as `t<S>.tpm`, named `tpmState` in the manifest) and put back at failover before the disks move (`tpm-place`:
+  owner tss, mode 0600, replaced in one step). Other TPMs are not copied (warning at setup); the VM then starts with a new, empty TPM.
 - Failover: the newest point whose chain reads; its overlays are written into the base, the base moved to the pool as `<vm>.qcow2`
   (`<vm>-<disk>.qcow2` for more disks), UEFI variables placed, the definition of that point defined, the VM started. Can be repeated
   after any failure. The old VM is stale-marked by the controller when its node is online again (alert loop, once a minute).
@@ -346,9 +347,9 @@ applies it at once with `ip link set` (cards last when it goes down, first when 
 switch is deleted, the card gets its earlier MTU back. libvirt 11.3 and 11.10 refuse `<mtu>` in a network with `forward mode='bridge'`, so
 networks on a host bridge cannot carry it; a guest needs the MTU in its own settings (not tried in the lab).
 
-**Protocol 18.** The node command protocol is 18 (0.2.0 had 10). A node prepared with an older version shows "prepared
+**Protocol 19.** The node command protocol is 19 (0.2.0 had 10). A node prepared with an older version shows "prepared
 by an older version" and must be prepared again ([install.md](install.md#upgrading)); the old node command would also
-refuse the new requests, because it rejects fields it does not know. Protocol 17 adds `repl-overlay`, `repl-rebase`, `repl-commit`, `repl-ls`, `mtime` (replication) and `qcow2-bitmap-rm`. Protocol 14 (incremental backups): `convert-start` takes the
+refuse the new requests, because it rejects fields it does not know. Protocol 19 adds `tpm-save` and `tpm-place` (the state of an emulated TPM, replication). Protocol 17 adds `repl-overlay`, `repl-rebase`, `repl-commit`, `repl-ls`, `mtime` (replication) and `qcow2-bitmap-rm`. Protocol 14 (incremental backups): `convert-start` takes the
 incremental images after the format, and `backup-detach` is new.
 
 **What it refuses.** Ports of a bond (or of a bridge) as uplinks, and cards that are already in another bond; an uplink that is already a port; wireless, virtual and

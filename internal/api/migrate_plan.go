@@ -47,7 +47,9 @@ type migDomain struct {
 	// Counts of devices that tie a VM to its host.
 	Hostdevs int
 	TPM      bool
-	NVRAM    string
+	// TPMState2 says the TPM is an emulated one of version 2.0 (swtpm): its state is one file that replication copies.
+	TPMState2 bool
+	NVRAM     string
 	// NVRAMFormat is "qcow2" or "raw" (libvirt: raw unless the definition says so).
 	NVRAMFormat string
 	// NVRAMTemplate is the firmware package file the store was made from.
@@ -112,7 +114,12 @@ func parseMigDomain(raw string) (migDomain, error) {
 				} `xml:"source"`
 			} `xml:"interface"`
 			Hostdevs []struct{} `xml:"hostdev"`
-			TPM      *struct{}  `xml:"tpm"`
+			TPM      *struct {
+				Backend struct {
+					Type    string `xml:"type,attr"`
+					Version string `xml:"version,attr"`
+				} `xml:"backend"`
+			} `xml:"tpm"`
 		} `xml:"devices"`
 	}
 	if err := xml.Unmarshal([]byte(raw), &x); err != nil {
@@ -121,6 +128,9 @@ func parseMigDomain(raw string) (migDomain, error) {
 	d := migDomain{
 		Name: x.Name, UUID: x.UUID, Hostdevs: len(x.Devices.Hostdevs), TPM: x.Devices.TPM != nil,
 		NVRAM: strings.TrimSpace(x.OS.NVRAM.Path), NVRAMTemplate: rawNvramTemplate(raw, nvramEl{Template: x.OS.NVRAM.Template, Path: strings.TrimSpace(x.OS.NVRAM.Path)}), NVRAMFormat: map[bool]string{true: "qcow2", false: "raw"}[x.OS.NVRAM.Format == "qcow2"], CPUMode: x.CPU.Mode, Arch: x.OS.Type.Arch, Machine: x.OS.Type.Machine, Emulator: strings.TrimSpace(x.Devices.Emulator),
+	}
+	if t := x.Devices.TPM; t != nil && t.Backend.Type == "emulator" && (t.Backend.Version == "2.0" || t.Backend.Version == "") {
+		d.TPMState2 = true
 	}
 	if m := cpuFullRE.FindString(raw); m != "" {
 		d.CPUXML = m

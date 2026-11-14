@@ -334,10 +334,10 @@ the clocks of the nodes.
   held are out of reach. Replicas of VMs on a removed node show the alert "replica-age"; start one from its page or delete it.
 - A disk that a killed QEMU left with unusable change tracking is cleaned up when it would get in the way (a disk resize,
   removing the tracking when replication or a backup stops); the next copy or backup is then a full one.
-- The virtual TPM is not copied (setting up replication warns, and so does the failover confirmation). The VM starts on the
-  standby with a new, empty TPM: anything sealed to the old TPM no longer opens (tested with a key sealed by tpm2-tools: the
-  load fails with an integrity error), and a disk locked to it with BitLocker asks for its recovery key. Have the keys at hand
-  before a VM with a TPM is failed over.
+- The state of an emulated TPM 2.0 (what Virticle creates for a Windows VM) is copied with every run, a few kilobytes, so a
+  disk locked to the TPM (BitLocker, keys sealed with tpm2-tools) opens after a failover. It is the state at the time of the
+  last copy. A TPM of another kind (passthrough, version 1.2) is not copied: setting up replication warns, and the VM starts
+  on the standby with an empty TPM.
 - Copies use the migration network and its limit. A copy needs free space on the standby for the changes (or the whole VM for a
   full copy); when there is not enough, the run fails and the earlier copy is kept.
 - A cloned VM is not replicated.

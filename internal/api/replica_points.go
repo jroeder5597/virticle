@@ -105,6 +105,7 @@ type replPoint struct {
 	NVRAM      string     `json:"nvram,omitempty"`     // file in the replica directory
 	NVRAMPath  string     `json:"nvramPath,omitempty"` // where it goes on failover
 	TPM        bool       `json:"tpm,omitempty"`
+	TPMState   string     `json:"tpmState,omitempty"` // the emulated TPM's state, a file in the replica directory
 	Autostart  bool       `json:"autostart,omitempty"`
 	Sent       uint64     `json:"sent"`             // bytes sent for this point
 	Stamps     []string   `json:"stamps,omitempty"` // "mtime|size" of the source's disk files after an offline run
@@ -143,6 +144,9 @@ func (p *replPoint) files() []string {
 	if p.NVRAM != "" {
 		out = append(out, p.NVRAM)
 	}
+	if p.TPMState != "" {
+		out = append(out, p.TPMState)
+	}
 	return out
 }
 
@@ -173,6 +177,7 @@ var (
 	rePointFile = regexp.MustCompile(`^p([0-9]+)-.+\.qcow2$`)
 	reBaseFile  = regexp.MustCompile(`^b([0-9]+)-.+\.qcow2$`)
 	reNVRAMFile = regexp.MustCompile(`^n([0-9]+)\.nvram$`)
+	reTPMFile   = regexp.MustCompile(`^t([0-9]+)\.tpm$`)
 	reInFile    = regexp.MustCompile(`^in([0-9]+)-.+$`)
 )
 
@@ -181,6 +186,7 @@ func replOverlayName(seq int, t string) string  { return fmt.Sprintf("p%d-%s.qco
 func replBaseName(gen int, t string) string     { return fmt.Sprintf("b%d-%s.qcow2", gen, t) }
 func replIncomingName(seq int, t string) string { return fmt.Sprintf("in%d-%s.qcow2", seq, t) }
 func replNVRAMName(seq int) string              { return fmt.Sprintf("n%d.nvram", seq) }
+func replTPMName(seq int) string                { return fmt.Sprintf("t%d.tpm", seq) }
 
 // replVolName is the file name disk number i (0 first) of VM name gets when the replica is started:
 // the names a restore uses.
@@ -267,7 +273,7 @@ func scanReplNames(names []string) replScan {
 func nextSeq(names []string) int {
 	top := 0
 	for _, n := range names {
-		for _, re := range []*regexp.Regexp{rePointJSON, rePointFile, reNVRAMFile, reInFile} {
+		for _, re := range []*regexp.Regexp{rePointJSON, rePointFile, reNVRAMFile, reTPMFile, reInFile} {
 			if m := re.FindStringSubmatch(n); m != nil {
 				if v, _ := strconv.Atoi(m[1]); v > top {
 					top = v
@@ -347,7 +353,7 @@ func strays(names []string, keep map[string]bool) []string {
 		}
 	}
 	seq := func(n string) int {
-		for _, re := range []*regexp.Regexp{rePointJSON, rePointFile, reNVRAMFile, reInFile, reBaseFile} {
+		for _, re := range []*regexp.Regexp{rePointJSON, rePointFile, reNVRAMFile, reTPMFile, reInFile, reBaseFile} {
 			if m := re.FindStringSubmatch(n); m != nil {
 				v, _ := strconv.Atoi(m[1])
 				return v

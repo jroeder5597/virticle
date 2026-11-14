@@ -453,6 +453,13 @@ func (s *Server) activateReplicaStage(h *hostconn.Host, dom libvirt.Domain, node
 			}
 			progress(0.1 + 0.6*float64(i+1)/float64(len(sel.Disks)))
 		}
+		// The virtual TPM's state of that point, before anything moves: a failure here costs nothing and can be tried again. Done
+		// only on this first pass: once the disks are in place the VM may have run, and its TPM state is newer than the copy.
+		if sel.TPMState != "" {
+			if err := h.TPMPlace(st.file(sel.TPMState), cluster.FormatUUID(dom.UUID)); err != nil {
+				return fmt.Errorf("placing the state of the virtual TPM on %s: %w", h.Name, err)
+			}
+		}
 		// From here on the base holds the point; move the files into the pool.
 		for _, d := range sel.Disks {
 			chain, _ := st.chain(d.File, names)

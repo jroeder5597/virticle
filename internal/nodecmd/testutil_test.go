@@ -22,13 +22,14 @@ type tnode struct {
 // layout creates the directory tree of a fake node under root and returns its
 // Config.
 func layout(root string) *Config {
-	for _, d := range []string{"pools/default", "pools/other", "nvram", "home/svc/.ssh", "outside", "etc/libvirt", "proc", "sys"} {
+	for _, d := range []string{"pools/default", "pools/other", "nvram", "swtpm", "home/svc/.ssh", "outside", "etc/libvirt", "proc", "sys"} {
 		p := filepath.Join(root, d)
 		_ = os.MkdirAll(p, 0o755)
 	}
 	return &Config{
 		Pools:        func(*Ctx) []string { return []string{filepath.Join(root, "pools/default")} },
 		NVRAMDir:     filepath.Join(root, "nvram"),
+		TPMDir:       filepath.Join(root, "swtpm"),
 		Prefix:       root,
 		Unprivileged: true,
 		Account:      &Account{Name: "svc", Home: filepath.Join(root, "home/svc"), UID: 1000, GID: 1000},
