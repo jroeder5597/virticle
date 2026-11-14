@@ -17,10 +17,17 @@ import (
 // right after it. libvirt's backup-begin has no flag for this.
 
 const (
-	freezeInfoWait = 5  // seconds to wait for the agent's guest-info
-	freezeWait     = 15 // seconds to wait for the freeze
-	thawWait       = 15 // seconds to wait for one thaw attempt
+	freezeInfoWait = 5 // seconds to wait for the agent's guest-info: a hung agent costs this much and no more
 	thawTries      = 4
+)
+
+// How long to wait for the freeze and for one thaw attempt. A Windows guest
+// freezes through VSS, which takes 15 to 30 seconds on a slow host, so the
+// freeze gets a generous wait; the guest-info check has already shown that the
+// agent answers.
+var (
+	freezeWait = 45 * time.Second
+	thawWait   = 40 * time.Second
 )
 
 var thawPause = time.Second
@@ -144,13 +151,28 @@ func (a agentFreezer) Freeze() error {
 	if _, can, perr := parseAgentInfo(raw); perr != nil || !can {
 		return &freezeNotTried{errors.New("the guest agent cannot freeze file systems")}
 	}
-	if _, err := agentCmdT(a.h, a.dom, "guest-fsfreeze-freeze", nil, freezeWait); err != nil {
+	// The freeze is libvirt's own (it sends guest-fsfreeze-freeze and waits for the agent as long as it takes).
+	return within(freezeWait, "the guest did not freeze in time", func() error {
+		_, err := a.h.DomainFsfreeze(a.dom, nil, 0)
 		return err
-	}
-	return nil
+	})
 }
 
 func (a agentFreezer) Thaw() error {
-	_, err := agentCmdT(a.h, a.dom, "guest-fsfreeze-thaw", nil, thawWait)
-	return err
+	return within(thawWait, "the guest did not answer the thaw in time", func() error {
+		_, err := a.h.DomainFsthaw(a.dom, nil, 0)
+		return err
+	})
+}
+
+// within runs fn and stops waiting after d (the call itself goes on in the background).
+func within(d time.Duration, msg string, fn func() error) error {
+	done := make(chan error, 1)
+	go func() { done <- fn() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(d):
+		return errors.New(msg)
+	}
 }

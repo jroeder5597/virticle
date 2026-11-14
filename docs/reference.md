@@ -300,8 +300,11 @@ was made from `manifest.kind` (and `manifest.fullReason`) of the entry in `GET /
 
 **Freezing the guest.** libvirt's backup-begin has no flag to quiesce the guest (the value 2 that earlier builds passed is
 rejected by libvirt 11.3 and means "preserve the domain if the guest shuts down" in 11.10). For a running VM Virticle freezes
-the guest's file systems with the guest agent (`guest-fsfreeze-freeze`) immediately before `DomainBackupBegin` and thaws them
-(`guest-fsthaw`, up to 4 tries) when it returns, whether it worked or not. The request field `quiesce` of the backup call is
+the guest's file systems with libvirt's `DomainFsfreeze` (the guest agent's `guest-fsfreeze-freeze`) immediately before
+`DomainBackupBegin` and thaws them (`DomainFsthaw`, up to 4 tries) when it returns, whether it worked or not. An agent that does
+not answer `guest-info` within 5 seconds is not asked to freeze; a freeze that takes longer than 45 seconds is given up (and
+thawed). A Windows guest freezes through VSS, which takes 15 to 30 seconds on a slow host and holds writes for at most 10
+seconds, so its first thaw can report that error; the retry succeeds. The request field `quiesce` of the backup call is
 absent (automatic: freeze when the agent is connected and can freeze; if that fails, back up without), `true` (freeze or fail the
 backup) or `false` (never). Replication copies are automatic; scheduled backups send `false`. The task note says "guest file
 systems frozen" or "not frozen: REASON", and `manifest.frozen` is `true` or `false` for a live backup (absent for older backups

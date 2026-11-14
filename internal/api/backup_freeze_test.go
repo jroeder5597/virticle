@@ -163,3 +163,20 @@ func TestFinishFreeze(t *testing.T) {
 		t.Errorf("failed run with thaw problem: %v", err)
 	}
 }
+
+func TestWithin(t *testing.T) {
+	if err := within(time.Second, "late", func() error { return nil }); err != nil {
+		t.Errorf("fast call: %v", err)
+	}
+	boom := errors.New("boom")
+	if err := within(time.Second, "late", func() error { return boom }); err != boom {
+		t.Errorf("failing call: %v", err)
+	}
+	release := make(chan struct{})
+	defer close(release)
+	start := time.Now()
+	err := within(20*time.Millisecond, "late", func() error { <-release; return nil })
+	if err == nil || err.Error() != "late" || time.Since(start) > time.Second {
+		t.Errorf("hung call: %v after %v", err, time.Since(start))
+	}
+}
