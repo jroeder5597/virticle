@@ -1012,12 +1012,22 @@ func (s *Server) startBackgroundWait(r *http.Request, kind, target, node string,
 				}
 			})
 		}()
-		s.Store.FinishTask(&t, err)
+		var dn doneNote
+		if errors.As(err, &dn) {
+			err = nil
+		}
+		s.Store.FinishTaskNote(&t, err, string(dn))
 		s.Nodes.Publish(cluster.Event{Type: "task", Task: t})
 		done <- err
 	}()
 	return t.ID, done, nil
 }
+
+// doneNote is what a background task's function returns instead of nil to end
+// well with a short remark (shown with the finished task, never as an error).
+type doneNote string
+
+func (d doneNote) Error() string { return string(d) }
 
 func (s *Server) migrateCancel(w http.ResponseWriter, r *http.Request) {
 	_, dom, err := s.domain(r)

@@ -85,6 +85,7 @@ func (s *Store) TasksBy(user string, since int64) ([]Task, error) {
 		if err := rows.Scan(&t.ID, &t.Kind, &t.Target, &t.Node, &t.User, &t.Status, &t.Error, &t.Progress, &t.Started, &t.Finished); err != nil {
 			return nil, err
 		}
+		t.noteOfOK()
 		out = append(out, t)
 	}
 	return out, rows.Err()

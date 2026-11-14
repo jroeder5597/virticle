@@ -251,6 +251,12 @@ running. Snapshots and TPM state are not part of a backup.
 3. **Restore** puts a backup back as a new VM or over the original (the original must be shut off).
 4. **Set up schedule** and **Save schedule** make backups run by themselves: every so many minutes or hours, or daily.
 
+**Frozen file systems.** For a running VM with the QEMU guest agent connected, Virticle freezes the guest's file systems
+for the instant the backup starts and thaws them right after, so the backup is as consistent as a clean shutdown would leave
+the files (databases and journals included). The task says "guest file systems frozen" or "not frozen:" with the reason (no
+guest agent, agent not answering). If the freeze fails the backup is made anyway. Scheduled backups do not freeze the guest.
+A shut-off VM has nothing to freeze. If Virticle cannot thaw the guest afterwards, the task fails and says how to thaw it by hand.
+
 The **Backups** page in the top bar lists the backups of every VM on every node. The backup of the controller itself is
 under **Settings > Controller backup** ([controller-backup.md](controller-backup.md)). **Export** downloads a backup as one
 file; **Import from file** on the Backups page of another installation brings it back. The format is in [reference.md](reference.md#backup-format).
@@ -299,6 +305,9 @@ automatic failover would need is in [backlog-ha.md](backlog-ha.md).
 2. Pick **Replicate to** (the standby node) and **Every** (5 minutes, 15 minutes, 30 minutes, 1 hour, 6 hours or 1 day).
 3. Choose **Start replication**. The first copy sends the whole VM; later copies send only what changed. The pool on the
    standby is chosen for you.
+
+Each copy of a running VM freezes the guest's file systems for the instant it starts, the same as a backup does, when the
+guest agent is connected; the task says whether it did. A copy is made without the freeze if the freeze fails.
 
 ![Replication card](img/replication.png)
 

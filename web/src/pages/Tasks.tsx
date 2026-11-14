@@ -52,6 +52,7 @@ export default function Tasks() {
                     </span>
                   )}
                   {t.error && <StatusLine status="error">{t.error}</StatusLine>}
+                  {t.note && <StatusLine status="info">{t.note}</StatusLine>}
                 </td>
               </tr>
             ))}

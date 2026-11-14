@@ -86,6 +86,9 @@ type backupManifest struct {
 	// FullReason says in words why a backup is full when an incremental one
 	// might have been expected.
 	FullReason string `json:"fullReason,omitempty"`
+	// Frozen says whether the guest's file systems were frozen while the backup
+	// began (a live backup only; absent for older backups and shut-off VMs).
+	Frozen *bool `json:"frozen,omitempty"`
 }
 
 func (m *backupManifest) createdTime() time.Time {

@@ -298,6 +298,15 @@ what the run will try, and `plannedReason` says why a full backup is planned. li
 backup, and the run then makes a full one, so a script must not take `plannedKind` as the result. Read the kind of what
 was made from `manifest.kind` (and `manifest.fullReason`) of the entry in `GET /api/backups?uuid=UUID`.
 
+**Freezing the guest.** libvirt's backup-begin has no flag to quiesce the guest (the value 2 that earlier builds passed is
+rejected by libvirt 11.3 and means "preserve the domain if the guest shuts down" in 11.10). For a running VM Virticle freezes
+the guest's file systems with the guest agent (`guest-fsfreeze-freeze`) immediately before `DomainBackupBegin` and thaws them
+(`guest-fsthaw`, up to 4 tries) when it returns, whether it worked or not. The request field `quiesce` of the backup call is
+absent (automatic: freeze when the agent is connected and can freeze; if that fails, back up without), `true` (freeze or fail the
+backup) or `false` (never). Replication copies are automatic; scheduled backups send `false`. The task note says "guest file
+systems frozen" or "not frozen: REASON", and `manifest.frozen` is `true` or `false` for a live backup (absent for older backups
+and shut-off VMs). Tasks that ended well carry such a note as `note` in `GET /api/tasks`.
+
 ### Incremental backups
 
 - Each backup of a running VM with qcow2 disks leaves a libvirt checkpoint (a QEMU dirty bitmap per disk), named

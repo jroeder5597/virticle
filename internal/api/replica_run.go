@@ -235,8 +235,7 @@ func (s *Server) planReplica(srcID int64, src *hostconn.Host, dom libvirt.Domain
 	}
 	ctx, stop := context.WithCancel(context.Background())
 	m := &bkRun{ctx: ctx, stopCtx: stop, s: s, src: src, dom: dom, name: dom.Name, uuid: cluster.FormatUUID(dom.UUID), live: live}
-	no := false
-	_ = no // quiesce stays automatic: a short freeze through the guest agent when there is one
+	// Quiesce stays unset (automatic): a short freeze through the guest agent when there is one.
 	if m.domXML, err = src.DomainGetXMLDesc(dom, libvirt.DomainXMLSecure|libvirt.DomainXMLInactive); err != nil {
 		return nil, err
 	}
@@ -1021,8 +1020,13 @@ func (s *Server) launchReplica(req *http.Request, r *replRun) (int64, <-chan err
 		defer releaseRepl(r)
 		r.progress = progress
 		err := r.run()
+		res := r.bk.finishFreeze(err)
+		var dn doneNote
+		if !errors.As(res, &dn) {
+			err = res
+		}
 		setReplError(r.uuid, err)
-		return err
+		return res
 	})
 	if err != nil {
 		releaseRepl(r)

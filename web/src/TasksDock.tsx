@@ -62,10 +62,10 @@ const Row = memo(function Row({ t, inv, now, expanded, toggle }: RowProps) {
             </span>
             <span className="num">{t.progress > 0 ? `${(t.progress * 100).toFixed(0)}%` : ""}</span>
           </span>
-        ) : t.error ? (
-          <button type="button" className={"dk-err" + (expanded ? " open" : "")} title={t.error} aria-expanded={expanded} onClick={() => toggle(t.id)}>
-            <StatusDot status="error" />
-            {t.error}
+        ) : t.error || t.note ? (
+          <button type="button" className={"dk-err" + (expanded ? " open" : "")} title={t.error || t.note} aria-expanded={expanded} onClick={() => toggle(t.id)}>
+            <StatusDot status={t.error ? "error" : "info"} />
+            {t.error || t.note}
           </button>
         ) : null}
       </div>

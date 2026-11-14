@@ -239,6 +239,7 @@ export interface Task {
   user: string;
   status: "running" | "ok" | "failed";
   error?: string;
+  note?: string; // a remark on a task that ended well, e.g. "guest file systems frozen"
   progress: number;
   started: number;
   finished?: number;

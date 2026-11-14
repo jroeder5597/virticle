@@ -52,13 +52,17 @@ type Node struct {
 }
 
 type Task struct {
-	ID       int64   `json:"id"`
-	Kind     string  `json:"kind"`
-	Target   string  `json:"target"`
-	Node     string  `json:"node"`
-	User     string  `json:"user"`
-	Status   string  `json:"status"` // running | ok | failed
-	Error    string  `json:"error,omitempty"`
+	ID     int64  `json:"id"`
+	Kind   string `json:"kind"`
+	Target string `json:"target"`
+	Node   string `json:"node"`
+	User   string `json:"user"`
+	Status string `json:"status"` // running | ok | failed
+	Error  string `json:"error,omitempty"`
+	// Note is a short remark on a task that ended well (for a backup: whether the
+	// guest file systems were frozen). It lives in the error column, which a task
+	// that ended well does not otherwise use.
+	Note     string  `json:"note,omitempty"`
 	Progress float64 `json:"progress"`
 	Started  int64   `json:"started"`
 	Finished int64   `json:"finished,omitempty"`
@@ -158,14 +162,25 @@ func (s *Store) TaskProgress(id int64, p float64) {
 	s.db.Exec(`UPDATE tasks SET progress=? WHERE id=?`, p, id)
 }
 
-func (s *Store) FinishTask(t *Task, err error) {
+func (s *Store) FinishTask(t *Task, err error) { s.FinishTaskNote(t, err, "") }
+
+// FinishTaskNote is FinishTask with a remark that is kept when the task ended well.
+func (s *Store) FinishTaskNote(t *Task, err error, note string) {
 	t.Finished = time.Now().Unix()
+	stored := ""
 	if err != nil {
-		t.Status, t.Error = "failed", err.Error()
+		t.Status, t.Error, stored = "failed", err.Error(), err.Error()
 	} else {
-		t.Status, t.Progress = "ok", 1
+		t.Status, t.Progress, t.Note, stored = "ok", 1, note, note
 	}
-	s.db.Exec(`UPDATE tasks SET status=?, error=?, progress=?, finished=? WHERE id=?`, t.Status, t.Error, t.Progress, t.Finished, t.ID)
+	s.db.Exec(`UPDATE tasks SET status=?, error=?, progress=?, finished=? WHERE id=?`, t.Status, stored, t.Progress, t.Finished, t.ID)
+}
+
+// noteOfOK moves the text of a task that ended well from Error (where it is stored) to Note.
+func (t *Task) noteOfOK() {
+	if t.Status == "ok" && t.Error != "" {
+		t.Note, t.Error = t.Error, ""
+	}
 }
 
 func (s *Store) Tasks(limit int) ([]Task, error) {
@@ -180,6 +195,7 @@ func (s *Store) Tasks(limit int) ([]Task, error) {
 		if err := rows.Scan(&t.ID, &t.Kind, &t.Target, &t.Node, &t.User, &t.Status, &t.Error, &t.Progress, &t.Started, &t.Finished); err != nil {
 			return nil, err
 		}
+		t.noteOfOK()
 		out = append(out, t)
 	}
 	return out, rows.Err()

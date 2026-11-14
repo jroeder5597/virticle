@@ -81,10 +81,12 @@ type bkRun struct {
 	dstPool  string
 	ep       migEndpoint // how the source reaches the target node
 	remote   bool
-	plan     backupPlan // full or incremental, and on what (see decideBackup)
-	target   string     // targetKey of the destination
-	ckName   string     // the checkpoint this run created ("" = none yet)
-	changed  uint64     // bytes libvirt expects an incremental backup to copy
+	plan     backupPlan    // full or incremental, and on what (see decideBackup)
+	target   string        // targetKey of the destination
+	ckName   string        // the checkpoint this run created ("" = none yet)
+	fz       freezeOutcome // what the last backup-begin did to the guest's file systems
+	thawErr  error         // set when a thaw failed on every try: the guest may be frozen
+	changed  uint64        // bytes libvirt expects an incremental backup to copy
 	progress func(float64)
 	ctx      context.Context // cancelled by cancel(); ends a running node to node transfer
 	stopCtx  context.CancelFunc
@@ -353,7 +355,7 @@ func (s *Server) launchBackup(r *http.Request, h *hostconn.Host, m *bkRun) (int6
 			bkRuns.Unlock()
 		}()
 		m.progress = progress
-		return m.run()
+		return m.finishFreeze(m.run())
 	})
 	if err != nil {
 		bkRuns.Lock()
@@ -511,6 +513,10 @@ func (m *bkRun) run() (err error) {
 		AppVersion: backupAppVersion, Live: m.live, TPM: m.md.TPM, Notes: []string{noteSnapshots, noteTPM},
 		Kind: m.plan.Kind, Checkpoint: m.ckName, FullReason: m.plan.Reason,
 	}
+	if m.live && m.fz.Text != "" {
+		frozen := m.fz.Frozen
+		man.Frozen = &frozen
+	}
 	if m.plan.Kind == kindIncremental {
 		man.Format, man.Parent, man.FullReason = backupFormatIncremental, m.plan.Parent, ""
 	}
@@ -597,10 +603,9 @@ func (m *bkRun) liveBackup(wd *bkWork, stamp time.Time, lo, hi float64) error {
 		files[d.Target] = d.File
 		plain = append(plain, d.migDisk)
 	}
-	var flags libvirt.DomainBackupBeginFlags
-	auto := m.req.Quiesce == nil && guestAgentConnected(m.src, m.dom)
-	if auto || (m.req.Quiesce != nil && *m.req.Quiesce) {
-		flags |= backupBeginQuiesce
+	agent := false
+	if m.req.Quiesce == nil || *m.req.Quiesce {
+		agent = guestAgentConnected(m.src, m.dom)
 	}
 	if err := m.checkCancel(); err != nil {
 		return err
@@ -620,17 +625,31 @@ func (m *bkRun) liveBackup(wd *bkWork, stamp time.Time, lo, hi float64) error {
 			name, x = m.newCheckpoint(stamp)
 			cxml = libvirt.OptString{x}
 		}
-		err := m.src.DomainBackupBegin(m.dom, bxml, cxml, flags)
-		if err != nil && auto {
-			// The automatic freeze must never make the backup fail.
-			err = m.src.DomainBackupBegin(m.dom, bxml, cxml, flags&^backupBeginQuiesce)
+		// The guest is frozen for this one call only: the backup is the image of the moment it runs.
+		out, err := withFrozenGuest(m.req.Quiesce, agent, agentFreezer{m.src, m.dom}, func() error {
+			return m.src.DomainBackupBegin(m.dom, bxml, cxml, 0)
+		})
+		m.fz = out
+		if out.ThawErr != nil {
+			m.thawErr = out.ThawErr
 		}
 		if err == nil {
 			m.ckName = name
 		}
 		return err
 	}
+	if jt, _, jerr := m.src.DomainGetJobStats(m.dom, 0); jerr == nil && jt != 0 {
+		// Backup-begin would wait for that job's lock, with the guest frozen meanwhile.
+		return errors.New("another job (a backup, snapshot or migration) is still running on this VM; try again when it has finished")
+	}
 	err := begin()
+	var ff *freezeFail
+	if errors.As(err, &ff) {
+		return err // asked to freeze and could not: nothing was tried, so nothing is refused or dropped
+	}
+	if err != nil && strings.Contains(err.Error(), "cannot acquire state change lock") {
+		return fmt.Errorf("starting the backup job: %w (another operation holds the VM; try again in a minute)", err)
+	}
 	if err != nil && m.plan.Kind == kindIncremental && strings.Contains(err.Error(), "Bitmap already exists: backup-") {
 		// A backup job that was cut short by a libvirt restart left its temporary bitmap behind.
 		if n := removeStaleBackupBitmaps(m.src, m.dom); n > 0 {
@@ -1245,9 +1264,6 @@ func (s *Server) deleteBackup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]bool{"ok": true})
 }
 
-// VIR_DOMAIN_BACKUP_BEGIN_QUIESCE, which go-libvirt does not name.
-const backupBeginQuiesce libvirt.DomainBackupBeginFlags = 2
-
 // checkQcow2NVRAM verifies the copy of a qcow2 UEFI variable store: it must
 // read as qcow2 and not be marked corrupt (a running VM could have changed
 // the file during the copy).
@@ -1260,4 +1276,24 @@ func (m *bkRun) checkQcow2NVRAM(file string) error {
 		return fmt.Errorf("the saved UEFI variables are not a consistent qcow2 file")
 	}
 	return nil
+}
+
+// finishFreeze turns the end of a run into what the task shows: a guest that
+// may have been left frozen is an error whatever else happened; otherwise a
+// live backup ends well with one clause on whether the file systems were frozen.
+func (m *bkRun) finishFreeze(err error) error {
+	if m == nil {
+		return err
+	}
+	if m.thawErr != nil {
+		msg := thawProblem(m.name, m.thawErr)
+		if err != nil {
+			return withNote(err, msg)
+		}
+		return fmt.Errorf("the backup was made, but %s", msg)
+	}
+	if err == nil && m.fz.Text != "" {
+		return doneNote(m.fz.Text)
+	}
+	return err
 }
