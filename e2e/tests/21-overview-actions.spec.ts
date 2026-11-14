@@ -15,7 +15,7 @@ const SUBMENUS: Record<string, string[]> = {
   Power: ["Power On", "Reboot (Graceful)", "Shutdown (graceful)", "Pause", "Resume", "Halt (Force Shutdown)", "Reset (Hard Reboot)", "Sync guest clock"],
   "Edit Settings": ["CPU and memory", "Disks", "Network interfaces", "CD-ROM", "Boot order", "Firmware and TPM", "Passthrough devices"],
   Snapshots: ["Take snapshot", "Manage snapshots", "Schedule"],
-  Migrate: ["Migrate to another node", "Move a disk to another pool"],
+  Migrate: ["Migrate to another node", "Move the disk to another pool"],
   More: ["Edit XML", "Delete VM"],
 };
 

@@ -10,6 +10,7 @@ import { powerConfirm, powerLabel } from "../power";
 import { ErrorBox, Modal, useAction, useConfirm } from "../ui";
 import { CloneDialog, ConvertDialog } from "./Clone";
 import MigrateDialog from "./Migrate";
+import DiskMoveDialog from "./DiskMove";
 import { HardwareDialog, HwArea } from "./Hardware";
 import { TakeSnapshot } from "./Snapshots";
 
@@ -42,6 +43,7 @@ export default function VMActions(props: {
   const [converting, setConverting] = useState(false);
   const [taking, setTaking] = useState(false);
   const [migrating, setMigrating] = useState(false);
+  const [movingDisk, setMovingDisk] = useState<string>();
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState<[string, HwArea]>();
 
@@ -78,9 +80,19 @@ export default function VMActions(props: {
   ];
   const convertBack = () => run(async () => { await put(`${base}/template`, { template: false }); props.onChanged(); });
   const canConvert = off || (running && d.agent === "connected");
+  const movable = d.disks.filter((k) => k.device === "disk" && k.source && !k.source.startsWith("/dev/"));
+  const moveDisk = movable.find((k) => k.target === movingDisk);
   const migrate: MenuEntry[] = [
     { label: "Migrate to another node", run: () => setMigrating(true), disabled: !op, title: need },
-    { label: "Move a disk to another pool", run: () => goto("hardware", "hw-disks"), disabled: !op, title: need },
+    // One entry per disk that can be moved; it opens the move dialog itself.
+    ...(movable.length === 0
+      ? [{ label: "Move a disk to another pool", run: () => {}, disabled: true, title: op ? "This VM has no disk that can be moved" : need }]
+      : movable.map((k) => ({
+          label: movable.length === 1 ? "Move the disk to another pool" : `Move disk ${k.target} to another pool`,
+          run: () => setMovingDisk(k.target),
+          disabled: !op,
+          title: need,
+        }))),
   ];
   const more: MenuEntry[] = [
     { label: "Edit XML", run: () => goto("xml") },
@@ -113,6 +125,7 @@ export default function VMActions(props: {
       {converting && <ConvertDialog d={d} base={base} onClose={() => setConverting(false)} onDone={props.onChanged} />}
       {taking && <TakeSnapshot d={d} base={base} onClose={() => setTaking(false)} onDone={props.onChanged} />}
       {migrating && <MigrateDialog d={d} onClose={() => setMigrating(false)} />}
+      {moveDisk && <DiskMoveDialog d={d} disk={moveDisk} onClose={() => setMovingDisk(undefined)} onDone={props.onChanged} />}
       {deleting && <DeleteVM d={d} base={base} onClose={() => setDeleting(false)} onDeleted={() => nav("/datacenter/vms")} />}
     </>
   );
