@@ -233,6 +233,13 @@ Rules:
   informational only. The decision is `decideOldCopy` (`replica_reconcile.go`), a pure function with a table test. The
   controller marks the old VM when its node is online again: at once when the node's connection comes up
   (`reconcileOnReconnect`), and in the alert loop once a minute.
+- Start guard on the old copy. The `stale-copy` child holds `gen` (the failover generation the old VM had) and, when known,
+  `peer-host`, `peer-port`, `peer-user` (copied from the `replication` record it replaced). `hook-qemu` asks that node
+  `took-over UUID GEN` exactly as for a replicated VM; no address means no question and the VM starts.
+- AppArmor (Debian, Ubuntu). libvirtd runs the hook in its own profile, which does not allow the node command. `node
+  prepare` adds a block between `# BEGIN virticle start guard` and `# END virticle start guard` to
+  `/etc/apparmor.d/local/usr.sbin.libvirtd` (a child profile `virticle_node`: ssh, getent, the account's `~/.ssh` files,
+  TCP) and reloads the profile; `unprepare` removes it. The probe VM runs on every prepare.
 - Start guard. The `replication` child also holds `peer-host`, `peer-port`, `peer-user` (the standby as the source node
   reaches it; written at every run), the `replica` child `addrs="MAC=ip,ip;..."` (the VM's IPv4 addresses at the last copy,
   from the guest agent, else DHCP leases). `node prepare` installs `/etc/libvirt/hooks/qemu.d/virticle-guard`, a

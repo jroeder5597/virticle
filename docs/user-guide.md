@@ -358,6 +358,10 @@ here. Use Replicate back in Virticle." This stops an old node that reboots, or a
 running the VM twice. If the standby cannot be reached, does not answer within 5 seconds or answers badly, the VM
 starts: a dead standby never keeps a healthy VM down. Other VMs are not affected. Prepare checks that libvirt runs the
 hook on that host (it starts a test VM that the hook refuses on purpose) and says so in the **Start guard** row.
+The guard also covers the **Old copy** of a failed-over VM: it asks the node that took the VM over and refuses the start
+while that node still holds the VM, so a `virsh start` of the old copy fails too. On Debian and Ubuntu, prepare adds one
+AppArmor rule block to `/etc/apparmor.d/local/usr.sbin.libvirtd` so that libvirt may run the hook; `node unprepare`
+removes it.
 
 **When the old node comes back.** Its VM is marked **Old copy**. Replication from it is switched off, it is powered off at
 once if it is running (as soon as the controller's connection to the node is up again, and in the minute pass as a second
