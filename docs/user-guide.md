@@ -603,6 +603,8 @@ vSwitch bridges are not listed. A network that is stopped, or whose bridge is go
 
 Select **Add network** on the node. It asks what the virtual machines should connect to:
 
+![Add network dialog](img/add-network.png)
+
 | Answer | What happens |
 | --- | --- |
 | An existing virtual switch | Pick the switch, then enter a name (and a VLAN where the switch has them). Same as **Add network** in the box of a switch. |
