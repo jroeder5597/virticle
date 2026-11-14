@@ -902,10 +902,10 @@ func (e *rollExec) pEvacuate(n *rollNode) (string, bool, error) {
 	for _, st := range np.Stuck {
 		if !known[st.VM.UUID] {
 			e.mu.Lock()
-			interrupted, toName := false, "the target node"
+			interrupted, toName, toID := false, "the target node", int64(0)
 			for _, m := range n.Moved {
 				if m.UUID == st.VM.UUID && m.Status == "moving" {
-					interrupted = true
+					interrupted, toID = true, m.To
 					if m.ToName != "" {
 						toName = m.ToName
 					}
@@ -913,7 +913,8 @@ func (e *rollExec) pEvacuate(n *rollNode) (string, bool, error) {
 			}
 			e.mu.Unlock()
 			if interrupted {
-				return "", false, interruptedMoveError(st.VM.Name, toName, st.Reasons)
+				resumed := e.settleInterruptedMove(h, st.VM.UUID, toID)
+				return "", false, interruptedMoveError(st.VM.Name, toName, st.Reasons, resumed)
 			}
 			return "", false, fmt.Errorf("%s can no longer be moved (%s). The node itself was not changed except that it is in maintenance", st.VM.Name, strings.Join(st.Reasons, "; "))
 		}
@@ -968,8 +969,59 @@ func (e *rollExec) pEvacuate(n *rollNode) (string, bool, error) {
 // interruptedMoveError is the stop message after a move that a controller restart cut short. The pre-flight
 // reasons name the exact file ("already exists on NODE at PATH"). It is not removed automatically: nothing
 // recorded survives the restart that proves the file is the partial copy and not someone's own file.
-func interruptedMoveError(vm, toName string, reasons []string) error {
-	return fmt.Errorf("the move of %s was interrupted (the controller stopped) and left a partly copied disk on %s. %s. The VM still runs here. Remove that file on %s yourself, then press Continue", vm, toName, strings.Join(reasons, "; "), toName)
+func interruptedMoveError(vm, toName string, reasons []string, resumed bool) error {
+	here := "The VM still runs here."
+	if resumed {
+		here = "The VM was paused by the move and runs here again."
+	}
+	return fmt.Errorf("the move of %s was interrupted (the controller stopped) and left a partly copied disk on %s. %s. %s Remove that file on %s yourself, then press Continue", vm, toName, strings.Join(reasons, "; "), here, toName)
+}
+
+// resumeAfterInterruptedMove is true when a VM that is paused only because a live move was cut off (the controller
+// stopped at the end of the memory copy) must be resumed on its source: it is paused for the migration and the copy
+// on the target does not run.
+func resumeAfterInterruptedMove(state libvirt.DomainState, reason int32, targetRunning bool) bool {
+	return state == libvirt.DomainPaused && libvirt.DomainPausedReason(reason) == libvirt.DomainPausedMigration && !targetRunning
+}
+
+// settleInterruptedMove clears what a move that the controller's stop cut off leaves behind: the paused incoming
+// domain on the target (only a paused one that is not defined there, as a failed move does) and a source VM that
+// libvirt left paused. It reports whether the source was resumed. A target copy that runs is never touched, and then
+// the source is not resumed either.
+func (e *rollExec) settleInterruptedMove(src *hostconn.Host, uuid string, to int64) bool {
+	u, err := cluster.ParseUUID(uuid)
+	if err != nil {
+		return false
+	}
+	sd, err := src.DomainLookupByUUID(u)
+	if err != nil {
+		return false
+	}
+	state, reason, err := src.DomainGetState(sd, 0)
+	if err != nil {
+		return false
+	}
+	targetRunning := false
+	if dst, err := e.s.Nodes.Host(to); err == nil {
+		if dd, err := dst.DomainLookupByUUID(u); err == nil {
+			ds, _, err := dst.DomainGetState(dd, 0)
+			dstate := libvirt.DomainState(ds)
+			targetRunning = err != nil || (dstate != libvirt.DomainPaused && dstate != libvirt.DomainShutoff)
+			if !targetRunning && dstate == libvirt.DomainPaused {
+				if persistent, err := dst.DomainIsPersistent(dd); err == nil && persistent == 0 {
+					_ = dst.DomainDestroy(dd)
+				}
+			}
+		}
+	}
+	if !resumeAfterInterruptedMove(libvirt.DomainState(state), reason, targetRunning) {
+		return false
+	}
+	if err := src.DomainResume(sd); err != nil {
+		log.Printf("rolling update: resuming %s after the interrupted move: %v", uuid, err)
+		return false
+	}
+	return true
 }
 
 func (e *rollExec) pStop(n *rollNode) (string, bool, error) {
@@ -1472,7 +1524,9 @@ func (s *Server) findVM(uuid string) (int64, *hostconn.Host, libvirt.Domain, boo
 		if err != nil {
 			continue
 		}
-		if d, err := h.DomainLookupByUUID(u); err == nil {
+		if d, err := h.DomainLookupByUUID(u); err == nil && !isReplicaOrStale(h, d) {
+			// A replica or a stale copy has the identity of the VM but is not it: after a move to the standby
+			// the old node holds the replica, and "found there" must not count as "back".
 			return n.ID, h, d, true
 		}
 	}
