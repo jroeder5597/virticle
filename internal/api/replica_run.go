@@ -546,6 +546,14 @@ func (r *replRun) run() (err error) {
 	r.progress(0.01)
 	stamp := time.Now().UTC()
 
+	// The VM may have been started or shut down since the run was planned (a failover starts the first copy back at
+	// once, and the user or a test shuts the VM down in the same second): a live backup job of a VM that is off fails.
+	if st, _, serr := r.src.DomainGetState(r.dom, 0); serr == nil {
+		if live := stateName(uint8(st)) != "shutoff"; live != r.live {
+			r.live, m.live = live, live
+		}
+	}
+
 	if err := r.ensureStandby(); err != nil {
 		return err
 	}
