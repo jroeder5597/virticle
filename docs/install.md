@@ -68,7 +68,7 @@ Linux amd64 and arm64.
        sudo dnf install virticle
 
 **Check the key.** The fingerprint of the signing key is
-`FINGERPRINT-TO-BE-FILLED`. For Debian and Ubuntu, `gpg --show-keys
+`FDA7274A068F719EAB676033C306C6E8F14D3778`. For Debian and Ubuntu, `gpg --show-keys
 /etc/apt/keyrings/virticle.gpg` prints it. For dnf, compare it with the one
 `dnf` shows before you accept. The same fingerprint is on
 <https://jroeder5597.github.io/virticle/>.
