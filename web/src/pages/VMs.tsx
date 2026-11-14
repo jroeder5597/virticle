@@ -336,7 +336,18 @@ function CreateVM({ nodes, preset, onClose }: { nodes: NodeStatus[]; preset?: { 
         </div>
         {fw.firmware === "uefi" && memoryMiB < 512 && <p className="note">UEFI guests usually need at least 512 MiB to boot.</p>}
         <ErrorBox error={capsError} />
-        <OsTypeField value={fw} caps={caps} onChange={setFw} />
+        <OsTypeField
+          value={fw}
+          caps={caps}
+          onChange={(v) => {
+            setFw(v);
+            // Windows 11 refuses to install with less than 4 GiB of memory or a 64 GiB disk.
+            if (v.osType === "windows") {
+              setMemory((m) => Math.max(m, 4096));
+              setDisk((d) => Math.max(d, 64));
+            }
+          }}
+        />
         <Field label="Install from" group>
           <div className="segmented">
             {(

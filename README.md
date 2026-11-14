@@ -153,10 +153,10 @@ Early release. Tested: a controller on Linux amd64, and nodes on Debian 13
 and Rocky Linux 10, each in both access modes.
 
 Not tested: arm64, ACME certificate issuance, LACP against a real switch,
-sign-in with identity providers other than the test provider, replication of
-Windows guests and of guests with a virtual TPM, and virtual switches on nodes
-that use ifupdown (refused) or plain systemd-networkd. There is no automatic
-failover. A
+sign-in with identity providers other than the test provider, and virtual
+switches on nodes that use ifupdown (refused) or plain systemd-networkd. A
+Windows 11 guest with BitLocker was tested once, on Rocky Linux nodes. There
+is no automatic failover. A
 Debian node and a RHEL-family node cannot exchange VMs. The files on the
 Releases page are not signed (the package repository is). No container image
 is published.
