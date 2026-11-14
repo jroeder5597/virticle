@@ -6,7 +6,7 @@ import { Page } from "@playwright/test";
 import { mkdirSync, readFileSync } from "fs";
 import { cleanVMs, createCirros, expect, test } from "../lib/fixtures";
 import { env, P } from "../lib/env";
-import { field, pick, row } from "../lib/ui";
+import { field, pick } from "../lib/ui";
 
 const NAME = `${P}vis1`;
 const OUT = "test-results/visual";
@@ -282,7 +282,6 @@ test.describe.serial("visual pass", () => {
       for (const [path, name, h] of [
         ["/storage", "storage", "Storage"],
         ["/backups", "backups", "Backups"],
-        ["/networks", "networks", "Networks"],
         ["/nodes", "nodes", "Nodes"],
         ["/tasks", "tasks", "Tasks"],
         ["/users", "users", "Users"],
@@ -309,11 +308,12 @@ test.describe.serial("visual pass", () => {
         });
       }
       await page.goto("/datacenter/network");
-      await page.getByRole("button", { name: new RegExp("^" + env.node1) }).click();
+      await page.locator(".nicnodes").getByRole("button", { name: new RegExp("^" + env.node1) }).click();
       await shot("datacenter-network-interfaces", () => expect(page.locator(".nicbox tbody tr").first()).toBeVisible({ timeout: 30_000 }));
       // the DHCP reservation form: the MAC field is the themed editable combo with the VMs' MACs
       await page.goto(`/node/${vm.node}/network`);
-      await row(page, "default").first().click();
+      await page.locator('[data-topo-id="net:default"]').getByRole("button", { name: "default", exact: true }).click();
+      await shot("network-detail-dialog", () => expect(page.getByRole("dialog", { name: "Network default" }).locator(".card", { hasText: "DHCP reservations" })).toBeVisible({ timeout: 30_000 }), { viewportOnly: true });
       await field(page.locator(".card", { hasText: "DHCP reservations" }), "MAC address").click();
       await shot("network-dhcp-mac-suggestions", () => expect(page.getByRole("listbox").getByRole("option").first()).toBeVisible({ timeout: 30_000 }), { viewportOnly: true });
       await page.keyboard.press("Escape");

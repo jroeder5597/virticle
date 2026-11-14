@@ -29,7 +29,7 @@ test.describe.serial("datacenter", () => {
     await expect(page.getByRole("heading", { name: "Datacenter", level: 1 })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Summary", exact: true })).toHaveAttribute("aria-selected", "true");
     const tabs = await page.getByRole("tab").allTextContents();
-    expect(tabs).toEqual(["Summary", "Performance", "Virtual machines", "Storage", "Network", "Topology", "Backups", "Nodes", "Tasks"]);
+    expect(tabs).toEqual(["Summary", "Performance", "Virtual machines", "Storage", "Network", "Backups", "Nodes", "Tasks"]);
     await expect(page.locator(".dctile", { hasText: "Nodes online" })).toContainText(new RegExp(`${nodes.filter((n) => n.state === "online").length} of ${nodes.length}`));
     await expect(page.locator(".dctile", { hasText: "Virtual machines running" })).toContainText(/\d+ of \d+/);
     await expect(page.locator(".dctile", { hasText: "Storage in use" })).toHaveAttribute("title", /counted as one filesystem/);
@@ -121,30 +121,33 @@ test.describe.serial("datacenter", () => {
     const calls: string[] = [];
     page.on("request", (q) => /\/api\/nodes\/\d+\/interfaces/.test(q.url()) && calls.push(q.url()));
     await page.goto("/datacenter/network");
-    await expect(page.getByRole("main").getByRole("columnheader", { name: "Node", exact: true })).toBeVisible();
-    await expect(row(page, "default").filter({ hasText: env.node1 })).toBeVisible();
-    await expect(row(page, "default").filter({ hasText: env.node2 })).toBeVisible();
-    await page.getByRole("button", { name: "New network" }).click();
-    const dlg = dialog(page, "New virtual network");
-    await pick(dlg, field(dlg, "Node"), env.node2);
+    const of = (node: string) => page.locator(".toponode").filter({ has: page.getByRole("button", { name: node, exact: true }) });
+    await expect(of(env.node1).locator('[data-topo-id="net:default"]')).toBeVisible();
+    await expect(of(env.node2).locator('[data-topo-id="net:default"]')).toBeVisible();
+    // each node has its own Add network
+    await of(env.node2).locator('[data-vsw="add-net"]').click();
+    const ask = dialog(page, "Add network");
+    await ask.getByRole("radio", { name: "A private network made by libvirt" }).check();
+    await ask.getByRole("button", { name: "Next" }).click();
+    const dlg = dialog(page, "New private network");
     await field(dlg, "Name").fill(NET);
     await field(dlg, "Address of the node on this network").fill(`10.79.${OCT}.1/24`);
-    await dlg.getByRole("button", { name: "Create" }).click();
+    await dlg.getByRole("button", { name: "Create network" }).click();
     await expect(dlg).toBeHidden();
-    const r = row(page, NET);
-    await expect(r).toContainText(env.node2);
-    await expectBadge(r, "active");
-    await expect(page.getByRole("heading", { name: NET, exact: true })).toBeVisible();
+    const b = of(env.node2).locator(`[data-topo-id="net:${NET}"]`);
+    await expect(b).toBeVisible();
+    await expect(of(env.node1).locator(`[data-topo-id="net:${NET}"]`)).toHaveCount(0);
     expect((await api.get(`/nodes/${n2}/networks`)).some((n: any) => n.name === NET)).toBe(true);
 
     expect(calls).toEqual([]); // collapsed: nothing was asked
-    await page.getByRole("button", { name: new RegExp("^" + env.node1) }).click();
+    await page.locator(".nicnodes").getByRole("button", { name: new RegExp("^" + env.node1) }).click();
     await expect(page.locator(".nicbox tbody tr").first()).toBeVisible({ timeout: 30_000 });
     expect(calls.length).toBe(1);
 
-    await r.getByRole("button", { name: "Delete" }).click();
+    await b.getByRole("button", { name: `Actions for network ${NET}` }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
     await confirm(page, `Delete network ${NET}`);
-    await expect(r).toHaveCount(0);
+    await expect(b).toHaveCount(0);
     expect((await api.get(`/nodes/${n2}/networks`)).some((n: any) => n.name === NET)).toBe(false);
   });
 
@@ -153,6 +156,7 @@ test.describe.serial("datacenter", () => {
       ["/", /\/datacenter$/],
       ["/storage", /\/datacenter\/storage$/],
       ["/networks", /\/datacenter\/network$/],
+      ["/datacenter/topology", /\/datacenter\/network$/],
       ["/backups", /\/datacenter\/backups$/],
       ["/nodes", /\/datacenter\/nodes$/],
       ["/tasks", /\/datacenter\/tasks$/],
@@ -178,17 +182,17 @@ test.describe.serial("datacenter", () => {
     bogusId = res.id;
     // the connection attempt has to fail first (or still be pending)
     await api.waitFor("bogus node not online", async () => (await api.nodes()).find((n) => n.id === bogusId)?.state !== "online", 20_000, 500);
-    for (const [path, what] of [
-      ["/datacenter/storage", "default"],
-      ["/datacenter/network", "default"],
-    ]) {
-      await page.goto(path);
-      const err = page.locator(".nodeerrs");
-      await expect(err).toBeVisible();
-      await expect(err).toContainText(BOGUS);
-      await expect(row(page, what).filter({ hasText: env.node1 })).toBeVisible();
-      await expect(row(page, what).filter({ hasText: env.node2 })).toBeVisible();
-    }
+    await page.goto("/datacenter/storage");
+    const err = page.locator(".nodeerrs");
+    await expect(err).toBeVisible();
+    await expect(err).toContainText(BOGUS);
+    await expect(row(page, "default").filter({ hasText: env.node1 })).toBeVisible();
+    await expect(row(page, "default").filter({ hasText: env.node2 })).toBeVisible();
+    // the Network tab names the node that could not be read and still draws the others
+    await page.goto("/datacenter/network");
+    await expect(page.locator(".toponode").filter({ hasText: BOGUS }).locator(".error")).toContainText("could not be read");
+    await expect(page.locator(".toponode").filter({ hasText: env.node1 }).locator('[data-topo-id="net:default"]')).toBeVisible();
+    await expect(page.locator(".toponode").filter({ hasText: env.node2 }).locator('[data-topo-id="net:default"]')).toBeVisible();
     await page.goto("/datacenter");
     await expect(page.locator(".nodeerrs")).toContainText(BOGUS);
     await expect(page.locator(".dctile", { hasText: "Storage in use" })).toContainText(/GiB of/);

@@ -7,8 +7,6 @@ import { EmbeddedContext, ErrorBox, StateBadge } from "../ui";
 import { AlertMarks, useAlerts } from "./Alerts";
 import { BackupsSection } from "./Backups";
 import { NodeErr, NodeErrors, nodeEvents, nodeLabel, NodePool, poolEvents } from "./dcShared";
-import HostInterfaces from "./HostNics";
-import Networks from "./Networks";
 import NetworkDrift from "./NetworkDrift";
 import Nodes from "./Nodes";
 import Storage from "./Storage";
@@ -25,7 +23,6 @@ const TABS = [
   ["vms", "Virtual machines"],
   ["storage", "Storage"],
   ["network", "Network"],
-  ["topology", "Topology"],
   ["backups", "Backups"],
   ["nodes", "Nodes"],
   ["tasks", "Tasks"],
@@ -54,12 +51,6 @@ export default function Datacenter() {
       {tab === "vms" && <VMs />}
       {tab === "storage" && <Storage allNodes />}
       {tab === "network" && (
-        <>
-          <NetworkDrift />
-          <Networks allNodes after={(nodes) => nodes.length > 0 && <HostInterfaces nodes={nodes} />} />
-        </>
-      )}
-      {tab === "topology" && (
         <>
           <NetworkDrift />
           <Topology />

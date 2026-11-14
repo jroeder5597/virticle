@@ -1,4 +1,4 @@
-// "N networks differ between nodes": one collapsed line at the top of the Datacenter Network and Topology tabs, only
+// "N networks differ between nodes": one collapsed line at the top of the Datacenter Network tab, only
 // shown when the nodes that can exchange VMs do not all have the same networks. Opens to a small table; a network
 // that is missing on a node and can be copied as it is gets a "Create on <node>" button.
 import { useState } from "react";

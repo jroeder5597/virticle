@@ -72,6 +72,7 @@ type topoPortGroup struct {
 	VLAN       int         `json:"vlan,omitempty"`
 	DHCP       string      `json:"dhcp,omitempty"` // "start to end" when libvirt serves DHCP
 	Active     bool        `json:"active"`
+	Autostart  bool        `json:"autostart,omitempty"` // a network that starts with the node
 	Interfaces []topoIface `json:"interfaces"`
 }
 
@@ -275,7 +276,7 @@ func composeTopology(in topoInput) (switches []topoSwitch, unused []topoUplink) 
 				s.UplinkNote = "Direct to a device (" + nw.Forward + ")"
 			}
 		}
-		pg := s.portGroup("net:"+nw.Name, topoPortGroup{Kind: "network", Network: nw.Name, Mode: nw.Forward, VLAN: nw.VLAN, Active: nw.Active})
+		pg := s.portGroup("net:"+nw.Name, topoPortGroup{Kind: "network", Network: nw.Name, Mode: nw.Forward, VLAN: nw.VLAN, Active: nw.Active, Autostart: nw.Autostart})
 		if nw.DHCP && nw.DHCPStart != "" {
 			pg.DHCP = nw.DHCPStart + " to " + nw.DHCPEnd
 		}

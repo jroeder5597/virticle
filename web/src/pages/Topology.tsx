@@ -8,10 +8,13 @@ import { useLive } from "../live";
 import { useLiveDebounced } from "../liveDebounced";
 import { PRESETS } from "../tagColor";
 import { atLeast, useRole } from "../auth";
-import { DropdownMenu } from "../Menu";
+import { DropdownMenu, MenuEntry } from "../Menu";
 import { ErrorBox, StateBadge, useAction } from "../ui";
 import { MigNetResult, MigrationResult, resultItems } from "./MigrationNetwork";
 import { NodeFilter, netEvents, nodeEvents } from "./dcShared";
+import HostInterfaces, { NodeHostInterfaces } from "./HostNics";
+import { modeName, NetTarget, NetworkDetailDialog, useNetworkActions } from "./NetworkDetail";
+import { AddNetworkChooser, PrivateNetworkDialog } from "./NewNetwork";
 import { AddNetworkDialog, ChangeBanner, SwitchDialog, SwitchMode, useHostnet } from "./VirtualSwitch";
 import { addBlocked, addrIP, HostBridge, HostnetState } from "./vswitchApi";
 import "./topology.css";
@@ -60,6 +63,7 @@ interface PortGroup {
   vlan?: number;
   dhcp?: string;
   active: boolean;
+  autostart?: boolean;
   interfaces: Iface[];
 }
 interface Switch {
@@ -83,6 +87,8 @@ interface TopoNode {
 
 const KIND: Record<Switch["kind"], string> = { "linux-bridge": "Linux bridge", openvswitch: "Open vSwitch bridge", libvirt: "libvirt network bridge", other: "Not on a bridge" };
 const SHOWN_OPEN = 3;
+/** Switches of a node that start open; the others start folded to their header (name, state, how many networks). */
+const SWITCHES_OPEN = 4;
 
 /** One accent per network name, the same on every node, from the fixed tag palette. The name is always written too. */
 function accent(name: string): string {
@@ -120,7 +126,7 @@ function Addrs({ list, use }: { list: Addr[]; use?: UseMigration }) {
   );
 }
 
-function UplinkBox({ node, u, action, use }: { node: number; u: Uplink; action?: ReactNode; use?: UseMigration }) {
+function UplinkBox({ u, action, use }: { u: Uplink; action?: ReactNode; use?: UseMigration }) {
   // The mark sits by the address when the card shows that address; by the name only when no address carries it.
   const shown = u.addresses.filter((a) => !/^fe80:/i.test(a.address));
   const markManagement = u.management && !shown.some((a) => a.management);
@@ -128,7 +134,7 @@ function UplinkBox({ node, u, action, use }: { node: number; u: Uplink; action?:
   return (
     <div className="topouplink" data-topo-id={`uplink:${u.name}`}>
       <div className="topotitle">
-        <Link to={`/node/${node}/network`}>{u.name}</Link>
+        <span>{u.name}</span>
         <StateBadge state={u.state === "up" ? "up" : u.state === "down" ? "down" : "unknown"} />
         {speed(u.speedMbps) && <span className="muted">{speed(u.speedMbps)}</span>}
         {markManagement && <span className="topomgmt">Management</span>}
@@ -180,16 +186,42 @@ function IfaceRow({ node, i }: { node: number; i: Iface }) {
   );
 }
 
-function PortGroupBox({ node, g, accents }: { node: number; g: PortGroup; accents: boolean }) {
+/** What can be done with the networks of a node: everybody opens the detail; operators change them. */
+interface NetControls {
+  open: (g: PortGroup) => void;
+  /** Present for operators and administrators. */
+  change?: { start: (g: PortGroup) => void; stop: (g: PortGroup) => void; autostart: (g: PortGroup) => void; remove: (g: PortGroup) => void; busy: boolean };
+}
+
+function PortGroupBox({ node, g, accents, ctl }: { node: number; g: PortGroup; accents: boolean; ctl: NetControls }) {
   const title = g.kind === "direct" ? "Direct to bridge" : g.kind === "missing" ? `${g.network} (not found)` : g.network;
   const style = accents && g.kind === "network" && g.network ? { borderLeftColor: accent(g.network) } : undefined;
+  const c = ctl.change;
+  const items: MenuEntry[] = c
+    ? [
+        g.active ? { label: "Stop", run: () => c.stop(g), disabled: c.busy } : { label: "Start", run: () => c.start(g), disabled: c.busy },
+        { label: g.autostart ? "No autostart" : "Autostart", run: () => c.autostart(g), disabled: c.busy },
+        { label: "Delete", run: () => c.remove(g), danger: true, disabled: c.busy },
+      ]
+    : [];
   return (
     <div className="topopg" style={style} data-topo-id={g.id}>
       <div className="topotitle">
-        {g.kind === "network" ? <Link to={`/node/${node}/network`}>{title}</Link> : <span>{title}</span>}
-        {g.mode && g.kind === "network" && <span className="muted">{g.mode}</span>}
+        {g.kind === "network" ? (
+          <button className="link" onClick={() => ctl.open(g)} data-topo-open={g.network}>
+            {title}
+          </button>
+        ) : (
+          <span>{title}</span>
+        )}
+        {g.mode && g.kind === "network" && <span className="muted">{modeName(g.mode)}</span>}
         {g.vlan ? <span className="muted">VLAN {g.vlan}</span> : null}
         {g.kind === "network" && !g.active && <span className="muted">Stopped</span>}
+        {g.kind === "network" && c && (
+          <span className="vsacts">
+            <DropdownMenu label="Actions" ariaLabel={`Actions for network ${g.network}`} items={items} />
+          </span>
+        )}
       </div>
       {g.dhcp && <div className="muted">DHCP {g.dhcp}</div>}
       {g.interfaces.length === 0 ? (
@@ -209,8 +241,6 @@ function PortGroupBox({ node, g, accents }: { node: number; g: PortGroup; accent
 interface SwitchActions {
   info?: HostBridge;
   st?: HostnetState;
-  canAddNetwork: boolean;
-  onAddNetwork: () => void;
   onEditVlans: () => void;
   onEditUplinks: () => void;
   onEditMtu: () => void;
@@ -219,27 +249,41 @@ interface SwitchActions {
   onRemove: () => void;
 }
 
-function SwitchBox({ node, s, accents, act, use }: { node: number; s: Switch; accents: boolean; act?: SwitchActions; use?: UseMigration }) {
+function SwitchBox({ node, s, accents, act, use, ctl, onAddNetwork, folded }: { node: number; s: Switch; accents: boolean; act?: SwitchActions; use?: UseMigration; ctl: NetControls; onAddNetwork?: () => void; folded: boolean }) {
+  const [shut, setShut] = useState(folded);
+  const closed = shut && folded; // a filter opens every switch it found something in
+  const stopped = s.portGroups.filter((g) => g.kind === "network" && !g.active).length;
   const info = act?.info;
   const inUse = info ? [...(info.networks.length ? [`${info.networks.length} ${info.networks.length === 1 ? "network" : "networks"}`] : []), ...(info.vms.length ? [`${info.vms.length} ${info.vms.length === 1 ? "VM" : "VMs"}`] : [])] : [];
   const removeWhy = info && inUse.length ? `The virtual switch is used by ${inUse.join(" and ")}. Remove or move them first.` : "";
   return (
     <section className="toposwitch" data-topo-id={s.id} aria-label={`Switch ${s.name}`}>
       <header>
+        {folded && (
+          <button className="ghost nicbtn" aria-expanded={!closed} aria-label={`${closed ? "Show" : "Hide"} switch ${s.name}`} onClick={() => setShut(!closed)}>
+            {closed ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+          </button>
+        )}
         <h4>{s.name}</h4>
         <span className="muted">{KIND[s.kind]}</span>
         {s.state && s.kind !== "other" && <StateBadge state={s.state === "up" || s.state === "down" || s.state === "idle" ? s.state : "unknown"} />}
         {info?.vlanFiltering && <span className="muted">VLANs {info.vlans && info.vlans !== "2-4094" ? info.vlans : "all"}</span>}
         {s.mtu && s.mtu !== 1500 ? <span className="muted">MTU {s.mtu}</span> : null}
         {act && s.kind === "linux-bridge" && info && !info.managed && info.readOnly !== "managed by libvirt" && <span className="muted">Not managed by Virticle</span>}
-        {act && (
+        {closed && (
+          <span className="muted">
+            {s.portGroups.length === 1 ? "1 network" : `${s.portGroups.length} networks`}
+            {stopped > 0 ? `, ${stopped} stopped` : ""}
+          </span>
+        )}
+        {(onAddNetwork || act) && (
           <span className="vsacts">
-            {act.canAddNetwork && (
-              <button onClick={act.onAddNetwork} data-vsw="add-network">
+            {onAddNetwork && (
+              <button onClick={onAddNetwork} data-vsw="add-network">
                 Add network
               </button>
             )}
-            {info?.managed && (
+            {act && info?.managed && (
               <DropdownMenu
                 label="Actions"
                 ariaLabel={`Actions for ${s.name}`}
@@ -264,19 +308,20 @@ function SwitchBox({ node, s, accents, act, use }: { node: number; s: Switch; ac
           </span>
         )}
       </header>
+      {!closed && (
       <div className="topobody">
         <div className="topocol">
           <div className="topocolhead">Networks</div>
-          {s.portGroups.length === 0 ? <div className="muted">No networks</div> : s.portGroups.map((g) => <PortGroupBox key={g.id} node={node} g={g} accents={accents} />)}
+          {s.portGroups.length === 0 ? <div className="muted">No networks</div> : s.portGroups.map((g) => <PortGroupBox key={g.id} node={node} g={g} accents={accents} ctl={ctl} />)}
         </div>
         <div className="topotrunk" aria-hidden="true" />
         <div className="topocol">
           <div className="topocolhead">Uplinks</div>
           {s.uplinks.map((u) => (
-            <UplinkBox key={u.name} node={node} u={u} use={use} />
+            <UplinkBox key={u.name} u={u} use={use} />
           ))}
           {s.uplinks.length === 0 && s.uplinkNote && <div className="topouplink topoplain">{s.uplinkNote}</div>}
-          {s.hostAddresses.length > 0 && (
+          {s.hostAddresses.some((a) => !/^fe80:/i.test(a.address)) && (
             <div className="topohost" data-topo-id={`host:${s.name}`}>
               <div className="topotitle">
                 <span>This node's address</span>
@@ -286,6 +331,7 @@ function SwitchBox({ node, s, accents, act, use }: { node: number; s: Switch; ac
           )}
         </div>
       </div>
+      )}
     </section>
   );
 }
@@ -311,12 +357,16 @@ function filterNode(n: TopoNode, text: string): TopoNode {
   return { ...n, switches, unused: [] };
 }
 
-/** One node: the admin's line (pending change, Add virtual switch), then its switches and unused cards. */
-function NodeBody({ n, accents, admin, reload }: { n: TopoNode; accents: boolean; admin: boolean; reload: () => void }) {
+/** One node: the line with Add network (operators) and Add virtual switch (administrators), then its switches and unused cards. */
+function NodeBody({ n, accents, admin, operator, filtering, reload }: { n: TopoNode; accents: boolean; admin: boolean; operator: boolean; filtering: boolean; reload: () => void }) {
   const net = useHostnet(n.node, admin && !n.error);
   const st = net.data;
   const [dlg, setDlg] = useState<{ mode: SwitchMode; bridge?: HostBridge; uplink?: string; vlanId?: number } | null>(null);
   const [addNet, setAddNet] = useState<string | null>(null);
+  const [chooser, setChooser] = useState(false);
+  const [priv, setPriv] = useState(false);
+  const [detail, setDetail] = useState<string | null>(null);
+  const nets = useNetworkActions(reload);
   const changed = () => {
     reload();
     net.reload();
@@ -329,8 +379,6 @@ function NodeBody({ n, accents, admin, reload }: { n: TopoNode; accents: boolean
     return {
       info,
       st,
-      canAddNetwork: s.kind === "linux-bridge",
-      onAddNetwork: () => setAddNet(s.name),
       onEditVlans: () => info && setDlg({ mode: "vlans", bridge: info }),
       onEditUplinks: () => info && setDlg({ mode: "uplinks", bridge: info }),
       onEditMtu: () => info && setDlg({ mode: "mtu", bridge: info }),
@@ -360,26 +408,55 @@ function NodeBody({ n, accents, admin, reload }: { n: TopoNode; accents: boolean
       }
     : undefined;
   const canAdd = admin && !!st && !blocked;
+  // A network of this node as the menus act on it; the VM interfaces on it are in the topology already.
+  const target = (g: PortGroup): NetTarget => ({
+    node: n.node,
+    name: g.network ?? "",
+    active: g.active,
+    autostart: !!g.autostart,
+    attached: g.interfaces.map((i) => ({ vm: i.vm, running: i.state === "running" })),
+  });
+  const ctl: NetControls = {
+    open: (g) => setDetail(g.network ?? null),
+    change: operator ? { start: (g) => nets.start(target(g)), stop: (g) => nets.stop(target(g)), autostart: (g) => nets.autostart(target(g)), remove: (g) => nets.remove(target(g)), busy: nets.busy } : undefined,
+  };
+  const bridges = n.switches.filter((s) => s.kind === "linux-bridge" || s.kind === "openvswitch");
   const usable = (u: Uplink) => canAdd && u.type === "physical";
   if (n.error) return <div className="error">This node could not be read: {n.error}</div>;
   return (
     <>
-      {admin && (
+      {operator && (
         <div className="vsbar">
-          {st && <ChangeBanner node={n.node} st={st} reload={changed} />}
+          {admin && st && <ChangeBanner node={n.node} st={st} reload={changed} />}
           <div className="vsadd">
-            <button onClick={() => setDlg({ mode: "add" })} disabled={!canAdd} data-vsw="add-switch">
-              Add virtual switch
+            <button className="primary" onClick={() => setChooser(true)} data-vsw="add-net">
+              Add network
             </button>
-            {blocked && <span className="muted vsblocked">{blocked}</span>}
+            {admin && (
+              <button onClick={() => setDlg({ mode: "add" })} disabled={!canAdd} data-vsw="add-switch">
+                Add virtual switch
+              </button>
+            )}
+            {admin && blocked && <span className="muted vsblocked">{blocked}</span>}
           </div>
         </div>
       )}
-      <ErrorBox error={migAct.error} />
+      <ErrorBox error={migAct.error ?? nets.error} />
+      {nets.dialog}
       {migDone.length > 0 && <MigrationResult items={migDone} onClose={() => setMigDone([])} />}
       {n.switches.length === 0 && <p className="muted">This node has no bridges and no virtual networks.</p>}
-      {n.switches.map((s) => (
-        <SwitchBox key={s.id} node={n.node} s={s} accents={accents} act={switchActions(s)} use={use} />
+      {n.switches.map((s, i) => (
+        <SwitchBox
+          key={s.id}
+          node={n.node}
+          s={s}
+          accents={accents}
+          act={switchActions(s)}
+          use={use}
+          ctl={ctl}
+          onAddNetwork={operator && (s.kind === "linux-bridge" || s.kind === "openvswitch") ? () => setAddNet(s.name) : undefined}
+          folded={!filtering && i >= SWITCHES_OPEN}
+        />
       ))}
       {n.unused.length > 0 && (
         <section className="toposwitch topounused" aria-label="Unused network cards">
@@ -391,7 +468,6 @@ function NodeBody({ n, accents, admin, reload }: { n: TopoNode; accents: boolean
             {n.unused.map((u) => (
               <UplinkBox
                 key={u.name}
-                node={n.node}
                 u={u}
                 use={use}
                 action={
@@ -406,11 +482,12 @@ function NodeBody({ n, accents, admin, reload }: { n: TopoNode; accents: boolean
           </div>
         </section>
       )}
-      {dlg && st && <SwitchDialog key={dlg.mode + (dlg.bridge?.name ?? "") + (dlg.uplink ?? "") + (dlg.vlanId ?? "")} node={n.node} st={st} mode={dlg.mode} bridge={dlg.bridge} uplink={dlg.uplink} vlanId={dlg.vlanId} onClose={() => setDlg(null)} onChanged={changed} />}
+      {dlg && st && <SwitchDialog key={dlg.mode + (dlg.bridge?.name ?? "") + (dlg.uplink ?? "") + (dlg.vlanId ?? "")} node={n.node} st={st} mode={dlg.mode} bridge={dlg.bridge} uplink={dlg.uplink} vlanId={dlg.vlanId} onClose={() => setDlg(null)} onChanged={changed} onAddNetwork={setAddNet} />}
       {addNet !== null && (
         <AddNetworkDialog
           node={n.node}
           bridge={addNet}
+          ovs={n.switches.find((s) => s.name === addNet)?.kind === "openvswitch"}
           info={bridgeOf(addNet)}
           vlanCapable={!!st?.vlanCapable}
           used={(n.switches.find((s) => s.name === addNet)?.portGroups ?? []).filter((g) => g.kind === "network").map((g) => ({ network: g.network ?? "", vlan: g.vlan }))}
@@ -418,6 +495,27 @@ function NodeBody({ n, accents, admin, reload }: { n: TopoNode; accents: boolean
           onDone={changed}
         />
       )}
+      {chooser && (
+        <AddNetworkChooser
+          switches={bridges.map((s) => s.name)}
+          newSwitch={{ allowed: admin, why: canAdd ? undefined : blocked || "Reading the network settings of the node." }}
+          onSwitch={(b) => {
+            setChooser(false);
+            setAddNet(b);
+          }}
+          onNewSwitch={() => {
+            setChooser(false);
+            setDlg({ mode: "add" });
+          }}
+          onPrivate={() => {
+            setChooser(false);
+            setPriv(true);
+          }}
+          onClose={() => setChooser(false)}
+        />
+      )}
+      {priv && <PrivateNetworkDialog node={n.node} onClose={() => setPriv(false)} onDone={changed} />}
+      {detail !== null && <NetworkDetailDialog node={n.node} name={detail} onClose={() => setDetail(null)} />}
     </>
   );
 }
@@ -438,7 +536,9 @@ export default function Topology({ node }: { node?: number }) {
   const visible = filtering ? shown.filter((n) => n.error || n.switches.length > 0) : shown;
   const names = (all ?? []).flatMap((n) => n.switches.flatMap((s) => s.portGroups.filter((g) => g.kind === "network").map((g) => g.network)));
   const accents = !single && names.length > 0;
-  const admin = atLeast(useRole(), "admin");
+  const role = useRole();
+  const admin = atLeast(role, "admin");
+  const operator = atLeast(role, "operator");
 
   const toggle = (id: number) =>
     setOpen((s) => {
@@ -482,10 +582,12 @@ export default function Topology({ node }: { node?: number }) {
                 </Link>
               </h3>
             )}
-            {expanded && <NodeBody n={n} accents={accents} admin={admin} reload={topo.reload} />}
+            {expanded && <NodeBody n={n} accents={accents} admin={admin} operator={operator} filtering={filtering} reload={topo.reload} />}
           </div>
         );
       })}
+      {!filtering && single && <NodeHostInterfaces id={node!} />}
+      {!filtering && !single && (nodes.data?.nodes.length ?? 0) > 0 && <HostInterfaces nodes={nodes.data!.nodes} />}
     </div>
   );
 }

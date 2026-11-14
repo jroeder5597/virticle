@@ -1,5 +1,5 @@
 // Virtual switches: add, change and remove a bridge on a node, and a network on a switch. Admin only.
-// The backend is internal/api/hostnet.go; the topology view (Topology.tsx) places the buttons.
+// The backend is internal/api/hostnet.go; the Network tab (Topology.tsx) places the buttons.
 import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { ApiError, get, post, Task } from "../api";
@@ -257,7 +257,7 @@ function UplinkPicker(props: { cards: HostNic[]; chosen: Set<string>; onChoose: 
   );
 }
 
-export function SwitchDialog(props: { node: number; st: HostnetState; mode: SwitchMode; bridge?: HostBridge; uplink?: string; vlanId?: number; onClose: () => void; onChanged: () => void }) {
+export function SwitchDialog(props: { node: number; st: HostnetState; mode: SwitchMode; bridge?: HostBridge; uplink?: string; vlanId?: number; onClose: () => void; onChanged: () => void; onAddNetwork?: (bridge: string) => void }) {
   const { node, st, mode, bridge } = props;
   const free = freeCards(st);
   // Ticked at the start: a free card without an address; when every card has one, none.
@@ -583,9 +583,20 @@ export function SwitchDialog(props: { node: number; st: HostnetState; mode: Swit
         <div>
           <Run task={task} timeout={plan?.timeoutSeconds ?? timeout} started={started} />
           <footer>
-            <button className={running ? "" : "primary"} onClick={close}>
+            <button className={running || task?.status === "ok" ? "" : "primary"} onClick={close}>
               Close
             </button>
+            {mode === "add" && task?.status === "ok" && props.onAddNetwork && (
+              <button
+                className="primary"
+                onClick={() => {
+                  props.onClose();
+                  props.onAddNetwork!(name.trim());
+                }}
+              >
+                Add network on {name.trim()}
+              </button>
+            )}
           </footer>
         </div>
       )}
@@ -599,6 +610,8 @@ export function SwitchDialog(props: { node: number; st: HostnetState; mode: Swit
 export function AddNetworkDialog(props: {
   node: number;
   bridge: string;
+  /** An Open vSwitch bridge: the network is attached to it, with an access VLAN. */
+  ovs?: boolean;
   info?: HostBridge;
   vlanCapable: boolean;
   used: { network: string; vlan?: number }[];
@@ -606,7 +619,7 @@ export function AddNetworkDialog(props: {
   onDone: () => void;
 }) {
   const { node, bridge, info } = props;
-  const withVlan = props.vlanCapable && !!info?.vlanFiltering;
+  const withVlan = !!props.ovs || (props.vlanCapable && !!info?.vlanFiltering);
   const [name, setName] = useState("");
   const [vlan, setVlan] = useState("");
   const [peers, setPeers] = useState<{ node: number; name: string }[]>([]);
@@ -641,7 +654,7 @@ export function AddNetworkDialog(props: {
     e.preventDefault();
     setBusy(true);
     setError(undefined);
-    const body = { name: name.trim(), mode: "bridge", bridgeName: bridge, ovs: false, vlan: tag };
+    const body = { name: name.trim(), mode: "bridge", bridgeName: bridge, ovs: !!props.ovs, vlan: tag };
     try {
       if (!created) await post(`/nodes/${node}/networks`, body);
       setCreated(true);
@@ -676,7 +689,9 @@ export function AddNetworkDialog(props: {
           <Field
             label="VLAN"
             hint={
-              (info?.vlans && info.vlans !== "2-4094" ? `Allowed on this switch: ${info.vlans}. ` : "Leave empty for no VLAN. ") +
+              props.ovs
+                ? "VMs on this network are put on this access VLAN (1-4094). Leave empty for no VLAN."
+                : (info?.vlans && info.vlans !== "2-4094" ? `Allowed on this switch: ${info.vlans}. ` : "Leave empty for no VLAN. ") +
               (ids.length ? `In use on this switch: ${ids.join(", ")}.` : "No VLAN is in use on this switch yet.")
             }
           >

@@ -47,6 +47,20 @@ export default function HostInterfaces({ nodes }: { nodes: NodeStatus[] }) {
   );
 }
 
+/** The host interfaces of one node, folded until asked for (node page). */
+export function NodeHostInterfaces({ id }: { id: number }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="nicnode">
+      <button className="ghost nicbtn" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {open ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+        Host interfaces
+      </button>
+      {open && <NodeNics id={id} />}
+    </div>
+  );
+}
+
 function NodeNics({ id }: { id: number }) {
   // Once on opening and on request; interfaces change rarely and cost an SSH command.
   const nics = useLive(() => get<{ interfaces: HostNIC[] }>(`/nodes/${id}/interfaces`), `nics/${id}`, () => false);

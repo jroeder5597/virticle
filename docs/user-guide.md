@@ -13,7 +13,7 @@ How to do the everyday things in the web UI. To install, see
 - [Replication and failover](#replication-and-failover)
 - [Migration](#migration)
 - [Storage](#storage): [shared storage (NFS)](#shared-storage-nfs)
-- [Networks](#networks): [topology](#network-topology), [virtual switches](#virtual-switches)
+- [Networks](#networks): [add a network](#add-a-network), [change a network](#change-a-network), [virtual switches](#virtual-switches)
 - [Notifications](#notifications)
 - [Performance](#performance)
 - [Settings, users and tokens](#settings-users-and-tokens)
@@ -72,7 +72,7 @@ To add another host:
 When the node's **Settings** say it was prepared by an older version, choose
 **Prepare this node** there (after an upgrade: see [install.md](install.md#upgrading)).
 
-A node has the tabs **Summary**, **Performance**, **Virtual machines**, **Storage**, **Network**, **Topology**,
+A node has the tabs **Summary**, **Performance**, **Virtual machines**, **Storage**, **Network**,
 **Updates** and **Settings**.
 
 ![Node settings](img/node-settings.png)
@@ -456,7 +456,7 @@ transfer:
 1. Open the node, **Settings**, and choose **Change** next to **Migration
    network**. The row appears only when the node has more than one address.
    (The same list is under **Advanced** in **Edit connection**. In the
-   **Topology** tab, **Use for migration** next to an address does the same,
+   **Network** tab, **Use for migration** next to an address does the same,
    and a **Migration** mark shows the address in use.)
 2. Pick the card, for example `enp2s0 (10.0.1.5), 10 Gb/s`. **Same as
    management** is the default.
@@ -571,32 +571,62 @@ Technical facts and the API: [reference.md](reference.md#shared-storage-nfs).
 
 ## Networks
 
-![Networks](img/network.png)
+Everything about a node's networking is in one place: the **Network** tab. The node page shows that node; the
+**Datacenter** page (and **Networks** in the top bar) shows all nodes, each with the same buttons. The tab draws how
+virtual machines reach the network, like a VMware standard switch. **Refresh** reloads it; it also reloads by itself
+when networks or virtual machines change. In the Datacenter view the first three nodes are open and the others open
+on a click, and a network that has the same name on several nodes gets the same coloured edge. On a node with many
+switches the first four are open and the others show one line (name, state, how many networks and how many are
+stopped); select the arrow to open one. The filter finds a switch, a network or a virtual machine by name.
 
-- **New network** creates a NAT, routed, isolated, open or bridge network.
-- Select a network to see its DHCP leases and add address reservations.
-- **Host interfaces** lists each node's bridges and NICs.
-
-### Network topology
-
-The **Topology** tab, on the Datacenter page (all nodes) and on each node page (that node), draws how virtual
-machines reach the network, like a VMware standard switch. Viewers and operators see it read-only; administrators can
-change it (see [Virtual switches](#virtual-switches)). **Refresh** reloads it; it also reloads by itself when
-networks or virtual machines change. In the Datacenter view the first three nodes are open and the others open on a
-click, and a network that has the same name on several nodes gets the same coloured edge.
-
-![Topology of a node with a virtual switch](img/topology.png)
+![The Network tab of a node](img/topology.png)
 
 | Part | What it is |
 | --- | --- |
 | Switch | A bridge on the node: a Linux or Open vSwitch bridge, or the bridge libvirt made for one of its networks. |
+| Networks (left) | The networks on the bridge (mode, VLAN, DHCP range, **Stopped**) and **Direct to bridge** for VM interfaces that use the bridge itself. Each lists its virtual machines with MAC and IP address. Select the name for the details; **Actions** changes the network. |
 | Uplinks (right) | The network cards or bonds attached to the bridge, with link state, speed and addresses. A NAT, routed or isolated libvirt network has none and says so instead. |
-| Networks (left) | The libvirt networks on the bridge (mode, VLAN, DHCP range) and **Direct to bridge** for VM interfaces that use the bridge itself. Each lists its virtual machines with MAC and IP address. |
 | This node's address | The node's own address on the switch. |
+| Unused network cards | Cards that belong to no bridge. |
+| Host interfaces | Every interface of the node with type, state, MAC address, addresses, MTU and speed (folded; select it to read the node). |
 
-**Unused network cards** lists cards that belong to no bridge. The card or bridge that holds the address the
-controller uses to reach the node is marked **Management**. Addresses of virtual machines come from DHCP leases,
-so a guest with a fixed address shows none. Uplinks of Open vSwitch bridges are not listed.
+The card or bridge that holds the address the controller uses to reach the node is marked **Management**.
+Addresses of virtual machines come from DHCP leases, so a guest with a fixed address shows none. Uplinks of Open
+vSwitch bridges are not listed. A network that is stopped, or whose bridge is gone, is still drawn, with
+**Stopped**, so you can start or delete it.
+
+| Role | Can |
+| --- | --- |
+| Viewer | Read everything, including the details of a network. No buttons. |
+| Operator | Also **Add network**, and **Actions** on a network. |
+| Administrator | Also **Add virtual switch** and everything on a switch (see [Virtual switches](#virtual-switches)). |
+
+### Add a network
+
+Select **Add network** on the node. It asks what the virtual machines should connect to:
+
+![Add network dialog](img/add-network.png)
+
+| Answer | What happens |
+| --- | --- |
+| An existing virtual switch | Pick the switch, then enter a name (and a VLAN where the switch has them). Same as **Add network** in the box of a switch. |
+| A new virtual switch on a network card | The **Add virtual switch** dialog opens (see [Virtual switches](#virtual-switches)). When the switch is in place, **Add network on ...** continues with its first network. Administrators only. |
+| A private network made by libvirt | **New private network**: NAT (the VMs get addresses from the node) or isolated. The address is filled in with the next free one. **Advanced** has routed, open, your own definition (XML), the DHCP range, the bridge name and the DNS domain. |
+
+The new network appears in **New VM** and **Add network interface** like any other.
+
+### Change a network
+
+Select the name of a network for its details; **Actions** on the network has:
+
+- **Start** or **Stop**. Stopping asks first and lists the running VMs that lose their connection.
+- **Autostart** or **No autostart**: whether the network starts with the node.
+- **Delete**. The dialog lists the VMs still attached; they will not start until you give them another network.
+
+The details show the mode, bridge, address, DHCP range and attached VM interfaces, the **DHCP leases**, the **DHCP
+reservations** (add, edit and remove; changes apply at once, without restarting the network) and the **Definition (XML)**, which you
+can edit (a running network takes it after it is stopped and started again). The details of a stopped network say
+"Start the network to see leases."
 
 ### Network alerts
 
@@ -614,7 +644,7 @@ Cards that belong to no bridge or bond and carry no address never alert.
 
 A virtual machine can only move to a node that has a network of the same name. When nodes of the same distribution
 family and architecture do not all have the same networks, or have them with another kind, VLAN or bridge, the
-Datacenter **Network** and **Topology** tabs show a line "N networks differ between nodes." Open it for a table of
+Datacenter **Network** tab shows a line "N networks differ between nodes." Open it for a table of
 what differs where. A bridge network that is missing on a node, and whose bridge exists there, has **Create on
 node**. NAT and isolated networks are not copied, since a copy would be a different network. Only when a running
 virtual machine uses a network that no other node has, an alert "Networks differ between nodes; some virtual
@@ -622,7 +652,7 @@ machines cannot migrate." is raised.
 
 ### Virtual switches
 
-Administrators can create and change virtual switches on the Topology tab of a node (and of the Datacenter page, where
+Administrators can create and change virtual switches on the Network tab of a node (and of the Datacenter page, where
 each node has its own button). Nothing else is needed on the node: Virticle writes the node's own network settings.
 
 | Word in the app | What it is |
@@ -638,7 +668,7 @@ each node has its own button). Nothing else is needed on the node: Virticle writ
 
 ![Add virtual switch dialog](img/virtual-switch.png)
 
-1. Open the node's **Topology** tab and select **Add virtual switch**. On a card under **Unused network cards**, select
+1. Open the node's **Network** tab and select **Add virtual switch** (or **Add network** and the answer "A new virtual switch on a network card"). On a card under **Unused network cards**, select
    **Use for a new virtual switch** instead.
 2. Enter a name (the dialog offers `vsw0`, `vsw1` and so on) and tick the **Uplinks**: none for an internal switch,
    one card, or two or more for a bond. The dialog ticks the first free card that has no address; when every
@@ -649,7 +679,8 @@ each node has its own button). Nothing else is needed on the node: Virticle writ
 3. Select **Review**. The dialog lists in plain words what will happen on the node; **Details** has the files and
    commands.
 4. Select **Apply**. The dialog shows three steps: applying on the node, waiting for the node (with the seconds left
-   before the node undoes the change), confirmed. You can close it; the result is also in the task log.
+   before the node undoes the change), confirmed. You can close it; the result is also in the task log. When it is
+   confirmed, **Add network on ...** continues with the first network on the new switch.
 
 ![A change waiting for confirmation](img/virtual-switch-apply.png)
 
@@ -659,9 +690,9 @@ machines stay connected. Choose the mode when you add the switch or later under 
 | Mode | Use it when | What happens |
 | --- | --- | --- |
 | Failover (works with any switch) | The cards go to ordinary switch ports, or to two different switches. | One card carries the traffic. If its link fails, another takes over. No setting is needed on the physical switch. |
-| Load balance, needs LACP on the switch | The cards go to ports of one switch that are set up as an LACP group (link aggregation). | The traffic is spread over all cards. Without LACP on the other end the bond carries traffic on one link at best; the topology then says "LACP not answered by the switch". Cards of different speed are not combined well. |
+| Load balance, needs LACP on the switch | The cards go to ports of one switch that are set up as an LACP group (link aggregation). | The traffic is spread over all cards. Without LACP on the other end the bond carries traffic on one link at best; the Network tab then says "LACP not answered by the switch". Cards of different speed are not combined well. |
 
-The topology shows the bond as one uplink with its cards: each card's link state and, in failover, which one is active.
+The Network tab shows the bond as one uplink with its cards: each card's link state and, in failover, which one is active.
 
 1. In the box of the switch, open **Actions** and select **Edit uplinks**.
 2. Tick the cards the switch should have. A card with an address of its own loses it while it is part of the switch
@@ -687,8 +718,8 @@ the node's main address onto a VLAN is not offered.
 switch together. The ports of the physical switch and the other nodes on that network must use the same MTU, or large packets
 are lost. Virtual machines need the same MTU in their own network settings; libvirt does not take an MTU for a network on a host bridge.
 
-**Add a network with a VLAN.** Select **Add network** in the box of the virtual switch, enter a name and, if the
-switch has VLANs, a VLAN number (empty means no tag). The dialog shows the ids already in use on the switch. When other
+**Add a network with a VLAN.** Select **Add network** in the box of the virtual switch (or at the top, then "An existing virtual switch"), enter a name and, if the
+switch has VLANs, a VLAN number (empty means no tag). On an Open vSwitch bridge the number is an access VLAN. The dialog shows the ids already in use on the switch. When other
 nodes have a virtual switch with the same name, **Create the same network on ...** is selected: a virtual machine can
 only migrate to a node that has a network of the same name. **Actions** on the switch has **Edit VLANs** (refused while a
 network or an address of the node uses an id you remove) and **Remove** (not possible while networks or virtual machines use the switch; the
@@ -811,7 +842,7 @@ API tokens are described in [reference.md](reference.md#api-tokens). To read the
 | Guest agent "Not responding" | Install and start `qemu-guest-agent` in the VM. |
 | Migration blocked | Read the red pre-flight row. Usually a missing network or pool on the target, or a firewall between the nodes (SSH between nodes, Migration ports). |
 | Migration or backup refused for a node | **Settings** says the node is not prepared: it has no node command, or one from an older version. Choose **Prepare this node** there, or run `virticle node prepare` for it again (see [install.md](install.md#upgrading)). |
-| A virtual switch change did not stay | The node did not come back in time and restored its previous settings. Read the line in the node's **Topology** tab, check the cable and address, and try again. From the node's console: [reference.md](reference.md#host-bridges-virtual-switches). |
+| A virtual switch change did not stay | The node did not come back in time and restored its previous settings. Read the line in the node's **Network** tab, check the cable and address, and try again. From the node's console: [reference.md](reference.md#host-bridges-virtual-switches). |
 | Charts have gaps | The VM was not running, or the node or the controller could not be read. Nothing is drawn as zero. |
 | Locked out after a web access change | Wait 60 seconds for the automatic revert, or run `virticle web reset` and restart. |
 | A web access change is waiting | Any page asks "Keep the new web access setting?" for an administrator, also right after signing in at the new address. Choose **Keep this setting**, or it is undone after 60 seconds. |

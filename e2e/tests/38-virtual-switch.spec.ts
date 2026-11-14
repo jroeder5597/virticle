@@ -30,7 +30,7 @@ test.describe.serial("virtual switch dialog", () => {
     const n = await nodeWithFreeCard(api);
     test.skip(!n, "no node with a free network card and a supported network system: nothing to review");
     const before = await api.get(`/nodes/${n!.id}/hostnet`);
-    await page.goto(`/node/${n!.id}/topology`);
+    await page.goto(`/node/${n!.id}/network`);
     await page.getByRole("button", { name: "Add virtual switch" }).click();
     const dlg = page.getByRole("dialog", { name: "Add virtual switch" });
     await expect(dlg.getByLabel("Name")).toHaveValue(/^vsw\d+$/);
@@ -57,10 +57,24 @@ test.describe.serial("virtual switch dialog", () => {
     expect(after.status.pending).toBeFalsy();
   });
 
+  test("Add network, a new virtual switch on a network card, leads into Add virtual switch", async ({ page, api }) => {
+    const n = await nodeWithFreeCard(api);
+    test.skip(!n, "no node with a free network card and a supported network system: nothing to review");
+    await page.goto(`/node/${n!.id}/network`);
+    await page.locator('[data-vsw="add-net"]').click();
+    const ask = page.getByRole("dialog", { name: "Add network" });
+    await ask.getByRole("radio", { name: "A new virtual switch on a network card" }).check();
+    await ask.getByRole("button", { name: "Next" }).click();
+    const dlg = page.getByRole("dialog", { name: "Add virtual switch" });
+    await expect(dlg.getByLabel("Name")).toHaveValue(/^vsw\d+$/);
+    await dlg.getByRole("button", { name: "Cancel" }).click(); // never Apply
+    await expect(dlg).toBeHidden();
+  });
+
   test("an unused card offers Use for a new virtual switch, preselected", async ({ page, api }) => {
     const n = await nodeWithFreeCard(api);
     test.skip(!n, "no node with a free network card and a supported network system");
-    await page.goto(`/node/${n!.id}/topology`);
+    await page.goto(`/node/${n!.id}/network`);
     const unused = page.getByRole("region", { name: "Unused network cards" });
     test.skip((await unused.count()) === 0, "this node has no card outside a bridge");
     await unused.getByRole("button", { name: "Use for a new virtual switch" }).first().click();
@@ -74,7 +88,7 @@ test.describe.serial("virtual switch dialog", () => {
     const n = await nodeWithFreeCard(api);
     test.skip(!n, "no node with a free network card and a supported network system");
     await page.setViewportSize({ width: 390, height: 800 });
-    await page.goto(`/node/${n!.id}/topology`);
+    await page.goto(`/node/${n!.id}/network`);
     await page.getByRole("button", { name: "Add virtual switch" }).click();
     const dlg = page.getByRole("dialog", { name: "Add virtual switch" });
     await expect(dlg).toBeVisible();
@@ -93,7 +107,7 @@ test.describe.serial("virtual switch dialog", () => {
     await page.getByLabel("Password").fill(PASS);
     await page.getByRole("button", { name: "Sign in" }).click();
     await pwExpect(page.getByRole("heading", { name: "Datacenter", level: 1 })).toBeVisible();
-    await page.goto("/datacenter/topology");
+    await page.goto("/datacenter/network");
     await pwExpect(page.locator(".toposwitch").first()).toBeVisible();
     await pwExpect(page.getByRole("button", { name: "Add virtual switch" })).toHaveCount(0);
     await pwExpect(page.getByRole("button", { name: "Add network" })).toHaveCount(0);
