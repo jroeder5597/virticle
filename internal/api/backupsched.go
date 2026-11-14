@@ -187,7 +187,7 @@ func (s *Server) runBackupSchedule(srcID int64, h *hostconn.Host, dom libvirt.Do
 	if dstID == 0 {
 		dstID = srcID
 	}
-	no := false // a scheduled backup freezes nothing and checksums only what may become part of a chain (see measure)
+	no := false // a scheduled backup checksums only what may become part of a chain (see measure); the freeze stays automatic
 	r := schedRequest()
 	target := backupTarget(dom.Name, fmt.Sprintf("node %d", dstID), bs.Pool)
 	failed := func(err error) {
@@ -209,7 +209,7 @@ func (s *Server) runBackupSchedule(srcID int64, h *hostconn.Host, dom libvirt.Do
 	if !bs.due(now, last) {
 		return
 	}
-	m, err := s.planBackup(srcID, h, dom, backupReq{TargetNode: bs.TargetNode, Pool: bs.Pool, KeepLast: bs.KeepLast, SHA256: &no, Quiesce: &no})
+	m, err := s.planBackup(srcID, h, dom, backupReq{TargetNode: bs.TargetNode, Pool: bs.Pool, KeepLast: bs.KeepLast, SHA256: &no})
 	if err != nil {
 		failed(err)
 		return
