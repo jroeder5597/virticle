@@ -335,7 +335,7 @@ passwordless sudo but no node command is also not prepared.
 
 ## Versions and the node command
 
-- The node command protocol is **19** (0.2.0 had 10). A node whose node command has another number shows "prepared by an
+- The node command protocol is **20** (0.2.0 had 10). A node whose node command has another number shows "prepared by an
   older version" and must be prepared again ([install.md](install.md#upgrading)). The old node command would also refuse
   the new requests, because it rejects fields it does not know.
 - Verbs new since 0.2.0, by feature (all described in [install-node.md](install-node.md#verbs)): virtual switches
