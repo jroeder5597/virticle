@@ -318,7 +318,7 @@ function BackupTable(props: { list: BackupEntry[]; global?: boolean; reload: () 
           {props.list.map((b) => (
             <tr key={b.node + b.path}>
               {props.global && (
-                <td>
+                <td className="bkname">
                   <strong>{b.manifest?.vm ?? b.dir}</strong> {b.manifest && !b.vmExists && <span className="badge s-shutoff">VM gone</span>}
                 </td>
               )}
@@ -338,7 +338,7 @@ function BackupTable(props: { list: BackupEntry[]; global?: boolean; reload: () 
               </td>
               <td>{b.manifest?.disks.map((x) => `${x.target} (${bytes(x.virtualSize)})`).join(", ")}</td>
               <td className="num">{bytes(b.size)}</td>
-              <td className="num">
+              <td className="num bkactions">
                 <div className="actions" style={{ justifyContent: "flex-end" }}>
                   {b.manifest && (
                     <button disabled={!!b.chainError} onClick={() => setRestoring(b)}>
