@@ -49,7 +49,7 @@ export default function NodeDetail() {
   const online = n.state === "online";
   const name = n.hostname || n.addr;
   const remove = async () => {
-    if (!(await confirm.ask({ title: `Remove node ${name}`, message: `The node ${name} is removed from this controller. Its virtual machines keep running; they just stop being shown here.`, confirm: "Remove node" }))) return;
+    if (!(await confirm.ask({ title: `Remove node ${name}`, message: `The node ${name} is removed from this controller. Its virtual machines keep running; they just stop being shown here. Replication of other virtual machines to this node is switched off, and the other nodes stop trusting it for migration and file copies. Nothing is uninstalled from the node.`, confirm: "Remove node" }))) return;
     if (await act.run(() => del(`/nodes/${n.id}`))) nav("/nodes");
   };
 
