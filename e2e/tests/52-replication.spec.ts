@@ -179,6 +179,8 @@ test.describe.serial("replication", () => {
     await expect(dlg.getByLabel(/Also delete the replica of the VM that has one/)).toBeChecked();
     await dlg.getByRole("button", { name: "Cancel" }).click();
     await expect(dlg).toBeHidden();
+    // a start in the middle of a copy of the shut-off VM discards that copy, and node 1 would keep the old copy
+    await api.waitFor("no copy running", async () => !(await api.get(`/nodes/${n2id}/vms/${mine.uuid}/replication`)).running, 240_000, 2000);
     await api.post(`/nodes/${n2id}/vms/${mine.uuid}/action`, { action: "start" });
   });
 
