@@ -115,6 +115,22 @@ test.describe.serial("web access", () => {
     const ctx = await secureContext(browser, HTTPS);
     const p2 = await ctx.newPage();
     await signIn(p2, HTTPS);
+    // Signing in at the new address, on whatever page loads, asks whether to keep the setting.
+    const keepDlg = dialog(p2, "Keep the new web access setting?");
+    await expect(keepDlg).toBeVisible();
+    await expect(keepDlg).toContainText(/is undone in \d+ seconds unless you keep it/);
+    await p2.screenshot({ path: `${OUT}/keep-dialog.png` });
+    // Closing it leaves a line with the same two actions; a reload asks again.
+    await keepDlg.getByRole("button", { name: "Close dialog" }).click();
+    await expect(keepDlg).toHaveCount(0);
+    const banner = p2.locator("[data-wa=pending]");
+    await expect(banner).toContainText("is undone in");
+    await expect(banner.getByRole("button", { name: "Keep this setting" })).toBeVisible();
+    await expect(banner.getByRole("button", { name: "Undo now" })).toBeVisible();
+    await p2.screenshot({ path: `${OUT}/keep-banner.png` });
+    await p2.reload();
+    await expect(keepDlg).toBeVisible();
+    await keepDlg.getByRole("button", { name: "Close dialog" }).click();
     const cookie = (await ctx.cookies()).find((c) => c.name === "virt_session");
     expect(cookie?.secure, "session cookie is Secure over HTTPS").toBe(true);
     expect(cookie?.httpOnly).toBe(true);
@@ -158,10 +174,15 @@ test.describe.serial("web access", () => {
     await p2.getByRole("button", { name: "Apply", exact: true }).click();
     await dialog(p2, "Apply web access settings").getByRole("button", { name: "Apply", exact: true }).click();
     await expect(p2.getByRole("heading", { name: "Change waiting for confirmation" })).toBeVisible();
+    // Confirmed from the dialog on another page, not from Settings.
+    await page.goto("/datacenter/vms");
+    const dlg = dialog(page, "Keep the new web access setting?");
+    await expect(dlg).toBeVisible();
+    await dlg.getByRole("button", { name: "Keep this setting" }).click();
+    await expect(dlg).toHaveCount(0);
+    await expect(page.locator("[data-wa=pending]")).toHaveCount(0);
+    expect((await status(api)).pending).toBeFalsy();
     await page.goto("/web-access");
-    await expect(page.getByRole("heading", { name: "Keep this setting" })).toBeVisible();
-    await page.getByRole("button", { name: "Keep this setting" }).click();
-    await expect(page.getByRole("heading", { name: "Keep this setting" })).toHaveCount(0);
     await expect(page.getByText("HTTP on " + PLAIN, { exact: false }).first()).toBeVisible();
     await ctx.close();
     expect((await status(api)).settings.mode).toBe("off");

@@ -12,6 +12,7 @@ import NodeDetail from "./pages/NodeDetail";
 import Users from "./pages/Users";
 import Audit from "./pages/Audit";
 import WebAccess from "./pages/WebAccess";
+import WebPending from "./WebPending";
 import ControllerBackup from "./pages/ControllerBackup";
 import Account from "./pages/Account";
 import SignInSettings from "./pages/SignInSettings";
@@ -148,6 +149,7 @@ export default function App() {
       <div className="content">
       <div className="content-scroll" ref={scroller}>
       <main className={session.role}>
+        {session.role === "admin" && <WebPending page={loc.pathname} />}
         <Routes>
           <Route path="/datacenter/:tab?" element={<Datacenter />} />
           {/* Old addresses keep working; query strings (?new=, ?pool=&catalogue=1) are kept. */}

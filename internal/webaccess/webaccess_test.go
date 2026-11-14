@@ -817,3 +817,12 @@ func TestPeekLeavesAPendingChangeAlone(t *testing.T) {
 		t.Errorf("Peek changed the stored settings: %s", raw)
 	}
 }
+
+func TestSecondsUntilRoundsUpAndStopsAtZero(t *testing.T) {
+	if n := secondsUntil(time.Now().Add(-time.Minute)); n != 0 {
+		t.Errorf("past deadline: %d", n)
+	}
+	if n := secondsUntil(time.Now().Add(59500 * time.Millisecond)); n != 60 {
+		t.Errorf("59.5 seconds left: %d", n)
+	}
+}

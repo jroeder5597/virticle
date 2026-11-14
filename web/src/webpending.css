@@ -1,0 +1,4 @@
+.wa-banner { display: flex; align-items: flex-start; gap: 8px 12px; flex-wrap: wrap; border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 10px; margin-bottom: 12px; background: var(--panel); }
+.wa-banner .statusline { flex: 1 1 20em; min-width: 0; margin: 6px 0; }
+.wa-banner .error { flex: 1 1 100%; margin: 0 0 6px; }
+.wa-banner button, .wa-banner a.button { margin: 4px 0; }
