@@ -209,7 +209,7 @@ test.describe.serial("tag colours and the tag editor", () => {
     await page.getByRole("combobox", { name: "Tag name" }).fill(`${P}oth`);
     await page.getByRole("option").filter({ hasText: `${P}other` }).click();
     await expect(page.locator(".titleline .tag", { hasText: `${P}other` })).toBeVisible();
-    expect((await api.vmDetail(v2.node, v2.uuid)).tags).toEqual([TAG, `${P}other`]);
+    await expect.poll(async () => (await api.vmDetail(v2.node, v2.uuid)).tags).toEqual([TAG, `${P}other`]); // the chip shows before the write lands
     await api.put(`/nodes/${v1.node}/vms/${v1.uuid}/tags`, { tags: [TAG] });
     await api.put(`/nodes/${v2.node}/vms/${v2.uuid}/tags`, { tags: [TAG] });
   });

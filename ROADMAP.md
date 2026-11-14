@@ -32,6 +32,7 @@ last, under [Planned](#planned).
 
 ## Storage
 - [~] Pools: create, start, stop, remove (dir tested; LVM, iSCSI forms and raw XML written but untested; NFS has its own entry below)
+- [x] Shared storage over NFS: one dialog mounts a share on every node at the same path, VMs on it migrate without copying disks (live and offline, mixed disks), an unavailable share is shown within seconds and alerted, nothing waits for a dead server, prepare sets up the client, `virt_use_nfs` and the start order. Browser spec 50; lab runs with a real NFS server, including server outages and node restarts, on Debian 13 (one libvirt daemon) and Rocky 10 (SELinux enforcing). Kerberos is not supported; an NFS version 3 only server was tried once
 - [x] Volumes: create, resize, clone, upload, download from URL (the node fetches it with curl), delete
 - [x] CD-ROM media: insert, swap, eject (live); boot order (config, next start)
 - [~] Import existing disks: qcow2, raw, VMDK and single-VM OVA tested; VDI, VHDX untested
@@ -48,6 +49,7 @@ last, under [Planned](#planned).
 - [~] Snapshots with memory, tree view, revert, delete (done). One kind per VM, chosen by the server; greyed option with a hint in the dialog (see note). Open: quiesce untested with a real agent
 - [x] Scheduled snapshots with retention (schedule stored in domain metadata, stored in UTC and shown in the browser time zone)
 - [~] Backup and restore to another pool or node (live, no snapshot left behind); export/import a VM as one tar file. Scheduled backups with retention (one unexplained stall seen in testing, not reproduced). Open: TPM state and snapshots are not part of a backup
+- [x] Incremental backups: after the first full backup only the changed blocks are copied (libvirt checkpoints), a full one after every 7 and whenever a chain cannot be trusted, every file checked by SHA-256, restore and export put the chain together, retention keeps what kept backups need. Browser spec 49; the lab found and fixed killed-QEMU and libvirt-restart cases (Debian 13 with libvirt 11.3, Rocky 10 with libvirt 11.10). Not tested: Windows guests
 
 ## Networking
 - [x] Virtual network editor: NAT, isolated, routed, open, bridged, DHCP reservations
@@ -65,7 +67,9 @@ last, under [Planned](#planned).
 - [~] Offline migration (done, carries internal snapshots too); UEFI/NVRAM and TPM paths untested
 - [x] Encrypted migration streams (QEMU TLS for memory and disk mirror; controller-managed CA, per-node setup/removal, pre-flight warning when unencrypted). Certificate install verified on Debian and Rocky; an encrypted migration between two RHEL-family nodes is untested
 - [x] Migration network chosen per node (address for memory, disk and file copies), checked against the other nodes on saving; automatic limit (80% of the link) when migration shares the management card
-- [x] Evacuate a node (planner, per-VM tasks, cancel, maintenance flag); show pending host updates (read-only)
+- [x] Evacuate a node (planner, per-VM tasks, cancel, maintenance flag); show pending host updates
+- [x] Rolling node updates: plan first (updates, restarts, where each VM moves, which cannot), then one node at a time: maintenance, live-migrate away, update with dnf or apt, restart if needed, check, move back. The run is stored and resumes after a controller restart; a failure stops it and offers Continue, Put things back or Dismiss. Browser spec 51 on a Debian 13 pair. Not tested: a Rocky 10 run of the whole sequence with real pending updates
+- [x] Replication to a standby node: a copy of a VM (qcow2 disks) at most one interval old, planned failover without loss, failover from the newest copy when the node is gone, the old VM marked and powered off when its node returns, replicate back. A counter, never the clocks, decides which copy is old. Browser spec 52; 40 rounds of kill -9 during the merge step left an identical image every time. Not tested: Windows guests and guests with a virtual TPM (the TPM is not copied)
 
 ## Hardware
 - [x] Passthrough picker: PCI and USB with IOMMU groups, in-use and safety checks, migration warning. Verified on real hardware with a whole GPU (Quadro P1000 and its audio function: attach, guest sees it, host driver takes it back). USB passthrough, hot-plug of a PCI device and SR-IOV/vGPU are untested or not built
@@ -84,7 +88,7 @@ last, under [Planned](#planned).
 - [x] Notifications to Slack, Mattermost, Discord or a webhook (signed bodies, retries, summary when many alerts arrive at once). The services themselves were not tried: their messages are covered by tests against a fake receiver
 - [x] Resource tree (Datacenter → nodes → VMs, storage, networks, host NICs) with quick actions; node page with tabs (summary, VMs, storage, network, updates, settings)
 - [x] Theme from the user's DESIGN.md: dark by default, light option, bundled fonts, no animation. Idle cost measured: 0 running animations, at most one stats request per shown host every 5 s, none on pages without charts
-- [x] Browser suite (`make e2e`, 48 spec files with 275 `test(` declarations counted from the source; last full runs: see the release notes) including a no-ellipsis check and a fit check: no element cut off or spilling out of its card at 1280 and 1440 px, both themes, plus phone width
+- [x] Browser suite (`make e2e`, 52 spec files with 294 `test(` declarations counted from the source; last full runs: see the release notes) including a no-ellipsis check and a fit check: no element cut off or spilling out of its card at 1280 and 1440 px, both themes, plus phone width
 - [x] Move a disk to another pool: live (block copy and pivot) or offline, with pre-flight checks, progress and cancel. Verified on Debian and Rocky; not tested under guest writes; dir pools only tested
 - [x] Image catalogue: ten built-in cloud images, downloaded by the node and verified by checksum (same-origin checksum: catches corruption, not a compromised mirror); `<data>/images.json` adds or overrides entries
 - [x] Cloud-init profiles (stored in the controller database, passwords as hashes only), selectable when creating and cloning
@@ -93,14 +97,14 @@ last, under [Planned](#planned).
 
 ## Planned
 
-Next, in this order of thought, not of date:
+What remains, in this order of thought, not of date:
 
-- [ ] **Replication with one-click failover**: copy a VM's disks to a standby node on a schedule, and start it there with one click when its node is lost.
-- [ ] **Incremental backups**: after the first full backup only changed blocks are copied; restore and retention stay as they are.
-- [ ] **Rolling node updates**: update the packages of a node's host one node at a time, moving its VMs away first and back afterwards.
-- [x] **Shared storage over NFS**: one pool seen by several nodes, so a VM moves without copying its disks (live and offline, mixed disks), an unavailable share is shown and alerted, nothing waits for a dead server. iSCSI and LVM pools follow later. What is not built (failover, NFS options) is in [docs/backlog-storage.md](docs/backlog-storage.md).
+- [ ] **Automatic failover with fencing**: start a VM on its standby without a person, once the old node is provably stopped (power control, a witness, a per-VM choice). What it needs: [docs/backlog-ha.md](docs/backlog-ha.md).
+- [ ] **Start the VMs of a dead node elsewhere on shared storage**: the VM definitions are kept by the controller so a VM whose disks are on NFS can start on another node. Specification: [docs/backlog-storage.md](docs/backlog-storage.md).
+- [ ] **iSCSI and LVM shared pools**: the same one-dialog setup as NFS. Also in [docs/backlog-storage.md](docs/backlog-storage.md).
+- [ ] **Networking ideas** that were considered and are not planned yet: [docs/backlog-networking.md](docs/backlog-networking.md).
 
-Networking ideas that were considered and are not planned yet are in [docs/backlog-networking.md](docs/backlog-networking.md); storage ideas in [docs/backlog-storage.md](docs/backlog-storage.md).
+Built since the last release and moved out of this list: replication with one-click failover, incremental backups, rolling node updates, shared storage over NFS (see the entries above).
 
 ## Design notes
 
@@ -140,7 +144,7 @@ check and per-IP rate limit use the forwarded host and client address.
 **One controller per set of nodes.** Scheduled snapshots are driven by the
 controller from VM metadata, so two controllers pointed at the same nodes
 would both run every schedule. `-no-scheduler` turns one of them off, and an
-alert appears when another controller's scheduled snapshots are seen.
+alert appears when another controller's scheduled snapshots are seen. Controllers of different versions must never manage the same nodes (an older one deletes backups that a newer incremental chain needs).
 
 The project is called Virticle (earlier working name: `virt-proj`).
 

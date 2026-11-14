@@ -1,6 +1,6 @@
 // VM replication to a standby node: the Replication card of a running VM and its setup dialog, the first copy, the
 // copy on the other node (state "replica", no normal actions, "Planned failover"), the planned failover itself (the
-// VM runs on node 2, the old one on node 1 is a "stale copy"), and the cleanup of both sides.
+// VM runs on node 2, the old one on node 1 is a "old copy"), and the cleanup of both sides.
 import { mkdirSync } from "fs";
 import { Api } from "../lib/api";
 import { cleanVMs, createCirros, expect, openVM, test } from "../lib/fixtures";
@@ -124,7 +124,7 @@ test.describe.serial("replication", () => {
     }
   });
 
-  test("planned failover: the VM runs on node 2, the old VM is a stale copy", async ({ page, api, n1 }) => {
+  test("planned failover: the VM runs on node 2, the old VM is an old copy", async ({ page, api, n1 }) => {
     test.slow();
     test.setTimeout(420_000);
     const copy = (await api.vms()).find((v) => v.name === NAME && v.node === n2id)!;
@@ -152,7 +152,7 @@ test.describe.serial("replication", () => {
     }, 60_000, 1000);
     if (old.state === "stale") {
       await openVM(page, { node: n1, uuid: copy.uuid, name: NAME });
-      await expect(page.locator(".head .badge", { hasText: /^Stale copy$/ })).toBeVisible();
+      await expect(page.locator(".head .badge", { hasText: /^Old copy$/ })).toBeVisible();
       await expect(page.locator("section#stale")).toContainText(`This is the old copy of ${NAME}`);
       await expect(page.locator("section#stale").getByRole("button", { name: "Replicate back" })).toBeVisible();
       await page.locator("section#stale").screenshot({ path: `${SHOTS}/stale-card.png` });

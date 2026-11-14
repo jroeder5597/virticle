@@ -4,14 +4,15 @@ How to do the everyday things in the web UI. To install, see
 [install.md](install.md). To add hosts, see [install-node.md](install-node.md).
 
 - [The screen](#the-screen)
-- [Nodes](#nodes)
+- [Nodes](#nodes): [rolling update](#update-all-nodes-rolling-update)
 - [Virtual machines](#virtual-machines)
 - [Console](#console)
 - [Hardware](#hardware)
 - [Snapshots](#snapshots)
-- [Backups](#backups)
+- [Backups](#backups): [full and incremental](#full-and-incremental)
+- [Replication and failover](#replication-and-failover)
 - [Migration](#migration)
-- [Storage](#storage)
+- [Storage](#storage): [shared storage (NFS)](#shared-storage-nfs)
 - [Networks](#networks): [topology](#network-topology), [virtual switches](#virtual-switches)
 - [Notifications](#notifications)
 - [Performance](#performance)
@@ -86,34 +87,55 @@ What you can do with a node:
 
 ### Update all nodes (rolling update)
 
-**Datacenter > Nodes > Update all nodes** updates every node, one at a time, and is safe to walk away from.
-**Update this node** on a node's **Updates** tab does the same for that node alone.
+**Nodes > Update all nodes** installs the system updates on every node, one node at a time, and moves the virtual machines
+out of the way first. **Update this node** on a node's **Updates** tab does the same for that node alone. Administrators
+only.
 
-1. Press the button. The plan is shown first and nothing has started: per node how many updates, whether it needs a
-   restart (a new kernel, glibc, systemd, firmware, libvirt or QEMU), which virtual machines move where, and which cannot
-   move and why (a disk on a path only that node has, a passed-through device, no target with the same networks, not
-   enough free memory on the others; every other node keeps 5 percent or at least 512 MiB free).
-2. If some virtual machines cannot move, choose once: **shut them down for the update and start them again afterwards**, or
-   **leave out the nodes they run on**. This is the only choice.
-3. **Start update.** For each node: maintenance on, running VMs live-migrated away, updates installed, restart if needed,
-   wait until libvirt, the node command, pools, networks and shared storage are healthy, maintenance off, VMs moved
-   back to where they were, then the next node. The node of the controller itself, if there is one, is last; while it restarts the
-   web interface is away for a few minutes and the update carries on by itself when it is back.
-4. The first failure stops the run. The page says in words what state things are in (which node is in maintenance, which VMs
-   run elsewhere, which are shut down) and offers **Continue** (run the failed step again and go on), **Put things back**
-   (end maintenance, start shut-down VMs, move VMs back, end the run) or **Dismiss**. **Stop after this step** does the same
-   without a failure. A failed or stopped run raises an alert; a finished run sends a notification.
+![Rolling update plan](img/rolling-update-plan.png)
 
-What it will not do: start while any node is offline, while a selected node is in maintenance or has no node command, while
-a migration or evacuation runs, or when a node's updates cannot be read (a broken repository stops it before anything changes).
-It installs every available update with the system's own tool (dnf, or apt without questions, keeping changed
-configuration files). Packages the tool holds back are reported, not forced. There are no scheduled updates.
-After the update the node is checked with the checks of prepare (libvirt services, start order of the storage daemon, the SELinux
-setting for NFS, swtpm file owner, the migration firewall service); what the update undid is put right, anything else stops the run.
-A restart that does not come back within 12 minutes stops the run; look at the machine, then press **Continue**.
-A VM that does not shut down by itself within 3 minutes also stops it (it is never powered off by force).
-A restart you do yourself, with VMs running, is different on Debian and Ubuntu: the system's `libvirt-guests` service shuts the VMs
-down one after the other and waits up to 5 minutes for each that ignores the shutdown request. The rolling update moves the VMs first.
+1. Press the button. The plan comes first and nothing has started. It shows, per node, how many updates there are,
+   whether the node restarts, and where each running VM moves. A VM that cannot move is listed with the reason: a disk
+   that only this node has, a passed-through device, no other node with the same networks, or not enough free memory
+   (every other node keeps 5 percent of its memory, at least 512 MiB, free).
+2. If some VMs cannot move, choose once:
+   - **Shut them down for the update and start them again afterwards**, or
+   - **Leave out the nodes they run on; those nodes are not updated**.
+3. Choose **Start update**. For each node in turn:
+   1. The node goes into maintenance and its running VMs are live-migrated away.
+   2. The updates are installed, and the node restarts if it needs to (a new kernel, glibc, systemd, firmware, libvirt or QEMU).
+   3. Virticle waits until libvirt, the node command, the pools, the networks and the shared storage work again, and checks
+      what prepare set up.
+   4. Maintenance ends, the VMs move back where they were, and the next node starts.
+4. The node that runs the controller itself, if there is one, is last. While it restarts the web interface is away for a
+   few minutes; the update carries on by itself when it is back.
+
+![Rolling update in progress](img/rolling-update-run.png)
+
+**When a step fails**, the run stops and the page says in words what state things are in: which node is in maintenance,
+which VMs run elsewhere, which are shut down. Then choose:
+
+| Button | Does |
+| --- | --- |
+| **Continue** | Runs the failed step again and goes on. |
+| **Put things back** | Ends maintenance, starts the VMs that were shut down, moves VMs back, and ends the run. |
+| **Dismiss** | Leaves things as they are and clears the alert. |
+
+**Stop after this step** ends a healthy run the same way. A failed or stopped run raises an alert; a finished run sends a
+notification.
+
+Good to know:
+
+- It does not start while any node is offline, a selected node is in maintenance or has no node command, a migration or
+  evacuation runs, or a node's updates cannot be read (a broken package repository stops it before anything changes).
+- It installs every available update with the system's own tool (`dnf`, or `apt-get` without questions, keeping changed
+  configuration files). Packages the tool holds back are reported, not forced. There are no scheduled updates.
+- A restart that does not come back within 12 minutes stops the run: look at the machine, then choose **Continue**. A VM
+  that does not shut down by itself within 3 minutes also stops it; it is never powered off by force.
+- A restart you do yourself, with VMs running, behaves differently on Debian and Ubuntu: the system's `libvirt-guests`
+  service shuts the VMs down one after the other and waits up to 5 minutes for each that ignores the request. The rolling
+  update moves the VMs first, so use it instead.
+- A controller that restarts during a run carries on with it. Details and the API are in
+  [reference.md](reference.md#rolling-updates).
 
 ## Virtual machines
 
@@ -220,117 +242,130 @@ When no snapshot can be taken, the dialog says why and what to delete first.
 
 ## Backups
 
+A backup is a copy of a VM's disks and definition in a directory pool, on this node or another. A running VM keeps
+running. Snapshots and TPM state are not part of a backup.
+
 1. Open the VM's **Backups** tab.
-2. **Back up now**: pick the target node and pool. A running VM keeps running.
-3. **Restore** a backup as a new VM or over the original.
-4. **Save schedule** sets interval or daily runs and how many to keep.
+2. Choose **Back up now**, pick the target node and pool, and set **Keep the newest** (older backups of this VM in that pool
+   are deleted; 0 keeps all).
+3. **Restore** puts a backup back as a new VM or over the original (the original must be shut off).
+4. **Set up schedule** and **Save schedule** make backups run by themselves: every so many minutes or hours, or daily.
 
-The **Backups** page lists every backup of every VM on every node. (The backup of the controller itself is under
-**Settings > Controller backup**: see [controller-backup.md](controller-backup.md).) A backup can be
-downloaded as one file and imported on another installation. The format is in
-[reference.md](reference.md#backup-format).
+The **Backups** page in the top bar lists the backups of every VM on every node. The backup of the controller itself is
+under **Settings > Controller backup** ([controller-backup.md](controller-backup.md)). **Export** downloads a backup as one
+file; **Import from file** on the Backups page of another installation brings it back. The format is in [reference.md](reference.md#backup-format).
 
-### Full and incremental backups
+![Backups](img/backups.png)
 
-You do not choose. The list shows each backup as **Full** or **Incremental**, with its own size.
+### Full and incremental
 
-| | |
-|---|---|
-| Full | Every disk is copied whole. |
-| Incremental | Only what changed since the earlier backup of the same VM in the same pool. Small and quick. |
+You do not choose. Virticle makes the backup that is possible and the list says which it is, with the reason when it is full.
 
-- The first backup of a running VM is full, and so is every 7th, which keeps restores short.
-- A backup is also full, with the reason shown under it, when the VM was shut off, a disk is not qcow2, a disk was added,
-  removed, resized or moved, a snapshot was reverted, the VM was moved or restored or stopped unexpectedly, or an
-  earlier backup is missing or damaged.
-- The backup dialog says "Planned as an incremental backup" while it runs, because libvirt can still refuse it; when the
-  run is over it shows what was made, and the reason if it is full.
-- If the controller stops in the middle of a backup, that backup is lost, and the next backup (an hour later or more) removes
-  the half-written files it left in the pool directory.
-- **Restore** works from any entry; Virticle puts the earlier backups it needs together. A backup whose earlier backups are
-  missing cannot be restored, and says so.
+| Type | What it holds |
+| --- | --- |
+| **Full** | Every disk, whole. |
+| **Incremental** | Only what changed since the earlier backup of the same VM in the same pool. Small and quick. |
+
+A backup is full when:
+
+- it is the first one of the VM to that pool, and after every 7 backups (so a restore never needs a long list);
+- the VM was shut off, or a disk is not qcow2;
+- a disk was added, removed, resized or moved, a snapshot was reverted, or the VM was moved, restored or stopped unexpectedly;
+- an earlier backup it would build on is missing or damaged.
+
+Good to know:
+
+- While a backup runs, its dialog says "Planned as an incremental backup", because libvirt can still refuse it. When the run
+  is over, the dialog and the list show what was made.
+- **Restore** works from any entry. Virticle puts the earlier backups it needs together. An entry whose earlier backups are
+  missing says it cannot be restored.
 - **Keep the newest** counts backups. An incremental backup is never kept without the backups it needs, so a few more than
   that number can stay for a while.
-- **Delete** on a backup that later incremental backups need deletes them too, and the dialog says how many.
-- **Export** of an incremental backup puts it together into one full backup file.
+- **Delete** on a backup that later incremental backups need deletes them too. The dialog names how many.
+- **Export** of an incremental backup puts the whole chain together into one full backup file.
+- If the controller stops in the middle of a backup, that backup is lost. A later backup removes the half-written files.
+
+![Delete backup dialog](img/backup-delete.png)
 
 ## Replication and failover
 
-A VM can have a copy on a second node, at most one interval old, that you start with one click when the first node
-fails. There is no shared storage: the copy is a set of disk files on the standby node. Failover is by hand; see
-[backlog-ha.md](backlog-ha.md) for what automatic failover would need.
+A VM can have a copy on a second node, never older than its interval, that you start with one click when the first node
+fails. There is no shared storage: the copy is a set of disk files on the standby node. Failover is by hand; what
+automatic failover would need is in [backlog-ha.md](backlog-ha.md).
 
 ### Set it up
 
-1. Open the VM, **Overview**, card **Replication**, **Set up replication**.
-2. Pick **Replicate to** (the standby node) and **Every** (5 minutes, 15 minutes, 30 minutes, 1 hour, 6 hours, 1 day).
-3. **Save**. The first copy sends the whole VM; later copies send only what changed. The pool on the standby is chosen for you
-   (the one with the name of the VM's pool when it has room).
+1. Open the VM, **Overview**, and in the card **Replication** choose **Set up replication**.
+2. Pick **Replicate to** (the standby node) and **Every** (5 minutes, 15 minutes, 30 minutes, 1 hour, 6 hours or 1 day).
+3. Choose **Start replication**. The first copy sends the whole VM; later copies send only what changed. The pool on the
+   standby is chosen for you.
 
-The card shows the last copy (time and age), how much was sent, when the next copy is due, and a warning when a run failed or
-the copy is older than twice its interval. **Replicate now** copies at once. Disks must be qcow2 and the VM must have no
-passthrough devices; the dialog says what to change. The standby needs the VM's networks and bridges.
+![Replication card](img/replication.png)
+
+The card shows the standby node, the last copy (time and age), how much was sent, and when the next copy is due. It warns
+when a run failed or the copy is older than twice its interval. **Replicate now** copies at once, **Change** edits the
+settings, **Stop replication** ends it.
+
+**What it needs.**
+
+- qcow2 disks and no passthrough devices; the dialog says what to change.
+- On the standby node, the VM's networks and bridges, and a pool with room for the changes (or for the whole VM at the
+  first copy and after a full one). When there is not enough room the run fails and the earlier copy is kept.
 
 On the standby the VM appears with the state **Replica**. It is inert: it cannot be started, edited, backed up, moved or
 deleted with the normal buttons, and backups, schedules, evacuation, network checks and bulk actions skip it. Its definition
 (CPU, memory, networks, firmware, UEFI variables) follows the source after every copy.
 
+![Replica page](img/replica.png)
+
 ### Fail over
 
 | | Source node online | Source node offline |
-|---|---|---|
+| --- | --- | --- |
 | Button on the replica | **Planned failover** | **Start here from the copy of HH:MM** |
-| What happens | The VM is shut down, the last changes are copied, the VM starts on the standby, replication runs back to the old node. | The VM starts on the standby from the newest copy that reads. |
+| What happens | The VM is shut down, the last changes are copied, the VM starts on the standby, and replication runs back to the old node. | The VM starts on the standby from the newest copy that reads. |
 | What you lose | Nothing. | Everything the VM wrote after HH:MM. |
 
 1. Open the replica on the standby node.
-2. Click the button. Read the confirmation: it states what is lost and, for an offline node, the risk below.
-3. Confirm. The VM runs on the standby; the replica page becomes a normal VM page.
+2. Choose the button. The confirmation states what is lost and, for an offline node, the risk below.
+3. Confirm. The VM runs on the standby, and the replica page becomes a normal VM page.
+
+![Planned failover confirmation](img/failover-confirm.png)
 
 **The risk of an unplanned failover.** Virticle cannot stop a node it cannot reach. If the VM is in fact still running on
-the old node (for instance only the network to it is down), two copies of the VM run at once with the same MAC and IP
-addresses. Each copy has its own disks, so no data is destroyed, but the copies diverge and you must throw one away. Only
-fail over when you know the node is down.
+the old node (for instance only the network to it is down), two copies run at once with the same MAC and IP addresses.
+Each has its own disks, so no data is destroyed, but the copies diverge and you must throw one away. Fail over only when
+you know the node is down.
 
-**When the old node comes back.** Its VM is marked **Stale copy**: replication from it is switched off, it is powered off at
-once if it is running (within a minute of the node returning, or of the controller returning if it was down), it cannot be started,
-and an alert is raised. Everything this decision needs is stored on the nodes, in the VMs: a controller that was down during the
-failover, or restored from an older backup, finds the same answer. Its disks are never
-deleted by Virticle.
+**When the old node comes back.** Its VM is marked **Old copy**. Replication from it is switched off, it is powered off at
+once if it is running (within a minute of the node or the controller returning), it cannot be started, and an alert is
+raised. Which of the two VMs is old is decided by a counter that every failover raises, never by the clocks of the nodes,
+and it is stored on the nodes: a controller that was down during the failover, or restored from an older backup, comes to
+the same answer. Virticle never deletes its disks by itself.
 
-1. Open the stale copy and choose **Replicate back**: the running VM is copied to this node as a new replica (a full copy), and
-   the stale copy and its disks are deleted when that copy is complete. Or **Delete VM** to discard the old copy.
-2. When the copy is current, open the replica on the old node and use **Planned failover** to fail back.
+1. Open the old copy and choose **Replicate back**. The running VM is copied to this node as a new replica (always a full
+   copy), and the old copy and its disks are deleted when that copy is complete. Or choose **Delete VM** to discard it.
+2. When the copy is current, use **Planned failover** on the replica to fail back.
 
-After a planned failover the old VM is marked stale and replication back starts by itself (if the controller stopped at that
-moment, the old VM is still marked when it is back, and **Replicate back** on it does the rest). "Replicate back" is always a
-full copy: the changes since the failover cannot be told apart from the old copy's own, and a copy that is not provably equal
-is worse than a slow one. Which of two VMs is the old copy is decided by a counter that every failover raises by one, never by
-the clocks of the nodes.
+After a planned failover replication back starts by itself. If the controller stopped at that moment, the old VM is still
+marked when it is back, and **Replicate back** on it does the rest.
 
-### Other things to know
+### Good to know
 
-- **Stop replication** asks whether to delete the copy on the standby (yes by default). Deleting a replicated VM, one by one or
-  in bulk, asks "Also delete the replica" (yes by default). If you keep the replica of a deleted VM it stays on the standby and
-  can still be started from its page.
-- Moving a replicated VM (migration) to its standby node is allowed, also by node evacuation and rolling updates: the replica
-  there steps aside, the VM moves as any VM does, and replication back to the node it left starts at once with a full copy.
-  If the move fails, the replica is put back as it was. Moving it to a third node keeps the replication; the next copy sends
-  everything again.
-- Snapshot revert, disk add, remove, resize or move, and restore make the next copy a full one; nothing to do. Restoring a
-  backup over a replicated VM keeps its replication; restoring never brings back the replication state that the backup remembers.
-- A shut-off VM is copied once after it stops (its last writes), then not again until it is started. When that copy can send
-  only the changes (the usual case after a planned failover shut the VM down), the VM is started paused for a moment so QEMU
-  can say what changed, and Start and Resume are refused until it has ended again (a few seconds to minutes, shown in the error).
-  In every other case the disks are copied whole and nothing is started.
-- Removing a node from Virticle switches off the replication of the VMs on other nodes that were copied to it; the replicas it
-  held are out of reach. Replicas of VMs on a removed node show the alert "replica-age"; start one from its page or delete it.
-- A disk that a killed QEMU left with unusable change tracking is cleaned up when it would get in the way (a disk resize,
-  removing the tracking when replication or a backup stops); the next copy or backup is then a full one.
-- The virtual TPM is not copied; the VM starts with an empty TPM on the standby (BitLocker asks for its recovery key).
-- Copies use the migration network and its limit. A copy needs free space on the standby for the changes (or the whole VM for a
-  full copy); when there is not enough, the run fails and the earlier copy is kept.
-- A cloned VM is not replicated.
+| Situation | What happens |
+| --- | --- |
+| **Stop replication** | Asks whether to delete the copy on the standby (yes by default). |
+| Deleting a replicated VM, one by one or in bulk | Asks "Also delete the replica" (yes by default). A replica you keep stays on the standby and can still be started from its page. |
+| Moving the VM to its standby node (migration, evacuation, rolling update) | Allowed. The replica steps aside, the VM moves, and replication back to the node it left starts at once with a full copy. If the move fails, the replica is put back. |
+| Moving it to a third node | Replication continues; the next copy sends everything again. |
+| Snapshot revert; disk added, removed, resized or moved; restore | The next copy is a full one. Nothing to do. Restoring a backup over a replicated VM keeps its replication. |
+| The VM is shut off | It is copied once after it stops, then not again until it is started. When only the changes can be sent, the VM is started paused for a moment and Start is refused until that ends (seconds to minutes; the error says so). |
+| A node is removed from Virticle | Replication to it is switched off. Replicas it held are out of reach; the replica alert (copy too old) stays until you start one from its page or delete it. |
+| Virtual TPM | Not copied. The VM starts with an empty TPM on the standby (BitLocker asks for its recovery key). |
+| Network | Copies use the migration network and its limit. |
+| Clones | A cloned VM is not replicated. |
+
+How it works inside, and the API, are in [reference.md](reference.md#replication).
 
 ## Migration
 
@@ -428,96 +463,69 @@ dedicated migration network.
 
 ### Shared storage (NFS)
 
-Shared storage is an NFS share that every node mounts at the same path. A VM
-whose disks are on it moves between nodes without copying them: live
-migration takes seconds, whatever the disk size. Without it, every disk is
-copied on each migration.
+Shared storage is an NFS share that every node mounts at the same path. A VM whose disks are on it moves between nodes
+without copying them: a live migration takes seconds, whatever the disk size. Without it, every disk is copied on each
+migration.
 
-**What you need.** An NFS server that the nodes can reach on port 2049, and
-an export that lets the nodes write (see the table below). Nodes prepared
-with an older Virticle need **Prepare** once more: it installs the NFS client,
-turns on the SELinux setting `virt_use_nfs` (Rocky, Fedora) and makes libvirt
-start its storage before the VMs, so VMs on NFS can start at boot.
+**What you need.** An NFS server that the nodes reach on port 2049, and an export the nodes may write to (table below).
+A node prepared with an older Virticle needs **Prepare** once more: it installs the NFS client, turns on the SELinux setting
+`virt_use_nfs` (Rocky, Fedora) and makes libvirt start its storage before the VMs, so VMs on NFS start at boot.
 
 **Add it**
 
-1. Open Datacenter, **Storage**, and choose **Add shared storage**.
-2. Give the **Name** (it is also the folder: `/mnt/NAME`), the **NFS server**
-   and the **Export path**.
-3. Choose **Add shared storage**. Every online node mounts the share and
-   checks that a VM disk can be made on it. The dialog says what to change on
-   the server if that fails; nothing is left half done.
-4. Make a VM there: in **New VM** or **New disk**, pick the pool named like the
-   share. Under **Advanced** in step 2 you can leave nodes out.
+1. Open **Storage** in the top bar and choose **Add shared storage**.
+2. Enter the **Name** (also the folder: `/mnt/NAME`), the **NFS server** and the **Export path**.
+3. Choose **Add shared storage**. Every online node mounts the share and checks that a VM disk can be made on it. If that
+   fails, the dialog says what to change on the server, and nothing is left half done.
+4. To use it, pick the pool with that name in **New VM** or **New disk**.
 
-The share is one row in the **Shared storage** table, with the nodes that have
-it. A node added later shows "Not on NODE" and an **Add to NODE** button.
-**Remove** unmounts it on every node; it is refused while a VM has a disk on it
-(move the disks or delete the VMs first). The files on the server are never
-deleted by Virticle when you remove the storage.
+![Add shared storage](img/shared-storage-add.png)
+
+Under **Advanced** you can leave nodes out; a VM can only move between nodes that all have the storage.
+
+The share is one row in the **Shared storage** table, with the nodes that have it. A node added later shows "Not on NODE"
+and an **Add to NODE** button. **Remove** unmounts the share on every node. It is refused while a VM has a disk on it (move
+the disks or delete the VMs first). Virticle never deletes the files on the server.
+
+![Shared storage table](img/shared-storage.png)
 
 **Export settings on the server**
 
 | Setting on the server | Works | What to know |
 | --- | --- | --- |
-| `rw,no_root_squash` for the nodes | yes | Simplest. Root on the node may write, and libvirt hands each disk to the VM user when the VM starts. Works with nodes whose VM user has different ids. |
-| `rw,all_squash,anonuid=107,anongid=107` | yes | The server treats every user as that id. Give the export directory to that id (`chown 107:107`). On Rocky, Fedora and Red Hat the VM user is 107; on Debian and Ubuntu it is 64055. With `all_squash` the id you choose does not have to be the VM user of every node, so one number works for a mixed cluster. |
-| `root_squash` (the default) | no | Root becomes `nobody` on the server, and VM disks cannot be made or handed to the VM user. Add refuses and names the setting to change. |
+| `rw,no_root_squash` for the nodes | yes | Simplest. Root on the node may write, and libvirt hands each disk to the VM user when the VM starts. Works when the nodes' VM users have different ids. |
+| `rw,all_squash,anonuid=107,anongid=107` | yes | The server treats every user as that id. Give the export directory to that id (`chown 107:107`). The VM user is 107 on Rocky, Fedora and Red Hat, 64055 on Debian and Ubuntu; with `all_squash` one number works for a mixed cluster. |
+| `root_squash` (the default) | no | Root becomes `nobody`, so VM disks cannot be made. Add refuses and names the setting to change. |
 | `ro` | no | The nodes must write. |
-| NFS version 3 only | yes, with care | Add works and says so in one sentence. The locks that stop two nodes from running one VM disk then need the server's lock service (`rpc.statd`, `lockd`) reachable from every node. Version 4 has them built in; prefer it. |
+| NFS version 3 only | yes, with care | Add says so in one sentence. The locks that stop two nodes from running one disk then need the server's lock service (`rpc.statd`, `lockd`) reachable from every node. Version 4 has them built in. |
 | Kerberos (`sec=krb5`) | no | Not supported. |
 
-The NFS version and the mount options are not settings. Virticle mounts with
-`mount -t nfs`, which takes the highest version both sides offer (4.2
-normally), and the mount is **hard**: a program that talks to an unreachable
-server waits for it instead of getting an error.
+The NFS version and the mount options are not settings. The mount takes the highest version both sides offer (normally 4.2)
+and is **hard**: a program that talks to an unreachable server waits instead of getting an error. A server may be spelled
+as a name on one node and as an address on another; Virticle treats it as one server.
 
-Use the same spelling of the server on every node? Not required: a name on
-one node and its address on another are recognised as one server.
+**Migration.** The migration check says which disks are copied and which are not, for example "no disk is copied: every disk
+is on shared storage that both nodes mount (vda on nas)". An offline migration of such a VM only moves its definition.
+Snapshots stay valid.
 
-**Migration.** The migration check says which disks are copied and which are
-not, for example "no disk is copied: every disk is on shared storage that both
-nodes mount (vda on nas)" or "not copied, on shared storage: vdb on nas.
-Copied, on local storage: vda". An offline migration of such a VM only moves
-the definition. Snapshots stay valid: their data is in the shared files.
+**When the server does not answer**
 
-**When the server does not answer.** This is what happens, in order:
+| What | Detail |
+| --- | --- |
+| Storage tables | The share shows **Unavailable** within about ten seconds, with a line naming the server. |
+| Alert | A critical alert (kind `storage-unavailable`) after about two minutes; it clears by itself when the server answers and goes to the notification destinations. |
+| Virticle | The pages keep answering. Anything that would read the share (volume lists, snapshot and clone pages, disk moves, starting or changing a VM on it) is refused with a message that says the storage is away. Other storage and VMs are not affected. |
+| VMs on the share | They keep running. Whatever needs their disk waits and then continues, without errors and without losing data, up to about a minute after the server is back. The VM page shows a note. |
+| Debian and Ubuntu (one libvirt daemon) | Pages that list the node's storage or read a VM's definition answer within seconds that the node's storage is not answering, instead of showing the share as Unavailable. |
+| A node that boots while the server is away | It boots normally. VMs on the share do not start; Virticle mounts the share when the server answers (within an hour of the boot), and you start those VMs by hand. On Debian and Ubuntu all of libvirt waits for the mount: the node shows Offline until the server answers, and about 20 seconds later libvirt is back with its autostart VMs running. |
+| Restarting a node | It takes several minutes while the server is away, because the node waits for it before it lets go of the mount. |
 
-- The storage shows **Unavailable** in the Storage tables, within about ten
-  seconds, with a line saying which server does not answer.
-- A **critical alert** is raised after about two minutes and clears by itself
-  when the server answers again; it goes to the notification destinations like
-  any other alert (kind `storage-unavailable`).
-- The pages of Virticle keep answering. Everything that would read the share
-  (volume lists, snapshot and clone pages of a VM on it, disk moves, starting or
-  changing such a VM) is refused with a message that says the storage is away.
-  Other storage and other VMs on the node are not affected.
-  On Debian and Ubuntu nodes (one libvirt daemon for everything) the pages that
-  list that node's storage or read a VM's definition answer within a few
-  seconds that the node's storage is not answering, instead of showing the
-  share as Unavailable. The alert is raised all the same.
-- A VM with a disk on it keeps running, its network and its memory-only work go
-  on, and anything that needs its disk waits, then continues, without errors
-  and without losing data, when the server is back. The VM page shows a note.
-  It may take up to about a minute after the server answers again.
-- Do not ask the node's libvirt about the share by other means during the
-  outage (`virsh pool-refresh`, another management tool): with a hard mount
-  that call waits for the server and holds the node's storage service with it.
-  Virticle gives up on such a call after a few seconds and reports the storage
-  of that node as not answering until it returns.
-- A node that boots while the server is away boots normally. Its libvirt
-  storage service waits for the mount, VMs on that share do not start at boot,
-  and the share is mounted by Virticle once the server answers (within an hour
-  of the boot). Start those VMs by hand afterwards. On Debian and Ubuntu, where
-  libvirt is one daemon, all of libvirt waits for the mount: the node shows
-  Offline until the server answers, and about 20 seconds after that libvirt is
-  back with the share mounted and its autostart VMs running.
-- Restarting a node while the server is away takes several minutes: the node
-  waits for the server before it lets go of the mount.
+Do not ask a node's libvirt about the share by other means during an outage (`virsh pool-refresh`, another management
+tool): with a hard mount that call waits for the server and holds the node's storage service with it.
 
-**What it does not do.** There is no automatic failover. If a node dies, its
-VMs stay defined only on that node and Virticle cannot start them elsewhere
-yet; the disks on shared storage are safe. See `docs/backlog-storage.md`.
+**What it does not do.** There is no automatic failover. If a node dies, its VMs stay defined only on that node and
+Virticle cannot start them elsewhere yet; the disks on shared storage are safe. See [backlog-storage.md](backlog-storage.md).
+Technical facts and the API: [reference.md](reference.md#shared-storage-nfs).
 
 ## Networks
 
@@ -766,4 +774,8 @@ API tokens are described in [reference.md](reference.md#api-tokens). To read the
 | Locked out after a web access change | Wait 60 seconds for the automatic revert, or run `virticle web reset` and restart. |
 | Lost the phone with the authenticator | An administrator chooses **Reset two-step sign-in** for you. If you are the only administrator: `virticle user reset-2fa USER` on the controller. See [sign-in.md](sign-in.md#two-step-sign-in-authenticator-app). |
 | "No ISO images on this node" | Upload one under **Storage**. |
-| A task failed | **Tasks** shows the libvirt error in the Result column. |
+| A task failed | **Tasks** shows the error in the Result column. |
+| A rolling update stopped | The page says what state the nodes are in. Choose **Continue**, **Put things back** or **Dismiss** ([Update all nodes](#update-all-nodes-rolling-update)). |
+| A VM shows **Replica** or **Old copy** and cannot be started | That is on purpose. A replica starts with **Planned failover** or **Start here from the copy of HH:MM**; an old copy has **Replicate back** or **Delete VM** ([Replication](#replication-and-failover)). |
+| A shared storage shows **Unavailable** | The NFS server does not answer. VMs on it wait and carry on when it is back ([Shared storage](#shared-storage-nfs)). |
+| A backup says **Cannot be restored** | An earlier backup it builds on is missing. Restore another entry, or delete this one ([Full and incremental](#full-and-incremental)). |

@@ -521,7 +521,7 @@ func (q networkRequest) build(existing []existingNet) (string, error) {
 				return "", badRequest("DHCP range start and end must both be IPv4 addresses")
 			}
 		} else if !rangeOK {
-			return "", badRequest("please give the DHCP range explicitly: the gateway address is inside the subnet's middle")
+			return "", badRequest("give the DHCP range explicitly: the gateway address is inside the subnet's middle")
 		}
 		if !subnet.Contains(start) || !subnet.Contains(end) || start == subnet.Addr() || end == broadcastOf(p) {
 			return "", badRequest(fmt.Sprintf("DHCP range %s - %s is not inside subnet %s", start, end, subnet))

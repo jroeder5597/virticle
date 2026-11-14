@@ -162,8 +162,8 @@ function BackupNow(props: { d: VMDetail; onClose: () => void; onDone: () => void
   };
   const submit = async () => {
     await act.run(async () => {
-      const r = await post<{ task: number; kind: string }>(`${base}/backup`, { targetNode: node === d.node ? 0 : node, pool, keepLast: keep });
-      setKind(r.kind);
+      const r = await post<{ task: number; plannedKind: string }>(`${base}/backup`, { targetNode: node === d.node ? 0 : node, pool, keepLast: keep });
+      setKind(r.plannedKind);
       setTask(r.task);
     });
   };

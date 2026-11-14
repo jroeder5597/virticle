@@ -27,6 +27,15 @@ test.describe.serial("nodes", () => {
     expect(fits, "nodes table fits without scrolling sideways").toBe(true);
   });
 
+  test("the node summary shows available memory, the figure the planners use (free plus file cache)", async ({ page, api, n1 }) => {
+    const info = await api.get(`/nodes/${n1}`);
+    expect(info.availableKiB).toBeGreaterThan(0);
+    expect(info.availableKiB).toBeLessThanOrEqual(info.memoryKiB);
+    expect(info.freeKiB).toBeUndefined();
+    await page.goto(`/node/${n1}/summary`);
+    await expect(page.getByText(/(GiB|MiB) total, [\d.]+ (GiB|MiB) available/)).toBeVisible();
+  });
+
   test("maintenance toggles on and off and the evacuation dialog honours it", async ({ page, api, n1, n2 }) => {
     await page.goto("/nodes");
     const r2 = row(page, env.node2);

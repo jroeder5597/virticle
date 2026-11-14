@@ -57,7 +57,7 @@ export function ErrorBox({ error }: { error?: string }) {
 }
 
 export function StateBadge({ state }: { state: string }) {
-  const word = state === "stale" ? "stale copy" : state;
+  const word = state === "stale" ? "old copy" : state;
   return <span className={"badge s-" + state}>{word.charAt(0).toUpperCase() + word.slice(1)}</span>;
 }
 

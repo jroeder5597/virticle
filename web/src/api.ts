@@ -83,7 +83,7 @@ export interface NodeInfo {
   cpuModel: string;
   cpus: number;
   memoryKiB: number;
-  freeKiB: number;
+  availableKiB: number;
   libvirtVersion: string;
 }
 export interface VM {

@@ -14,9 +14,10 @@ Virticle look the same.
 | --- | --- |
 | VMs | Create from cloud images, ISOs or templates. Clone. cloud-init. UEFI by default, Secure Boot, virtual TPM. Hot-plug hardware. Speed limit per network card. Edit the libvirt XML. |
 | Consoles | VNC and serial, in the browser. |
-| Migration | Live and offline, between nodes, with a list of pre-flight checks. Node maintenance and evacuation. A migration network per node, with an automatic limit on a shared link. |
-| Snapshots and backups | Manual or scheduled, with retention. Restore, export, import. Backup and restore of the controller itself. |
-| Storage | Pools, volumes, uploads, an image catalogue. |
+| Migration and updates | Live and offline migration between nodes, with a list of pre-flight checks. Node maintenance and evacuation. A migration network per node, with an automatic limit on a shared link. Rolling updates: all nodes updated one at a time, their VMs moved away first. |
+| Snapshots and backups | Manual or scheduled, with retention. Incremental backups that copy only what changed. Restore, export, import. Backup and restore of the controller itself. |
+| Replication | A copy of a VM on a standby node, kept up to date on a schedule, that starts with one click when the first node fails. Failover is by hand. |
+| Storage | Pools, volumes, uploads, an image catalogue. Shared storage over NFS: VMs move between nodes without copying their disks. |
 | Networks | NAT and bridged networks, DHCP reservations. Virtual switches with VLANs, several uplinks (failover or LACP), rollback if a change cuts the node off. A topology view per datacenter and per node. Warnings when nodes differ. |
 | Monitoring | Performance history for 7 days with charts, a `/metrics` endpoint for Prometheus, alerts, and notifications to Slack, Mattermost, Discord or a webhook. |
 | Passthrough | PCI devices and GPUs. |
@@ -107,6 +108,8 @@ Details are in [docs/install-node.md](docs/install-node.md).
 | Move a VM | **Actions > Migrate**. The pre-flight list says what blocks the move. |
 | See how a VM was doing | The **Performance** tab of the VM or node. |
 | Change the web address, certificate or port | **Settings > Web access** (administrator). A change you do not confirm is undone after 60 seconds. |
+| Update all nodes | **Nodes > Update all nodes**. The plan is shown first. |
+| Keep a standby copy of a VM | The VM's **Overview**, card **Replication**. |
 | Back up the controller | **Settings > Controller backup**, or `sudo virticle backup`. |
 
 ![Migration pre-flight](docs/img/migrate.png)
@@ -120,7 +123,8 @@ hand.
 ## Upgrading
 
 Upgrade the package, then prepare every node again (the node command has a new
-version). Steps for 0.2.0 to 0.3.0, and for older versions, are in
+version). Never let two controllers of different versions manage the same
+nodes. Steps for 0.2.0 to 0.3.0, and for older versions, are in
 [docs/install.md](docs/install.md#upgrading).
 
 ## Documentation
@@ -149,8 +153,10 @@ Early release. Tested: a controller on Linux amd64, and nodes on Debian 13
 and Rocky Linux 10, each in both access modes.
 
 Not tested: arm64, ACME certificate issuance, LACP against a real switch,
-sign-in with identity providers other than the test provider, and virtual
-switches on nodes that use ifupdown (refused) or plain systemd-networkd. A
+sign-in with identity providers other than the test provider, replication of
+Windows guests and of guests with a virtual TPM, and virtual switches on nodes
+that use ifupdown (refused) or plain systemd-networkd. There is no automatic
+failover. A
 Debian node and a RHEL-family node cannot exchange VMs. The files on the
 Releases page are not signed (the package repository is). No container image
 is published.

@@ -87,6 +87,11 @@ Prepare runs these steps in order:
    `ufw allow 49152:49215/tcp comment 'virticle-node'`. With no firewall nothing happens. With nftables or iptables
    rules and no firewalld or ufw, a row lists the ports for you to open. SSH rules are never touched. If a firewall
    command fails, the row is a warning with the commands to run yourself, and prepare goes on.
+
+   It also makes the node ready for shared storage and updates, each only when something is wrong: the NFS client is
+   installed (`nfs-common`, `nfs-utils`); on SELinux hosts `virt_use_nfs` is turned on; on nodes with separate libvirt
+   daemons `virtstoraged` is ordered before `virtqemud`, so VMs on NFS start at boot; and the owner of the `swtpm` CA
+   files is put right so TPM guests start.
 3. **Service account only: sets up the account.** Default name `virticle-node`, a system user, home
    `/var/lib/virticle-node`, shell `/bin/sh`, no password, in the groups `libvirt` and `kvm`. It asks nothing:
    - No such account: it is created.
@@ -178,7 +183,7 @@ Package names, checked on Debian 13 and Rocky Linux 10:
 
 | | Debian family | RHEL family |
 | --- | --- | --- |
-| Base | `qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients dnsmasq-base ovmf swtpm swtpm-tools sudo curl ca-certificates openssh-client iproute2` | `qemu-kvm libvirt virt-install edk2-ovmf swtpm swtpm-tools sudo curl openssh-clients iproute-tc` |
+| Base | `qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients dnsmasq-base ovmf swtpm swtpm-tools sudo curl ca-certificates openssh-client iproute2 nfs-common` | `qemu-kvm libvirt virt-install edk2-ovmf swtpm swtpm-tools sudo curl openssh-clients iproute-tc nfs-utils` |
 | Guest disk tools (left out by `--minimal`) | `libguestfs-tools` | `guestfs-tools` |
 
 The guest disk tools provide `virt-sysprep`, which **clone with sysprep** uses. `virtiofsd` is not installed; nothing
@@ -191,14 +196,14 @@ If you cannot use `virticle node prepare`, do the same steps yourself. Run these
 ```sh
 apt-get update
 apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients \
-    dnsmasq-base ovmf swtpm swtpm-tools sudo curl ca-certificates openssh-client iproute2 libguestfs-tools
+    dnsmasq-base ovmf swtpm swtpm-tools sudo curl ca-certificates openssh-client iproute2 nfs-common libguestfs-tools
 systemctl enable --now libvirtd
 ```
 
 RHEL family (libvirt runs as modular daemons there; prepare enables the sockets):
 
 ```sh
-dnf install -y qemu-kvm libvirt virt-install edk2-ovmf swtpm swtpm-tools sudo curl openssh-clients iproute-tc guestfs-tools
+dnf install -y qemu-kvm libvirt virt-install edk2-ovmf swtpm swtpm-tools sudo curl openssh-clients iproute-tc nfs-utils guestfs-tools
 systemctl enable --now virtqemud.socket virtnetworkd.socket virtstoraged.socket virtnodedevd.socket \
     virtsecretd.socket virtproxyd.socket virtlogd.socket
 ```
@@ -232,6 +237,10 @@ On SELinux hosts run `restorecon -R /var/lib/virticle-node/.ssh` and `restorecon
 afterwards. The `virticle-node` file is embedded in the controller binary (linux/amd64 and linux/arm64) and
 `virticle node prepare` installs it. To get it by hand, build it from the source with `make nodebin`. The files are
 `internal/nodebin/dist/virticle-node_linux_amd64` and `_arm64`.
+
+For shared storage (NFS) also: on SELinux hosts `setsebool -P virt_use_nfs on`; on nodes with separate libvirt daemons
+(the RHEL family) a file `/etc/systemd/system/virtqemud.service.d/10-virticle-storage.conf` with
+`[Unit]`, `Wants=virtstoraged.service` and `After=virtstoraged.service`, then `systemctl daemon-reload`.
 
 ## The restricted SSH key
 
@@ -285,6 +294,9 @@ for:
 - **importing** disks and OVAs,
 - **moving a disk** to another pool,
 - **virtual switches**: Linux bridges with VLANs, bonds, addresses on a VLAN and MTU, with a rollback on the node,
+- **replication**: the copies of a VM on its standby node (overlay images, rebase, commit),
+- **rolling updates**: installing the system's updates and restarting the node, and checking afterwards what prepare set up,
+- **shared storage**: the rare cases where libvirt cannot do a file operation on NFS as the file's owner,
 - **cloning with guest preparation** (`virt-sysprep`, from the guest disk tools; not there after `prepare --minimal`).
 
 Backup export and import stream through the controller to and from the browser.
@@ -323,7 +335,7 @@ virticle-node ALL=(root) NOPASSWD: /usr/local/libexec/virticle-node
 | | |
 | --- | --- |
 | **What it may do** | Run one of the fixed verbs below. Every verb validates all its arguments first (absolute paths inside the allowed roots, no `..`, no `//`, no shell characters, no symbolic links in written paths). It never passes an argument to a shell. It works on open directory descriptors, so a link swapped in later is not followed. |
-| **What it may not do** | There is no verb that runs a given command, none that reads or writes outside the allowed roots, and none that replaces an existing file. It has no listener and no daemon. It cannot update itself: that would let anyone who holds the service account install any code as root. |
+| **What it may not do** | There is no verb that runs a given command, none that reads or writes outside the allowed roots, and none that replaces an existing file. The one verb that installs packages, `update-run`, takes no arguments and runs the distribution's own update tool with fixed options. It has no listener and no daemon. It cannot update itself: that would let anyone who holds the service account install any code as root. |
 
 ### Verbs
 
@@ -359,6 +371,19 @@ virticle-node ALL=(root) NOPASSWD: /usr/local/libexec/virticle-node
 | `convert-start WORKDIR SRC FORMAT` | detached `qemu-img convert` of `SRC` to `WORKDIR/out.part`; `FORMAT` is `raw`, `qcow2`, `vpc`, `vhdx` or `vdi`; a qcow2 backing chain must be inside the roots and may not use an external data file |
 | `convert-start WORKDIR SRC qcow2 OVERLAY...` | the same, for incremental backups: `SRC` is the full backup and each `OVERLAY` (up to 32, oldest first) a standalone qcow2 image of the blocks that changed; the result is the disk after the last one |
 | `backup-detach WORKDIR NAME` | removes the backing file reference from a qcow2 image in a work directory (`qemu-img rebase -u -b ""`) |
+| `work-stale DIR MINUTES` | the backup work directories (`.virticle-bk.XXXXXX`) of a pool directory in which nothing has changed for that many minutes |
+| `work-ls POOLDIR` | `NAME\|MTIME_SEC` of every replication work directory (`.virticle-rp.XXXXXX`, a real directory) of a pool directory |
+| `repl-overlay WORKDIR NAME BACKING` | a new empty qcow2 overlay `NAME` on `BACKING`, inside a replica work directory |
+| `repl-rebase WORKDIR NAME BACKING` | points `NAME` at `BACKING` (header only; no data is touched) |
+| `repl-commit WORKDIR NAME [BASE]` | writes `NAME` (and the overlays between) into `BASE`, by default its backing file, and leaves `NAME` empty; safe to cut short and to run again |
+| `repl-ls WORKDIR` | `NAME\|SIZE` of every regular file in a replica work directory |
+| `mtime PATH...` | modification time (nanoseconds) and size of each file |
+| `qcow2-bitmap-rm PATH NAME...` | removes the named persistent bitmaps, only names this program gives its own (`virticle-*`, `backup-*`), from a qcow2 image that no QEMU has open |
+| `nvram-new TEMPLATE DST` | makes a qcow2 UEFI variable store from the firmware package's raw template (below `/usr/share`, at most 8 MiB); `DST` is a new `.qcow2` name in the NVRAM directory |
+| `update-start`, `update-status`, `node-reboot` | start the package update in a unit of its own (`virticle-update`); print its state as JSON; restart the node in 5 seconds from a unit of its own. No arguments |
+| `update-run` | internal: the update itself (`dnf -y`, or `apt-get -y` keeping the old configuration files), started by `update-start`, never by hand |
+| `selfcheck [repair]` | checks what prepare set up and what a package update can disturb (libvirt services, start order of the storage daemon, the SELinux setting for NFS, swtpm file owner, the migration firewall service); with `repair` puts right what it can. Lines `STATUS<TAB>ID<TAB>DETAIL` |
+| `net-boot` | internal: runs at every boot while a network change is pending (`virticle-net-boot.service`) and arms the rollback timer again |
 | `convert-poll WORKDIR` / `convert-kill WORKDIR` | exit code and progress of that conversion; stop it |
 | `convert-finish WORKDIR DEST` | moves `out.part` to the new file `DEST` (never replaces) and drops the state files |
 | `download URL DEST [sha256\|sha512 HEX]` | the node fetches an `http://` or `https://` URL into the new file `DEST` (see "Downloads and imports" below) |

@@ -34,7 +34,14 @@ func TestSealOpenAndKeyFile(t *testing.T) {
 	if _, err := b.Open("plain"); err != ErrUnreadable {
 		t.Errorf("unsealed text must be refused: %v", err)
 	}
-	if _, err := b.Open(enc[:len(enc)-2] + "AA"); err != ErrUnreadable {
+	// Change one character in the middle to a different one. (Replacing the last two characters by a fixed pair
+	// changed nothing in one run out of a few thousand: the sealed text already ended in that pair.)
+	mid := len(enc) / 2
+	flip := byte('A')
+	if enc[mid] == 'A' {
+		flip = 'B'
+	}
+	if _, err := b.Open(enc[:mid] + string(flip) + enc[mid+1:]); err != ErrUnreadable {
 		t.Errorf("tampering must be detected: %v", err)
 	}
 	if e, _ := b.Seal(""); e != "" {

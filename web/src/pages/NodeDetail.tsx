@@ -149,7 +149,7 @@ function Summary({ n, alerts }: { n: NodeStatus; alerts: ReturnType<typeof useAl
             rows={[
               ["Hostname", info?.hostname ?? "–"],
               ["CPU", info ? `${info.cpus} × ${info.cpuModel}` : "–"],
-              ["Memory", info ? `${bytes(info.memoryKiB * 1024)} total, ${bytes(info.freeKiB * 1024)} free` : "–"],
+              ["Memory", info ? `${bytes(info.memoryKiB * 1024)} total, ${bytes(info.availableKiB * 1024)} available` : "–"],
               ["libvirt", info?.libvirtVersion ?? "–"],
               ["Address", <span className="mono" key="a">{n.user}@{n.addr}{n.jump ? ` via ${n.jump}` : ""}</span>],
             ]}

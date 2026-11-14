@@ -264,55 +264,54 @@ made when the schema version does not change.
 
 ### From 0.2.0 to 0.3.0
 
-Nodes need to be prepared again, because the node command has a new version
-(protocol 18, it was 10). Until you do, a node shows "prepared by an older
-version" and the features that need root on it are off: migration, backups,
-downloads into a pool, and the network changes. VMs keep
-running.
+Nodes need to be prepared again, because the node command has a new version (protocol 18, it was 10). Until you do, a node
+shows "prepared by an older version" and the features that need root on it are off: migration, backups, replication,
+shared storage, rolling updates, downloads into a pool and network changes. VMs keep running. The database schema goes from
+2 to 6; the controller copies the database first (see above).
+
+**Do not run two controllers of different versions against the same nodes**, not even for a short time. The old one
+would delete backups that the new one's incremental chains need and would not know replicas or a running rolling update.
+Stop the old controller before you start the new one.
 
 1. **Upgrade the controller** as above. A backup first is a good idea:
-   `sudo virticle backup -o /root/backups/` (see
-   [controller-backup.md](controller-backup.md)).
-2. **Check the web address.** The new HTTPS default (self-signed, port 8443)
-   applies to **fresh installs only**. A data directory that already has users
-   and no stored web settings keeps serving plain HTTP on `127.0.0.1:8080`, as
-   before. The **Web access** page says so. To reach the controller from other
-   computers, choose a mode on that page. Settings you stored with 0.2.0 are
-   kept.
-3. **Run `sudo virticle setup`** if you want it to open the web port in the
-   firewall. The package never does this by itself. You do not need it when
-   the controller keeps listening on `127.0.0.1`. Run it again after you
-   change the web port.
+   `sudo virticle backup -o /root/backups/` (see [controller-backup.md](controller-backup.md)).
+2. **Check the web address.** The new HTTPS default (self-signed, port 8443) applies to **fresh installs only**. A data
+   directory that already has users and no stored web settings keeps serving plain HTTP on `127.0.0.1:8080`, as before.
+   The **Web access** page says so. To reach the controller from other computers, choose a mode on that page. Settings you
+   stored with 0.2.0 are kept.
+3. **Run `sudo virticle setup`** if you want it to open the web port in the firewall. The package never does this by
+   itself. You do not need it when the controller keeps listening on `127.0.0.1`. Run it again after you change the web
+   port.
 4. **Prepare each node again.** Either way works:
    - In the web UI: open the node, then **Settings > Prepare this node**.
-   - In a shell: `virticle node prepare admin@host`. Add `--root` if the node
-     is a Root node.
+   - In a shell: `virticle node prepare admin@host`. Add `--root` if the node is a Root node.
 
-   Preparing replaces the node command and now also opens the migration ports
-   (TCP `49152` to `49215`) in firewalld or ufw. A node that 0.2.0 prepared
-   keeps its account `virticle`; new nodes use `virticle-node`. VMs, networks
-   and pools are not touched. A running controller notices a prepared node
-   within about 30 seconds.
-5. **Open each node** and check that **Settings** no longer warns that the node
-   is not prepared.
+   Preparing replaces the node command and also sets up what the new features need: it opens the migration ports (TCP
+   `49152` to `49215`) in firewalld or ufw, installs the NFS client, turns on `virt_use_nfs` on SELinux hosts, makes libvirt
+   start its storage before the VMs, and turns on autostart of the `default` network (Debian leaves it off). A node that
+   0.2.0 prepared keeps its account `virticle`; new nodes use `virticle-node`. VMs, networks and pools are not touched. A
+   running controller notices a prepared node within about 30 seconds.
+5. **Open each node** and check that **Settings** no longer warns that the node is not prepared.
 
-What you get without doing anything else: performance history (starts to fill
-at once), alerts for network links, the network drift warning, notifications
-(an alert webhook address from 0.2.0 becomes the destination **Webhook** under
-**Settings > Alerts**), and the daily controller backup (off until you switch
-it on under **Settings > Controller backup**). Existing VMs keep their firmware. A VM
-keeps the kind of snapshot it already has (see
+What you get without doing anything else:
+
+| New | What to do |
+| --- | --- |
+| Performance history, alerts for network links, the network drift warning | Nothing. They start at once. |
+| Notifications | An alert webhook address from 0.2.0 becomes the destination **Webhook** under **Settings > Alerts**. |
+| Incremental backups | Nothing. After the first full backup of a VM to a pool, the next ones copy only what changed. Old backups stay as they are and count as full. |
+| Daily controller backup | Off until you switch it on under **Settings > Controller backup**. |
+| Shared storage, rolling updates, replication | Used when you choose them: **Storage > Add shared storage**, **Nodes > Update all nodes**, and **Set up replication** on a VM. |
+
+Existing VMs keep their firmware, and a VM keeps the kind of snapshot it already has (see
 [Known limits](reference.md#known-limits)).
 
-**Container.** The new image keeps a data volume from 0.2.0 (an
-administrator, no stored web settings) answering where 0.2.0 did: HTTPS with a
-self-signed certificate on port 8080 inside the container. Recreate the
-container from the new image with the same `-p 127.0.0.1:8080:8080 -v ...:/data`
-as before and nothing else changes. The **Web access** page says so. When you
-choose a mode there, the controller moves to the port you set (8443 by default),
-so publish that port too. A new volume starts on port 8443 as described under
-[Container](#container). Tried with both images built from the tags `v0.2.0`
-and this version.
+**Container.** The new image keeps a data volume from 0.2.0 (an administrator, no stored web settings) answering where
+0.2.0 did: HTTPS with a self-signed certificate on port 8080 inside the container. Recreate the container from the new
+image with the same `-p 127.0.0.1:8080:8080 -v ...:/data` as before and nothing else changes. The **Web access** page says
+so. When you choose a mode there, the controller moves to the port you set (8443 by default), so publish that port too. A
+new volume starts on port 8443 as described under [Container](#container). Tried with both images built from the tags
+`v0.2.0` and this version.
 
 ### From 0.1.0
 
@@ -356,6 +355,11 @@ A backup made before the upgrade does the same for the whole data directory:
 Rolling back the controller does not undo the node command. A node that was
 prepared again keeps the new one and shows "prepared by an older version"
 to the old controller; prepare it again with the old version.
+
+Going back to 0.2.0 after 0.3.0 has made incremental backups: the old version refuses to restore an incremental backup
+(it would restore only part of a disk) and does not know that a kept backup builds on others, so its retention can
+delete what a chain needs. Full backups restore. Delete the replicas and stop the replication of VMs first; 0.2.0 would
+list a replica as an ordinary VM that must not be started.
 
 ## Uninstall
 

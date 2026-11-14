@@ -319,7 +319,14 @@ func (s *Server) vmBackup(w http.ResponseWriter, r *http.Request) {
 	if m.live {
 		mode = "live"
 	}
-	writeJSON(w, map[string]any{"task": id, "mode": mode, "kind": m.plan.Kind, "reason": m.plan.Reason})
+	writeJSON(w, backupStartAnswer(id, mode, m.plan))
+}
+
+// backupStartAnswer is the answer to starting a backup. plannedKind is what the run will try: libvirt may still
+// refuse an incremental backup and the run then makes a full one, so the field is not called "kind". What was made
+// is the kind in the backup's manifest (GET /api/backups).
+func backupStartAnswer(task int64, mode string, plan backupPlan) map[string]any {
+	return map[string]any{"task": task, "mode": mode, "plannedKind": plan.Kind, "plannedReason": plan.Reason}
 }
 
 // backupTarget names a backup task: the VM and where it goes.

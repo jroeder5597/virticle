@@ -112,12 +112,12 @@ type nodeInfo struct {
 	Capabilities      map[string]capability `json:"capabilities"`
 	Online            bool                  `json:"online"`
 
-	Hostname   string `json:"hostname"`
-	CPUModel   string `json:"cpuModel"`
-	CPUs       int32  `json:"cpus"`
-	MemoryKiB  uint64 `json:"memoryKiB"`
-	FreeKiB    uint64 `json:"freeKiB"`
-	LibvirtVer string `json:"libvirtVersion"`
+	Hostname     string `json:"hostname"`
+	CPUModel     string `json:"cpuModel"`
+	CPUs         int32  `json:"cpus"`
+	MemoryKiB    uint64 `json:"memoryKiB"`
+	AvailableKiB uint64 `json:"availableKiB"`
+	LibvirtVer   string `json:"libvirtVersion"`
 }
 
 func (s *Server) nodeInfo(w http.ResponseWriter, r *http.Request) {
@@ -142,14 +142,14 @@ func (s *Server) nodeInfo(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	free, _ := h.NodeGetFreeMemory()
+	avail, _ := h.AvailableMemory()
 	ver, _ := h.ConnectGetLibVersion()
 	mb := make([]byte, len(model))
 	for i, c := range model {
 		mb[i] = byte(c)
 	}
 	base.Hostname, base.CPUModel, base.CPUs = h.Name, string(bytes.TrimRight(mb, "\x00")), cpus
-	base.MemoryKiB, base.FreeKiB = mem, free/1024
+	base.MemoryKiB, base.AvailableKiB = mem, avail/1024
 	base.LibvirtVer = strconv.FormatUint(ver/1000000, 10) + "." + strconv.FormatUint(ver/1000%1000, 10) + "." + strconv.FormatUint(ver%1000, 10)
 	writeJSON(w, base)
 }
