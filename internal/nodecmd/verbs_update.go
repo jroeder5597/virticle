@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -303,6 +304,9 @@ func verbUpdateRun(c *Ctx) error {
 // toolFailure picks the lines of a package tool's output that say what went wrong (an error, a failed script, a
 // problem). When there are none, the last line.
 func toolFailure(out string) string {
+	if m := aptLockHolder.FindStringSubmatch(out); m != nil && strings.Contains(out, "Unable to acquire the dpkg") {
+		return "another program is using the package system: " + m[2] + " (process " + m[1] + "). Wait until it has finished, or stop it if it is stuck"
+	}
 	var hit []string
 	for _, l := range strings.Split(out, "\n") {
 		t := strings.TrimSpace(l)
@@ -322,6 +326,9 @@ func toolFailure(out string) string {
 	}
 	return strings.Join(hit, " | ")
 }
+
+// aptLockHolder is the part of apt's own waiting message that names the program holding the package lock.
+var aptLockHolder = regexp.MustCompile(`held by process (\d+) \(([^)]+)\)`)
 
 func lastLine(s string) string {
 	l := strings.Split(strings.TrimSpace(s), "\n")

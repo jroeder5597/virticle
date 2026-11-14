@@ -1515,7 +1515,9 @@ func (s *Server) findVM(uuid string) (int64, *hostconn.Host, libvirt.Domain, boo
 		if err != nil {
 			continue
 		}
-		if d, err := h.DomainLookupByUUID(u); err == nil {
+		if d, err := h.DomainLookupByUUID(u); err == nil && !isReplicaOrStale(h, d) {
+			// A replica or a stale copy has the identity of the VM but is not it: after a move to the standby
+			// the old node holds the replica, and "found there" must not count as "back".
 			return n.ID, h, d, true
 		}
 	}
