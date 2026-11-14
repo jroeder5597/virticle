@@ -12,8 +12,8 @@ On this page:
 - [Upgrading](#upgrading), with the steps from 0.2.0 and from 0.1.0, and how to roll back
 - [Uninstall](#uninstall)
 
-Releases are at <https://github.com/jroeder5597/virticle/releases>. Below,
-`RELEASES_URL` is `https://github.com/jroeder5597/virticle/releases/download`.
+Releases are at <https://github.com/jacobanthonyroeder/virticle/releases>. Below,
+`RELEASES_URL` is `https://github.com/jacobanthonyroeder/virticle/releases/download`.
 
 ## Supported platforms
 
@@ -46,11 +46,11 @@ Linux amd64 and arm64.
 1. Add the signing key:
 
        sudo install -d -m 0755 /etc/apt/keyrings
-       sudo curl -fsSL https://jroeder5597.github.io/virticle/virticle.gpg -o /etc/apt/keyrings/virticle.gpg
+       sudo curl -fsSL https://jacobanthonyroeder.github.io/virticle/virticle.gpg -o /etc/apt/keyrings/virticle.gpg
 
 2. Add the repository:
 
-       echo "deb [signed-by=/etc/apt/keyrings/virticle.gpg] https://jroeder5597.github.io/virticle/apt stable main" | sudo tee /etc/apt/sources.list.d/virticle.list
+       echo "deb [signed-by=/etc/apt/keyrings/virticle.gpg] https://jacobanthonyroeder.github.io/virticle/apt stable main" | sudo tee /etc/apt/sources.list.d/virticle.list
 
 3. Install:
 
@@ -61,7 +61,7 @@ Linux amd64 and arm64.
 
 1. Add the repository (it names the signing key):
 
-       sudo curl -fsSL https://jroeder5597.github.io/virticle/virticle.repo -o /etc/yum.repos.d/virticle.repo
+       sudo curl -fsSL https://jacobanthonyroeder.github.io/virticle/virticle.repo -o /etc/yum.repos.d/virticle.repo
 
 2. Install. `dnf` shows the key's fingerprint and asks you to accept it once:
 
@@ -71,7 +71,7 @@ Linux amd64 and arm64.
 `FDA7274A068F719EAB676033C306C6E8F14D3778`. For Debian and Ubuntu, `gpg --show-keys
 /etc/apt/keyrings/virticle.gpg` prints it. For dnf, compare it with the one
 `dnf` shows before you accept. The same fingerprint is on
-<https://jroeder5597.github.io/virticle/>.
+<https://jacobanthonyroeder.github.io/virticle/>.
 
 **Then run the setup.** The package never opens the firewall. Run
 `sudo virticle setup` once after installing (described below).

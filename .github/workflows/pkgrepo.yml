@@ -2,7 +2,7 @@ name: pkgrepo
 
 # Rebuilds the signed apt and dnf repository from the packages of every
 # published (not draft, not pre-release) release and deploys it to GitHub
-# Pages: https://jroeder5597.github.io/virticle/
+# Pages: https://jacobanthonyroeder.github.io/virticle/
 # One-time setup: Settings > Pages > Source: GitHub Actions. See docs/install.md.
 on:
   release:

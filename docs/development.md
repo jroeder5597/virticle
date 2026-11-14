@@ -11,7 +11,7 @@
 | `internal/nodebin` | Embeds the built node command for linux/amd64 and linux/arm64. |
 | `web/` | React and TypeScript UI, embedded into the binary from `web/dist`. |
 | `third_party/go-libvirt` | Vendored libvirt RPC client. |
-| `e2e/` | Playwright browser suite. See [e2e/README.md](https://github.com/jroeder5597/virticle/blob/main/e2e/README.md) in the repository (packages do not ship it). |
+| `e2e/` | Playwright browser suite. See [e2e/README.md](https://github.com/jacobanthonyroeder/virticle/blob/main/e2e/README.md) in the repository (packages do not ship it). |
 | `lab/` | Scripts that build a nested test lab of libvirt nodes. |
 | `packaging/`, `.goreleaser.yaml` | Service file, package scripts, release pipeline. |
 

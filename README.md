@@ -43,7 +43,7 @@ Pick one.
 | From source (needs Go and Node.js) | `make build` then `./bin/virticle -data ./data` |
 
 Download packages from
-[Releases](https://github.com/jroeder5597/virticle/releases). A package runs a
+[Releases](https://github.com/jacobanthonyroeder/virticle/releases). A package runs a
 systemd service that serves HTTPS with a self-signed certificate on port 8443
 of all interfaces. It does not touch the firewall: run `sudo virticle setup`
 once. It opens the web port in firewalld or ufw and prints the address to

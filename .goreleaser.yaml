@@ -63,7 +63,7 @@ nfpms:
     vendor: Virticle
     maintainer: Virticle maintainers <root@localhost>
     description: Web controller for KVM/libvirt hosts, managed over SSH.
-    homepage: https://github.com/jroeder5597/virticle
+    homepage: https://github.com/jacobanthonyroeder/virticle
     license: Apache-2.0
     formats: [deb, rpm]
     section: admin
@@ -112,7 +112,7 @@ nfpms:
       group: Applications/System
     deb:
       fields:
-        Bugs: https://github.com/jroeder5597/virticle/issues
+        Bugs: https://github.com/jacobanthonyroeder/virticle/issues
 
 # Container image from the prebuilt binaries (Dockerfile.release). The registry
 # below is a placeholder; the release workflow does not log in to one, so
@@ -122,7 +122,7 @@ dockers_v2:
     ids: [virticle]
     dockerfile: Dockerfile.release
     images:
-      - ghcr.io/jroeder5597/virticle
+      - ghcr.io/jacobanthonyroeder/virticle
     tags:
       - "{{ .Version }}"
       - latest

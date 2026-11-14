@@ -12,7 +12,7 @@
 #
 # Environment (all optional):
 #   BASE_URL             where the site will be served, no trailing slash
-#                        (default https://jroeder5597.github.io/virticle)
+#                        (default https://jacobanthonyroeder.github.io/virticle)
 #   GPG_KEY              fingerprint of the signing key (default: the only
 #                        secret key; it is an error if there are several)
 #   GPG_PASSPHRASE_FILE  file holding the key passphrase; leave unset when the
@@ -25,7 +25,7 @@ if [ $# -ne 2 ]; then
 fi
 pkgdir=$(cd "$1" && pwd)
 out=$2
-BASE_URL=${BASE_URL:-https://jroeder5597.github.io/virticle}
+BASE_URL=${BASE_URL:-https://jacobanthonyroeder.github.io/virticle}
 BASE_URL=${BASE_URL%/}
 
 for t in gpg apt-ftparchive createrepo_c rpmsign gzip; do
