@@ -10,7 +10,7 @@ const VIEWER = `${P}ovviewer`;
 const PASS = "e2e-user-pass-123";
 
 // Clone and Convert to template are single entries; the others open a submenu.
-const TOP = ["Power", "Edit Settings", "Snapshots", "Clone", "Convert to template", "Migrate", "More"];
+const TOP = ["Power", "Edit Settings", "Snapshots", "Clone", "Convert to template", "Migrate", "Replication", "More"];
 const SUBMENUS: Record<string, string[]> = {
   Power: ["Power On", "Reboot (Graceful)", "Shutdown (graceful)", "Pause", "Resume", "Halt (Force Shutdown)", "Reset (Hard Reboot)", "Sync guest clock"],
   "Edit Settings": ["CPU and memory", "Disks", "Network interfaces", "CD-ROM", "Boot order", "Firmware and TPM", "Passthrough devices"],
