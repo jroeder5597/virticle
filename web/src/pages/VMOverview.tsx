@@ -9,7 +9,7 @@ import { GuestCard, useAgentHelp, VirtioWin } from "./Guest";
 import "./status.css";
 import { StatusLine } from "../Checks";
 import { relationText } from "../cpu";
-import { ReplicationCard } from "./Replication";
+import { ReplicationRow } from "./Replication";
 
 const last = <T,>(a: T[]): T | undefined => a[a.length - 1];
 const dash = "–";
@@ -74,7 +74,7 @@ function AgentBadge({ d }: { d: VMDetail }) {
 type Stats = { points: VMPoint[] } | undefined;
 
 /** Power state, guest OS, agent, DNS name and IP addresses. Rows keep their place whether or not values have arrived. */
-function SummaryCard({ d, g }: { d: VMDetail; g?: GuestInfo }) {
+function SummaryCard({ d, g, base, openReplication }: { d: VMDetail; g?: GuestInfo; base: string; openReplication: () => void }) {
   const running = d.state === "running";
   const lease = useLeaseName(d);
   const agent = d.agent === "connected" && running;
@@ -123,6 +123,7 @@ function SummaryCard({ d, g }: { d: VMDetail; g?: GuestInfo }) {
             </dd>
           </>
         )}
+        {d.replication && <ReplicationRow d={d} base={base} open={openReplication} />}
         <dt>Passthrough</dt>
         <dd className="ov-pass">
           {d.passthroughDevices === 0
@@ -212,7 +213,7 @@ function UtilCard({ d, s, g }: { d: VMDetail; s: Stats; g?: GuestInfo }) {
   );
 }
 
-export default function Overview({ d, base, onChanged }: { d: VMDetail; base: string; onChanged: () => void }) {
+export default function Overview({ d, base, onChanged, openReplication }: { d: VMDetail; base: string; onChanged: () => void; openReplication: () => void }) {
   const act = useAction();
   // libvirt announces no event for an autostart change, so the box follows the click at once and the detail is reloaded.
   const [auto, setAuto] = useState(d.autostart);
@@ -239,11 +240,10 @@ export default function Overview({ d, base, onChanged }: { d: VMDetail; base: st
     <div className="ov">
       <div className="ov-band">
         <ConsoleCard d={d} />
-        <SummaryCard d={d} g={g} />
+        <SummaryCard d={d} g={g} base={base} openReplication={openReplication} />
         <UtilCard d={d} s={s} g={g} />
       </div>
       <div className="ov-grid">
-        {!inert && !d.template && <ReplicationCard d={d} base={base} onChanged={onChanged} />}
         <section className="card">
           <h3>Hardware</h3>
           <dl>

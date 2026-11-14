@@ -1,4 +1,4 @@
-// VM replication: the card on a source VM (set up, status, replicate now, stop), the dialog that sets it up, and the
+// VM replication: the dialog of a source VM (set up, status, replicate now, stop; opened from Actions or the Overview row), the dialog that sets it up, and the
 // cards of the standby's copy ("replica": fail over, delete) and of the old VM after a failover ("stale copy").
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -50,83 +50,120 @@ const nodeName = (n: NodeStatus) => n.hostname || n.addr;
 
 // ---------------------------------------------------------------- source VM
 
-export function ReplicationCard({ d, base, onChanged }: { d: VMDetail; base: string; onChanged: () => void }) {
-  const op = atLeast(useRole(), "operator");
+/** The replication state of a source VM, kept current by the event stream and, while a copy runs, by a slow poll. */
+function useReplication(d: VMDetail, base: string) {
   const st = useLive(() => get<ReplicationStatus>(`${base}/replication`), `${base}/repl`, (e) => e.type === "domain" ? e.uuid === d.uuid : e.type === "node" || (e.type === "task" && e.task?.status !== "running"));
-  const act = useAction();
-  const nodes = useOtherNodes(d.node, op);
-  const [dialog, setDialog] = useState<"setup" | "stop">();
-  const s = st.data;
-  const running = !!s?.running;
-  // The card follows a run that is going.
+  const running = !!st.data?.running;
   useEffect(() => {
     if (!running) return;
     const h = setInterval(() => document.visibilityState !== "hidden" && st.reload(), 5000);
     return () => clearInterval(h);
   }, [running, st.reload]);
-  if (!s) return <section className="card ov-wide" id="replication" aria-label="Replication"><h3>Replication</h3><ErrorBox error={st.error} /></section>;
-  const cfg = s.config;
+  return st;
+}
+
+/** The Overview's one row of a replicated VM: where the copy is and how old it is; the value opens the dialog. */
+export function ReplicationRow({ d, base, open }: { d: VMDetail; base: string; open: () => void }) {
+  const st = useReplication(d, base);
+  const cfg = d.replication;
+  if (!cfg) return null;
+  const s = st.data;
+  const failed = !!s?.error && !s.running;
+  return (
+    <>
+      <dt>Replication</dt>
+      <dd id="replication-row">
+        <button className="link" onClick={open}>
+          to {cfg.targetName}, {cfg.lastOk ? `last copy ${clock(cfg.lastOk)}, ${ago(cfg.lastOk)}` : "no copy yet"}
+        </button>
+        {s?.running && <StatusLine status="info">Copying now</StatusLine>}
+        {failed && <StatusLine status="warning">The last run failed</StatusLine>}
+        {s?.replica?.late && <StatusLine status="warning">The copy is older than twice its interval</StatusLine>}
+        {s?.standbyOffline && <StatusLine status="warning">{cfg.targetName} is offline</StatusLine>}
+      </dd>
+    </>
+  );
+}
+
+/** The dialog of Actions > Replication: set up, status, replicate now, change, stop. */
+export function ReplicationDialog({ d, base, onChanged, onClose }: { d: VMDetail; base: string; onChanged: () => void; onClose: () => void }) {
+  const op = atLeast(useRole(), "operator");
+  const st = useReplication(d, base);
+  const act = useAction();
+  const nodes = useOtherNodes(d.node, op);
+  const [dialog, setDialog] = useState<"setup" | "stop">();
+  const s = st.data;
+  const running = !!s?.running;
+  const cfg = s?.config;
   const reload = () => {
     st.reload();
     onChanged();
   };
   const noNode = nodes !== undefined && nodes.length === 0;
   return (
-    <section className="card ov-wide" id="replication" aria-label="Replication">
-      <h3>Replication</h3>
-      {!s.configured || !cfg ? (
-        <>
-          <p>Keep a copy of this VM on another node that starts with one click if this node fails.</p>
-          {op && (
-            <button className="primary" disabled={!nodes || noNode} title={noNode ? "No other node is online" : undefined} onClick={() => setDialog("setup")}>
-              Set up replication
+    <Modal title="Replication" onClose={onClose}>
+      <div id="replication">
+        {!s ? (
+          <ErrorBox error={st.error} />
+        ) : !s.configured || !cfg ? (
+          <>
+            <p>Keep a copy of this VM on another node that starts with one click if this node fails.</p>
+            {noNode && <p className="muted">No other node is online.</p>}
+          </>
+        ) : (
+          <>
+            <dl className="ov-sum">
+              <dt>Standby node</dt>
+              <dd>{cfg.targetName}</dd>
+              <dt>Every</dt>
+              <dd>{everyOptions.find((o) => o.value === String(cfg.everyMinutes))?.label ?? `${cfg.everyMinutes} minutes`}</dd>
+              <dt>Last copy</dt>
+              <dd>{cfg.lastOk ? `${clock(cfg.lastOk)}, ${ago(cfg.lastOk)}` : "No copy yet"}</dd>
+              <dt>Sent</dt>
+              <dd>{cfg.lastOk ? `${bytes(cfg.lastBytes ?? 0)}, ${cfg.lastKind === "incremental" ? "changes only" : "everything"}` : "–"}</dd>
+              <dt>Next copy</dt>
+              <dd>{s.runner === "disabled" || !cfg.next ? "not scheduled: this controller runs without a scheduler" : clock(cfg.next)}</dd>
+            </dl>
+            {running && <StatusLine status="info">Copying now</StatusLine>}
+            {s.error && !running && <StatusLine status="warning">The last run failed{s.errorAt ? ` at ${clock(s.errorAt)}` : ""}: {s.error}</StatusLine>}
+            {s.replica?.late && <StatusLine status="warning">The copy on {cfg.targetName} is older than twice its interval.</StatusLine>}
+            {s.standbyOffline && <StatusLine status="warning">{cfg.targetName} is offline, so the copy cannot be updated.</StatusLine>}
+          </>
+        )}
+        <ErrorBox error={act.error} />
+      </div>
+      <footer>
+        <button autoFocus onClick={onClose}>
+          Close
+        </button>
+        {op && s && (!s.configured || !cfg) && (
+          <button className="primary" disabled={!nodes || noNode} title={noNode ? "No other node is online" : undefined} onClick={() => setDialog("setup")}>
+            Set up replication
+          </button>
+        )}
+        {op && s && s.configured && cfg && (
+          <>
+            <button className="danger" disabled={act.busy} onClick={() => setDialog("stop")}>
+              Stop replication
             </button>
-          )}
-          {noNode && <p className="muted">No other node is online.</p>}
-        </>
-      ) : (
-        <>
-          <dl className="ov-sum">
-            <dt>Standby node</dt>
-            <dd>{cfg.targetName}</dd>
-            <dt>Every</dt>
-            <dd>{everyOptions.find((o) => o.value === String(cfg.everyMinutes))?.label ?? `${cfg.everyMinutes} minutes`}</dd>
-            <dt>Last copy</dt>
-            <dd>{cfg.lastOk ? `${clock(cfg.lastOk)}, ${ago(cfg.lastOk)}` : "No copy yet"}</dd>
-            <dt>Sent</dt>
-            <dd>{cfg.lastOk ? `${bytes(cfg.lastBytes ?? 0)}, ${cfg.lastKind === "incremental" ? "changes only" : "everything"}` : "–"}</dd>
-            <dt>Next copy</dt>
-            <dd>{s.runner === "disabled" || !cfg.next ? "not scheduled: this controller runs without a scheduler" : clock(cfg.next)}</dd>
-          </dl>
-          {running && <StatusLine status="info">Copying now</StatusLine>}
-          {s.error && !running && <StatusLine status="warning">The last run failed{s.errorAt ? ` at ${clock(s.errorAt)}` : ""}: {s.error}</StatusLine>}
-          {s.replica?.late && <StatusLine status="warning">The copy on {cfg.targetName} is older than twice its interval.</StatusLine>}
-          {s.standbyOffline && <StatusLine status="warning">{cfg.targetName} is offline, so the copy cannot be updated.</StatusLine>}
-          <ErrorBox error={act.error} />
-          {op && (
-            <div className="actions">
-              {running ? (
-                <button disabled={act.busy} onClick={async () => (await act.run(() => post(`${base}/replication/cancel`))) && reload()}>
-                  Cancel copy
-                </button>
-              ) : (
-                <button className="primary" disabled={act.busy} onClick={async () => (await act.run(() => post(`${base}/replication/run`))) && reload()}>
-                  Replicate now
-                </button>
-              )}
-              <button disabled={act.busy} onClick={() => setDialog("setup")}>
-                Change
+            <button disabled={act.busy} onClick={() => setDialog("setup")}>
+              Change
+            </button>
+            {running ? (
+              <button disabled={act.busy} onClick={async () => (await act.run(() => post(`${base}/replication/cancel`))) && reload()}>
+                Cancel copy
               </button>
-              <button className="danger" disabled={act.busy} onClick={() => setDialog("stop")}>
-                Stop replication
+            ) : (
+              <button className="primary" disabled={act.busy} onClick={async () => (await act.run(() => post(`${base}/replication/run`))) && reload()}>
+                Replicate now
               </button>
-            </div>
-          )}
-        </>
-      )}
+            )}
+          </>
+        )}
+      </footer>
       {dialog === "setup" && nodes && <SetupDialog d={d} base={base} nodes={nodes} current={cfg} onClose={() => setDialog(undefined)} onDone={reload} />}
       {dialog === "stop" && cfg && <StopDialog base={base} target={cfg.targetName} onClose={() => setDialog(undefined)} onDone={reload} />}
-    </section>
+    </Modal>
   );
 }
 

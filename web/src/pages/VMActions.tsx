@@ -34,6 +34,7 @@ export default function VMActions(props: {
   /** Runs a call with the page's busy and error state. */
   run: (fn: () => Promise<unknown>) => Promise<boolean>;
   busy: boolean;
+  openReplication: () => void;
 }) {
   const { d, base, goto, run, busy } = props;
   const nav = useNavigate();
@@ -113,6 +114,7 @@ export default function VMActions(props: {
       ? { label: "Convert back to a VM", run: convertBack, ...when(off, "Shut the VM down first") }
       : { label: "Convert to template", run: () => setConverting(true), ...when(canConvert, "Shut the VM down first, or start it with the guest agent connected") },
     { label: "Migrate", items: migrate, disabled: !op, title: need },
+    { label: "Replication", run: props.openReplication, disabled: d.template, title: d.template ? "A template cannot be replicated" : undefined },
     { label: "More", items: more },
     ];
 

@@ -13,7 +13,7 @@ import BackupsTab from "./Backups";
 import VMActions from "./VMActions";
 import Overview from "./VMOverview";
 import { TagEditor } from "./Tags";
-import { ReplicaCard, StaleCard } from "./Replication";
+import { ReplicaCard, ReplicationDialog, StaleCard } from "./Replication";
 
 export default function VMDetailPage() {
   const { node: nodeParam, uuid = "" } = useParams();
@@ -43,6 +43,7 @@ export default function VMDetailPage() {
   }, [waitingForAgent, vm.reload]);
   // After the tab changed, bring a card of it into view (instantly).
   const [jump, setJump] = useState<string | undefined>();
+  const [repl, setRepl] = useState(false);
   useEffect(() => {
     if (!jump) return;
     document.getElementById(jump)?.scrollIntoView({ block: "start" });
@@ -85,7 +86,7 @@ export default function VMDetailPage() {
           <TagEditor tags={d.tags ?? []} base={base} vmName={d.name} onChanged={vm.reload} />
         </div>
         <div className="actions">
-          {!replica && <VMActions d={d} base={base} goto={goto} onChanged={vm.reload} run={act.run} busy={act.busy} />}
+          {!replica && <VMActions d={d} base={base} goto={goto} onChanged={vm.reload} run={act.run} busy={act.busy} openReplication={() => setRepl(true)} />}
         </div>
       </div>
       <ErrorBox error={act.error ?? vm.error} />
@@ -103,13 +104,14 @@ export default function VMDetailPage() {
           </button>
         ))}
       </div>
-      {(tab === "overview" || replica) && <Overview d={d} base={base} onChanged={vm.reload} />}
+      {(tab === "overview" || replica) && <Overview d={d} base={base} onChanged={vm.reload} openReplication={() => setRepl(true)} />}
       {!replica && tab === "performance" && <PerformanceTab kind="vm" id={uuid} passthrough={d.passthroughDevices > 0} />}
       {!replica && tab === "hardware" && <Hardware d={d} base={base} onChanged={vm.reload} />}
       {!replica && tab === "console" && <ConsoleTab d={d} base={base} onChanged={vm.reload} />}
       {!replica && tab === "snapshots" && <SnapshotsTab d={d} base={base} />}
       {!replica && tab === "backups" && <BackupsTab d={d} base={base} />}
       {!replica && tab === "xml" && <XMLEditor d={d} base={base} onSaved={vm.reload} />}
+      {repl && <ReplicationDialog d={d} base={base} onChanged={vm.reload} onClose={() => setRepl(false)} />}
     </>
   );
 }

@@ -1,6 +1,7 @@
-// VM replication to a standby node: the Replication card of a running VM and its setup dialog, the first copy, the
+// VM replication to a standby node: Actions > Replication of a running VM, its dialog and the Overview row, the first copy, the
 // copy on the other node (state "replica", no normal actions, "Planned failover"), the planned failover itself (the
 // VM runs on node 2, the old one on node 1 is a "old copy"), and the cleanup of both sides.
+import { Page } from "@playwright/test";
 import { mkdirSync } from "fs";
 import { Api } from "../lib/api";
 import { cleanVMs, createCirros, expect, openVM, test } from "../lib/fixtures";
@@ -8,6 +9,12 @@ import { env, P } from "../lib/env";
 import { dialog, field } from "../lib/ui";
 
 const NAME = `${P}repl1`;
+
+/** Actions > Replication. */
+async function openReplication(page: Page) {
+  await page.locator(".head").getByRole("button", { name: "Actions" }).click();
+  await page.getByRole("menuitem", { name: "Replication", exact: true }).click();
+}
 const SHOTS = process.env.E2E_SHOTS ?? "test-results/replication";
 
 /** Everything named NAME on any node: stop replication, delete replicas, then delete the VMs. */
@@ -41,7 +48,11 @@ test.describe.serial("replication", () => {
     await page.setViewportSize({ width: 1280, height: 900 });
     vm = await createCirros(api, (await api.nodeId(env.node1)), NAME, { start: true });
     await openVM(page, vm);
-    const card = page.locator("section#replication");
+    // no card on the Overview; the item is in the Actions menu, and no row before replication is set up
+    await expect(page.locator("section#replication")).toHaveCount(0);
+    await expect(page.locator("#replication-row")).toHaveCount(0);
+    const card = page.getByRole("dialog", { name: "Replication", exact: true });
+    await openReplication(page);
     await expect(card).toContainText("Keep a copy of this VM on another node that starts with one click if this node fails.");
     await card.getByRole("button", { name: "Set up replication" }).click();
     const dlg = dialog(page, `Replicate ${NAME}`);
@@ -64,7 +75,16 @@ test.describe.serial("replication", () => {
     await expect(card.getByRole("button", { name: "Replicate now" })).toBeVisible();
     await expect(card.getByRole("button", { name: "Change" })).toBeVisible();
     await expect(card.getByRole("button", { name: "Stop replication" })).toBeVisible();
-    await card.screenshot({ path: `${SHOTS}/source-card.png` });
+    await card.screenshot({ path: `${SHOTS}/source-dialog.png` });
+    await card.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(card).toBeHidden();
+    // the Overview shows one row; its value opens the dialog again
+    const row = page.locator("#replication-row");
+    await expect(row).toContainText(`to ${env.node2}, last copy`);
+    await page.locator("#summary").screenshot({ path: `${SHOTS}/summary-row.png` });
+    await row.getByRole("button").click();
+    await expect(card).toBeVisible();
+    await card.getByRole("button", { name: "Close", exact: true }).click();
   });
 
   test("a move to the standby is not refused: the replica steps aside", async ({ api, n1 }) => {
@@ -190,13 +210,16 @@ test.describe.serial("replication", () => {
     // a copy that is being written cannot be deleted: let the first copy back finish
     await api.waitFor("the copy back to finish", async () => !(await api.get(`/nodes/${n2id}/vms/${mine.uuid}/replication`)).running, 240_000, 3000);
     await openVM(page, { node: n2id, uuid: mine.uuid, name: NAME });
-    const card = page.locator("section#replication");
+    const card = page.getByRole("dialog", { name: "Replication", exact: true });
+    await openReplication(page);
     await card.getByRole("button", { name: "Stop replication" }).click();
     const dlg = dialog(page, "Stop replication");
     await expect(dlg.getByLabel(/Also delete the copy on/)).toBeChecked();
     await dlg.getByRole("button", { name: "Stop replication" }).click();
     await expect(dlg).toBeHidden({ timeout: 60_000 });
     await expect(card.getByRole("button", { name: "Set up replication" })).toBeVisible({ timeout: 30_000 });
+    await card.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(page.locator("#replication-row")).toHaveCount(0);
     await expect.poll(async () => (await api.vms()).filter((v) => v.name === NAME).length, { timeout: 60_000 }).toBe(1);
     await cleanAll(api);
     expect((await api.vms()).filter((v) => v.name === NAME)).toHaveLength(0);

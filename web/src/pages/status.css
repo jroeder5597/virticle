@@ -25,6 +25,7 @@
 .ov h4:first-child { margin-top: 0; }
 .ov-sum { grid-template-columns: 130px minmax(0, 1fr); }
 .ov-sum dd { overflow-wrap: anywhere; min-height: 1.5em; }
+.ov-sum dd button.link { white-space: normal; text-align: left; overflow-wrap: anywhere; }
 .util { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 8px; }
 .st-col { min-width: 0; display: grid; align-content: start; gap: 4px; }
 .st-val { font-size: 1.6rem; font-weight: 600; line-height: 2rem; min-height: 2rem; font-variant-numeric: tabular-nums; }

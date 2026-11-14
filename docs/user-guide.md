@@ -164,7 +164,8 @@ Good to know:
 ![VM overview](img/vm-overview.png)
 
 - The **Overview** tab shows a console preview, state, guest agent, addresses,
-  passthrough devices and live usage.
+  passthrough devices and live usage. A replicated VM also shows a **Replication** row: the standby node and the
+  time of the last copy. Click it to open the replication dialog.
 - **Actions** holds everything else:
 
 | Menu | Items |
@@ -175,6 +176,7 @@ Good to know:
 | Clone | Clone the VM (shut it down first). A template is cloned linked; **Advanced** offers a full copy. |
 | Convert to template | Optionally resets the identity of a running guest. **Convert back to a VM** undoes it. |
 | Migrate | To another node, or move a disk to another pool. |
+| Replication | Keep a standby copy on another node ([Replication and failover](#replication-and-failover)). |
 | More | **Edit XML**, and **Delete VM** (shut the VM down first; its disks are deleted too unless you untick the box). |
 
 Sync guest clock is under **Power**.
@@ -301,7 +303,7 @@ automatic failover would need is in [backlog-ha.md](backlog-ha.md).
 
 ### Set it up
 
-1. Open the VM, **Overview**, and in the card **Replication** choose **Set up replication**.
+1. Open the VM, choose **Actions**, **Replication**, then **Set up replication**.
 2. Pick **Replicate to** (the standby node) and **Every** (5 minutes, 15 minutes, 30 minutes, 1 hour, 6 hours or 1 day).
 3. Choose **Start replication**. The first copy sends the whole VM; later copies send only what changed. The pool on the
    standby is chosen for you.
@@ -309,9 +311,9 @@ automatic failover would need is in [backlog-ha.md](backlog-ha.md).
 Each copy of a running VM freezes the guest's file systems for the instant it starts, the same as a backup does, when the
 guest agent is connected; the task says whether it did. A copy is made without the freeze if the freeze fails.
 
-![Replication card](img/replication.png)
+![Replication dialog](img/replication.png)
 
-The card shows the standby node, the last copy (time and age), how much was sent, and when the next copy is due. It warns
+The dialog shows the standby node, the last copy (time and age), how much was sent, and when the next copy is due. It warns
 when a run failed or the copy is older than twice its interval. **Replicate now** copies at once, **Change** edits the
 settings, **Stop replication** ends it.
 
