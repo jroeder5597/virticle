@@ -768,6 +768,7 @@ if [ -f ` + nodeproto.HookPath + ` ] && grep -q '` + nodeproto.HookMark + `' ` +
   for s in virtqemud libvirtd; do if systemctl is-active --quiet "$s" 2>/dev/null; then systemctl reload "$s" >/dev/null 2>&1 || systemctl kill -s HUP "$s" >/dev/null 2>&1; fi; done
   echo "start guard removed"; changed=1
 fi
+` + appArmorRemoveScript + `
 if { [ -f ` + nodeCmdPath + ` ] || [ -f ` + oldHelperPath + ` ]; } && [ ! -f ` + sudoersPath + ` ]; then rm -f ` + nodeCmdPath + ` ` + oldHelperPath + `; systemctl disable virticle-net-boot.service >/dev/null 2>&1; rm -f /etc/systemd/system/virticle-net-boot.service; rmdir /usr/local/libexec 2>/dev/null; echo "node command removed"; changed=1; elif [ -f ` + nodeCmdPath + ` ] || [ -f ` + oldHelperPath + ` ]; then echo "node command kept, another account's sudo rule uses it"; else echo "no node command"; fi
 if [ "$u" != root ] && getent passwd "$u" | grep -q "` + AccountComment + `"; then
   pkill -KILL -u "$u" 2>/dev/null; sleep 1

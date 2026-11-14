@@ -17,6 +17,14 @@ const (
 	// HookRefuse is the exit status of "hook-qemu" that means "do not start this VM". The hook file turns it
 	// into a failure for libvirt and every other status (an error, a missing program) into a start.
 	HookRefuse = 13
+	// AppArmorMain and AppArmorLocal are libvirt's AppArmor profile on Debian and Ubuntu and the file it includes
+	// for local rules. libvirtd runs the hook in its own profile, which does not let it start the node command;
+	// prepare adds one block there (between AppArmorBegin and AppArmorEnd) that lets the hook run the node
+	// command in a profile of its own: it may run ssh and use the network, nothing else.
+	AppArmorMain  = "/etc/apparmor.d/usr.sbin.libvirtd"
+	AppArmorLocal = "/etc/apparmor.d/local/usr.sbin.libvirtd"
+	AppArmorBegin = "# BEGIN virticle start guard (written by virticle node prepare)"
+	AppArmorEnd   = "# END virticle start guard"
 	// SelftestVM is the name of the probe VM prepare starts once to see that libvirt runs the hook.
 	SelftestVM = "virticle-guard-selftest"
 	// SelftestMark starts the line the hook answers the probe with.
@@ -45,3 +53,27 @@ func IsGuardHook(text string) bool { return strings.Contains(text, HookMark) }
 func TookOver(standbyHasRecord bool, standbyGen, askerGen int) bool {
 	return standbyHasRecord && standbyGen > askerGen
 }
+
+// AppArmorBlock is the rule block for the hook's node command; AppArmorHome in it stands for the home directory of
+// the account whose node key the command uses (prepare fills it in on the node).
+const AppArmorHome = "@HOME@"
+
+const AppArmorBlock = AppArmorBegin + `
+` + Path + ` Cx -> virticle_node,
+profile virticle_node {
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+  ` + Path + ` mr,
+  /usr/bin/ssh ix,
+  /usr/bin/getent ix,
+  ` + AppArmorHome + `/.ssh/* r,
+  /proc/*/cgroup r,
+  /proc/*/mountinfo r,
+  network inet stream,
+  network inet6 stream,
+  capability setuid,
+  capability setgid,
+  capability dac_override,
+  capability dac_read_search,
+}
+` + AppArmorEnd + "\n"

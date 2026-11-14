@@ -85,11 +85,11 @@ func asStatus(err error, target **statusError) bool {
 
 func TestStepGuard(t *testing.T) {
 	good := "result: " + nodeproto.SelftestMark + " exec=ok ssh=ok key=ok net=ok"
-	if d, ch, err, log := guardRun(true, good, Facts{}); err != nil || !ch || !strings.Contains(d, "libvirt runs it") || len(log) != 3 {
+	if d, ch, err, log := guardRun(true, good, Facts{}); err != nil || !ch || !strings.Contains(d, "libvirt runs it") || len(log) != 4 {
 		t.Errorf("good: %q %v %v (%d calls)", d, ch, err, len(log))
 	}
-	// nothing changed: no reload, no probe VM
-	if _, ch, err, log := guardRun(false, good, Facts{}); err != nil || ch || len(log) != 1 {
+	// nothing changed: no reload; the probe still runs, so a hook libvirt ignores shows
+	if _, ch, err, log := guardRun(false, good, Facts{}); err != nil || ch || len(log) != 3 {
 		t.Errorf("unchanged: %v %v %d", ch, err, len(log))
 	}
 	// SELinux or AppArmor forbids the network: installed, warned
@@ -100,8 +100,12 @@ func TestStepGuard(t *testing.T) {
 	}
 	// libvirt ignored the hook (not reloaded): kept, with the instruction
 	_, _, err, log := guardRun(true, "nohook rc=0: ", Facts{})
-	if !asStatus(err, &se) || !strings.Contains(se.Detail, "did not run it") || len(log) != 3 {
+	if !asStatus(err, &se) || !strings.Contains(se.Detail, "did not reach it") || len(log) != 4 {
 		t.Errorf("not run: %v", err)
+	}
+	// the hook is in place but libvirt started before it existed: one reload and a second probe
+	if _, _, err, log := guardRun(false, "nohook rc=0: ", Facts{}); !asStatus(err, &se) || len(log) != 5 {
+		t.Errorf("not read yet: %v %d", err, len(log))
 	}
 	// libvirt failed to run the hook: removed again
 	_, _, err, log = guardRun(true, "nohook rc=1: error: Hook script execution failed", Facts{})
@@ -139,5 +143,38 @@ func TestArpingIsInThePackageLists(t *testing.T) {
 		if !found {
 			t.Errorf("%s lacks %s", fam, want)
 		}
+	}
+}
+
+func TestGuardAppArmorScript(t *testing.T) {
+	for _, must := range []string{nodeproto.AppArmorLocal, nodeproto.AppArmorMain, "Cx -> virticle_node", "/usr/bin/ssh ix", "network inet stream",
+		"s#" + nodeproto.AppArmorHome + "#$home#", "apparmor_parser -r", `cat "$bak" > "$loc"`} {
+		if !strings.Contains(guardAppArmorScript, must) {
+			t.Errorf("the AppArmor script lacks %q", must)
+		}
+	}
+	if strings.Count(nodeproto.AppArmorBlock, nodeproto.AppArmorHome) != 1 || !strings.HasSuffix(nodeproto.AppArmorBlock, nodeproto.AppArmorEnd+"\n") {
+		t.Errorf("block:\n%s", nodeproto.AppArmorBlock)
+	}
+	// removing the guard takes the block out again
+	if !strings.Contains(guardRemoveScript, nodeproto.AppArmorBegin) {
+		t.Error("the removal does not remove the AppArmor block")
+	}
+	// an AppArmor rule that was added makes the step report a change
+	n := &fakeNode{}
+	n.handlers = append(n.handlers, func(cmd, stdin string) (string, bool, error) {
+		switch {
+		case strings.Contains(cmd, "virticle-guard-selftest"):
+			return "result: " + nodeproto.SelftestMark + " exec=ok ssh=ok key=ok net=ok", true, nil
+		case strings.Contains(cmd, "apparmor_parser"):
+			return "AppArmor rule added for the start guard\n@@changed", true, nil
+		case strings.Contains(cmd, "dest="):
+			return "current\n@@unchanged", true, nil
+		}
+		return "", true, nil
+	})
+	d, ch, err := stepGuard(&Runner{N: n, isRoot: true}, Plan{}, Options{ControllerKey: testKey})
+	if err != nil || !ch || !strings.Contains(d, "AppArmor rule added") {
+		t.Errorf("%q %v %v", d, ch, err)
 	}
 }
