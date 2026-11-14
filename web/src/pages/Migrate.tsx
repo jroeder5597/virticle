@@ -102,7 +102,7 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
   const targetName = nodes.find((n) => n.id === target)?.hostname ?? "";
 
   return (
-    <Modal title={`Migrate ${d.name}`} onClose={() => !busy && props.onClose()} wide>
+    <Modal title={`Migrate ${d.name}`} onClose={props.onClose} wide>
       {!taskId && (
         <>
           <div className="row">
@@ -161,16 +161,16 @@ export default function MigrateDialog(props: { d: VMDetail; onClose: () => void 
           <p className="muted">
             {task?.status === "ok" ? "Done." : task?.status === "failed" ? "Failed." : `${Math.round((task?.progress ?? 0) * 100)}%`}
           </p>
+          {busy && <p className="muted">The migration keeps running if you close this window. Follow it in the Tasks panel.</p>}
           {confirm.dialog}
           <ErrorBox error={task?.status === "failed" ? task.error : cancel.error} />
           <footer>
-            {busy ? (
+            {busy && (
               <button className="danger" disabled={cancel.busy} onClick={async () => (await confirm.ask({ title: "Stop migration", message: `The running migration of ${d.name} to ${targetName} is stopped. The VM stays on its current node.`, confirm: "Stop migration" })) && cancel.run(() => post(`${base}/migrate/cancel`))}>
                 Cancel migration
               </button>
-            ) : (
-              <button onClick={props.onClose}>Close</button>
             )}
+            <button onClick={props.onClose}>{busy ? "Run in background" : "Close"}</button>
           </footer>
         </>
       )}

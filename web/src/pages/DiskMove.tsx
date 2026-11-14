@@ -99,7 +99,7 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
   const pct = Math.round((task?.status === "ok" ? 1 : task?.progress ?? 0) * 100);
 
   return (
-    <Modal title={`Move ${disk.target} to another pool`} onClose={() => !busy && onClose()} wide>
+    <Modal title={`Move ${disk.target} to another pool`} onClose={onClose} wide>
       {confirm.dialog}
       {!taskId && (
         <>
@@ -136,6 +136,24 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
                 </p>
               )}
               <CheckList items={preflightItems(plan.checks)} />
+              {plan.checks.some((c) => !c.ok && c.message.includes("a move of this disk is already in progress")) && (
+                <p>
+                  <button
+                    className="danger"
+                    disabled={cancel.busy}
+                    onClick={async () =>
+                      (await confirm.ask({ title: "Stop disk move", message: `The running move of ${disk.target} of ${d.name} is stopped. The disk stays where it was.`, confirm: "Stop move" })) &&
+                      cancel.run(async () => {
+                        await post(`${base}/cancel`);
+                        onClose();
+                      })
+                    }
+                  >
+                    Cancel the running move
+                  </button>
+                </p>
+              )}
+              <ErrorBox error={cancel.error} />
             </>
           )}
           <ErrorBox error={act.error} />
@@ -156,16 +174,16 @@ export default function DiskMoveDialog({ d, disk, onClose, onDone }: { d: VMDeta
             <div className={task?.status === "failed" ? "full" : ""} style={{ width: pct + "%" }} />
           </div>
           <p className="muted">{task?.status === "ok" ? "Done." : task?.status === "failed" ? (task.error?.includes("cancelled") ? "Cancelled." : "Failed.") : `${pct}%`}</p>
+          {busy && <p className="muted">The move keeps running if you close this window. Follow it in the Tasks panel.</p>}
           {!live && busy && <p className="muted">Cancel takes effect when the copy returns; the new volume is then removed.</p>}
           <ErrorBox error={task?.status === "failed" ? task.error : cancel.error} />
           <footer>
-            {busy ? (
+            {busy && (
               <button className="danger" disabled={cancel.busy} onClick={async () => (await confirm.ask({ title: "Stop disk move", message: `The running move of ${disk.target} of ${d.name} is stopped. The disk stays where it is and a partial copy is removed.`, confirm: "Stop move" })) && cancel.run(() => post(`${base}/cancel`))}>
                 Cancel move
               </button>
-            ) : (
-              <button onClick={onClose}>Close</button>
             )}
+            <button onClick={onClose}>{busy ? "Run in background" : "Close"}</button>
           </footer>
         </>
       )}
