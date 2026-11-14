@@ -158,8 +158,8 @@ function Summary({ n, alerts }: { n: NodeStatus; alerts: ReturnType<typeof useAl
         <div className="card">
           <h3>Load</h3>
           <div className="nodeload">
-            <HostLoad points={series} kind="cpu" />
-            <HostLoad points={series} kind="mem" />
+            <HostLoad points={series} kind="cpu" named />
+            <HostLoad points={series} kind="mem" named />
           </div>
         </div>
         <div className="card">

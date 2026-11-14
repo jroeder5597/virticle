@@ -31,7 +31,7 @@ test.describe.serial("performance history", () => {
     // Either charts or the plain "no data" line; never an error box.
     await expect(page.locator(".psvg, .empty").first()).toBeVisible();
     await expect(page.locator(".error")).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Busiest virtual machines in this range" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Top virtual machines in this range" })).toBeVisible();
   });
 
   test("the VM page has a Performance tab; range select and chips work", async ({ page, api }) => {

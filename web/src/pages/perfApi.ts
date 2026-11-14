@@ -88,7 +88,7 @@ const vmPanels: Panel[] = [
 
 const nodePanels: Panel[] = [
   { group: "cpu", title: "CPU (percent of all cores)", unit: "pct", series: [
-    { key: "cpu", label: "Busy" },
+    { key: "cpu", label: "Used" },
     { key: "cpu_user", label: "User" },
     { key: "cpu_system", label: "System" },
     { key: "cpu_iowait", label: "Waiting for disk" },
@@ -113,7 +113,7 @@ const nodePanels: Panel[] = [
     { key: "disk_rd_ops", label: "Reads" },
     { key: "disk_wr_ops", label: "Writes" },
   ] },
-  { group: "disk", title: "Disk busy (percent of time)", unit: "pct", series: [{ key: "disk_busy", label: "Busy" }] },
+  { group: "disk", title: "Disk active (percent of time)", unit: "pct", series: [{ key: "disk_busy", label: "Active" }] },
   { group: "disk", title: "Disk latency per operation", unit: "ms", series: [{ key: "disk_lat_ms", label: "Latency" }] },
   { group: "network", title: "Network", unit: "bps", series: [
     { key: "net_rx_bps", label: "Received" },
@@ -126,7 +126,7 @@ const nodePanels: Panel[] = [
     { key: "net_tx_drop", label: "Sent dropped" },
   ] },
   { group: "storage", title: "Storage pool use", unit: "bytes", series: [{ key: "pool_used_bytes", label: "Used" }] },
-  { group: "gpu", title: "GPU utilisation", unit: "pct", series: [{ key: "gpu_util", label: "Busy" }] },
+  { group: "gpu", title: "GPU utilisation", unit: "pct", series: [{ key: "gpu_util", label: "Used" }] },
   { group: "gpu", title: "GPU memory used", unit: "mib", series: [{ key: "gpu_mem_used_mib", label: "Used" }] },
   { group: "gpu", title: "GPU temperature", unit: "celsius", series: [{ key: "gpu_temp", label: "Temperature" }] },
 ];

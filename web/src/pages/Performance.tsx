@@ -303,7 +303,7 @@ export function BusiestVMs({ node, title }: { node: number; title?: string }) {
   const q = rangeQuery(range);
   return (
     <section className="pbusy">
-      <h2>{title ?? "Busiest virtual machines in this range"}</h2>
+      <h2>{title ?? "Top virtual machines in this range"}</h2>
       <ErrorBox error={error} />
       {o && (
         <div className="pbgrid">
@@ -358,7 +358,7 @@ export function DatacenterPerformance() {
           />
         </label>
       </div>
-      <BusiestVMs node={0} title="Busiest virtual machines in this range" />
+      <BusiestVMs node={0} title="Top virtual machines in this range" />
     </div>
   );
 }

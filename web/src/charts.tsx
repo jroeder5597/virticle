@@ -203,15 +203,15 @@ export function useHostSeries(node: number, enabled: boolean): HostPoint[] {
   return usePoll<{ points: HostPoint[] }>(enabled ? `/nodes/${node}/stats` : null)?.points ?? [];
 }
 
-/** CPU or memory of one node: a bar with a sparkline, for the Nodes page. */
-export function HostLoad({ points: pts, kind }: { points: HostPoint[]; kind: "cpu" | "mem" }) {
+/** CPU or memory of one node: a bar with a sparkline. `named` writes "CPU" or "Memory" in front, where no column heading says it. */
+export function HostLoad({ points: pts, kind, named }: { points: HostPoint[]; kind: "cpu" | "mem"; named?: boolean }) {
   const cur = last(pts);
   if (!cur) return null;
   const t = pts.map((p) => p.t);
   if (kind === "cpu") {
     return (
       <div className="load">
-        <Meter value={cur.cpu} max={100} label={`${pct(cur.cpu)} busy`} />
+        <Meter value={cur.cpu} max={100} label={`${named ? "CPU " : ""}${pct(cur.cpu)} used`} />
         <Spark t={t} values={pts.map((p) => p.cpu)} max={100} />
       </div>
     );
@@ -219,7 +219,7 @@ export function HostLoad({ points: pts, kind }: { points: HostPoint[]; kind: "cp
   const total = cur.memTotalKiB ?? 0;
   return (
     <div className="load">
-      <Meter value={cur.memUsedKiB} max={total} label={`${kib(cur.memUsedKiB)} of ${kib(total)} used`} />
+      <Meter value={cur.memUsedKiB} max={total} label={`${named ? "Memory " : ""}${kib(cur.memUsedKiB)} of ${kib(total)} used`} />
       <Spark t={t} values={pts.map((p) => p.memUsedKiB)} max={Math.max(total, 1)} />
     </div>
   );

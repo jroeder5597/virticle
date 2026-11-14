@@ -770,13 +770,13 @@ drawn as zero. Small markers on the axis show that a VM started (triangle), stop
 - VM: CPU (percent of its virtual CPUs, and time spent waiting for a host CPU), memory (assigned, used inside the guest
   when the balloon driver reports it, resident on the host), disk (read and write throughput, operations, latency),
   network (bits per second, dropped packets).
-- Node: CPU (busy, user, system, waiting for disk, stolen) and load average, memory (used, cache, available, swap),
-  disk per device (throughput, operations, busy percent, latency), network per card and bridge, storage pool use, and
+- Node: CPU (used, user, system, waiting for disk, stolen) and load average, memory (used, cache, available, swap),
+  disk per device (throughput, operations, active percent, latency), network per card and bridge, storage pool use, and
   GPU use, memory and temperature for NVIDIA cards that the node itself drives (the node needs `nvidia-smi`). A GPU passed
   through to a VM cannot be seen from the node; its usage is only visible inside the guest. AMD and Intel GPUs are not
   shown.
 
-On a node's Performance tab, *Busiest virtual machines in this range* lists the top 5 by CPU, memory, disk and network;
+On a node's Performance tab, *Top virtual machines in this range* lists the top 5 by CPU, memory, disk and network;
 each name opens that VM's Performance tab with the same range. The Datacenter has the same table for all nodes.
 
 The history is stored in `metrics.db` in the data directory; deleting the file only loses the history. To feed Grafana or
