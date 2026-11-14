@@ -7,7 +7,6 @@ const TABS: [string, string][] = [
   ["Virtual machines", "vms"],
   ["Storage", "storage"],
   ["Network", "network"],
-  ["Topology", "topology"],
   ["Updates", "updates"],
   ["Settings", "settings"],
 ];
@@ -41,7 +40,7 @@ test.describe.serial("node page", () => {
     await page.getByRole("tab", { name: "Storage", exact: true }).click();
     await expect(page.locator("tbody tr").filter({ hasText: "default" }).first()).toBeVisible();
     await page.getByRole("tab", { name: "Network", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Host interfaces" })).toBeVisible();
+    await page.getByRole("button", { name: "Host interfaces" }).click();
     await expect(page.locator(".nicbox tbody tr").first()).toBeVisible();
     expect(await page.locator(".nicbox tbody tr").count()).toBeGreaterThan(0);
   });
